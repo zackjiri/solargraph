@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Solargraph Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background:#0f172a; color:#f8fafc; overflow:hidden; font-family:ui-sans-serif,system-ui,sans-serif; touch-action: none; }
+        #viewer { position:relative; width:100%; height:calc(100vh - 80px); background:#000; overflow:hidden; cursor:crosshair; touch-action: none; }
+        .layer { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; }
+        #layer-base { z-index:1; display:block; }
+        #layer-top { z-index:5; }
+        #layer-top-container { position:absolute; inset:0; z-index:5; pointer-events:none; }
+        #wipe-handle { position:absolute; top:0; bottom:0; width:2px; background:white; z-index:10; pointer-events:none; transition: opacity 0.3s ease; }
+        #wipe-handle::after { content:'↔'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:36px; height:36px; border-radius:50%; background:white; color:#0f172a; display:flex; align-items:center; justify-content:center; font-weight:bold; }
+        .azimuth-badge { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); padding:8px 16px; font-family:'JetBrains Mono',monospace; background:rgba(15,23,42,.7); backdrop-filter:blur(8px); border-radius:10px; border-bottom:2px solid #f59e0b; z-index:20; pointer-events: none; }
+        .azimuth-axis { position:absolute; bottom:0; height:56px; z-index:15; pointer-events:none; }
+        .az-tick { position:absolute; bottom:0; width:1px; background:rgba(255,255,255,.4); }
+        .az-tick.major { height:20px; background:rgba(255,255,255,.9); }
+        .az-tick.minor { height:10px; }
+        .az-tick.south { background: #f59e0b !important; height: 24px; width: 2px; }
+        .az-label { position:absolute; bottom:24px; transform:translateX(-50%); font-size:.7rem; font-family:'JetBrains Mono',monospace; white-space:nowrap; }
+        .az-label.south { color: #f59e0b; font-weight: bold; font-size: 0.8rem; }
+        
+        .toggle-container { display:flex; gap:8px; padding:4px; border-radius:14px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.05); align-items:center; }
+        .toggle-btn { font-size:0.875rem; font-weight:500; padding:6px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.3); cursor:pointer; background:rgba(255,255,255,0.1); color:#f8fafc; transition: all 0.2s ease; }
+        .toggle-btn.active { background:#f59e0b; color:#0f172a; border-color:#f59e0b; }
+        .toggle-btn:not(.active):hover { background:rgba(255,255,255,0.2); }
+        .toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; color: #94a3b8 !important; }
+        
+        .select-set { padding:6px 12px; border-radius:10px; border: 2px solid #f59e0b; background: #1e293b; color: #f59e0b; font-size: 0.875rem; font-weight: 700; cursor: pointer; }
+        
+        /* Akční tlačítka přímo ve vieweru */
+        .viewer-action-btn { 
+            position:absolute; 
+            width:44px; /* Větší touch target */
+            height:44px;
+            border-radius:12px; 
+            border:1px solid rgba(255,255,255,0.4); 
+            background:rgba(15,23,42,0.8); 
+            backdrop-filter:blur(8px);
+            color:#f8fafc; 
+            cursor:pointer; 
+            display: flex;
+            align-items:center;
+            justify-content:center;
+            z-index:100; /* Nejvyšší vrstva */
+            touch-action: none;
+        }
+        .viewer-action-btn:active, .viewer-action-btn.active { background:#f59e0b; color:#0f172a; border-color:#f59e0b; }
+        
+        #btn-info { font-family: serif; font-style: italic; font-weight: bold; font-size: 1.4rem; }
+        #invert-split { display: none; font-size: 1.4rem; }
+
+        #info-popup {
+            position: absolute;
+            z-index: 110;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(245, 158, 11, 0.5);
+            border-radius: 12px;
+            padding: 20px;
+            width: 280px;
+            display: none;
+            pointer-events: auto;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        header { position:relative; z-index: 200; }
+    </style>
+</head>
+<body>
+    <header class="h-20 px-6 flex items-center justify-between border-b border-slate-800 bg-slate-900/50">
+        <div class="flex flex-col">
+            <h1 class="text-xl font-bold tracking-tight">SOLARGRAPH <span class="text-amber-500">Viewer</span></h1>
+            <span class="text-xs text-slate-400 uppercase tracking-widest">SOL-2025_H2_GEN-I</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="toggle-container">
+                <button id="btn-raw" class="toggle-btn">RAW</button>
+                <button id="btn-enhanced" class="toggle-btn active">ENHANCED</button>
+                <button id="btn-split" class="toggle-btn">SPLIT</button>
+                <button id="btn-pinhole" class="toggle-btn">PINHOLE</button>
+                <select id="select-set" class="select-set">
+                    <option value="GEN-1_1">GEN-1_1</option>
+                    <option value="GEN-1_2">GEN-1_2</option>
+                    <option value="GEN-1_3" selected>GEN-1_3</option>
+                    <option value="GEN-1_4">GEN-1_4</option>
+                    <option value="GEN-1_5">GEN-1_5</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <main id="viewer">
+        <button id="btn-info" class="viewer-action-btn">i</button>
+        <button id="invert-split" class="viewer-action-btn">↺</button>
+        
+        <div id="info-popup">
+            <h3 id="popup-title" class="text-slate-400 font-bold mb-3 border-b border-amber-500/30 pb-1 uppercase text-xs tracking-wider"></h3>
+            <ul id="popup-list" class="text-sm space-y-2 text-slate-200"></ul>
+        </div>
+        
+        <img id="layer-base" class="layer" src="img/GEN-1_3_L1.jpg">
+        <div id="layer-top-container">
+            <img id="layer-top" class="layer" src="img/GEN-1_3_L2.jpg" style="clip-path:inset(0 100% 0 0)">
+        </div>
+        <div id="wipe-handle" style="left:50%; opacity:0;"></div>
+        <div id="azimuth-label" class="azimuth-badge">Azimuth: 180°</div>
+        <div id="azimuth-axis" class="azimuth-axis"></div>
+    </main>
+
+    <script>
+    (() => {
+        const viewer = document.getElementById('viewer');
+        const base = document.getElementById('layer-base');
+        const topImg = document.getElementById('layer-top');
+        const topContainer = document.getElementById('layer-top-container');
+        const handle = document.getElementById('wipe-handle');
+        const label = document.getElementById('azimuth-label');
+        const axis = document.getElementById('azimuth-axis');
+        
+        const btnRaw = document.getElementById('btn-raw');
+        const btnEnhanced = document.getElementById('btn-enhanced');
+        const btnSplit = document.getElementById('btn-split');
+        const btnPinhole = document.getElementById('btn-pinhole');
+        const selectSet = document.getElementById('select-set');
+        const invertBtn = document.getElementById('invert-split');
+        const btnInfo = document.getElementById('btn-info');
+        const infoPopup = document.getElementById('info-popup');
+        const popupList = document.getElementById('popup-list');
+        const popupTitle = document.getElementById('popup-title');
+
+        const config = { imageWidth: 1280, fov: 220 };
+        let isDragging = false;
+        let mode = 'enhanced';
+        let currentSet = 'GEN-1_3';
+        let splitInverted = false;
+        let isPopupOpen = false;
+        let lastX = window.innerWidth / 2;
+        let lastY = window.innerHeight / 2;
+        
+        const azimuthOffsets = { 'GEN-1_1': 15, 'GEN-1_2': 10, 'GEN-1_3': 0, 'GEN-1_4': -30, 'GEN-1_5': -10 };
+        const infoTexts = {
+            'GEN-1_1': { hasL2: true, lines: ["Exposure start: 2025-06-27", "Exposure end: 2025-12-04", "Duration: 160 days", "Location: Brno, Czechia"] },
+            'GEN-1_2': { hasL2: false, lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-01", "Duration: 156 days", "Location: Brno, Czechia"] },
+            'GEN-1_3': { hasL2: true, lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-20", "Duration: 175 days", "Location: Brno, Czechia"] },
+            'GEN-1_4': { hasL2: false, lines: ["Exposure start: 2025-07-03", "Exposure end: 2025-11-30", "Duration: 150 days", "Location: Brno, Czechia"] },
+            'GEN-1_5': { hasL2: false, lines: ["Exposure start: 2025-07-05", "Exposure end: 2025-12-23", "Duration: 171 days", "Location: Bystrice nad Pernstejnem, Czechia"] }
+        };
+
+        function updatePopupContent() {
+            const data = infoTexts[currentSet];
+            popupTitle.innerHTML = `IMAGE INFO: <span class="text-amber-500 font-bold">${currentSet}</span>`;
+            popupList.innerHTML = data.lines.map(line => `<li>• ${line}</li>`).join('');
+        }
+
+        function pixelToAzimuth(px) {
+            const dx = (px / config.imageWidth) * 2 - 1;
+            const r = Math.max(-1, Math.min(1, dx));
+            return Math.round(180 + (Math.asin(r) * (config.fov / 180)) * 180 / Math.PI - azimuthOffsets[currentSet]);
+        }
+
+        function azimuthToPixel(az) {
+            const angleDeltaDeg = (az + azimuthOffsets[currentSet] - 180) / (config.fov / 180);
+            return (Math.sin(angleDeltaDeg * Math.PI / 180) + 1) / 2 * config.imageWidth;
+        }
+
+        function imageRender(img, w, h) {
+            const ir = img.naturalWidth / img.naturalHeight;
+            const cr = w / h;
+            return ir > cr ? { w: w, h: w / ir, ox: 0, oy: (h - w / ir) / 2 } : { w: h * ir, h: h, ox: (w - h * ir) / 2, oy: 0 };
+        }
+
+        function renderAxis() {
+            axis.innerHTML = '';
+            const r = viewer.getBoundingClientRect();
+            const d = imageRender(base, r.width, r.height);
+            axis.style.left = d.ox + 'px';
+            axis.style.width = d.w + 'px';
+            const centerAz = 180 - azimuthOffsets[currentSet];
+            const AX_MIN = centerAz - (config.fov / 3); 
+            const AX_MAX = centerAz + (config.fov / 3);
+            for (let az = Math.floor(AX_MIN/5)*5; az <= AX_MAX; az += 5) {
+                const x = azimuthToPixel(az) / config.imageWidth * d.w;
+                if (x < 0 || x > d.w) continue;
+                const currentAzRounded = Math.round(az);
+                const isSouth = currentAzRounded === 180;
+                const tick = document.createElement('div');
+                tick.className = 'az-tick ' + (isSouth ? 'south' : (currentAzRounded % 10 === 0 ? 'major' : 'minor'));
+                tick.style.left = x + 'px';
+                axis.appendChild(tick);
+                if (currentAzRounded % 10 === 0) {
+                    const lbl = document.createElement('div');
+                    lbl.className = 'az-label' + (isSouth ? ' south' : '');
+                    lbl.style.left = x + 'px';
+                    lbl.textContent = currentAzRounded + '°';
+                    axis.appendChild(lbl);
+                }
+            }
+        }
+
+        function updateUI(clientX, clientY) {
+            if (clientX !== undefined) lastX = clientX;
+            if (clientY !== undefined) lastY = clientY;
+            const r = viewer.getBoundingClientRect();
+            const d = imageRender(base, r.width, r.height);
+            
+            btnInfo.style.left = (d.ox + 16) + 'px';
+            btnInfo.style.top = (d.oy + 16) + 'px';
+            infoPopup.style.left = (d.ox + 16) + 'px';
+            infoPopup.style.top = (d.oy + 64) + 'px';
+
+            if (mode === 'split') {
+                invertBtn.style.display = 'flex';
+                invertBtn.style.right = (r.width - (d.ox + d.w) + 16) + 'px';
+                invertBtn.style.top = (d.oy + 16) + 'px';
+            }
+
+            let cx = lastX - r.left;
+            cx = Math.max(d.ox, Math.min(cx, d.ox + d.w));
+            const relX = (cx - d.ox) / d.w;
+            const px = relX * config.imageWidth;
+            label.innerHTML = `Azimuth: <b class="text-amber-400">${pixelToAzimuth(px)}°</b>`;
+
+            if (mode === 'pinhole' && infoTexts[currentSet].hasL2) {
+                const radius = Math.min(d.w, d.h) / 12;
+                let cy = lastY - r.top;
+                cy = Math.max(d.oy, Math.min(cy, d.oy + d.h));
+                topImg.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
+                handle.style.opacity = '0';
+            } else if (mode === 'split' && infoTexts[currentSet].hasL2) {
+                const split = relX * d.w;
+                const left = d.ox, right = r.width - (d.ox + d.w), top = d.oy, bottom = r.height - (d.oy + d.h);
+                topImg.style.clipPath = splitInverted ? 
+                    `inset(${top}px ${left}px ${bottom}px ${right + split}px)` : 
+                    `inset(${top}px ${right + (d.w - split)}px ${bottom}px ${left}px)`;
+                handle.style.left = cx + 'px';
+                handle.style.opacity = '1';
+            } else { 
+                topImg.style.clipPath = `inset(0 100% 0 0)`;
+                handle.style.opacity = '0';
+            }
+            renderAxis();
+        }
+
+        /* --- Sjednocené Pointer Události --- */
+        viewer.addEventListener('pointerdown', e => {
+            // Pokud klikneme na tlačítko, nepohybujeme viewerem
+            if (e.target.closest('.viewer-action-btn') || e.target.closest('#info-popup')) {
+                return;
+            }
+            if (isPopupOpen) togglePopup(false);
+            isDragging = true;
+            updateUI(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('pointermove', e => {
+            if (isDragging || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') {
+                updateUI(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('pointerup', () => isDragging = false);
+
+        /* --- Logika Tlačítek --- */
+        function togglePopup(state) {
+            isPopupOpen = state !== undefined ? state : !isPopupOpen;
+            if (isPopupOpen) updatePopupContent();
+            infoPopup.style.display = isPopupOpen ? 'block' : 'none';
+            btnInfo.classList.toggle('active', isPopupOpen);
+        }
+
+        // Používáme click, ale díky stopPropagation v CSS/Eventu a pointerdown ochraně nahoře to bude fungovat
+        btnInfo.addEventListener('click', e => {
+            e.stopPropagation();
+            togglePopup();
+        });
+
+        invertBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            splitInverted = !splitInverted;
+            invertBtn.classList.toggle('active');
+            updateUI();
+        });
+
+        /* --- Režimy --- */
+        const reset = () => { [btnRaw, btnEnhanced, btnSplit, btnPinhole].forEach(b => b.classList.remove('active')); invertBtn.style.display = 'none'; };
+        const setImg = (b, t) => { base.src = `img/${currentSet}_${b}.jpg`; topImg.src = `img/${currentSet}_${t}.jpg`; };
+
+        btnRaw.addEventListener('click', () => { mode = 'raw'; reset(); btnRaw.classList.add('active'); setImg('L0', 'L2'); updateUI(); });
+        btnEnhanced.addEventListener('click', () => { mode = 'enhanced'; reset(); btnEnhanced.classList.add('active'); setImg('L1', 'L2'); updateUI(); });
+        btnSplit.addEventListener('click', () => { if (!infoTexts[currentSet].hasL2) return; mode = 'split'; reset(); btnSplit.classList.add('active'); setImg('L1', 'L2'); updateUI(); });
+        btnPinhole.addEventListener('click', () => { if (!infoTexts[currentSet].hasL2) return; mode = 'pinhole'; reset(); btnPinhole.classList.add('active'); setImg('L0', 'L2'); updateUI(); });
+
+        selectSet.addEventListener('change', () => {
+            currentSet = selectSet.value;
+            const hasL2 = infoTexts[currentSet].hasL2;
+            btnSplit.disabled = !hasL2; btnPinhole.disabled = !hasL2;
+            if ((mode === 'split' || mode === 'pinhole') && !hasL2) { mode = 'enhanced'; reset(); btnEnhanced.classList.add('active'); }
+            setImg(mode === 'raw' || mode === 'pinhole' ? 'L0' : 'L1', 'L2');
+            if (isPopupOpen) updatePopupContent();
+            base.onload = () => updateUI();
+        });
+
+        window.addEventListener('resize', updateUI);
+        window.onload = () => { updateUI(); updatePopupContent(); };
+    })();
+    </script>
+</body>
+</html>
