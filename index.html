@@ -1,80 +1,251 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Solargraph Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background:#0f172a; color:#f8fafc; overflow:hidden; font-family:ui-sans-serif,system-ui,sans-serif; touch-action: none; }
-        #viewer { position:relative; width:100%; height:calc(100vh - 80px); background:#000; overflow:hidden; cursor:crosshair; touch-action: none; }
-        .layer { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; pointer-events:none; }
-        #layer-base { z-index:1; display:block; }
-        #layer-top { z-index:5; }
-        #layer-top-container { position:absolute; inset:0; z-index:5; pointer-events:none; }
-        #wipe-handle { position:absolute; top:0; bottom:0; width:2px; background:white; z-index:10; pointer-events:none; transition: opacity 0.3s ease; }
-        #wipe-handle::after { content:'↔'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:36px; height:36px; border-radius:50%; background:white; color:#0f172a; display:flex; align-items:center; justify-content:center; font-weight:bold; }
-        .azimuth-badge { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); padding:8px 16px; font-family:'JetBrains Mono',monospace; background:rgba(15,23,42,.7); backdrop-filter:blur(8px); border-radius:10px; border-bottom:2px solid #f59e0b; z-index:20; }
-        .azimuth-axis { position:absolute; bottom:0; height:56px; z-index:15; pointer-events:none; }
-        .az-tick { position:absolute; bottom:0; width:1px; background:rgba(255,255,255,.4); }
-        .az-tick.major { height:20px; background:rgba(255,255,255,.9); }
-        .az-tick.minor { height:10px; }
-        /* Třída pro zvýraznění jihu (180°) */
-        .az-tick.south { background: #f59e0b !important; height: 24px; width: 2px; }
-        .az-label { position:absolute; bottom:24px; transform:translateX(-50%); font-size:.7rem; font-family:'JetBrains Mono',monospace; white-space:nowrap; }
-        .az-label.south { color: #f59e0b; font-weight: bold; font-size: 0.8rem; }
-        
-        .toggle-container { display:flex; gap:8px; padding:4px; border-radius:14px; border:1px solid rgba(255,255,255,0.3); background:rgba(255,255,255,0.05); align-items:center; }
-        .toggle-btn { font-size:0.875rem; font-weight:500; padding:6px 14px; border-radius:12px; border:1px solid rgba(255,255,255,0.3); cursor:pointer; background:rgba(255,255,255,0.1); color:#f8fafc; transition: all 0.2s ease; }
-        .toggle-btn.active { background:#f59e0b; color:#0f172a; border-color:#f59e0b; }
-        .toggle-btn:not(.active):hover { background:rgba(255,255,255,0.2); }
-        
-        .toggle-btn:disabled { 
-            opacity: 0.4; 
-            cursor: not-allowed; 
-            color: #94a3b8 !important; 
-            background: rgba(255,255,255,0.05); 
-            border-color: rgba(255,255,255,0.1);
+        body {
+            background: #0f172a;
+            color: #f8fafc;
+            overflow: hidden;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+            touch-action: none;
         }
-        .toggle-btn:disabled:hover { background: rgba(255,255,255,0.05); }
-        
-        .select-set { 
-            padding:6px 12px; 
-            border-radius:10px; 
-            border: 2px solid #f59e0b; 
-            background: #1e293b; 
-            color: #f59e0b; 
-            font-size: 0.875rem; 
+
+        /* Upravena výška vieweru pro patičku (80px header + 24px footer) */
+        #viewer {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 104px);
+            background: #000;
+            overflow: hidden;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .layer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        #layer-base {
+            z-index: 1;
+            display: block;
+        }
+
+        #layer-top {
+            z-index: 5;
+        }
+
+        #layer-top-container {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #wipe-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: white;
+            z-index: 10;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #wipe-handle::after {
+            content: '↔';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: white;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .azimuth-badge {
+            position: absolute;
+            bottom: 72px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(15, 23, 42, .7);
+            backdrop-filter: blur(8px);
+            border-radius: 10px;
+            border-bottom: 2px solid #f59e0b;
+            z-index: 20;
+        }
+
+        .azimuth-axis {
+            position: absolute;
+            bottom: 0;
+            height: 56px;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        .az-tick {
+            position: absolute;
+            bottom: 0;
+            width: 1px;
+            background: rgba(255, 255, 255, .4);
+        }
+
+        .az-tick.major {
+            height: 20px;
+            background: rgba(255, 255, 255, .9);
+        }
+
+        .az-tick.minor {
+            height: 10px;
+        }
+
+        /* Třída pro zvýraznění jihu (180°) */
+        .az-tick.south {
+            background: #f59e0b !important;
+            height: 24px;
+            width: 2px;
+        }
+
+        .az-label {
+            position: absolute;
+            bottom: 24px;
+            transform: translateX(-50%);
+            font-size: .7rem;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+        }
+
+        .az-label.south {
+            color: #f59e0b;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .toggle-container {
+            display: flex;
+            gap: 8px;
+            padding: 4px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.05);
+            align-items: center;
+        }
+
+        .toggle-btn {
+            font-size: 0.875rem;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+            transition: all 0.2s ease;
+        }
+
+        .toggle-btn.active {
+            background: #f59e0b;
+            color: #0f172a;
+            border-color: #f59e0b;
+        }
+
+        .toggle-btn:not(.active):hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .toggle-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            color: #94a3b8 !important;
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .toggle-btn:disabled:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .select-set {
+            padding: 6px 12px;
+            border-radius: 10px;
+            border: 2px solid #f59e0b;
+            background: #1e293b;
+            color: #f59e0b;
+            font-size: 0.875rem;
             font-weight: 700;
-            cursor: pointer; 
+            cursor: pointer;
             outline: none;
             transition: all 0.2s ease;
         }
-        .select-set:hover { background: #334155; }
-        .select-set option { background: #0f172a; color: #f8fafc; font-weight: normal; }
-        
-        .viewer-action-btn { 
-            position:absolute; 
-            width:40px;
-            height:40px;
-            border-radius:10px; 
-            border:1px solid rgba(255,255,255,0.3); 
-            background:rgba(15,23,42,0.6); 
-            backdrop-filter:blur(4px);
-            color:#f8fafc; 
-            cursor:pointer; 
-            display: flex;
-            align-items:center;
-            justify-content:center;
-            transition: all 0.2s ease;
-            z-index:40;
-            touch-action: none; /* Přidáno pro zamezení kolize gest na iPadu */
+
+        .select-set:hover {
+            background: #334155;
         }
-        .viewer-action-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.5); }
-        .viewer-action-btn.active { background:#f59e0b; color:#0f172a; border-color:#f59e0b; }
-        
-        #btn-info { font-family: serif; font-style: italic; font-weight: bold; font-size: 1.2rem; }
-        #invert-split { display: none; font-size: 1.25rem; }
+
+        .select-set option {
+            background: #0f172a;
+            color: #f8fafc;
+            font-weight: normal;
+        }
+
+        .viewer-action-btn {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            color: #f8fafc;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            z-index: 40;
+            touch-action: none;
+        }
+
+        .viewer-action-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .viewer-action-btn.active {
+            background: #f59e0b;
+            color: #0f172a;
+            border-color: #f59e0b;
+        }
+
+        #btn-info {
+            font-family: serif;
+            font-style: italic;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+
+        #invert-split {
+            display: none;
+            font-size: 1.25rem;
+        }
 
         #info-popup {
             position: absolute;
@@ -93,13 +264,43 @@
         }
 
         @keyframes popupIn {
-            from { opacity: 0; transform: scale(0.9) translateX(-10px); }
-            to { opacity: 1; transform: scale(1) translateX(0); }
+            from {
+                opacity: 0;
+                transform: scale(0.9) translateX(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateX(0);
+            }
         }
 
-        header { position:relative; }
+        footer {
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px; /* Vytváří mezery kolem teček a odkazu */
+            background: #0f172a;
+            border-top: 1px solid #1e293b;
+            color: #64748b;
+            font-size: 0.65rem;
+            letter-spacing: 0.05em;
+        }
+
+        footer a {
+            color: #94a3b8;
+            text-decoration: none;
+            transition: color 0.2s;
+            margin: 0 4px; /* Pojistka pro mezeru kolem jména */
+        }
+
+        footer a:hover {
+            color: #f59e0b;
+        }
     </style>
 </head>
+
 <body>
     <header class="h-20 px-6 flex items-center justify-between border-b border-slate-800 bg-slate-900/50">
         <div class="flex flex-col">
@@ -109,7 +310,8 @@
         <div class="flex items-center gap-2">
             <div class="toggle-container">
                 <button id="btn-raw" class="toggle-btn" title="Show raw scan">RAW</button>
-                <button id="btn-enhanced" class="toggle-btn active" title="Show digitally enhanced image">ENHANCED</button>
+                <button id="btn-enhanced" class="toggle-btn active"
+                    title="Show digitally enhanced image">ENHANCED</button>
                 <button id="btn-split" class="toggle-btn" title="Compare image with real photo">SPLIT</button>
                 <button id="btn-pinhole" class="toggle-btn" title="Simulate pinhole (eyepiece) view">PINHOLE</button>
                 <select id="select-set" class="select-set">
@@ -125,14 +327,16 @@
 
     <main id="viewer">
         <button id="btn-info" class="viewer-action-btn" title="Show help/info">i</button>
-        
+
         <div id="info-popup">
-            <h3 id="popup-title" class="text-slate-400 font-bold mb-3 border-b border-amber-500/30 pb-1 uppercase text-xs tracking-wider"></h3>
+            <h3 id="popup-title"
+                class="text-slate-400 font-bold mb-3 border-b border-amber-500/30 pb-1 uppercase text-xs tracking-wider">
+            </h3>
             <ul id="popup-list" class="text-sm space-y-2 text-slate-200"></ul>
         </div>
 
         <button id="invert-split" class="viewer-action-btn" title="Invert split direction">↺</button>
-        
+
         <img id="layer-base" class="layer" src="img/GEN-1_3_L1.jpg">
         <div id="layer-top-container">
             <img id="layer-top" class="layer" src="img/GEN-1_3_L2.jpg" style="clip-path:inset(0 100% 0 0)">
@@ -142,333 +346,324 @@
         <div id="azimuth-axis" class="azimuth-axis"></div>
     </main>
 
+    <footer>
+        &copy; 2026 <a href="mailto:zach.jiri@email.cz">JIRI ZACH</a> &bull; All rights reserved &bull; Solargraph Viewer ver. 6.1.12.18-50
+    </footer>
+
     <script>
-    (() => {
-        const viewer = document.getElementById('viewer');
-        const base = document.getElementById('layer-base');
-        const topImg = document.getElementById('layer-top');
-        const topContainer = document.getElementById('layer-top-container');
-        const handle = document.getElementById('wipe-handle');
-        const label = document.getElementById('azimuth-label');
-        const axis = document.getElementById('azimuth-axis');
-        
-        const btnRaw = document.getElementById('btn-raw');
-        const btnEnhanced = document.getElementById('btn-enhanced');
-        const btnSplit = document.getElementById('btn-split');
-        const btnPinhole = document.getElementById('btn-pinhole');
-        const selectSet = document.getElementById('select-set');
-        const invertBtn = document.getElementById('invert-split');
-        const btnInfo = document.getElementById('btn-info');
-        const infoPopup = document.getElementById('info-popup');
-        const popupList = document.getElementById('popup-list');
-        const popupTitle = document.getElementById('popup-title');
+        (() => {
+            const viewer = document.getElementById('viewer');
+            const base = document.getElementById('layer-base');
+            const topImg = document.getElementById('layer-top');
+            const topContainer = document.getElementById('layer-top-container');
+            const handle = document.getElementById('wipe-handle');
+            const label = document.getElementById('azimuth-label');
+            const axis = document.getElementById('azimuth-axis');
 
-        // --- KONFIGURACE ---
-        const config = {
-            imageWidth: 1280,
-            fov: 220 
-        };
+            const btnRaw = document.getElementById('btn-raw');
+            const btnEnhanced = document.getElementById('btn-enhanced');
+            const btnSplit = document.getElementById('btn-split');
+            const btnPinhole = document.getElementById('btn-pinhole');
+            const selectSet = document.getElementById('select-set');
+            const invertBtn = document.getElementById('invert-split');
+            const btnInfo = document.getElementById('btn-info');
+            const infoPopup = document.getElementById('info-popup');
+            const popupList = document.getElementById('popup-list');
+            const popupTitle = document.getElementById('popup-title');
 
-        let isDragging = false;
-        let mode = 'enhanced'; 
-        let currentSet = 'GEN-1_3';
-        let splitInverted = false;
-        let isPopupOpen = false;
-        
-        let lastX = window.innerWidth / 2;
-        let lastY = window.innerHeight / 2;
-        
-        const azimuthOffsets = { 
-            'GEN-1_1': 15,
-            'GEN-1_2': 10,
-            'GEN-1_3': 0, 
-            'GEN-1_4': -30,
-            'GEN-1_5': -10
-        };
+            const config = {
+                imageWidth: 1280,
+                fov: 220
+            };
 
-        const infoTexts = {
-            'GEN-1_1': {
-                hasL2: true,
-                lines: ["Exposure start: 2025-06-27", "Exposure end: 2025-12-04", "Duration: 160 days", "Location: Brno, Czechia"]
-            },
-            'GEN-1_2': {
-                hasL2: false,
-                lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-01", "Duration: 156 days", "Location: Brno, Czechia"]
-            },
-            'GEN-1_3': {
-                hasL2: true,
-                lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-20", "Duration: 175 days", "Location: Brno, Czechia"]
-            },
-            'GEN-1_4': {
-                hasL2: false,
-                lines: ["Exposure start: 2025-07-03", "Exposure end: 2025-11-30", "Duration: 150 days", "Location: Brno, Czechia"]
-            },
-            'GEN-1_5': {
-                hasL2: false,
-                lines: ["Exposure start: 2025-07-05", "Exposure end: 2025-12-23", "Duration: 171 days", "Location: Bystrice nad Pernstejnem, Czechia"]
+            let isDragging = false;
+            let mode = 'enhanced';
+            let currentSet = 'GEN-1_3';
+            let splitInverted = false;
+            let isPopupOpen = false;
+
+            let lastX = window.innerWidth / 2;
+            let lastY = window.innerHeight / 2;
+
+            const azimuthOffsets = {
+                'GEN-1_1': 15,
+                'GEN-1_2': 10,
+                'GEN-1_3': 0,
+                'GEN-1_4': -30,
+                'GEN-1_5': -10
+            };
+
+            const infoTexts = {
+                'GEN-1_1': {
+                    hasL2: true,
+                    lines: ["Exposure start: 2025-06-27", "Exposure end: 2025-12-04", "Duration: 160 days", "Location: Brno, Czechia"]
+                },
+                'GEN-1_2': {
+                    hasL2: false,
+                    lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-01", "Duration: 156 days", "Location: Brno, Czechia"]
+                },
+                'GEN-1_3': {
+                    hasL2: true,
+                    lines: ["Exposure start: 2025-06-28", "Exposure end: 2025-12-20", "Duration: 175 days", "Location: Brno, Czechia"]
+                },
+                'GEN-1_4': {
+                    hasL2: false,
+                    lines: ["Exposure start: 2025-07-03", "Exposure end: 2025-11-30", "Duration: 150 days", "Location: Brno, Czechia"]
+                },
+                'GEN-1_5': {
+                    hasL2: false,
+                    lines: ["Exposure start: 2025-07-05", "Exposure end: 2025-12-23", "Duration: 171 days", "Location: Bystrice nad Pernstejnem, Czechia"]
+                }
+            };
+
+            function updatePopupContent() {
+                const data = infoTexts[currentSet];
+                popupTitle.innerHTML = `IMAGE INFO: <span class="text-amber-500 font-bold">${currentSet}</span>`;
+                popupList.innerHTML = data.lines.map(line => `<li>• ${line}</li>`).join('');
             }
-        };
 
-        function updatePopupContent() {
-            const data = infoTexts[currentSet];
-            popupTitle.innerHTML = `IMAGE INFO: <span class="text-amber-500 font-bold">${currentSet}</span>`;
-            popupList.innerHTML = data.lines.map(line => `<li>• ${line}</li>`).join('');
-        }
+            function pixelToAzimuth(px) {
+                const dx = (px / config.imageWidth) * 2 - 1;
+                const r = Math.max(-1, Math.min(1, dx));
+                return Math.round(180 + (Math.asin(r) * (config.fov / 180)) * 180 / Math.PI - azimuthOffsets[currentSet]);
+            }
 
-        function pixelToAzimuth(px) {
-            const dx = (px / config.imageWidth) * 2 - 1;
-            const r = Math.max(-1, Math.min(1, dx));
-            return Math.round(180 + (Math.asin(r) * (config.fov / 180)) * 180 / Math.PI - azimuthOffsets[currentSet]);
-        }
+            function azimuthToPixel(az) {
+                const angleDeltaDeg = (az + azimuthOffsets[currentSet] - 180) / (config.fov / 180);
+                return (Math.sin(angleDeltaDeg * Math.PI / 180) + 1) / 2 * config.imageWidth;
+            }
 
-        function azimuthToPixel(az) {
-            const angleDeltaDeg = (az + azimuthOffsets[currentSet] - 180) / (config.fov / 180);
-            return (Math.sin(angleDeltaDeg * Math.PI / 180) + 1) / 2 * config.imageWidth;
-        }
+            function imageRender(img, w, h) {
+                const ir = img.naturalWidth / img.naturalHeight;
+                const cr = w / h;
+                if (ir > cr) { return { w: w, h: w / ir, ox: 0, oy: (h - w / ir) / 2 }; }
+                else { return { w: h * ir, h: h, ox: (w - h * ir) / 2, oy: 0 }; }
+            }
 
-        function imageRender(img, w, h) {
-            const ir = img.naturalWidth / img.naturalHeight;
-            const cr = w / h;
-            if (ir > cr) { return { w: w, h: w / ir, ox: 0, oy: (h - w / ir) / 2 }; }
-            else { return { w: h * ir, h: h, ox: (w - h * ir) / 2, oy: 0 }; }
-        }
+            function renderAxis() {
+                axis.innerHTML = '';
+                axis.style.display = 'block';
+                const r = viewer.getBoundingClientRect();
+                const d = imageRender(base, r.width, r.height);
+                axis.style.left = d.ox + 'px';
+                axis.style.width = d.w + 'px';
 
-        function renderAxis() {
-            axis.innerHTML = '';
-            axis.style.display = 'block';
-            const r = viewer.getBoundingClientRect();
-            const d = imageRender(base, r.width, r.height);
-            axis.style.left = d.ox + 'px';
-            axis.style.width = d.w + 'px';
-            
-            const centerAz = 180 - azimuthOffsets[currentSet];
-            const AX_MIN = centerAz - (config.fov / 3); 
-            const AX_MAX = centerAz + (config.fov / 3);
+                const centerAz = 180 - azimuthOffsets[currentSet];
+                const AX_MIN = centerAz - (config.fov / 3);
+                const AX_MAX = centerAz + (config.fov / 3);
 
-            for (let az = Math.floor(AX_MIN/5)*5; az <= AX_MAX; az += 5) {
-                const x = azimuthToPixel(az) / config.imageWidth * d.w;
-                if (x < 0 || x > d.w) continue;
-                
-                const currentAzRounded = Math.round(az);
-                const isSouth = currentAzRounded === 180;
+                for (let az = Math.floor(AX_MIN / 5) * 5; az <= AX_MAX; az += 5) {
+                    const x = azimuthToPixel(az) / config.imageWidth * d.w;
+                    if (x < 0 || x > d.w) continue;
 
-                const tick = document.createElement('div');
-                let tickClass = 'az-tick ';
-                if (isSouth) tickClass += 'south';
-                else if (currentAzRounded % 10 === 0) tickClass += 'major';
-                else tickClass += 'minor';
-                
-                tick.className = tickClass;
-                tick.style.left = x + 'px';
-                axis.appendChild(tick);
+                    const currentAzRounded = Math.round(az);
+                    const isSouth = currentAzRounded === 180;
 
-                if (currentAzRounded % 10 === 0) {
-                    const lbl = document.createElement('div');
-                    lbl.className = 'az-label' + (isSouth ? ' south' : '');
-                    lbl.style.left = x + 'px';
-                    lbl.textContent = currentAzRounded + '°';
-                    axis.appendChild(lbl);
+                    const tick = document.createElement('div');
+                    let tickClass = 'az-tick ';
+                    if (isSouth) tickClass += 'south';
+                    else if (currentAzRounded % 10 === 0) tickClass += 'major';
+                    else tickClass += 'minor';
+
+                    tick.className = tickClass;
+                    tick.style.left = x + 'px';
+                    axis.appendChild(tick);
+
+                    if (currentAzRounded % 10 === 0) {
+                        const lbl = document.createElement('div');
+                        lbl.className = 'az-label' + (isSouth ? ' south' : '');
+                        lbl.style.left = x + 'px';
+                        lbl.textContent = currentAzRounded + '°';
+                        axis.appendChild(lbl);
+                    }
                 }
             }
-        }
 
-        function updateUI(clientX, clientY) {
-            if (clientX !== undefined) lastX = clientX;
-            if (clientY !== undefined) lastY = clientY;
+            function updateUI(clientX, clientY) {
+                if (clientX !== undefined) lastX = clientX;
+                if (clientY !== undefined) lastY = clientY;
 
-            const r = viewer.getBoundingClientRect();
-            const d = imageRender(base, r.width, r.height);
-            
-            const btnLeft = d.ox + 16;
-            const btnTop = d.oy + 16;
-            btnInfo.style.left = btnLeft + 'px';
-            btnInfo.style.top = btnTop + 'px';
+                const r = viewer.getBoundingClientRect();
+                const d = imageRender(base, r.width, r.height);
 
-            infoPopup.style.left = (btnLeft + 52) + 'px';
-            infoPopup.style.top = btnTop + 'px';
+                const btnLeft = d.ox + 16;
+                const btnTop = d.oy + 16;
+                btnInfo.style.left = btnLeft + 'px';
+                btnInfo.style.top = btnTop + 'px';
 
-            if (mode === 'split') {
-                invertBtn.style.display = 'flex';
-                invertBtn.style.right = (r.width - (d.ox + d.w) + 16) + 'px';
-                invertBtn.style.top = (d.oy + 16) + 'px';
-            }
+                infoPopup.style.left = (btnLeft + 52) + 'px';
+                infoPopup.style.top = btnTop + 'px';
 
-            let cx = lastX - r.left;
-            cx = Math.max(d.ox, Math.min(cx, d.ox + d.w));
-            const relX = (cx - d.ox) / d.w;
-            const px = relX * config.imageWidth;
-            const az = pixelToAzimuth(px);
-            label.innerHTML = `Azimuth: <b class="text-amber-400">${az}°</b>`;
-
-            if (mode === 'pinhole' && infoTexts[currentSet].hasL2) {
-                const radius = Math.min(d.w, d.h) / 12;
-                let cy = lastY - r.top;
-                cy = Math.max(d.oy, Math.min(cy, d.oy + d.h));
-                topImg.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
-                topContainer.style.filter = `drop-shadow(0 0 4px white)`;
-                handle.style.opacity = '0';
-            } 
-            else if (mode === 'split' && infoTexts[currentSet].hasL2) {
-                const left = d.ox, right = r.width - (d.ox + d.w), top = d.oy, bottom = r.height - (d.oy + d.h);
-                const split = relX * d.w;
-                if (splitInverted) {
-                    topImg.style.clipPath = `inset(${top}px ${left}px ${bottom}px ${right + split}px)`;
-                } else {
-                    topImg.style.clipPath = `inset(${top}px ${right + (d.w - split)}px ${bottom}px ${left}px)`;
+                if (mode === 'split') {
+                    invertBtn.style.display = 'flex';
+                    invertBtn.style.right = (r.width - (d.ox + d.w) + 16) + 'px';
+                    invertBtn.style.top = (d.oy + 16) + 'px';
                 }
-                handle.style.left = cx + 'px';
-                handle.style.opacity = '1';
-                topContainer.style.filter = 'none';
+
+                let cx = lastX - r.left;
+                cx = Math.max(d.ox, Math.min(cx, d.ox + d.w));
+                const relX = (cx - d.ox) / d.w;
+                const px = relX * config.imageWidth;
+                const az = pixelToAzimuth(px);
+                label.innerHTML = `Azimuth: <b class="text-amber-400">${az}°</b>`;
+
+                if (mode === 'pinhole' && infoTexts[currentSet].hasL2) {
+                    const radius = Math.min(d.w, d.h) / 12;
+                    let cy = lastY - r.top;
+                    cy = Math.max(d.oy, Math.min(cy, d.oy + d.h));
+                    topImg.style.clipPath = `circle(${radius}px at ${cx}px ${cy}px)`;
+                    topContainer.style.filter = `drop-shadow(0 0 4px white)`;
+                    handle.style.opacity = '0';
+                }
+                else if (mode === 'split' && infoTexts[currentSet].hasL2) {
+                    const left = d.ox, right = r.width - (d.ox + d.w), top = d.oy, bottom = r.height - (d.oy + d.h);
+                    const split = relX * d.w;
+                    if (splitInverted) {
+                        topImg.style.clipPath = `inset(${top}px ${left}px ${bottom}px ${right + split}px)`;
+                    } else {
+                        topImg.style.clipPath = `inset(${top}px ${right + (d.w - split)}px ${bottom}px ${left}px)`;
+                    }
+                    handle.style.left = cx + 'px';
+                    handle.style.opacity = '1';
+                    topContainer.style.filter = 'none';
+                }
+                else {
+                    topImg.style.clipPath = `inset(0 100% 0 0)`;
+                    handle.style.opacity = '0';
+                    topContainer.style.filter = 'none';
+                }
+
+                renderAxis();
             }
-            else { 
-                topImg.style.clipPath = `inset(0 100% 0 0)`;
-                handle.style.opacity = '0';
-                topContainer.style.filter = 'none';
+
+            viewer.addEventListener('mousedown', e => {
+                if (e.target.closest('.viewer-action-btn') || e.target.closest('#info-popup')) return;
+                if (isPopupOpen) togglePopup(false);
+                if (mode === 'split' || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') { isDragging = true; updateUI(e.clientX, e.clientY); }
+            });
+            window.addEventListener('mousemove', e => {
+                if (isDragging || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') updateUI(e.clientX, e.clientY);
+            });
+            window.addEventListener('mouseup', () => { isDragging = false; });
+
+            viewer.addEventListener('touchstart', e => {
+                if (e.target.closest('.viewer-action-btn') || e.target.closest('#info-popup')) return;
+                if (isPopupOpen) togglePopup(false);
+                if (mode === 'split' || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') { isDragging = true; updateUI(e.touches[0].clientX, e.touches[0].clientY); }
+                if (e.cancelable) e.preventDefault();
+            }, { passive: false });
+            viewer.addEventListener('touchmove', e => {
+                if (isDragging) updateUI(e.touches[0].clientX, e.touches[0].clientY);
+            });
+            viewer.addEventListener('touchend', () => { isDragging = false; });
+
+            function resetButtons() {
+                [btnRaw, btnEnhanced, btnSplit, btnPinhole].forEach(b => b.classList.remove('active'));
+                invertBtn.style.display = 'none';
             }
 
-            renderAxis();
-        }
+            function setCenterPosition() {
+                const r = viewer.getBoundingClientRect();
+                lastX = r.left + r.width / 2;
+                lastY = r.top + r.height / 2;
+            }
 
-        /* --- EVENTS --- */
-        viewer.addEventListener('mousedown', e => { 
-            // Ignorovat, pokud se klikne na UI prvky
-            if (e.target.closest('.viewer-action-btn') || e.target.closest('#info-popup')) return;
-            if (isPopupOpen) togglePopup(false);
-            if (mode === 'split' || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') { isDragging = true; updateUI(e.clientX, e.clientY); } 
-        });
-        window.addEventListener('mousemove', e => { 
-            if (isDragging || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') updateUI(e.clientX, e.clientY);
-        });
-        window.addEventListener('mouseup', () => { isDragging = false; });
+            function togglePopup(state) {
+                isPopupOpen = (state !== undefined) ? state : !isPopupOpen;
+                if (isPopupOpen) updatePopupContent();
+                infoPopup.style.display = isPopupOpen ? 'block' : 'none';
+                btnInfo.classList.toggle('active', isPopupOpen);
+            }
 
-        viewer.addEventListener('touchstart', e => {
-            // Ignorovat, pokud se klikne na UI prvky
-            if (e.target.closest('.viewer-action-btn') || e.target.closest('#info-popup')) return;
-            if (isPopupOpen) togglePopup(false);
-            if (mode === 'split' || mode === 'pinhole' || mode === 'enhanced' || mode === 'raw') { isDragging = true; updateUI(e.touches[0].clientX, e.touches[0].clientY); }
-            if (e.cancelable) e.preventDefault();
-        }, { passive: false });
-        viewer.addEventListener('touchmove', e => {
-            if (isDragging) updateUI(e.touches[0].clientX, e.touches[0].clientY);
-        });
-        viewer.addEventListener('touchend', () => { isDragging = false; });
+            btnRaw.addEventListener('click', (e) => {
+                e.stopPropagation();
+                mode = 'raw';
+                resetButtons(); btnRaw.classList.add('active');
+                setCenterPosition();
+                base.src = `img/${currentSet}_L0.jpg`;
+                topImg.src = `img/${currentSet}_L2.jpg`;
+                updateUI();
+            });
 
-        /* --- MODE TOGGLES --- */
-        function resetButtons() {
-            [btnRaw, btnEnhanced, btnSplit, btnPinhole].forEach(b => b.classList.remove('active'));
-            invertBtn.style.display = 'none';
-        }
-
-        function setCenterPosition() {
-            const r = viewer.getBoundingClientRect();
-            lastX = r.left + r.width / 2;
-            lastY = r.top + r.height / 2;
-        }
-
-        function togglePopup(state) {
-            isPopupOpen = (state !== undefined) ? state : !isPopupOpen;
-            if (isPopupOpen) updatePopupContent(); 
-            infoPopup.style.display = isPopupOpen ? 'block' : 'none';
-            btnInfo.classList.toggle('active', isPopupOpen);
-        }
-
-        btnRaw.addEventListener('click', (e) => {
-            e.stopPropagation();
-            mode = 'raw';
-            resetButtons(); btnRaw.classList.add('active');
-            setCenterPosition();
-            base.src = `img/${currentSet}_L0.jpg`;
-            topImg.src = `img/${currentSet}_L2.jpg`;
-            updateUI();
-        });
-
-        btnEnhanced.addEventListener('click', (e) => {
-            e.stopPropagation();
-            mode = 'enhanced';
-            resetButtons(); btnEnhanced.classList.add('active');
-            setCenterPosition();
-            base.src = `img/${currentSet}_L1.jpg`;
-            topImg.src = `img/${currentSet}_L2.jpg`;
-            updateUI();
-        });
-
-        btnSplit.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!infoTexts[currentSet].hasL2) return;
-            mode = 'split';
-            resetButtons(); btnSplit.classList.add('active');
-            setCenterPosition();
-            base.src = `img/${currentSet}_L1.jpg`;
-            topImg.src = `img/${currentSet}_L2.jpg`;
-            updateUI();
-        });
-
-        btnPinhole.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!infoTexts[currentSet].hasL2) return;
-            mode = 'pinhole';
-            resetButtons(); btnPinhole.classList.add('active');
-            setCenterPosition();
-            base.src = `img/${currentSet}_L0.jpg`;
-            topImg.src = `img/${currentSet}_L2.jpg`;
-            updateUI();
-        });
-
-        selectSet.addEventListener('change', () => {
-            currentSet = selectSet.value;
-            const hasL2 = infoTexts[currentSet].hasL2;
-
-            btnSplit.disabled = !hasL2;
-            btnPinhole.disabled = !hasL2;
-            
-            const toolTip = hasL2 ? "" : "Advanced analysis not available for this series";
-            btnSplit.title = hasL2 ? "Compare image with solar paths" : toolTip;
-            btnPinhole.title = hasL2 ? "Simulate pinhole camera view" : toolTip;
-
-            if ((mode === 'split' || mode === 'pinhole') && !hasL2) {
+            btnEnhanced.addEventListener('click', (e) => {
+                e.stopPropagation();
                 mode = 'enhanced';
-                resetButtons();
-                btnEnhanced.classList.add('active');
-            }
+                resetButtons(); btnEnhanced.classList.add('active');
+                setCenterPosition();
+                base.src = `img/${currentSet}_L1.jpg`;
+                topImg.src = `img/${currentSet}_L2.jpg`;
+                updateUI();
+            });
 
-            let baseType = 'L1';
-            if (mode === 'raw' || mode === 'pinhole') baseType = 'L0';
-            
-            base.src = `img/${currentSet}_${baseType}.jpg`;
-            topImg.src = `img/${currentSet}_L2.jpg`;
-            
-            if (isPopupOpen) updatePopupContent();
-            base.onload = () => updateUI();
-        });
+            btnSplit.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!infoTexts[currentSet].hasL2) return;
+                mode = 'split';
+                resetButtons(); btnSplit.classList.add('active');
+                setCenterPosition();
+                base.src = `img/${currentSet}_L1.jpg`;
+                topImg.src = `img/${currentSet}_L2.jpg`;
+                updateUI();
+            });
 
-        invertBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            splitInverted = !splitInverted;
-            invertBtn.classList.toggle('active');
-            updateUI();
-        });
+            btnPinhole.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!infoTexts[currentSet].hasL2) return;
+                mode = 'pinhole';
+                resetButtons(); btnPinhole.classList.add('active');
+                setCenterPosition();
+                base.src = `img/${currentSet}_L0.jpg`;
+                topImg.src = `img/${currentSet}_L2.jpg`;
+                updateUI();
+            });
 
-        btnInfo.addEventListener('click', e => {
-            e.stopPropagation();
-            togglePopup();
-        });
+            selectSet.addEventListener('change', () => {
+                currentSet = selectSet.value;
+                const hasL2 = infoTexts[currentSet].hasL2;
+                btnSplit.disabled = !hasL2;
+                btnPinhole.disabled = !hasL2;
+                if ((mode === 'split' || mode === 'pinhole') && !hasL2) {
+                    mode = 'enhanced';
+                    resetButtons();
+                    btnEnhanced.classList.add('active');
+                }
+                let baseType = 'L1';
+                if (mode === 'raw' || mode === 'pinhole') baseType = 'L0';
+                base.src = `img/${currentSet}_${baseType}.jpg`;
+                topImg.src = `img/${currentSet}_L2.jpg`;
+                if (isPopupOpen) updatePopupContent();
+                base.onload = () => updateUI();
+            });
 
-        infoPopup.addEventListener('mousedown', e => e.stopPropagation());
-        infoPopup.addEventListener('touchstart', e => e.stopPropagation());
+            invertBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                splitInverted = !splitInverted;
+                invertBtn.classList.toggle('active');
+                updateUI();
+            });
 
-        window.addEventListener('resize', () => {
-            updateUI();
-        });
-        
-        window.onload = () => {
-            setCenterPosition();
-            updatePopupContent(); 
-            const hasL2 = infoTexts[currentSet].hasL2;
-            btnSplit.disabled = !hasL2;
-            btnPinhole.disabled = !hasL2;
-            updateUI();
-        };
-    })();
+            btnInfo.addEventListener('click', e => {
+                e.stopPropagation();
+                togglePopup();
+            });
+
+            infoPopup.addEventListener('mousedown', e => e.stopPropagation());
+            infoPopup.addEventListener('touchstart', e => e.stopPropagation());
+
+            window.addEventListener('resize', () => {
+                updateUI();
+            });
+
+            window.onload = () => {
+                setCenterPosition();
+                updatePopupContent();
+                const hasL2 = infoTexts[currentSet].hasL2;
+                btnSplit.disabled = !hasL2;
+                btnPinhole.disabled = !hasL2;
+                updateUI();
+            };
+        })();
     </script>
 </body>
+
 </html>
