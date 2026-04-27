@@ -19,7 +19,7 @@
         #viewer {
             position: relative;
             width: 100%;
-            height: calc(100vh - 104px);
+            height: calc(100vh - 104px); /* overridden by JS on resize */
             background: #000;
             overflow: hidden;
             cursor: crosshair;
@@ -298,16 +298,172 @@
         footer a:hover {
             color: #f59e0b;
         }
+
+        /* ── Responsive header ── */
+        header {
+            flex-wrap: wrap;
+            height: auto !important;
+            min-height: 80px;
+            row-gap: 0;
+            padding-top: 10px;
+            padding-bottom: 10px;
+        }
+
+        /* Row 1: logo left, clicker right (or centred on wider screens) */
+        .header-row1 {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        /* Row 2: controls — wraps naturally */
+        .header-row2 {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding-bottom: 2px;
+        }
+
+        /* On wide screens: keep original 3-column look */
+        @media (min-width: 1120px) {
+            header {
+                flex-wrap: nowrap;
+                align-items: center;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+            .header-row1 {
+                width: auto;
+                flex: 0 0 auto;
+            }
+            .header-row2 {
+                width: auto;
+                flex: 0 0 auto;
+                padding-bottom: 0;
+            }
+            .header-clicker-center {
+                position: absolute;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+        }
+
+        @media (max-width: 639px) {
+            .header-clicker-center {
+                position: static;
+                transform: none;
+            }
+            /* Slightly compact toggle buttons on small screens */
+            .toggle-btn {
+                padding: 5px 9px;
+                font-size: 0.78rem;
+            }
+            .select-set {
+                padding: 5px 8px;
+                font-size: 0.78rem;
+            }
+        }
+
+        /* ── Generation clicker ── */
+        .gen-clicker {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .gen-clicker-label {
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        .gen-clicker-body {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: rgba(255,255,255,0.05);
+            overflow: hidden;
+        }
+
+        .gen-clicker-btn {
+            width: 30px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.07);
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.15s, color 0.15s;
+            flex-shrink: 0;
+        }
+
+        .gen-clicker-btn:hover:not(:disabled) {
+            background: rgba(245,158,11,0.25);
+            color: #f59e0b;
+        }
+
+        .gen-clicker-btn:disabled {
+            opacity: 0.25;
+            cursor: not-allowed;
+        }
+
+        .gen-clicker-btn:active:not(:disabled) {
+            background: rgba(245,158,11,0.45);
+        }
+
+        .gen-clicker-window {
+            width: 36px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+            border-left: 1px solid rgba(255,255,255,0.12);
+            border-right: 1px solid rgba(255,255,255,0.12);
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #f59e0b;
+            /* subtle inset shadow for "window" feel */
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.6), inset 0 -1px 2px rgba(255,255,255,0.04);
+            letter-spacing: 0;
+            user-select: none;
+        }
     </style>
 </head>
 
 <body>
-    <header class="h-20 px-6 flex items-center justify-between border-b border-slate-800 bg-slate-900/50">
-        <div class="flex flex-col">
-            <h1 class="text-xl font-bold tracking-tight">SOLARGRAPH <span class="text-amber-500">Viewer</span></h1>
-            <span class="text-xs text-slate-400 uppercase tracking-widest">SOL-2025_H2_GEN-I</span>
+    <header id="main-header" class="px-6 flex items-center justify-between border-b border-slate-800 bg-slate-900/50">
+        <!-- Row 1: logo + clicker (on mobile side-by-side, on desktop clicker is centred) -->
+        <div class="header-row1">
+            <div class="flex flex-col">
+                <h1 class="text-xl font-bold tracking-tight">SOLARGRAPH <span class="text-amber-500">Viewer</span></h1>
+                <span class="text-xs text-slate-400 uppercase tracking-widest">pinhole camera</span>
+            </div>
+
+            <!-- Generation clicker -->
+            <div class="gen-clicker header-clicker-center">
+                <div class="gen-clicker-body">
+                    <button class="gen-clicker-btn" id="gen-prev" title="Previous generation">&#8249;</button>
+                    <div class="gen-clicker-window" id="gen-display">1</div>
+                    <button class="gen-clicker-btn" id="gen-next" title="Next generation">&#8250;</button>
+                </div>
+                <span class="gen-clicker-label">generation</span>
+            </div>
         </div>
-        <div class="flex items-center gap-2">
+
+        <!-- Row 2: view-mode controls + set selector -->
+        <div class="header-row2">
             <div class="toggle-container">
                 <button id="btn-raw" class="toggle-btn" title="Show raw scan">RAW</button>
                 <button id="btn-enhanced" class="toggle-btn active"
@@ -378,7 +534,7 @@
 
             let isDragging = false;
             let mode = 'enhanced';
-            let currentSet = 'GEN-1_3';
+            let currentSet = 'GEN-1_3'; // initial set; updated by gen clicker
             let splitInverted = false;
             let isPopupOpen = false;
 
@@ -390,7 +546,9 @@
                 'GEN-1_2': 10,
                 'GEN-1_3': 0,
                 'GEN-1_4': -30,
-                'GEN-1_5': -10
+                'GEN-1_5': -10,
+                'GEN-2_2': -15,
+                'GEN-2_4': +15
             };
 
             const infoTexts = {
@@ -413,8 +571,27 @@
                 'GEN-1_5': {
                     hasL2: true,
                     lines: ["Exposure start: 2025-07-05", "Exposure end: 2025-12-23", "Duration: 171 days", "Location: Bystrice nad Pernstejnem, Czechia"]
+                },
+                // ── Generation 2 ──
+                'GEN-2_2': {
+                    hasL2: true,
+                    lines: ["Generation: 2", "Location: Brno, Czechia"]
+                },
+                'GEN-2_4': {
+                    hasL2: true,
+                    lines: ["Generation: 2", "Location: Brno, Czechia"]
                 }
             };
+
+            // ── Generation catalogue ──
+            // Add new generations here; UI logic auto-adapts (buffer-ready).
+            const generations = {
+                1: ['GEN-1_1','GEN-1_2','GEN-1_3','GEN-1_4','GEN-1_5'],
+                2: ['GEN-2_2','GEN-2_4']
+            };
+            const GEN_MIN = 1;
+            const GEN_MAX = Math.max(...Object.keys(generations).map(Number));
+            let currentGen = 1;
 
             function updatePopupContent() {
                 const data = infoTexts[currentSet];
@@ -617,8 +794,8 @@
                 updateUI();
             });
 
-            selectSet.addEventListener('change', () => {
-                currentSet = selectSet.value;
+            function applySet(setKey) {
+                currentSet = setKey;
                 const hasL2 = infoTexts[currentSet].hasL2;
                 btnSplit.disabled = !hasL2;
                 btnPinhole.disabled = !hasL2;
@@ -633,6 +810,37 @@
                 topImg.src = `img/${currentSet}_L2.jpg`;
                 if (isPopupOpen) updatePopupContent();
                 base.onload = () => updateUI();
+            }
+
+            function applyGeneration(gen) {
+                currentGen = gen;
+                // Update clicker display
+                document.getElementById('gen-display').textContent = gen;
+                document.getElementById('gen-prev').disabled = (gen <= GEN_MIN);
+                document.getElementById('gen-next').disabled = (gen >= GEN_MAX);
+
+                // Rebuild select options for this generation
+                const sets = generations[gen];
+                selectSet.innerHTML = '';
+                sets.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s;
+                    opt.textContent = s;
+                    selectSet.appendChild(opt);
+                });
+                selectSet.value = sets[0];
+                applySet(sets[0]);
+            }
+
+            selectSet.addEventListener('change', () => applySet(selectSet.value));
+
+            document.getElementById('gen-prev').addEventListener('click', e => {
+                e.stopPropagation();
+                if (currentGen > GEN_MIN) applyGeneration(currentGen - 1);
+            });
+            document.getElementById('gen-next').addEventListener('click', e => {
+                e.stopPropagation();
+                if (currentGen < GEN_MAX) applyGeneration(currentGen + 1);
             });
 
             invertBtn.addEventListener('click', e => {
@@ -650,21 +858,21 @@
             infoPopup.addEventListener('mousedown', e => e.stopPropagation());
             infoPopup.addEventListener('touchstart', e => e.stopPropagation());
 
-            window.addEventListener('resize', () => {
+            function fitViewer() {
+                const hh = document.getElementById('main-header').offsetHeight;
+                const fh = document.querySelector('footer').offsetHeight;
+                document.getElementById('viewer').style.height = `calc(100vh - ${hh + fh}px)`;
                 updateUI();
-            });
+            }
+            window.addEventListener('resize', fitViewer);
 
             window.onload = () => {
                 setCenterPosition();
-                updatePopupContent();
-                const hasL2 = infoTexts[currentSet].hasL2;
-                btnSplit.disabled = !hasL2;
-                btnPinhole.disabled = !hasL2;
-                updateUI();
+                applyGeneration(1);
+                fitViewer();
             };
         })();
     </script>
 </body>
-
 
 </html>
