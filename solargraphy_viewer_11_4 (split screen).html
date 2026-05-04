@@ -1083,6 +1083,7 @@ let showHeatmap = false;
 
 const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvasContainer');
 let imgBitmap = null;
 let mouseX = -1, mouseY = -1;
 let showGrid = true, showLabels = false, showHorizon = true;
@@ -1636,8 +1637,6 @@ function drawCrosshair(W, H) {
 }
 
 // ─── Event listeners ───────────────────────────────────────────────────────
-const container = document.getElementById('canvasContainer');
-
 container.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
