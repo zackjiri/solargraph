@@ -48,11 +48,11 @@
     "hemisphere": "N"
   },
   "GEN-2_4": {
-    "rotation_deg": 3.5,
-    "tilt_deg": -1.5,
-    "pinhole_deg": 0.0,
-    "radius_mm": 33.5,
-    "latitude": 49.2,
+    "rotation_deg": -28.0,
+    "tilt_deg": 4.5,
+    "pinhole_deg": -2.5,
+    "radius_mm": 33.0,
+    "latitude": 49.0,
     "hemisphere": "N"
   }
 }
