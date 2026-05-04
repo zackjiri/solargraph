@@ -1,0 +1,79 @@
+{
+  "generations": [
+    {
+      "id": 1,
+      "label": "GEN 1",
+      "images": [
+        {
+          "index": 1,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-06-21",
+            "exposure_end": "2025-09-14",
+            "location": "Brno, Czechia"
+          }
+        },
+        {
+          "index": 2,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-06-21",
+            "exposure_end": "2025-10-02",
+            "location": "Praha, Czechia"
+          }
+        },
+        {
+          "index": 3,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-07-04",
+            "exposure_end": "2025-11-18",
+            "location": "Brno, Czechia"
+          }
+        },
+        {
+          "index": 4,
+          "layers": [0, 1],
+          "metadata": {
+            "exposure_start": "2025-07-15",
+            "exposure_end": "2025-12-04",
+            "location": "Olomouc, Czechia"
+          }
+        },
+        {
+          "index": 5,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-08-01",
+            "exposure_end": "2025-12-04",
+            "location": "Brno, Czechia"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "label": "GEN 2",
+      "images": [
+        {
+          "index": 2,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-12-21",
+            "exposure_end": "2026-03-15",
+            "location": "Praha, Czechia"
+          }
+        },
+        {
+          "index": 4,
+          "layers": [0, 1, 2],
+          "metadata": {
+            "exposure_start": "2025-12-21",
+            "exposure_end": "2026-04-08",
+            "location": "Brno, Czechia"
+          }
+        }
+      ]
+    }
+  ]
+}
