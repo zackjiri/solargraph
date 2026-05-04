@@ -1,0 +1,58 @@
+{
+  "GEN-1_1": {
+    "rotation_deg": 2.5,
+    "tilt_deg": -1.0,
+    "pinhole_deg": 0.5,
+    "radius_mm": 33.0,
+    "latitude": 49.2,
+    "hemisphere": "N"
+  },
+  "GEN-1_2": {
+    "rotation_deg": -3.0,
+    "tilt_deg": 1.5,
+    "pinhole_deg": -0.5,
+    "radius_mm": 33.0,
+    "latitude": 50.1,
+    "hemisphere": "N"
+  },
+  "GEN-1_3": {
+    "rotation_deg": 5.0,
+    "tilt_deg": 0.0,
+    "pinhole_deg": 1.0,
+    "radius_mm": 34.5,
+    "latitude": 49.2,
+    "hemisphere": "N"
+  },
+  "GEN-1_4": {
+    "rotation_deg": -1.5,
+    "tilt_deg": 2.0,
+    "pinhole_deg": 0.0,
+    "radius_mm": 33.0,
+    "latitude": 49.6,
+    "hemisphere": "N"
+  },
+  "GEN-1_5": {
+    "rotation_deg": 4.0,
+    "tilt_deg": -2.5,
+    "pinhole_deg": -1.0,
+    "radius_mm": 32.0,
+    "latitude": 49.4,
+    "hemisphere": "N"
+  },
+  "GEN-2_2": {
+    "rotation_deg": -2.0,
+    "tilt_deg": 0.5,
+    "pinhole_deg": 0.5,
+    "radius_mm": 33.0,
+    "latitude": 50.1,
+    "hemisphere": "N"
+  },
+  "GEN-2_4": {
+    "rotation_deg": 3.5,
+    "tilt_deg": -1.5,
+    "pinhole_deg": 0.0,
+    "radius_mm": 33.5,
+    "latitude": 49.2,
+    "hemisphere": "N"
+  }
+}
