@@ -2,7 +2,7 @@
   "generations": [
     {
       "id": 1,
-      "label": "GEN 1",
+      "label": "SOL-2025_H2_GEN-I",
       "images": [
         {
           "index": 1,
@@ -53,7 +53,7 @@
     },
     {
       "id": 2,
-      "label": "GEN 2",
+      "label": "SOL-2026_H1_GEN-II",
       "images": [
         {
           "index": 2,
