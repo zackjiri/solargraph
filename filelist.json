@@ -8,8 +8,8 @@
           "index": 1,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-06-21",
-            "exposure_end": "2025-09-14",
+            "exposure_start": "2025-06-27",
+            "exposure_end": "2025-12-04",
             "location": "Brno, Czechia"
           }
         },
@@ -17,17 +17,17 @@
           "index": 2,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-06-21",
-            "exposure_end": "2025-10-02",
-            "location": "Praha, Czechia"
+            "exposure_start": "2025-06-28",
+            "exposure_end": "2025-12-01",
+            "location": "Brno, Czechia"
           }
         },
         {
           "index": 3,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-07-04",
-            "exposure_end": "2025-11-18",
+            "exposure_start": "2025-06-28",
+            "exposure_end": "2025-12-20",
             "location": "Brno, Czechia"
           }
         },
@@ -35,18 +35,18 @@
           "index": 4,
           "layers": [0, 1],
           "metadata": {
-            "exposure_start": "2025-07-15",
-            "exposure_end": "2025-12-04",
-            "location": "Olomouc, Czechia"
+            "exposure_start": "2025-07-03",
+            "exposure_end": "2025-11-30",
+            "location": "Brno, Czechia"
           }
         },
         {
           "index": 5,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-08-01",
-            "exposure_end": "2025-12-04",
-            "location": "Brno, Czechia"
+            "exposure_start": "2025-07-05",
+            "exposure_end": "2025-12-23",
+            "location": "Bystrice nad Pernstejnem, Czechia"
           }
         }
       ]
@@ -59,17 +59,17 @@
           "index": 2,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-12-21",
-            "exposure_end": "2026-03-15",
-            "location": "Praha, Czechia"
+            "exposure_start": "2026-01-06",
+            "exposure_end": "2026-02-17",
+            "location": "Brno, Czechia"
           }
         },
         {
           "index": 4,
           "layers": [0, 1, 2],
           "metadata": {
-            "exposure_start": "2025-12-21",
-            "exposure_end": "2026-04-08",
+            "exposure_start": "2026-01-14",
+            "exposure_end": "2026-04-14",
             "location": "Brno, Czechia"
           }
         }
