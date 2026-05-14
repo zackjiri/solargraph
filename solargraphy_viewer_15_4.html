@@ -806,7 +806,7 @@
       <div class="leg-row"><span class="leg-line dashed" style="border-color:#88ccaa"></span><span>pinhole height</span></div>
       <div class="leg-row"><span class="leg-line" style="border-color:#5aaad0"></span><span>photopaper (300°)</span></div>
       <div class="leg-row"><span class="leg-line dashed" style="border-color:#e8a020"></span><span>pinhole zone (60°)</span></div>
-      <div class="leg-row"><span class="leg-sym" style="color:#4080e8">Z</span><span>zenith axis (not N/S/E/W)</span></div>
+      <div class="leg-row"><span class="leg-sym" style="color:#4080e8">Z</span><span>zenith axis</span></div>
       <div class="leg-row" style="gap:3px">
         <span class="leg-sym" style="color:#e84040;flex:0 0 14px">S</span>
         <span class="leg-sym" style="color:#e87070;flex:0 0 14px">N</span>
@@ -2795,6 +2795,20 @@ function draw3D() {
   const arrowTip  = R(RN - 0.65, 0, hO);  // inward: light enters through pinhole into can
   const pp = _3D.proj(pinholePt);
   const pa = _3D.proj(arrowTip);
+
+  // Outward extension toward the Sun – clipped to canvas edge
+  const sunFar = _3D.proj(R(RN + 10, 0, hO));
+  if (pp && sunFar) {
+    const dx = sunFar[0]-pp[0], dy = sunFar[1]-pp[1];
+    let t = 1;
+    if (dx > 0) t = Math.min(t, (CW - pp[0]) / dx);
+    else if (dx < 0) t = Math.min(t, -pp[0] / dx);
+    if (dy > 0) t = Math.min(t, (CH - pp[1]) / dy);
+    else if (dy < 0) t = Math.min(t, -pp[1] / dy);
+    c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+dx*t, pp[1]+dy*t);
+    c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+  }
+
   if (pp && pa) {
     c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pa[0], pa[1]);
     c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
