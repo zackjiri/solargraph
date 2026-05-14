@@ -2673,12 +2673,12 @@ function draw3D() {
   c.fillStyle = '#07090d';
   c.fillRect(0, 0, CW, CH);
 
-  // Update compass legend colours to match hemisphere
+  // Update compass legend colours and labels to match hemisphere
   { const nh = hemisphere >= 0;
     const ls = document.getElementById('legS');
     const ln = document.getElementById('legN');
-    if (ls) ls.style.color = nh ? '#e84040' : '#e87070';
-    if (ln) ln.style.color = nh ? '#e87070' : '#e84040'; }
+    if (ls) { ls.style.color = nh ? '#e84040' : '#e87070'; ls.textContent = nh ? 'S' : 'N'; }
+    if (ln) { ln.style.color = nh ? '#e87070' : '#e84040'; ln.textContent = nh ? 'N' : 'S'; } }
 
   const yr = yawDeg   * Math.PI / 180;
   const pr = pitchDeg * Math.PI / 180;
@@ -2732,11 +2732,11 @@ function draw3D() {
   const roseCenter = [0, 0, -HH];
   const rc = proj(roseCenter);
   if (rc) {
-    // In SH the sun-facing direction is N → highlight N red, S pink
+    // In SH the sun-facing direction is N → swap N/S colours and labels
     const isNH = hemisphere >= 0;
     const cardinals = [
-      { tip: [ CR,  0, -HH], color: isNH ? '#e84040' : '#e87070', label: 'S' },
-      { tip: [-CR,  0, -HH], color: isNH ? '#e87070' : '#e84040', label: 'N' },
+      { tip: [ CR,  0, -HH], color: isNH ? '#e84040' : '#e87070', label: isNH ? 'S' : 'N' },
+      { tip: [-CR,  0, -HH], color: isNH ? '#e87070' : '#e84040', label: isNH ? 'N' : 'S' },
       { tip: [  0, CR, -HH], color: '#50dc78', label: 'W' },
       { tip: [  0,-CR, -HH], color: '#78c878', label: 'E' },
     ];
