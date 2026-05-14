@@ -798,7 +798,7 @@
 
   <!-- 3D Can orientation panel (Analyzer mode) -->
   <div id="can3dPanel">
-    <div class="panel-title">Orientation</div>
+    <div class="panel-title">3D Orientation</div>
     <canvas id="can3d" width="164" height="200"></canvas>
     <div id="can3dLegend">
       <div class="leg-row"><span class="leg-sym" style="color:#e8a020">●</span><span>pinhole</span></div>
@@ -2796,17 +2796,23 @@ function draw3D() {
   const pp = _3D.proj(pinholePt);
   const pa = _3D.proj(arrowTip);
 
-  // Outward extension toward the Sun – clipped to canvas edge
-  const sunFar = _3D.proj(R(RN + 10, 0, hO));
-  if (pp && sunFar) {
-    const dx = sunFar[0]-pp[0], dy = sunFar[1]-pp[1];
-    let t = 1;
-    if (dx > 0) t = Math.min(t, (CW - pp[0]) / dx);
-    else if (dx < 0) t = Math.min(t, -pp[0] / dx);
-    if (dy > 0) t = Math.min(t, (CH - pp[1]) / dy);
-    else if (dy < 0) t = Math.min(t, -pp[1] / dy);
-    c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+dx*t, pp[1]+dy*t);
-    c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+  // Outward extension toward the Sun – direction derived from pp→pa in screen space,
+  // reversed and extended to canvas edge (always reaches edge regardless of pitch/roll)
+  if (pp && pa) {
+    const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
+    const len = Math.sqrt(dx*dx+dy*dy);
+    if (len > 0.5) {
+      const nx = dx/len, ny = dy/len;
+      let t = Infinity;
+      if (nx > 0) t = Math.min(t, (CW - pp[0]) / nx);
+      else if (nx < 0) t = Math.min(t, -pp[0] / nx);
+      if (ny > 0) t = Math.min(t, (CH - pp[1]) / ny);
+      else if (ny < 0) t = Math.min(t, -pp[1] / ny);
+      if (t > 0 && t < Infinity) {
+        c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+        c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+      }
+    }
   }
 
   if (pp && pa) {
@@ -2846,7 +2852,6 @@ function draw3D() {
   c.font = "8px 'Share Tech Mono'";
   c.fillStyle = 'rgba(74,90,106,0.85)';
   c.textAlign = 'center';
-  c.fillText('ORIENTATION', CW/2, CH - 5);
 }
 
 // Init: start in gallery mode
