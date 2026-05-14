@@ -1,58 +1,65 @@
 {
   "GEN-1_1": {
-    "rotation_deg": -15.0,
-    "tilt_deg": 4.5,
-    "pinhole_deg": -5.0,
-    "radius_mm": 33.0,
-    "latitude": 49.2,
-    "hemisphere": "N"
+    "yaw_deg":    -15.0,
+    "pitch_deg":    4.5,
+    "roll_deg":     0.0,
+    "horizon_mm":  -5.8,
+    "radius_mm":   33.0,
+    "latitude":    49.2,
+    "hemisphere":  "N"
   },
   "GEN-1_2": {
-    "rotation_deg": -20.5,
-    "tilt_deg": 0.0,
-    "pinhole_deg": 2.0,
-    "radius_mm": 33.0,
-    "latitude": 49.2,
-    "hemisphere": "N"
+    "yaw_deg":    -20.5,
+    "pitch_deg":    0.0,
+    "roll_deg":     0.0,
+    "horizon_mm":   2.3,
+    "radius_mm":   33.0,
+    "latitude":    49.2,
+    "hemisphere":  "N"
   },
   "GEN-1_3": {
-    "rotation_deg": -2.0,
-    "tilt_deg": 13.5,
-    "pinhole_deg": 3.5,
-    "radius_mm": 38.5,
-    "latitude": 49.2,
-    "hemisphere": "N"
+    "yaw_deg":     -2.0,
+    "pitch_deg":   13.5,
+    "roll_deg":     0.0,
+    "horizon_mm":   4.0,
+    "radius_mm":   38.5,
+    "latitude":    49.2,
+    "hemisphere":  "N"
   },
   "GEN-1_4": {
-    "rotation_deg": 29.5,
-    "tilt_deg": 24.5,
-    "pinhole_deg": 3.5,
-    "radius_mm": 38.5,
-    "latitude": 49.2,
-    "hemisphere": "N"
+    "yaw_deg":     29.5,
+    "pitch_deg":   24.5,
+    "roll_deg":     0.0,
+    "horizon_mm":   4.0,
+    "radius_mm":   38.5,
+    "latitude":    49.2,
+    "hemisphere":  "N"
   },
   "GEN-1_5": {
-    "rotation_deg": 26.0,
-    "tilt_deg": 18.0,
-    "pinhole_deg": 1.0,
-    "radius_mm": 32.0,
-    "latitude": 49.5,
-    "hemisphere": "N"
+    "yaw_deg":     26.0,
+    "pitch_deg":   18.0,
+    "roll_deg":     0.0,
+    "horizon_mm":   1.2,
+    "radius_mm":   32.0,
+    "latitude":    49.5,
+    "hemisphere":  "N"
   },
   "GEN-2_2": {
-    "rotation_deg": 25.0,
-    "tilt_deg": 0.5,
-    "pinhole_deg": -2.5,
-    "radius_mm": 32.5,
-    "latitude": 49.0,
-    "hemisphere": "N"
+    "yaw_deg":     25.0,
+    "pitch_deg":    0.5,
+    "roll_deg":     0.0,
+    "horizon_mm":  -2.9,
+    "radius_mm":   32.5,
+    "latitude":    49.0,
+    "hemisphere":  "N"
   },
   "GEN-2_4": {
-    "rotation_deg": -28.0,
-    "tilt_deg": 4.5,
-    "pinhole_deg": -2.5,
-    "radius_mm": 33.0,
-    "latitude": 49.0,
-    "hemisphere": "N"
+    "yaw_deg":    -28.0,
+    "pitch_deg":    4.5,
+    "roll_deg":     0.0,
+    "horizon_mm":  -2.9,
+    "radius_mm":   33.0,
+    "latitude":    49.0,
+    "hemisphere":  "N"
   }
 }
