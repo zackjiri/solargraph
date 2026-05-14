@@ -835,6 +835,7 @@
       </div>
     </div>
     <div id="can3dButtons">
+      <div class="panel-title" style="align-self:flex-start;margin-bottom:3px">Preset</div>
       <div class="can3d-btn-row">
         <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35">Import</button>
         <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35">Export</button>
@@ -2048,7 +2049,7 @@ function doCalibReset() {
   hemisphere = 1;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
-  draw();
+  draw(); draw3D();
 }
 document.getElementById('btnCalibReset').addEventListener('click', doCalibReset);
 
@@ -2133,7 +2134,7 @@ function importPreset(file) {
     document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
     document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
 
-    draw();
+    draw(); draw3D();
   };
   reader.readAsText(file);
 }
@@ -2163,7 +2164,7 @@ function applyLat(val) {
     document.getElementById('btnN').className = 'ns-btn active';
     document.getElementById('btnS').className = 'ns-btn';
   }
-  draw();
+  draw(); draw3D();
 }
 
 document.getElementById('inpLat').addEventListener('change', (e) => {
@@ -2186,14 +2187,14 @@ document.getElementById('btnN').addEventListener('click', () => {
   hemisphere = 1;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
-  draw();
+  draw(); draw3D();
 });
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
   hemisphere = -1;
   document.getElementById('btnN').className = 'ns-btn';
   document.getElementById('btnS').className = 'ns-btn active-s';
-  draw();
+  draw(); draw3D();
 });
 
 // ─── Scan width control ───────────────────────────────────────────────────
