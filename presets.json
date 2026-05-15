@@ -1,4 +1,14 @@
 {
+ "GEN-0_1": {
+    "yaw_deg":    10.5,
+    "pitch_deg":    6.5,
+    "roll_deg":     0.3,
+    "horizon_mm":  8.5,
+    "radius_mm":   36.5,
+    "scan_w_mm":  130,
+    "latitude":    49.5,
+    "hemisphere":  "N"
+  },
   "GEN-1_1": {
     "yaw_deg":    -15.0,
     "pitch_deg":    4.5,

@@ -1,6 +1,21 @@
 {
   "generations": [
     {
+      "id": 0,
+      "label": "2014_H1_GEN-0",
+      "images": [
+        {
+          "index": 1,
+          "layers": [1],
+          "metadata": {
+            "exposure_start": "2014-01-28",
+            "exposure_end": "2014-06-05",
+            "location": "Bystrice nad Pernstejnem, Czechia"
+          }
+        }
+      ]
+    },
+    {
       "id": 1,
       "label": "2025_H2_GEN-I",
       "images": [
