@@ -40,11 +40,11 @@
     "hemisphere":  "N"
   },
   "GEN-1_4": {
-    "yaw_deg":     29.5,
-    "pitch_deg":   24.5,
+    "yaw_deg":     20.5,
+    "pitch_deg":   34.0,
     "roll_deg":     0.0,
-    "horizon_mm":   4.0,
-    "radius_mm":   38.5,
+    "horizon_mm":   7.5,
+    "radius_mm":   36.0,
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N"
