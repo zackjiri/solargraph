@@ -1091,6 +1091,11 @@ function azElToPixel(beta_deg, theta_deg) {
   const p = pitchDeg * Math.PI / 180;
   const { b: bl, t: tl } = applyPitch(b1, t1, p);
 
+  // Normalize bl to (−π, π] – applyRoll/Pitch early-return when rho/p=0
+  // bypasses atan2, so bl may be outside (−π, π) for large yaw offsets.
+  if (bl >  Math.PI) bl -= 2 * Math.PI;
+  if (bl < -Math.PI) bl += 2 * Math.PI;
+
   // Guard against ±90° local elevation (tan overflow); full azimuth range is valid
   if (Math.abs(tl) >= Math.PI / 2 - 0.001) return null;
 
