@@ -2758,6 +2758,22 @@ function draw3D() {
   }
   const R = rotCan;
 
+  // Inverse of rotCan: transforms world-space vector back to can-local frame.
+  // rotCan = Ry(−pitch) → Rx(−roll) → Rz(yaw)
+  // inverse = Rz(−yaw) → Rx(+roll) → Ry(+pitch)
+  function rotCanInv(x, y, z) {
+    let x0 =  x*Math.cos(yr) + y*Math.sin(yr);   // Rz(-yaw)
+    let y0 = -x*Math.sin(yr) + y*Math.cos(yr);
+    let z0 = z;
+    let x1 = x0;                                   // Rx(+roll)
+    let y1 =  y0*Math.cos(rr) - z0*Math.sin(rr);
+    let z1 =  y0*Math.sin(rr) + z0*Math.cos(rr);
+    let x2 =  x1*Math.cos(pr) + z1*Math.sin(pr);  // Ry(+pitch)
+    let y2 = y1;
+    let z2 = -x1*Math.sin(pr) + z1*Math.cos(pr);
+    return [x2, y2, z2];
+  }
+
   // ── Floor grid (world-space, does not rotate) ──
   c.lineWidth = 0.6;
   c.setLineDash([2, 4]);
@@ -2909,69 +2925,107 @@ function draw3D() {
   }
 
   // ── Pinhole dot + optical axis arrow ──
-  const pinholePt = R(RN, 0, hO);
+  const pinholePt = R(RN, 0, hO);   // pinhole in world space
+  const pp = proj(pinholePt);
 
-  // Ray elevation in can-local frame:
-  // Default (el=0): horizontal ray, hits back wall at same height as pinhole.
-  // Noon mode: deflect by noon culmination elevation for the custom date.
-  let rayEl = 0;
-  let noonLabel = null;
+  // ── Noon mode: ray fixed in world space, only hit-point moves with can ──
+  let pa, noonLabel = null;
+
   if (show3DCulmination) {
+    // Noon elevation for custom date
     const doy   = dayOfYear(customMonth, customDay);
-    const delta = sunDeclination(doy);                    // radians
-    const phi   = effectiveLat() * hemisphere;            // signed latitude in radians
-    rayEl = Math.asin(
+    const delta = sunDeclination(doy);
+    const phi   = effectiveLat() * hemisphere;
+    const rayEl = Math.asin(
       Math.max(-1, Math.min(1,
         Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta)
       ))
     );
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
               + '  ' + Math.round(rayEl * 180 / Math.PI) + '°';
-  }
 
-  // Ray inside can: starts at (RN, 0, hO), direction (-cos(el), 0, -sin(el))
-  // Back wall at x = -RN  →  t_back = 2·RN / cos(el),  z_hit = hO − 2·RN·tan(el)
-  // If z_hit outside [−HH, +HH]: ray hits bottom/top cap instead.
-  const cosEl = Math.cos(rayEl), sinEl = Math.sin(rayEl);
-  let tipX, tipZ;
-  if (cosEl > 0.001) {
-    const z_back = hO - 2 * RN * Math.tan(rayEl);
-    if (z_back >= -HH && z_back <= HH) {
-      tipX = -RN; tipZ = z_back;                          // hits back cylindrical wall
-    } else if (z_back < -HH) {
-      const t_cap = (hO + HH) / sinEl;                   // hits bottom cap
-      tipX = RN - t_cap * cosEl; tipZ = -HH;
-    } else {
-      const t_cap = (hO - HH) / sinEl;                   // hits top cap
-      tipX = RN - t_cap * cosEl; tipZ = HH;
+    // World-space ray direction: from south (NH) / north (SH) at el_noon, into can
+    const dw = rotCanInv(
+      -Math.cos(rayEl) * hemisphere,   // x: toward N in NH, toward S in SH
+       0,                               // y: no east-west component at noon
+      -Math.sin(rayEl)                  // z: always downward
+    );
+    const [dx, dy, dz] = dw;
+
+    // Intersect ray (start: RN,0,hO; dir: dx,dy,dz) with can walls in local frame.
+    // Cylinder wall: (RN+t·dx)²+(t·dy)² = RN²  →  t = −2·RN·dx/(dx²+dy²)
+    const dxy2 = dx*dx + dy*dy;
+    const t_wall = dxy2 > 1e-6 ? -2*RN*dx / dxy2 : Infinity;
+    const z_wall = hO + t_wall * dz;
+    const t_wallValid = t_wall > 1e-4 && z_wall >= -HH && z_wall <= HH ? t_wall : Infinity;
+
+    // Cap intersections: z = ±HH
+    let t_cap = Infinity;
+    if (Math.abs(dz) > 1e-6) {
+      for (const capZ of [-HH, HH]) {
+        const tc = (capZ - hO) / dz;
+        if (tc > 1e-4) {
+          const xc = RN + tc*dx, yc = tc*dy;
+          if (xc*xc + yc*yc <= RN*RN + 1e-4) t_cap = Math.min(t_cap, tc);
+        }
+      }
     }
+
+    const t_hit = Math.min(t_wallValid, t_cap);
+    const tipLocal = t_hit < Infinity
+      ? [RN + t_hit*dx, t_hit*dy, hO + t_hit*dz]
+      : [-RN, 0, hO];                             // fallback: straight through
+    pa = proj(R(tipLocal[0], tipLocal[1], tipLocal[2]));
+
+    // Outward line: fixed world-space direction toward sun, from pinhole to canvas edge
+    if (pp) {
+      const sunFar = proj([
+        pinholePt[0] + Math.cos(rayEl) * hemisphere * 3,
+        pinholePt[1],
+        pinholePt[2] + Math.sin(rayEl) * 3
+      ]);
+      if (sunFar) {
+        const odx = sunFar[0]-pp[0], ody = sunFar[1]-pp[1];
+        const olen = Math.sqrt(odx*odx+ody*ody);
+        if (olen > 0.5) {
+          const nx = odx/olen, ny = ody/olen;
+          let t = Infinity;
+          if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
+          else if (nx < 0) t = Math.min(t, -pp[0]/nx);
+          if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
+          else if (ny < 0) t = Math.min(t, -pp[1]/ny);
+          if (t > 0 && t < Infinity) {
+            c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+            c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+          }
+        }
+      }
+    }
+
   } else {
-    tipX = -RN; tipZ = hO;                               // nearly horizontal fallback
-  }
+    // ── Default mode: el = 0, ray horizontal through can to back wall ──
+    pa = proj(R(-RN, 0, hO));
 
-  const arrowTip = R(tipX, 0, tipZ);
-  const pp = _3D.proj(pinholePt);
-  const pa = _3D.proj(arrowTip);
-
-  // Outward extension toward the Sun – direction derived from pa→pp in screen space,
-  // extended to canvas edge (automatically follows the noon deflection when active)
-  if (pp && pa) {
-    const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
-    const len = Math.sqrt(dx*dx+dy*dy);
-    if (len > 0.5) {
-      const nx = dx/len, ny = dy/len;
-      let t = Infinity;
-      if (nx > 0) t = Math.min(t, (CW - pp[0]) / nx);
-      else if (nx < 0) t = Math.min(t, -pp[0] / nx);
-      if (ny > 0) t = Math.min(t, (CH - pp[1]) / ny);
-      else if (ny < 0) t = Math.min(t, -pp[1] / ny);
-      if (t > 0 && t < Infinity) {
-        c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-        c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+    // Outward extension: screen-space trick (direction from pa through pp, extended)
+    if (pp && pa) {
+      const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
+      const len = Math.sqrt(dx*dx+dy*dy);
+      if (len > 0.5) {
+        const nx = dx/len, ny = dy/len;
+        let t = Infinity;
+        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
+        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
+        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
+        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
+        if (t > 0 && t < Infinity) {
+          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+          c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+        }
       }
     }
   }
 
+  // ── Inward ray: pinhole → back wall (arrowhead at hit point) ──
   if (pp && pa) {
     c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pa[0], pa[1]);
     c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
@@ -2980,15 +3034,13 @@ function draw3D() {
       const nx = dx/len, ny = dy/len;
       c.beginPath();
       c.moveTo(pa[0], pa[1]);
-      c.lineTo(pa[0] - nx*9 - ny*4, pa[1] - ny*9 + nx*4);
-      c.lineTo(pa[0] - nx*9 + ny*4, pa[1] - ny*9 - nx*4);
+      c.lineTo(pa[0]-nx*9-ny*4, pa[1]-ny*9+nx*4);
+      c.lineTo(pa[0]-nx*9+ny*4, pa[1]-ny*9-nx*4);
       c.closePath(); c.fillStyle = '#e8a020'; c.fill();
     }
-    // Noon label at arrowhead (back wall)
     if (noonLabel) {
       c.font = "7px 'Share Tech Mono'";
-      c.fillStyle = '#e8a020';
-      c.textAlign = 'center';
+      c.fillStyle = '#e8a020'; c.textAlign = 'center';
       c.fillText(noonLabel, pa[0], pa[1] + 10);
     }
     c.beginPath(); c.arc(pp[0], pp[1], 4.5, 0, Math.PI*2);
