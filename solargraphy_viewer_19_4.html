@@ -2748,7 +2748,7 @@ document.addEventListener('click', (e) => {
 // Camera for 3D projection (world: x=south, y=west, z=up)
 // Parameterised by azimuth (angle from +x axis toward +y) and elevation above horizon.
 const _3D = {
-  camAz:    Math.PI * 5 / 4,  // 225° — camera sits SW of origin
+  camAz:    Math.PI / 4,       // 45° — camera sits SW of origin (x=south+, y=west+)
   camEl:    0.35,              // ~20° above horizon (was ~35°)
   camDist:  4.0,
   FOCAL:    3.0,
@@ -2770,7 +2770,7 @@ function updateCamera() {
   _3D.FWD = [-cx / camDist, -cy / camDist, -cz / camDist];
   // RIGHT = world_up × FWD, normalised in XY plane
   const rlen = Math.sqrt(_3D.FWD[0] ** 2 + _3D.FWD[1] ** 2) || 1e-9;
-  _3D.RIGHT = [_3D.FWD[1] / rlen, -_3D.FWD[0] / rlen, 0];
+  _3D.RIGHT = [-_3D.FWD[1] / rlen, _3D.FWD[0] / rlen, 0];  // world_up × FWD, normalised
   // CAMUP = FWD × RIGHT  (points sky-ward)
   _3D.CAMUP = [
     _3D.FWD[1] * _3D.RIGHT[2] - _3D.FWD[2] * _3D.RIGHT[1],
