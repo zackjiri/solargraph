@@ -2910,12 +2910,51 @@ function draw3D() {
 
   // ── Pinhole dot + optical axis arrow ──
   const pinholePt = R(RN, 0, hO);
-  const arrowTip  = R(RN - 0.65, 0, hO);  // inward: light enters through pinhole into can
+
+  // Ray elevation in can-local frame:
+  // Default (el=0): horizontal ray, hits back wall at same height as pinhole.
+  // Noon mode: deflect by noon culmination elevation for the custom date.
+  let rayEl = 0;
+  let noonLabel = null;
+  if (show3DCulmination) {
+    const doy   = dayOfYear(customMonth, customDay);
+    const delta = sunDeclination(doy);                    // radians
+    const phi   = effectiveLat() * hemisphere;            // signed latitude in radians
+    rayEl = Math.asin(
+      Math.max(-1, Math.min(1,
+        Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta)
+      ))
+    );
+    noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
+              + '  ' + Math.round(rayEl * 180 / Math.PI) + '°';
+  }
+
+  // Ray inside can: starts at (RN, 0, hO), direction (-cos(el), 0, -sin(el))
+  // Back wall at x = -RN  →  t_back = 2·RN / cos(el),  z_hit = hO − 2·RN·tan(el)
+  // If z_hit outside [−HH, +HH]: ray hits bottom/top cap instead.
+  const cosEl = Math.cos(rayEl), sinEl = Math.sin(rayEl);
+  let tipX, tipZ;
+  if (cosEl > 0.001) {
+    const z_back = hO - 2 * RN * Math.tan(rayEl);
+    if (z_back >= -HH && z_back <= HH) {
+      tipX = -RN; tipZ = z_back;                          // hits back cylindrical wall
+    } else if (z_back < -HH) {
+      const t_cap = (hO + HH) / sinEl;                   // hits bottom cap
+      tipX = RN - t_cap * cosEl; tipZ = -HH;
+    } else {
+      const t_cap = (hO - HH) / sinEl;                   // hits top cap
+      tipX = RN - t_cap * cosEl; tipZ = HH;
+    }
+  } else {
+    tipX = -RN; tipZ = hO;                               // nearly horizontal fallback
+  }
+
+  const arrowTip = R(tipX, 0, tipZ);
   const pp = _3D.proj(pinholePt);
   const pa = _3D.proj(arrowTip);
 
-  // Outward extension toward the Sun – direction derived from pp→pa in screen space,
-  // reversed and extended to canvas edge (always reaches edge regardless of pitch/roll)
+  // Outward extension toward the Sun – direction derived from pa→pp in screen space,
+  // extended to canvas edge (automatically follows the noon deflection when active)
   if (pp && pa) {
     const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
     const len = Math.sqrt(dx*dx+dy*dy);
@@ -2945,6 +2984,13 @@ function draw3D() {
       c.lineTo(pa[0] - nx*9 + ny*4, pa[1] - ny*9 - nx*4);
       c.closePath(); c.fillStyle = '#e8a020'; c.fill();
     }
+    // Noon label at arrowhead (back wall)
+    if (noonLabel) {
+      c.font = "7px 'Share Tech Mono'";
+      c.fillStyle = '#e8a020';
+      c.textAlign = 'center';
+      c.fillText(noonLabel, pa[0], pa[1] + 10);
+    }
     c.beginPath(); c.arc(pp[0], pp[1], 4.5, 0, Math.PI*2);
     c.fillStyle = '#e8a020'; c.fill();
     c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1; c.stroke();
@@ -2965,48 +3011,6 @@ function draw3D() {
   }
   c.strokeStyle = 'rgba(136,204,170,0.55)'; c.lineWidth = 0.8;
   c.setLineDash([2, 3]); c.stroke(); c.setLineDash([]);
-
-  // ── Noon culmination marker ──
-  if (show3DCulmination) {
-    const doy      = dayOfYear(customMonth, customDay);
-    const delta    = sunDeclination(doy);                      // radians
-    const phi      = effectiveLat() * hemisphere;              // signed latitude in radians
-    const el_noon  = Math.asin(
-      Math.max(-1, Math.min(1, Math.sin(phi)*Math.sin(delta) + Math.cos(phi)*Math.cos(delta)))
-    );
-    const el_deg   = Math.round(el_noon * 180 / Math.PI);
-    const L        = 0.95;
-    // Sun always in south (NH) or north (SH) at noon → x = hemisphere direction
-    const sunBase  = proj([0, 0, -HH]);
-    const sunTip   = proj([Math.cos(el_noon) * hemisphere * L, 0, -HH + Math.sin(el_noon) * L]);
-
-    if (sunBase && sunTip) {
-      // Dashed line from floor centre toward sun direction
-      c.beginPath(); c.moveTo(sunBase[0], sunBase[1]); c.lineTo(sunTip[0], sunTip[1]);
-      c.strokeStyle = '#f0d040'; c.lineWidth = 1.5; c.setLineDash([4, 3]); c.stroke();
-      c.setLineDash([]);
-
-      // Sun circle
-      c.beginPath(); c.arc(sunTip[0], sunTip[1], 5, 0, Math.PI * 2);
-      c.fillStyle = '#f0d040'; c.fill();
-      c.strokeStyle = 'rgba(0,0,0,0.55)'; c.lineWidth = 0.8; c.stroke();
-
-      // 4 rays
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 2) {
-        c.beginPath();
-        c.moveTo(sunTip[0] + Math.cos(a) * 7, sunTip[1] + Math.sin(a) * 7);
-        c.lineTo(sunTip[0] + Math.cos(a) * 11, sunTip[1] + Math.sin(a) * 11);
-        c.strokeStyle = '#f0d040'; c.lineWidth = 1.2; c.setLineDash([]); c.stroke();
-      }
-
-      // Label: date + elevation
-      c.font = "7px 'Share Tech Mono'";
-      c.fillStyle = '#f0d040';
-      c.textAlign = 'center';
-      c.fillText(MONTH_NAMES[customMonth - 1] + ' ' + customDay, sunTip[0], sunTip[1] - 12);
-      c.fillText('el ' + el_deg + '°', sunTip[0], sunTip[1] - 4);
-    }
-  }
 
   // ── Label ──
   c.font = "8px 'Share Tech Mono'";
