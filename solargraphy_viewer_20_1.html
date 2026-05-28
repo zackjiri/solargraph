@@ -50,7 +50,7 @@
 
   header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 12px;
   }
 
@@ -266,7 +266,7 @@
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.18em;
-    color: var(--dim);
+    color: var(--accent-green);
     text-transform: uppercase;
     margin-bottom: 2px;
   }
@@ -454,7 +454,7 @@
   /* Mode toggle in header */
   .mode-toggle {
     display: flex;
-    border: 1.5px solid var(--accent2);
+    border: 5px solid #202020;
     border-radius: 4px;
     overflow: hidden;
     font-family: var(--mono);
@@ -462,7 +462,6 @@
     letter-spacing: 0.2em;
     flex-shrink: 0;
     margin-left: auto;
-    box-shadow: 0 0 8px rgba(32,160,232,0.2);
   }
 
   .mode-btn {
@@ -481,17 +480,39 @@
   }
 
   .mode-btn.active-analyzer {
-    background: var(--accent);
-    color: #000;
+    background: repeating-linear-gradient(
+      45deg,
+      #b06010,
+      #b06010 5px,
+      #f0b030 5px,
+      #f0b030 10px
+    );
+    color: #fff;
     font-weight: bold;
-    box-shadow: inset 0 0 8px rgba(0,0,0,0.25);
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
   }
 
   .mode-btn.active-gallery {
-    background: var(--accent2);
-    color: #000;
+    background: repeating-linear-gradient(
+      45deg,
+      #1e6aaa,
+      #1e6aaa 5px,
+      #35aae8 5px,
+      #35aae8 10px
+    );
+    color: #fff;
     font-weight: bold;
-    box-shadow: inset 0 0 8px rgba(0,0,0,0.25);
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
   }
 
   /* Gallery panel (left of canvas) */
@@ -669,7 +690,7 @@
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.18em;
-    color: var(--dim);
+    color: var(--accent-green);
     text-transform: uppercase;
     margin-bottom: 6px;
   }
@@ -754,7 +775,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-top: 20px;
+    margin-top: 36px;
     padding-top: 2px;
   }
   .can3d-btn-row {
@@ -946,7 +967,7 @@
       <div class="slider-row" style="margin-top:4px">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--dim)">Opacity</span>
-          <span class="slider-val" style="color:var(--dim)" id="lblOpacity">60%</span>
+          <span class="slider-val" style="color:var(--dim)" id="lblOpacity">75%</span>
         </div>
         <input type="range" id="rngOpacity" min="10" max="100" value="75" style="accent-color:var(--dim)">
       </div>
@@ -1022,7 +1043,7 @@
     </div>
 
     <div class="sidebar-section">
-      <div class="sidebar-title" style="color:var(--accent-green)">Custom Path</div>
+      <div class="sidebar-title">Custom Path</div>
       <div class="date-row">
         <button class="date-btn" id="btnMonDec">◀</button>
         <span class="date-val" id="lblMonth">Jul</span>
