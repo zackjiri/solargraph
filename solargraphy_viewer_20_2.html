@@ -3203,7 +3203,7 @@ function draw3D() {
 
   // ── Pinhole dot – always visible ──
   if (pp) {
-    c.beginPath(); c.arc(pp[0], pp[1], 4.5, 0, Math.PI*2);
+    c.beginPath(); c.arc(pp[0], pp[1], 4.5 * lwMul, 0, Math.PI*2);
     c.fillStyle = '#e8a020'; c.fill();
     c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1 * lwMul; c.stroke();
   }
