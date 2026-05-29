@@ -2864,7 +2864,7 @@ function draw3D() {
   const hO = horizonMm / halfHmm;   // normalized pinhole vertical offset
   const N  = 12;                // vertical edge count
   // Label font size + line weight: scale proportionally in theater mode
-  const fs    = theaterMode3D ? Math.max(9, Math.round(CW / 65)) : 8;
+  const fs    = theaterMode3D ? Math.min(14, Math.max(9, Math.round(CW / 65))) : 8;
   const lwMul = fs / 8;
   const HH = 1.0;               // normalized half-height
 
