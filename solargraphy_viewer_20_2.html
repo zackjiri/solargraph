@@ -2863,8 +2863,9 @@ function draw3D() {
   const RN = radius / halfHmm;      // normalized radius
   const hO = horizonMm / halfHmm;   // normalized pinhole vertical offset
   const N  = 12;                // vertical edge count
-  // Label font size: scales with canvas width in theater mode
-  const fs = theaterMode3D ? Math.max(10, Math.round(CW / 50)) : 8;
+  // Label font size + line weight: scale proportionally in theater mode
+  const fs    = theaterMode3D ? Math.max(9, Math.round(CW / 65)) : 8;
+  const lwMul = fs / 8;
   const HH = 1.0;               // normalized half-height
 
   // Rotate can geometry: inverse of camera transforms (negate pitch & roll).
@@ -2904,7 +2905,7 @@ function draw3D() {
   }
 
   // ── Floor grid (world-space, does not rotate) ──
-  c.lineWidth = 0.8;
+  c.lineWidth = 0.8 * lwMul;
   c.setLineDash([2, 4]);
   const GS = 0.35, gn = 3;
   for (let i = -gn; i <= gn; i++) {
@@ -2935,7 +2936,7 @@ function draw3D() {
       const ep = proj(card.tip);
       if (!ep) continue;
       c.beginPath(); c.moveTo(rc[0], rc[1]); c.lineTo(ep[0], ep[1]);
-      c.strokeStyle = card.color; c.lineWidth = 1.5; c.setLineDash([]); c.stroke();
+      c.strokeStyle = card.color; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
       // Arrowhead
       const dx = ep[0]-rc[0], dy = ep[1]-rc[1], len = Math.sqrt(dx*dx+dy*dy);
       if (len > 3) {
@@ -2958,7 +2959,7 @@ function draw3D() {
   const zDown = proj([0, 0, -HH - 0.5]);
   if (zO && zUp) {
     c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zUp[0], zUp[1]);
-    c.strokeStyle = '#4080e8'; c.lineWidth = 1.5; c.setLineDash([]); c.stroke();
+    c.strokeStyle = '#4080e8'; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
     const dx = zUp[0]-zO[0], dy = zUp[1]-zO[1], len = Math.sqrt(dx*dx+dy*dy);
     if (len > 3) {
       const nx = dx/len, ny = dy/len;
@@ -2974,7 +2975,7 @@ function draw3D() {
   }
   if (zO && zDown) {
     c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zDown[0], zDown[1]);
-    c.strokeStyle = '#4080e8'; c.lineWidth = 1.0; c.setLineDash([3, 3]); c.stroke();
+    c.strokeStyle = '#4080e8'; c.lineWidth = 1.0 * lwMul; c.setLineDash([3, 3]); c.stroke();
     c.setLineDash([]);
   }
 
@@ -3021,11 +3022,11 @@ function draw3D() {
     const gap  = inGap(ang);
     if (gap) {
       c.strokeStyle = isBack ? 'rgba(140,100,20,0.3)' : 'rgba(232,160,32,0.75)';
-      c.lineWidth   = isBack ? 0.6 : 1.0;
+      c.lineWidth   = (isBack ? 0.6 : 1.0) * lwMul;
       c.setLineDash([3, 3]);
     } else {
       c.strokeStyle = isBack ? 'rgba(50,80,115,0.5)' : 'rgba(90,170,208,0.8)';
-      c.lineWidth   = isBack ? 0.7 : 1.2;
+      c.lineWidth   = (isBack ? 0.7 : 1.2) * lwMul;
       c.setLineDash(isBack ? [3, 3] : []);
     }
     c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(b[0], b[1]);
@@ -3046,7 +3047,7 @@ function draw3D() {
       first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
       first = false;
     }
-    c.strokeStyle = 'rgba(90,170,208,0.65)'; c.lineWidth = 1.0; c.setLineDash([]);
+    c.strokeStyle = 'rgba(90,170,208,0.65)'; c.lineWidth = 1.0 * lwMul; c.setLineDash([]);
     c.stroke();
 
     // Pinhole gap arc: from –GAP to +GAP
@@ -3060,7 +3061,7 @@ function draw3D() {
       first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
       first = false;
     }
-    c.strokeStyle = 'rgba(232,160,32,0.65)'; c.lineWidth = 0.8;
+    c.strokeStyle = 'rgba(232,160,32,0.65)'; c.lineWidth = 0.8 * lwMul;
     c.setLineDash([2, 2]); c.stroke(); c.setLineDash([]);
   }
 
@@ -3147,7 +3148,7 @@ function draw3D() {
           else if (ny < 0) t = Math.min(t, -pp[1]/ny);
           if (t > 0 && t < Infinity) {
             c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-            c.strokeStyle = '#e8a020'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+            c.strokeStyle = '#e8a020'; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
           }
         }
       }
@@ -3172,7 +3173,7 @@ function draw3D() {
         else if (ny < 0) t = Math.min(t, -pp[1]/ny);
         if (t > 0 && t < Infinity) {
           c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-          c.strokeStyle = '#d8e8f8'; c.lineWidth = 2.0; c.setLineDash([]); c.stroke();
+          c.strokeStyle = '#d8e8f8'; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
         }
       }
     }
@@ -3182,7 +3183,7 @@ function draw3D() {
   const axisColor = show3DCulmination ? '#e8a020' : '#d8e8f8';
   if (pp && pa) {
     c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pa[0], pa[1]);
-    c.strokeStyle = axisColor; c.lineWidth = 1.5; c.setLineDash([3, 3]); c.stroke();
+    c.strokeStyle = axisColor; c.lineWidth = 1.5 * lwMul; c.setLineDash([3, 3]); c.stroke();
     c.setLineDash([]);
     const dx = pa[0]-pp[0], dy = pa[1]-pp[1], len = Math.sqrt(dx*dx+dy*dy);
     if (len > 4) {
@@ -3204,7 +3205,7 @@ function draw3D() {
   if (pp) {
     c.beginPath(); c.arc(pp[0], pp[1], 4.5, 0, Math.PI*2);
     c.fillStyle = '#e8a020'; c.fill();
-    c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1; c.stroke();
+    c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1 * lwMul; c.stroke();
   }
 
   // ── Pinhole level ring on can surface (smooth circle) ──
@@ -3218,7 +3219,7 @@ function draw3D() {
     hfirst ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
     hfirst = false;
   }
-  c.strokeStyle = 'rgba(136,204,170,0.55)'; c.lineWidth = 0.8;
+  c.strokeStyle = 'rgba(136,204,170,0.55)'; c.lineWidth = 0.8 * lwMul;
   c.setLineDash([2, 3]); c.stroke(); c.setLineDash([]);
 
   // ── Label ──
