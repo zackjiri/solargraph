@@ -69,6 +69,16 @@
     "latitude":    49.0,
     "hemisphere":  "N"
   },
+    "GEN-2_3": {
+    "yaw_deg":    -36.0,
+    "pitch_deg":    0.5,
+    "roll_deg":     2.1,
+    "horizon_mm":   6.5,
+    "radius_mm":   32.5,
+    "scan_w_mm":  178,
+    "latitude":    49.2,
+    "hemisphere":  "N"
+  },
   "GEN-2_4": {
     "yaw_deg":    -28.0,
     "pitch_deg":    4.5,
