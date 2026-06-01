@@ -105,6 +105,19 @@
           }
         },
         {
+          "index": 3,
+          "layers": [
+            0,
+            1,
+            2
+          ],
+          "metadata": {
+            "exposure_start": "2026-01-10",
+            "exposure_end": "2026-05-11",
+            "location": "Brno, Czechia"
+          }
+        },
+        {
           "index": 4,
           "layers": [
             0,
@@ -117,7 +130,7 @@
             "location": "Brno, Czechia"
           }
         },
-                {
+        {
           "index": 5,
           "layers": [
             0,
@@ -130,7 +143,7 @@
             "location": "Brno, Czechia"
           }
         },
-                {
+        {
           "index": 8,
           "layers": [
             0,
