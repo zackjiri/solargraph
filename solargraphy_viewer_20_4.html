@@ -1549,9 +1549,9 @@ function drawSplitOverlay(W, H) {
   ctx.save();
   ctx.beginPath();
   if (!splitInverted) {
-    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right (default)
+    ctx.rect(0, 0, splitPx, H);             // L2 on left (default)
   } else {
-    ctx.rect(0, 0, splitPx, H);             // L2 on left (swapped)
+    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right (swapped)
   }
   ctx.clip();
 
