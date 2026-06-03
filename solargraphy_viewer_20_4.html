@@ -890,7 +890,7 @@
             <span class="slider-label" style="color:var(--dim)">Opacity</span>
             <span class="slider-val" style="color:var(--dim)" id="lblL2Opacity">100%</span>
           </div>
-          <input type="range" id="rngL2Opacity" min="10" max="100" value="100" style="accent-color:var(--dim)">
+          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)">
         </div>
       </div>
     </div>
@@ -1549,9 +1549,9 @@ function drawSplitOverlay(W, H) {
   ctx.save();
   ctx.beginPath();
   if (!splitInverted) {
-    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right
-  } else {
     ctx.rect(0, 0, splitPx, H);             // L2 on left
+  } else {
+    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right
   }
   ctx.clip();
 
