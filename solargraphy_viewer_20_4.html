@@ -1546,25 +1546,27 @@ function drawSplitOverlay(W, H) {
   if (!splitActive || !splitBitmap) return;
   const splitPx = Math.round(splitX * W);
 
-  // Step 1: draw L2 at splitOpacity across the full canvas
-  // (L1 already drawn beneath — this blends L2 into L2 side and L1 side)
-  ctx.globalAlpha = splitOpacity;
-  ctx.drawImage(splitBitmap, 0, 0, W, H);
-  ctx.globalAlpha = 1.0;
-
-  // Step 2: restore L1 at 100% opacity on the L1 side, overwriting the bleed
-  if (imgBitmap) {
-    ctx.save();
-    ctx.beginPath();
-    if (!splitInverted) {
-      ctx.rect(0, 0, splitPx, H);             // L1 on left → restore left
-    } else {
-      ctx.rect(splitPx, 0, W - splitPx, H);   // L1 on right → restore right
-    }
-    ctx.clip();
-    ctx.drawImage(imgBitmap, 0, 0, W, H);
-    ctx.restore();
+  ctx.save();
+  ctx.beginPath();
+  if (!splitInverted) {
+    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right
+  } else {
+    ctx.rect(0, 0, splitPx, H);             // L2 on left
   }
+  ctx.clip();
+
+  // Inside L2 clip only:
+  // 1. Draw L2 at 100% — covers the L1 that was drawn beneath
+  ctx.drawImage(splitBitmap, 0, 0, W, H);
+  // 2. Draw L1 back at (1 − splitOpacity) — blends L1 into L2
+  //    Result: L2 * splitOpacity + L1 * (1 − splitOpacity)
+  if (imgBitmap && splitOpacity < 1.0) {
+    ctx.globalAlpha = 1.0 - splitOpacity;
+    ctx.drawImage(imgBitmap, 0, 0, W, H);
+    ctx.globalAlpha = 1.0;
+  }
+
+  ctx.restore();   // removes clip, restores globalAlpha — L1 side untouched
 
   // Update handle position – map canvas px → container px
   updateHandlePosition(splitPx, W);
