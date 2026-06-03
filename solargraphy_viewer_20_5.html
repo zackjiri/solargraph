@@ -921,9 +921,9 @@
           </div>
           <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)">
         </div>
-        <button id="btnL2Play" title="Auto-loop opacity (10 s / cycle)">
+        <button id="btnL2Play" title="Crossfade loop (10 s / cycle)">
           <span id="l2PlayIcon"></span>
-          <span id="l2PlayLabel">Play</span>
+          <span>Crossfade Loop</span>
         </button>
       </div>
     </div>
@@ -2552,21 +2552,23 @@ const L2_PLAY_SVG = '<svg width="11" height="11" viewBox="0 0 14 14" fill="curre
 const L2_STOP_SVG = '<svg width="11" height="11" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="3" width="8" height="8"/></svg>';
 const L2_LOOP_MS  = 10000;             // one full 100→0→100 cycle
 
-let l2LoopActive = false;
-let l2LoopRAF    = null;
-let l2LoopStart  = 0;
+let l2LoopActive  = false;
+let l2LoopRAF     = null;
+let l2LoopStart   = 0;
+let l2PhaseOffset = 0;          // entry phase on the descending leg
 
 function setL2PlayIcon(playing) {
-  document.getElementById('l2PlayIcon').innerHTML  = playing ? L2_STOP_SVG : L2_PLAY_SVG;
-  document.getElementById('l2PlayLabel').textContent = playing ? 'Stop' : 'Play';
+  document.getElementById('l2PlayIcon').innerHTML = playing ? L2_STOP_SVG : L2_PLAY_SVG;
   document.getElementById('btnL2Play').classList.toggle('playing', playing);
 }
 
 function l2LoopFrame(ts) {
   if (!l2LoopActive) return;
   if (!l2LoopStart) l2LoopStart = ts;
-  const phase = ((ts - l2LoopStart) % L2_LOOP_MS) / L2_LOOP_MS;   // 0..1
-  const v = phase < 0.5 ? (1 - phase * 2) : (phase * 2 - 1);      // 1→0→1
+  // Constant speed: full 100→0→100 loop always takes L2_LOOP_MS.
+  // Start phase is offset so the loop begins at the current opacity, descending.
+  const phase = (l2PhaseOffset + (ts - l2LoopStart) / L2_LOOP_MS) % 1;   // 0..1
+  const v = phase < 0.5 ? (1 - phase * 2) : (phase * 2 - 1);             // 1→0→1
   splitOpacity = v;
   const pct = Math.round(v * 100);
   document.getElementById('rngL2Opacity').value     = pct;
@@ -2579,6 +2581,8 @@ function startL2Loop() {
   if (l2LoopActive || !splitActive) return;
   l2LoopActive = true;
   l2LoopStart  = 0;
+  // Map current opacity onto the descending leg: v = 1 − 2·phase  →  phase = (1 − v)/2
+  l2PhaseOffset = (1 - splitOpacity) / 2;
   document.getElementById('rngL2Opacity').disabled = true;
   setL2PlayIcon(true);
   l2LoopRAF = requestAnimationFrame(l2LoopFrame);
