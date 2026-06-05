@@ -246,7 +246,7 @@
     border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
     overflow-x: hidden;
     min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
     -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
@@ -261,6 +261,33 @@
     flex-direction: column;
     gap: 8px;
     flex-shrink: 0;   /* keep natural height so panel overflows & scrolls (Chrome/Blink) */
+  }
+
+  /* Thin, themed scrollbar for the always-on side panels */
+  .sidebar, .gallery-panel, #can3dPanel {
+    scrollbar-width: thin;                       /* Firefox */
+    scrollbar-color: var(--border) transparent;  /* Firefox: thumb / track */
+  }
+  .sidebar::-webkit-scrollbar,
+  .gallery-panel::-webkit-scrollbar,
+  #can3dPanel::-webkit-scrollbar {
+    width: 8px;
+  }
+  .sidebar::-webkit-scrollbar-track,
+  .gallery-panel::-webkit-scrollbar-track,
+  #can3dPanel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar::-webkit-scrollbar-thumb,
+  .gallery-panel::-webkit-scrollbar-thumb,
+  #can3dPanel::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .sidebar::-webkit-scrollbar-thumb:hover,
+  .gallery-panel::-webkit-scrollbar-thumb:hover,
+  #can3dPanel::-webkit-scrollbar-thumb:hover {
+    background: var(--dim);
   }
 
   .sidebar-section:last-child { border-bottom: none; }
@@ -526,7 +553,7 @@
     border-right: 1px solid var(--border);
     display: none;
     flex-direction: column;
-    overflow-y: auto;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
     overflow-x: hidden;
     min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
     -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
@@ -689,7 +716,7 @@
     align-items: center;
     padding: 8px 0 4px;
     gap: 0;
-    overflow-y: auto;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
     overflow-x: hidden;
     min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
     -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
