@@ -1146,7 +1146,7 @@
           <span class="ts-val"><span id="tsFill">—</span> %</span>
         </div>
         <div class="ts-row">
-          <span class="ts-lbl">coverage</span>
+          <span class="ts-lbl">Perimeter coverage</span>
           <span class="ts-val" id="tsCoverage">—</span>
         </div>
         <div class="ts-row" id="tsNoonRow">
@@ -1158,7 +1158,7 @@
           </span>
         </div>
         <div class="ts-row" id="tsIncidenceRow" style="display:none">
-          <span class="ts-lbl">incidence</span>
+          <span class="ts-lbl">incidence angle of light</span>
           <span class="ts-val" id="tsIncidence">—</span>
         </div>
       </div>
@@ -2698,7 +2698,7 @@ function updateAxisLegend() {
   if (!sym || !lbl) return;
   if (show3DCulmination) {
     sym.style.color = '#e8a020';
-    lbl.textContent = 'optical axis (from Sun)';
+    lbl.textContent = 'optical axis (Sun)';
   } else {
     sym.style.color = '#d8e8f8';
     lbl.textContent = 'optical axis';
@@ -3535,14 +3535,13 @@ function draw3D() {
     if (tsCoverage) tsCoverage.textContent = covDeg + '°';
     if (tsNoonLbl)  tsNoonLbl.textContent  = noonLbl;
 
-    if (tsHit && tsMiss) {
-      if (show3DCulmination) {
-        tsHit.classList.toggle('active',  noonHitsPaper);
-        tsMiss.classList.toggle('active', !noonHitsPaper);
-      } else {
-        tsHit.classList.remove('active');
-        tsMiss.classList.remove('active');
-      }
+    // Noon row: visible only when noon mode is active
+    const tsNoonRow = document.getElementById('tsNoonRow');
+    if (tsNoonRow) tsNoonRow.style.display = show3DCulmination ? '' : 'none';
+
+    if (tsHit && tsMiss && show3DCulmination) {
+      tsHit.classList.toggle('active',  noonHitsPaper);
+      tsMiss.classList.toggle('active', !noonHitsPaper);
     }
     // Incidence angle: show only in HIT scenario
     if (tsIncidenceRow && tsIncidence) {
