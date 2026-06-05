@@ -3491,6 +3491,22 @@ new ResizeObserver(() => {
 setMode('gallery');
 updateAxisLegend();
 
+// ─── Force a clean reflow so side panels become scrollable on first paint ─────
+// Chrome (Blink) sometimes fails to compute the scroll-container height until a
+// resize occurs (typically after async Google Fonts settle). Emulate that resize
+// once on load and after fonts are ready — no visible flash (reverted same frame).
+function forcePanelReflow() {
+  const b = document.body;
+  const prev = b.style.display;
+  b.style.display = 'none';
+  void b.offsetHeight;          // read to flush the display:none reflow
+  b.style.display = prev || '';
+}
+window.addEventListener('load', () => requestAnimationFrame(forcePanelReflow));
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => requestAnimationFrame(forcePanelReflow));
+}
+
 </script>
 </body>
 </html>
