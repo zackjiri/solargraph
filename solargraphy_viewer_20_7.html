@@ -35,7 +35,8 @@
     font-family: var(--sans);
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100vh;     /* fallback for older browsers */
+    height: 100dvh;    /* visible viewport on iOS/iPad – excludes browser UI, no fold cut-off */
   }
 
   /* ── Top strip: header + readout ── */
