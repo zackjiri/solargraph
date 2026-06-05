@@ -3452,9 +3452,10 @@ function draw3D() {
       noonHitsPaper = !inGap(Math.atan2(yHit, xHit));
       if (noonHitsPaper) {
         // Incidence angle: between incoming ray and outward cylinder-wall normal at hit point.
-        // Normal = (xHit/RN, yHit/RN, 0); ray dir = (dx,dy,dz) unit vector pointing INTO wall.
-        // cos(θ) = dot(-ray, outward_normal) = -(dx·xHit + dy·yHit) / RN
-        const cosInc = -(dx * xHit + dy * yHit) / RN;
+        // Ray dir (dx,dy,dz) and outward normal (xHit/RN, yHit/RN, 0) point the same general
+        // direction (ray travels from pinhole toward back wall, normal also points outward there).
+        // Perpendicular hit → both parallel → dot = 1 → θ = 0°.  Grazing → dot ≈ 0 → θ ≈ 90°.
+        const cosInc = (dx * xHit + dy * yHit) / RN;
         noonIncidenceDeg = Math.round(Math.acos(Math.max(-1, Math.min(1, cosInc))) * 180 / Math.PI);
       }
     }
@@ -3517,7 +3518,7 @@ function draw3D() {
   if (theaterMode3D) {
     const circ    = Math.round(2 * Math.PI * radius);   // whole mm
     const fillPct = (paperAngle / (2 * Math.PI) * 100).toFixed(1);
-    const covDeg  = Math.round(paperAngle * 180 / Math.PI);
+    const covDeg  = Math.round(paperAngle / 2 * 180 / Math.PI);
     const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay + ' (noon)';
 
     const tsCirc         = document.getElementById('tsCirc');
