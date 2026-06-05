@@ -921,36 +921,39 @@
   #theaterStatus {
     position: absolute; top: 8px; left: 10px;
     z-index: 11; display: none;
-    flex-direction: column; gap: 4px;
-    padding: 8px 12px 9px;
-    background: rgba(7,9,13,0.65);
-    border: 1px solid var(--border); border-radius: 4px;
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-    font-family: var(--mono);
+    flex-direction: column; gap: 0;
+    padding: 13px 16px 15px;
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 5px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.65);
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); letter-spacing: 0.05em;
+    min-width: 220px;
     pointer-events: none;
   }
   .ts-row {
-    display: flex; align-items: baseline; gap: 7px;
+    display: flex; justify-content: space-between;
+    align-items: baseline; gap: 14px; padding: 4px 0;
   }
   .ts-lbl {
-    font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase;
-    color: var(--dim); flex: 0 0 110px;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--dim); white-space: nowrap; flex-shrink: 0;
   }
   .ts-val {
-    font-size: 10px; color: var(--text); letter-spacing: 0.05em;
-  }
-  .ts-unit {
-    font-size: 8px; color: var(--dim);
+    font-size: 12px; color: var(--text); text-align: right;
   }
   /* Noon HIT / MISS row */
-  #tsNoonRow { margin-top: 5px; border-top: 1px solid var(--border); padding-top: 5px; }
+  #tsNoonRow {
+    margin-top: 6px; border-top: 1px solid var(--border); padding-top: 7px;
+  }
+  #tsIncidenceRow { padding-top: 2px; }
   #tsHit, #tsMiss {
-    font-size: 10px; letter-spacing: 0.12em;
+    font-size: 12px; letter-spacing: 0.12em;
     color: var(--dim); transition: color 0.2s;
   }
-  .ts-noon-sep { font-size: 9px; color: var(--border); }
-  #tsHit.active  { color: #50dc78; }
-  #tsMiss.active { color: #e04040; }
+  .ts-noon-sep { font-size: 11px; color: var(--border); margin: 0 3px; }
+  #tsHit.active  { color: #50dc78; font-weight: bold; }
+  #tsMiss.active { color: #e04040; font-weight: bold; }
 
   /* Noon button – in legend, styled like Isolines button */
   #btnNoon {
@@ -1135,24 +1138,28 @@
       <!-- Theater status panel – top-left -->
       <div id="theaterStatus">
         <div class="ts-row">
-          <span class="ts-lbl">tin circumference</span>
-          <span class="ts-val" id="tsCirc">—</span>
-          <span class="ts-unit">mm</span>
+          <span class="ts-lbl">circumference</span>
+          <span class="ts-val"><span id="tsCirc">—</span> mm</span>
         </div>
         <div class="ts-row">
           <span class="ts-lbl">paper filling</span>
-          <span class="ts-val" id="tsFill">—</span>
-          <span class="ts-unit">%</span>
+          <span class="ts-val"><span id="tsFill">—</span> %</span>
         </div>
         <div class="ts-row">
           <span class="ts-lbl">coverage</span>
           <span class="ts-val" id="tsCoverage">—</span>
         </div>
         <div class="ts-row" id="tsNoonRow">
-          <span class="ts-lbl">noon</span>
-          <span id="tsHit">HIT</span>
-          <span class="ts-noon-sep">/</span>
-          <span id="tsMiss">MISS</span>
+          <span class="ts-lbl" id="tsNoonLbl">noon</span>
+          <span>
+            <span id="tsHit">HIT</span>
+            <span class="ts-noon-sep">/</span>
+            <span id="tsMiss">MISS</span>
+          </span>
+        </div>
+        <div class="ts-row" id="tsIncidenceRow" style="display:none">
+          <span class="ts-lbl">incidence</span>
+          <span class="ts-val" id="tsIncidence">—</span>
         </div>
       </div>
       <div id="theaterZoomCtl">
@@ -3381,7 +3388,8 @@ function draw3D() {
 
   // ── Noon mode: ray fixed in world space, only hit-point moves with can ──
   let pa, noonLabel = null;
-  let noonHitsPaper = true;   // false → ray hits cap/bottom, inner dashed line turns red
+  let noonHitsPaper = true;   // false → ray hits cap/bottom or gap, inner dashed line turns red
+  let noonIncidenceDeg = null; // angle between incoming ray and cylinder-wall normal at hit point
 
   if (show3DCulmination) {
     // Noon elevation for custom date
@@ -3442,6 +3450,13 @@ function draw3D() {
       const xHit = RN + t_wallValid * dx;
       const yHit = t_wallValid * dy;
       noonHitsPaper = !inGap(Math.atan2(yHit, xHit));
+      if (noonHitsPaper) {
+        // Incidence angle: between incoming ray and outward cylinder-wall normal at hit point.
+        // Normal = (xHit/RN, yHit/RN, 0); ray dir = (dx,dy,dz) unit vector pointing INTO wall.
+        // cos(θ) = dot(-ray, outward_normal) = -(dx·xHit + dy·yHit) / RN
+        const cosInc = -(dx * xHit + dy * yHit) / RN;
+        noonIncidenceDeg = Math.round(Math.acos(Math.max(-1, Math.min(1, cosInc))) * 180 / Math.PI);
+      }
     }
     const tipLocal = t_hit < Infinity
       ? [RN + t_hit*dx, t_hit*dy, hO + t_hit*dz]
@@ -3500,25 +3515,39 @@ function draw3D() {
 
   // ── Theater status panel: update values ──
   if (theaterMode3D) {
-    const circ    = (2 * Math.PI * radius).toFixed(1);
+    const circ    = Math.round(2 * Math.PI * radius);   // whole mm
     const fillPct = (paperAngle / (2 * Math.PI) * 100).toFixed(1);
-    const covHalf = Math.round(paperAngle / 2 * 180 / Math.PI);
-    const tsCirc     = document.getElementById('tsCirc');
-    const tsFill     = document.getElementById('tsFill');
-    const tsCoverage = document.getElementById('tsCoverage');
-    const tsHit      = document.getElementById('tsHit');
-    const tsMiss     = document.getElementById('tsMiss');
+    const covDeg  = Math.round(paperAngle * 180 / Math.PI);
+    const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay + ' (noon)';
+
+    const tsCirc         = document.getElementById('tsCirc');
+    const tsFill         = document.getElementById('tsFill');
+    const tsCoverage     = document.getElementById('tsCoverage');
+    const tsNoonLbl      = document.getElementById('tsNoonLbl');
+    const tsHit          = document.getElementById('tsHit');
+    const tsMiss         = document.getElementById('tsMiss');
+    const tsIncidenceRow = document.getElementById('tsIncidenceRow');
+    const tsIncidence    = document.getElementById('tsIncidence');
+
     if (tsCirc)     tsCirc.textContent     = circ;
     if (tsFill)     tsFill.textContent     = fillPct;
-    if (tsCoverage) tsCoverage.textContent = '±' + covHalf + '°';
+    if (tsCoverage) tsCoverage.textContent = covDeg + '°';
+    if (tsNoonLbl)  tsNoonLbl.textContent  = noonLbl;
+
     if (tsHit && tsMiss) {
       if (show3DCulmination) {
-        tsHit.classList.toggle('active', noonHitsPaper);
+        tsHit.classList.toggle('active',  noonHitsPaper);
         tsMiss.classList.toggle('active', !noonHitsPaper);
       } else {
         tsHit.classList.remove('active');
         tsMiss.classList.remove('active');
       }
+    }
+    // Incidence angle: show only in HIT scenario
+    if (tsIncidenceRow && tsIncidence) {
+      const showInc = show3DCulmination && noonHitsPaper && noonIncidenceDeg !== null;
+      tsIncidenceRow.style.display = showInc ? '' : 'none';
+      if (showInc) tsIncidence.textContent = noonIncidenceDeg + '°';
     }
   }
 
