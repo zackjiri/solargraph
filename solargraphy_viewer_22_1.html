@@ -58,6 +58,11 @@
   /* Light: mode-toggle outer border */
   body.light .mode-toggle { border-color: #8fa4b8; }
 
+  /* Light: theater zoom slider bg – tmavý backdrop neviditelný na světlém canvasu */
+  body.light #theaterZoomCtl {
+    background: rgba(220,228,236,0.82);
+  }
+
   /* Light: hover states that use rgba(white) – neviditelné na světlém bg */
   body.light .mode-btn:not([class*=active]):hover {
     color: var(--text);
@@ -839,23 +844,35 @@
   #can3dWrap { position: relative; align-self: flex-start; }
 
   @keyframes theaterPulse {
-    0%, 100% { color: rgba(160,180,200,0.45); filter: none; }
-    50%       { color: rgba(200,225,255,0.95); filter: drop-shadow(0 0 4px rgba(160,200,255,0.6)); }
+    0%, 100% { color: rgba(160,190,220,0.65); filter: none; }
+    50%       { color: rgba(210,235,255,1.00); filter: drop-shadow(0 0 5px rgba(140,190,255,0.85)); }
+  }
+  @keyframes theaterPulseLight {
+    0%, 100% { color: rgba(30,78,168,0.55); filter: none; }
+    50%       { color: rgba(10,55,150,0.95); filter: drop-shadow(0 0 4px rgba(30,90,200,0.55)); }
   }
 
   #btn3DTheater {
     position: absolute; top: 4px; left: 4px;
     width: 18px; height: 18px;
     background: none; border: none;
-    color: rgba(160,180,200,0.55);
+    color: rgba(160,190,220,0.65);
     cursor: pointer; padding: 0;
     display: flex; align-items: center; justify-content: center;
     transition: color 0.12s;
     z-index: 2;
     animation: theaterPulse 2.8s ease-in-out infinite;
   }
-  #btn3DTheater:hover          { color: rgba(200,220,240,0.9); animation: none; }
-  #btn3DTheater.theater-active { color: rgba(160,180,200,0.55); animation: none; }
+  #btn3DTheater:hover          { color: rgba(220,238,255,1.00); animation: none; }
+  #btn3DTheater.theater-active { color: rgba(160,190,220,0.65); animation: none; }
+
+  /* Light mode: tmavá animace na světlém panelu */
+  body.light #btn3DTheater {
+    animation: theaterPulseLight 2.8s ease-in-out infinite;
+    color: rgba(30,78,168,0.55);
+  }
+  body.light #btn3DTheater:hover          { color: rgba(10,45,140,0.95); animation: none; }
+  body.light #btn3DTheater.theater-active { color: rgba(30,78,168,0.55); animation: none; }
 
   /* Can3d canvas clickable hint */
   #can3d { display: block; cursor: pointer; }
@@ -2801,7 +2818,7 @@ function updateAxisLegend() {
   if (!sym || !lbl) return;
   const _isLight = document.body.classList.contains('light');
   if (show3DCulmination) {
-    sym.style.color = _isLight ? '#8a4400' : '#e8a020';
+    sym.style.color = '#e8a020';   // sémantická barva, stejná v obou tématech
     lbl.textContent = 'optical axis (Sun)';
   } else {
     sym.style.color = _isLight ? '#1e4ea8' : '#d8e8f8';
@@ -3289,8 +3306,8 @@ function draw3D() {
     paperArc:    'rgba(20,85,165,0.62)',
     gapArc:      'rgba(115,62,0,0.62)',
     axisOut:     '#1e4ea8',            // replaces near-invisible #d8e8f8
-    axisHit:     '#8a4400',
-    axisMiss:    '#b01010',
+    axisHit:     '#e8a020',            // sémantická barva – zachována v obou tématech
+    axisMiss:    '#e04040',            // sémantická barva – zachována v obou tématech
     pinhole:     '#8a4400',
     pinholeRing: 'rgba(0,0,0,0.28)',
     horizon:     'rgba(12,72,40,0.50)',
@@ -3854,9 +3871,9 @@ function exitTheater3D() {
 document.getElementById('btn3DTheater').addEventListener('click', () => {
   if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
 });
-// Click on the 3D preview canvas also enters theater
+// Click on the 3D preview canvas: enter theater, or exit if already in theater
 document.getElementById('can3d').addEventListener('click', () => {
-  if (!theaterMode3D) enterTheater3D();
+  if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
 });
 document.getElementById('btnTheaterExit').addEventListener('click', exitTheater3D);
 document.addEventListener('keydown', (e) => {
