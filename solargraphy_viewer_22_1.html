@@ -885,6 +885,7 @@
     font-family: var(--mono); font-size: 10px;
     color: var(--dim); letter-spacing: 0.08em;
     flex-direction: column; gap: 6px;
+    cursor: pointer;
   }
 
   #can3dTheater {
@@ -3871,9 +3872,13 @@ function exitTheater3D() {
 document.getElementById('btn3DTheater').addEventListener('click', () => {
   if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
 });
-// Click on the 3D preview canvas: enter theater, or exit if already in theater
+// Click on the 3D preview canvas: enter theater
 document.getElementById('can3d').addEventListener('click', () => {
-  if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
+  if (!theaterMode3D) enterTheater3D();
+});
+// Click on the theater placeholder (shown when theater is active): exit theater
+document.getElementById('theaterPlaceholder').addEventListener('click', () => {
+  if (theaterMode3D) exitTheater3D();
 });
 document.getElementById('btnTheaterExit').addEventListener('click', exitTheater3D);
 document.addEventListener('keydown', (e) => {
