@@ -94,26 +94,26 @@
     background: rgba(0,0,0,0.06) !important;
   }
 
-  /* Light: #btnNoon – žlutý text zachován, tmavá výplň zajišťuje čitelnost */
+  /* Light: #btnNoon – bílé pozadí, sytší žlutá */
   body.light #btnNoon {
-    color: rgba(240,208,64,0.85);
-    border-color: rgba(240,208,64,0.5);
-    background: rgba(30,20,0,0.55);
+    color: #c88000;
+    border-color: rgba(200,128,0,0.45);
+    background: #ffffff;
   }
   body.light #btnNoon:hover {
-    color: #f0d040;
-    border-color: rgba(240,208,64,0.8);
-    background: rgba(30,20,0,0.68);
+    color: #b07000;
+    border-color: rgba(200,128,0,0.75);
+    background: #ffffff;
   }
   body.light #btnNoon.active {
-    color: #f0d040;
-    border-color: #f0d040;
-    background: rgba(30,20,0,0.72);
+    color: #a06000;
+    border-color: #c88000;
+    background: #fff8e8;
   }
 
   /* ── Theme toggle button ── */
   #btnTheme {
-    background: none;
+    background: rgba(200,215,230,0.10);
     border: 1px solid var(--border);
     color: var(--dim);
     font-family: var(--mono);
@@ -172,13 +172,9 @@
     white-space: nowrap;
   }
 
-  /* Light: jemná tmavá linka okolo písmen pro čitelnost na světlém bg */
-  body.light header h1 {
-    text-shadow:
-      -1px -1px 0 rgba(40,20,0,0.55),
-       1px -1px 0 rgba(40,20,0,0.55),
-      -1px  1px 0 rgba(40,20,0,0.55),
-       1px  1px 0 rgba(40,20,0,0.55);
+  /* Light: tmavé pozadí tlačítka tématu pro čitelnost emoji */
+  body.light #btnTheme {
+    background: rgba(30,20,5,0.14);
   }
 
   header span {
@@ -1238,7 +1234,6 @@
       </div>
       <button id="btnNoon" title="Show noon ray for custom date">
         <span id="noonChkIcon">☐</span>
-        <span>☀</span>
         <span>noon (custom date)</span>
         <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
       </button>
@@ -3319,7 +3314,7 @@ function draw3D() {
     axisOut:     '#1e4ea8',            // replaces near-invisible #d8e8f8
     axisHit:     '#e8a020',            // sémantická barva – zachována v obou tématech
     axisMiss:    '#e04040',            // sémantická barva – zachována v obou tématech
-    pinhole:     '#8a4400',
+    pinhole:     '#e8a020',            // sémantická barva – zachována v obou tématech
     pinholeRing: 'rgba(0,0,0,0.28)',
     horizon:     'rgba(12,72,40,0.50)',
     label:       'rgba(15,35,60,0.78)',
