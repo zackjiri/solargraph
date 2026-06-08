@@ -94,20 +94,21 @@
     background: rgba(0,0,0,0.06) !important;
   }
 
-  /* Light: #btnNoon – žlutá na bílém nefunguje → použij accent */
+  /* Light: #btnNoon – žlutý text zachován, tmavá výplň zajišťuje čitelnost */
   body.light #btnNoon {
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-    color: var(--accent);
+    color: rgba(240,208,64,0.85);
+    border-color: rgba(240,208,64,0.5);
+    background: rgba(30,20,0,0.55);
   }
   body.light #btnNoon:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(138,68,0,0.06);
+    color: #f0d040;
+    border-color: rgba(240,208,64,0.8);
+    background: rgba(30,20,0,0.68);
   }
   body.light #btnNoon.active {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: rgba(138,68,0,0.10);
+    color: #f0d040;
+    border-color: #f0d040;
+    background: rgba(30,20,0,0.72);
   }
 
   /* ── Theme toggle button ── */
@@ -166,9 +167,18 @@
     font-family: var(--mono);
     font-size: 12px;
     letter-spacing: 0.2em;
-    color: var(--accent);
+    color: #e8a020;          /* žlutá zachována v obou tématech */
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  /* Light: jemná tmavá linka okolo písmen pro čitelnost na světlém bg */
+  body.light header h1 {
+    text-shadow:
+      -1px -1px 0 rgba(40,20,0,0.55),
+       1px -1px 0 rgba(40,20,0,0.55),
+      -1px  1px 0 rgba(40,20,0,0.55),
+       1px  1px 0 rgba(40,20,0,0.55);
   }
 
   header span {
