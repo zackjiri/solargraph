@@ -113,7 +113,7 @@
 
   /* ── Theme toggle button ── */
   #btnTheme {
-    background: rgba(220,232,245,0.82);  /* dark mode: skoro bílá */
+    background: rgb(218 236 255 / 90%);  /* dark mode: sluníčko na světlém bg */
     border: 1px solid var(--border);
     color: var(--dim);
     font-family: var(--mono);
@@ -175,6 +175,12 @@
   /* Light: skoro černá – měsíček vynikne na tmavém pozadí */
   body.light #btnTheme {
     background: rgba(18,22,28,0.82);
+  }
+  /* Light hover: splyne s bg top-stripu */
+  body.light #btnTheme:hover {
+    background: #e2e7ec;
+    border-color: var(--border);
+    color: var(--dim);
   }
 
   header span {
