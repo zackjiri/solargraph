@@ -2799,11 +2799,12 @@ function updateAxisLegend() {
   const sym = document.getElementById('legAxisSym');
   const lbl = document.getElementById('legAxisLbl');
   if (!sym || !lbl) return;
+  const _isLight = document.body.classList.contains('light');
   if (show3DCulmination) {
-    sym.style.color = '#e8a020';
+    sym.style.color = _isLight ? '#8a4400' : '#e8a020';
     lbl.textContent = 'optical axis (Sun)';
   } else {
-    sym.style.color = '#d8e8f8';
+    sym.style.color = _isLight ? '#1e4ea8' : '#d8e8f8';
     lbl.textContent = 'optical axis';
   }
   // sync noon button visual state
@@ -3140,7 +3141,11 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
   let saved = 'dark';
   try { saved = localStorage.getItem(LIGHT_KEY) || 'dark'; } catch(e) {}
   applyTheme(saved === 'light');
-  btn.addEventListener('click', () => applyTheme(!document.body.classList.contains('light')));
+  btn.addEventListener('click', () => {
+    applyTheme(!document.body.classList.contains('light'));
+    // Redraw 3D vis with new palette + refresh axis legend swatch colours
+    if (typeof draw3D === 'function') { updateAxisLegend(); draw3D(); }
+  });
 })();
 
 // ─── Metadata popup ──────────────────────────────────────────────────────────
@@ -3266,14 +3271,75 @@ function draw3D() {
     return [OX + sx * f * SCL, OY - sy * f * SCL];
   }
   c.clearRect(0, 0, CW, CH);
-  c.fillStyle = '#07090d';
+
+  // ── Theme-aware colour palette ────────────────────────────────────────────
+  const _lt = document.body.classList.contains('light');
+  const pal = _lt ? {
+    bg:          '#c8d2dc',
+    grid:        'rgba(25,60,120,0.38)',
+    compassS:    '#b81212',
+    compassN:    '#1245a0',
+    compassW:    '#0c5828',
+    compassE:    '#186e20',
+    zAxis:       '#0c38b8',
+    gapBack:     'rgba(85,48,0,0.30)',
+    gapFront:    'rgba(115,62,0,0.82)',
+    paperBack:   'rgba(18,52,100,0.35)',
+    paperFront:  'rgba(20,85,165,0.88)',
+    paperArc:    'rgba(20,85,165,0.62)',
+    gapArc:      'rgba(115,62,0,0.62)',
+    axisOut:     '#1e4ea8',            // replaces near-invisible #d8e8f8
+    axisHit:     '#8a4400',
+    axisMiss:    '#b01010',
+    pinhole:     '#8a4400',
+    pinholeRing: 'rgba(0,0,0,0.28)',
+    horizon:     'rgba(12,72,40,0.50)',
+    label:       'rgba(15,35,60,0.78)',
+    legAxis:     '#1e4ea8',            // sidebar legend – optical axis arrow
+    legHorizon:  '#1a7050',            // sidebar legend – pinhole level line
+    legPaper:    '#1660a0',            // sidebar legend – photopaper line
+    legN:        '#1245a0',
+  } : {
+    bg:          '#07090d',
+    grid:        'rgba(50,100,155,0.85)',
+    compassS:    '#e84040',
+    compassN:    '#7090c0',
+    compassW:    '#50dc78',
+    compassE:    '#78c878',
+    zAxis:       '#4080e8',
+    gapBack:     'rgba(140,100,20,0.3)',
+    gapFront:    'rgba(232,160,32,0.75)',
+    paperBack:   'rgba(50,80,115,0.5)',
+    paperFront:  'rgba(90,170,208,0.8)',
+    paperArc:    'rgba(90,170,208,0.65)',
+    gapArc:      'rgba(232,160,32,0.65)',
+    axisOut:     '#d8e8f8',
+    axisHit:     '#e8a020',
+    axisMiss:    '#e04040',
+    pinhole:     '#e8a020',
+    pinholeRing: 'rgba(0,0,0,0.60)',
+    horizon:     'rgba(136,204,170,0.55)',
+    label:       'rgba(74,90,106,0.85)',
+    legAxis:     '#d8e8f8',
+    legHorizon:  '#88ccaa',
+    legPaper:    '#5aaad0',
+    legN:        '#7090c0',
+  };
+
+  c.fillStyle = pal.bg;
   c.fillRect(0, 0, CW, CH);
 
-  // Legend: fixed world-space labels. SH geometry is handled by the 180° yr flip.
+  // Legend: fixed world-space labels + sidebar swatch colours (theme-aware)
   { const ls = document.getElementById('legS');
     const ln = document.getElementById('legN');
-    if (ls) { ls.style.color = '#e84040'; ls.textContent = 'S'; }
-    if (ln) { ln.style.color = '#7090c0'; ln.textContent = 'N'; } }
+    if (ls) { ls.style.color = _lt ? pal.compassS : '#e84040'; ls.textContent = 'S'; }
+    if (ln) { ln.style.color = pal.legN; ln.textContent = 'N'; }
+    // Sidebar swatches that have hardcoded light colours
+    const legHorizLine = document.querySelector('#can3dLegend .leg-line:not(.dashed)');
+    const legPaperLine = document.querySelectorAll('#can3dLegend .leg-line')[1];
+    if (legHorizLine) legHorizLine.style.borderColor = pal.legHorizon;
+    if (legPaperLine) legPaperLine.style.borderColor = pal.legPaper;
+  }
 
   // SH: add 180° so the can faces north (world −x), matching real-world placement.
   // All subsequent hemisphere-aware calculations still work correctly with this flip.
@@ -3360,7 +3426,7 @@ function draw3D() {
     const b = proj([i * GS,  gn * GS, -HH]);
     const d = proj([-gn * GS, i * GS, -HH]);
     const e = proj([ gn * GS, i * GS, -HH]);
-    c.strokeStyle = 'rgba(50,100,155,0.85)';
+    c.strokeStyle = pal.grid;
     if (a && b) { c.beginPath(); c.moveTo(a[0],a[1]); c.lineTo(b[0],b[1]); c.stroke(); }
     if (d && e) { c.beginPath(); c.moveTo(d[0],d[1]); c.lineTo(e[0],e[1]); c.stroke(); }
   }
@@ -3374,10 +3440,10 @@ function draw3D() {
     // Fixed world-space labels: +x = south, -x = north, regardless of hemisphere.
     // The SH 180° yaw flip already orients the can correctly, so no label swap needed.
     const cardinals = [
-      { tip: [ CR,  0, -HH], color: '#e84040', label: 'S' },
-      { tip: [-CR,  0, -HH], color: '#7090c0', label: 'N' },
-      { tip: [  0, CR, -HH], color: '#50dc78', label: 'W' },
-      { tip: [  0,-CR, -HH], color: '#78c878', label: 'E' },
+      { tip: [ CR,  0, -HH], color: pal.compassS, label: 'S' },
+      { tip: [-CR,  0, -HH], color: pal.compassN, label: 'N' },
+      { tip: [  0, CR, -HH], color: pal.compassW, label: 'W' },
+      { tip: [  0,-CR, -HH], color: pal.compassE, label: 'E' },
     ];
     for (const card of cardinals) {
       const ep = proj(card.tip);
@@ -3406,7 +3472,7 @@ function draw3D() {
   const zDown = proj([0, 0, -HH - 0.5]);
   if (zO && zUp) {
     c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zUp[0], zUp[1]);
-    c.strokeStyle = '#4080e8'; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
+    c.strokeStyle = pal.zAxis; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
     const dx = zUp[0]-zO[0], dy = zUp[1]-zO[1], len = Math.sqrt(dx*dx+dy*dy);
     if (len > 3) {
       const nx = dx/len, ny = dy/len;
@@ -3414,15 +3480,15 @@ function draw3D() {
       c.moveTo(zUp[0], zUp[1]);
       c.lineTo(zUp[0]-nx*6-ny*3, zUp[1]-ny*6+nx*3);
       c.lineTo(zUp[0]-nx*6+ny*3, zUp[1]-ny*6-nx*3);
-      c.closePath(); c.fillStyle = '#4080e8'; c.fill();
+      c.closePath(); c.fillStyle = pal.zAxis; c.fill();
     }
     c.font = `bold ${fs}px 'Share Tech Mono'`;
-    c.fillStyle = '#4080e8'; c.textAlign = 'center';
+    c.fillStyle = pal.zAxis; c.textAlign = 'center';
     c.fillText('Z', zUp[0], zUp[1] - 4);
   }
   if (zO && zDown) {
     c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zDown[0], zDown[1]);
-    c.strokeStyle = '#4080e8'; c.lineWidth = 1.0 * lwMul; c.setLineDash([3, 3]); c.stroke();
+    c.strokeStyle = pal.zAxis; c.lineWidth = 1.0 * lwMul; c.setLineDash([3, 3]); c.stroke();
     c.setLineDash([]);
   }
 
@@ -3458,11 +3524,11 @@ function draw3D() {
     const isBack = wx * _3D.CAM[0] + wy * _3D.CAM[1] <= 0;
     const gap  = inGap(ang);
     if (gap) {
-      c.strokeStyle = isBack ? 'rgba(140,100,20,0.3)' : 'rgba(232,160,32,0.75)';
+      c.strokeStyle = isBack ? pal.gapBack : pal.gapFront;
       c.lineWidth   = (isBack ? 0.6 : 1.0) * lwMul;
       c.setLineDash([3, 3]);
     } else {
-      c.strokeStyle = isBack ? 'rgba(50,80,115,0.5)' : 'rgba(90,170,208,0.8)';
+      c.strokeStyle = isBack ? pal.paperBack : pal.paperFront;
       c.lineWidth   = (isBack ? 0.7 : 1.2) * lwMul;
       c.setLineDash(isBack ? [3, 3] : []);
     }
@@ -3484,7 +3550,7 @@ function draw3D() {
       first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
       first = false;
     }
-    c.strokeStyle = 'rgba(90,170,208,0.65)'; c.lineWidth = 1.0 * lwMul; c.setLineDash([]);
+    c.strokeStyle = pal.paperArc; c.lineWidth = 1.0 * lwMul; c.setLineDash([]);
     c.stroke();
 
     // Pinhole gap arc: from –halfGap to +halfGap
@@ -3498,7 +3564,7 @@ function draw3D() {
       first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
       first = false;
     }
-    c.strokeStyle = 'rgba(232,160,32,0.65)'; c.lineWidth = 0.8 * lwMul;
+    c.strokeStyle = pal.gapArc; c.lineWidth = 0.8 * lwMul;
     c.setLineDash([2, 2]); c.stroke(); c.setLineDash([]);
   }
 
@@ -3603,7 +3669,7 @@ function draw3D() {
           else if (ny < 0) t = Math.min(t, -pp[1]/ny);
           if (t > 0 && t < Infinity) {
             c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-            c.strokeStyle = '#e8a020'; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+            c.strokeStyle = pal.axisHit; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
           }
         }
       }
@@ -3628,7 +3694,7 @@ function draw3D() {
         else if (ny < 0) t = Math.min(t, -pp[1]/ny);
         if (t > 0 && t < Infinity) {
           c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-          c.strokeStyle = '#d8e8f8'; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+          c.strokeStyle = pal.axisOut; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
         }
       }
     }
@@ -3674,8 +3740,8 @@ function draw3D() {
   // ── Inward ray: pinhole → back wall (dashed, arrowhead at hit point) ──
   // In noon mode: orange = hits paper wall, red = hits cap/bottom (sun misses paper)
   const axisColor = show3DCulmination
-    ? (noonHitsPaper ? '#e8a020' : '#e04040')
-    : '#d8e8f8';
+    ? (noonHitsPaper ? pal.axisHit : pal.axisMiss)
+    : pal.axisOut;
   if (pp && pa) {
     c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pa[0], pa[1]);
     c.strokeStyle = axisColor; c.lineWidth = 1.5 * lwMul; c.setLineDash([3, 3]); c.stroke();
@@ -3691,7 +3757,7 @@ function draw3D() {
     }
     if (noonLabel) {
       c.font = `${Math.max(7, Math.round(fs * 0.85))}px 'Share Tech Mono'`;
-      c.fillStyle = '#e8a020'; c.textAlign = 'center';
+      c.fillStyle = pal.axisHit; c.textAlign = 'center';
       c.fillText(noonLabel, pa[0], pa[1] + Math.round(fs * 1.4));
     }
   }
@@ -3699,8 +3765,8 @@ function draw3D() {
   // ── Pinhole dot – always visible ──
   if (pp) {
     c.beginPath(); c.arc(pp[0], pp[1], 4.5 * lwMul, 0, Math.PI*2);
-    c.fillStyle = '#e8a020'; c.fill();
-    c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1 * lwMul; c.stroke();
+    c.fillStyle = pal.pinhole; c.fill();
+    c.strokeStyle = pal.pinholeRing; c.lineWidth = 1 * lwMul; c.stroke();
   }
 
   // ── Pinhole level ring on can surface (smooth circle) ──
@@ -3714,12 +3780,12 @@ function draw3D() {
     hfirst ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
     hfirst = false;
   }
-  c.strokeStyle = 'rgba(136,204,170,0.55)'; c.lineWidth = 0.8 * lwMul;
+  c.strokeStyle = pal.horizon; c.lineWidth = 0.8 * lwMul;
   c.setLineDash([2, 3]); c.stroke(); c.setLineDash([]);
 
   // ── Label ──
   c.font = `${fs}px 'Share Tech Mono'`;
-  c.fillStyle = 'rgba(74,90,106,0.85)';
+  c.fillStyle = pal.label;
   c.textAlign = 'center';
 }
 
