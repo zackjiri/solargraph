@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body { margin: 0; background: #07090d; display: flex; align-items: center;
+         justify-content: center; height: 100vh; }
+  canvas { display: block; }
+</style></head>
+<body><canvas id="c" width="720" height="540"></canvas>
+<script>
+const DEG = Math.PI / 180;
+const cv = document.getElementById('c');
+const c  = cv.getContext('2d');
+const W  = cv.width, H = cv.height;
+
+function normalize(v){const l=Math.sqrt(v[0]**2+v[1]**2+v[2]**2);return l<1e-10?v:[v[0]/l,v[1]/l,v[2]/l];}
+function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function clamp(x,lo,hi){return Math.max(lo,Math.min(hi,x));}
+
+// Camera
+const camAz=38*DEG, camEl=26*DEG, DIST=4.6, FOCAL=2.6, SCL=148;
+const OX=W/2-20, OY=H*0.50;
+const CAM=[DIST*Math.cos(camEl)*Math.sin(camAz), DIST*Math.cos(camEl)*-Math.cos(camAz), DIST*Math.sin(camEl)];
+const FWD=normalize([-CAM[0],-CAM[1],-CAM[2]]);
+const RIGHT=normalize(cross(FWD,[0,0,1]));
+const CAMUP=cross(RIGHT,FWD);
+function proj(p){
+  const d=[p[0]-CAM[0],p[1]-CAM[1],p[2]-CAM[2]];
+  const depth=dot(FWD,d); if(depth<0.08) return null;
+  const f=FOCAL/depth;
+  return [OX+dot(RIGHT,d)*f*SCL, OY-dot(CAMUP,d)*f*SCL, depth];
+}
+
+// Can orientation
+const pr=14*DEG, rr=7*DEG, yr=25*DEG;
+function rotCan(x,y,z){
+  let x0=x*Math.cos(pr)-z*Math.sin(pr),y0=y,z0=x*Math.sin(pr)+z*Math.cos(pr);
+  let x1=x0,y1=y0*Math.cos(rr)+z0*Math.sin(rr),z1=-y0*Math.sin(rr)+z0*Math.cos(rr);
+  return[x1*Math.cos(yr)-y1*Math.sin(yr), x1*Math.sin(yr)+y1*Math.cos(yr), z1];
+}
+
+// Cylinder
+const R=0.74, HH=1.05, hO=0.05;
+const paperAngle=5.24, halfGap=(2*Math.PI-paperAngle)/2;
+function inGap(a){let n=((a%(2*Math.PI))+2*Math.PI)%(2*Math.PI);if(n>Math.PI)n=2*Math.PI-n;return n<=halfGap+1e-9;}
+
+// Lighting — sun from south-ish, ~52° elevation
+const LIGHT=normalize([0.58,-0.10,0.80]);
+const FILL =normalize([-0.32, 0.22,0.14]);
+function shade(norm){
+  const d1=clamp(dot(norm,LIGHT),0,1);
+  const d2=clamp(dot(norm,FILL),0,1)*0.12;
+  // specular: half-vector between light and camera
+  const toV=normalize([CAM[0]-norm[0],CAM[1]-norm[1],CAM[2]-norm[2]]);
+  const H2=normalize([LIGHT[0]+toV[0],LIGHT[1]+toV[1],LIGHT[2]+toV[2]]);
+  const spec=Math.pow(clamp(dot(norm,H2),0,1),28)*0.20;
+  return{b:clamp(0.16+0.74*d1+d2,0,1.1), spec:clamp(spec,0,0.28)};
+}
+function paperCol(b,spec,front){
+  const r=clamp(Math.round(22+110*b+spec*210),0,255);
+  const g=clamp(Math.round(48+125*b+spec*215),0,255);
+  const bl=clamp(Math.round(78+140*b+spec*235),0,255);
+  return`rgba(${r},${g},${bl},${front?0.91:0.52})`;
+}
+function gapCol(b,spec,front){
+  const r=clamp(Math.round(50+155*b+spec*175),0,255);
+  const g=clamp(Math.round(28+ 75*b+spec*130),0,255);
+  const bl=clamp(Math.round( 3+ 16*b+spec* 55),0,255);
+  return`rgba(${r},${g},${bl},${front?0.84:0.40})`;
+}
+
+// ── Background radial gradient ─────────────────────────────────────────────
+{const bg=c.createRadialGradient(OX,OY-30,0,OX,OY-30,400);
+ bg.addColorStop(0,'#0e1828'); bg.addColorStop(1,'#040608');
+ c.fillStyle=bg; c.fillRect(0,0,W,H);}
+
+// ── Floor fill + grid ─────────────────────────────────────────────────────
+const GS=0.35,GN=3;
+{const fc=proj([0,0,-HH]);
+ const fl=[proj([-GN*GS,-GN*GS,-HH]),proj([GN*GS,-GN*GS,-HH]),proj([GN*GS,GN*GS,-HH]),proj([-GN*GS,GN*GS,-HH])];
+ if(fl.every(Boolean)&&fc){
+   c.beginPath(); c.moveTo(fl[0][0],fl[0][1]);
+   fl.slice(1).forEach(p=>c.lineTo(p[0],p[1])); c.closePath();
+   const fg=c.createRadialGradient(fc[0],fc[1],0,fc[0],fc[1],240);
+   fg.addColorStop(0,'rgba(20,38,65,0.75)'); fg.addColorStop(0.65,'rgba(10,20,38,0.55)'); fg.addColorStop(1,'rgba(4,8,16,0.25)');
+   c.fillStyle=fg; c.fill();
+ }
+ c.setLineDash([1.5,5]); c.lineWidth=0.6;
+ for(let i=-GN;i<=GN;i++){
+   const a=proj([i*GS,-GN*GS,-HH]),b2=proj([i*GS,GN*GS,-HH]);
+   const d=proj([-GN*GS,i*GS,-HH]),e=proj([GN*GS,i*GS,-HH]);
+   c.strokeStyle='rgba(48,92,168,0.50)';
+   if(a&&b2){c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b2[0],b2[1]);c.stroke();}
+   if(d&&e){c.beginPath();c.moveTo(d[0],d[1]);c.lineTo(e[0],e[1]);c.stroke();}
+ }
+ c.setLineDash([]);}
+
+// ── Compass rose ──────────────────────────────────────────────────────────
+{const rc=proj([0,0,-HH]);
+ const CR=0.52;
+ const cards=[{t:[CR,0,-HH],col:'#e84040',l:'S'},{t:[-CR,0,-HH],col:'#6888c0',l:'N'},
+               {t:[0,CR,-HH],col:'#48cc68',l:'W'},{t:[0,-CR,-HH],col:'#68b868',l:'E'}];
+ if(rc) for(const k of cards){
+   const ep=proj(k.t); if(!ep) continue;
+   c.beginPath();c.moveTo(rc[0],rc[1]);c.lineTo(ep[0],ep[1]);
+   c.strokeStyle=k.col;c.lineWidth=1.5;c.stroke();
+   const dx=ep[0]-rc[0],dy=ep[1]-rc[1],len=Math.sqrt(dx*dx+dy*dy);
+   if(len>3){const nx=dx/len,ny=dy/len;
+     c.beginPath();c.moveTo(ep[0],ep[1]);c.lineTo(ep[0]-nx*7-ny*3,ep[1]-ny*7+nx*3);c.lineTo(ep[0]-nx*7+ny*3,ep[1]-ny*7-nx*3);c.closePath();c.fillStyle=k.col;c.fill();}
+   c.font="bold 9px monospace";c.fillStyle=k.col;c.textAlign='center';
+   c.fillText(k.l,ep[0]+(ep[0]-rc[0])*0.28,ep[1]+(ep[1]-rc[1])*0.28-1);
+ }}
+
+// ── Z axis ────────────────────────────────────────────────────────────────
+{const zO=proj([0,0,-HH]),zU=proj([0,0,-HH+1.02]);
+ if(zO&&zU){
+   c.beginPath();c.moveTo(zO[0],zO[1]);c.lineTo(zU[0],zU[1]);
+   c.strokeStyle='#3870e0';c.lineWidth=1.8;c.stroke();
+   const dx=zU[0]-zO[0],dy=zU[1]-zO[1],l=Math.sqrt(dx*dx+dy*dy);
+   if(l>3){const nx=dx/l,ny=dy/l;c.beginPath();c.moveTo(zU[0],zU[1]);
+     c.lineTo(zU[0]-nx*7-ny*3,zU[1]-ny*7+nx*3);c.lineTo(zU[0]-nx*7+ny*3,zU[1]-ny*7-nx*3);c.closePath();c.fillStyle='#3870e0';c.fill();}
+   c.font="bold 9px monospace";c.fillStyle='#3870e0';c.textAlign='center';c.fillText('Z',zU[0],zU[1]-5);
+ }}
+
+// ── Cylinder shaded strips ────────────────────────────────────────────────
+const NSTRIPS=80;
+const strips=[];
+for(let i=0;i<NSTRIPS;i++){
+  const a1=i*2*Math.PI/NSTRIPS, a2=(i+1)*2*Math.PI/NSTRIPS, aMid=(a1+a2)/2;
+  const norm=rotCan(Math.cos(aMid),Math.sin(aMid),0);
+  const pts3d=[
+    rotCan(R*Math.cos(a1),R*Math.sin(a1), HH),rotCan(R*Math.cos(a2),R*Math.sin(a2), HH),
+    rotCan(R*Math.cos(a2),R*Math.sin(a2),-HH),rotCan(R*Math.cos(a1),R*Math.sin(a1),-HH)];
+  const depth=pts3d.reduce((s,p)=>s+dot(FWD,[p[0]-CAM[0],p[1]-CAM[1],p[2]-CAM[2]]),0)/4;
+  const toCam=normalize([CAM[0]-pts3d[0][0],CAM[1]-pts3d[0][1],CAM[2]-pts3d[0][2]]);
+  strips.push({pts3d,depth,front:dot(norm,toCam)>0,gap:inGap(aMid),sh:shade(norm)});
+}
+strips.sort((a,b)=>a.depth-b.depth);
+for(const s of strips){
+  const pts=s.pts3d.map(p=>proj(p)); if(!pts.every(Boolean)) continue;
+  c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
+  for(let j=1;j<4;j++) c.lineTo(pts[j][0],pts[j][1]); c.closePath();
+  c.fillStyle=s.gap?gapCol(s.sh.b,s.sh.spec,s.front):paperCol(s.sh.b,s.sh.spec,s.front);
+  c.fill();
+}
+
+// ── Caps top & bottom ─────────────────────────────────────────────────────
+const STEP=Math.PI/40;
+for(const zz of[HH,-HH]){
+  const ctr3d=rotCan(0,0,zz), cPt=proj(ctr3d);
+  const capNorm=rotCan(0,0,zz>0?1:-1);
+  const toCam2=normalize([CAM[0]-ctr3d[0],CAM[1]-ctr3d[1],CAM[2]-ctr3d[2]]);
+  const facing=dot(capNorm,toCam2)>0;
+
+  // Paper arc cap fill
+  const fanPts=[];
+  for(let a=halfGap;a<=2*Math.PI-halfGap+0.01;a+=STEP)
+    fanPts.push(proj(rotCan(R*Math.cos(a),R*Math.sin(a),zz)));
+  if(cPt&&fanPts.some(Boolean)){
+    c.beginPath(); let fst=true;
+    for(const p of fanPts){if(!p){fst=true;continue;} fst?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fst=false;}
+    c.lineTo(cPt[0],cPt[1]); c.closePath();
+    c.fillStyle=`rgba(48,84,138,${facing?0.40:0.20})`; c.fill();
+    // cap edge
+    c.beginPath(); fst=true;
+    for(const p of fanPts){if(!p){fst=true;continue;} fst?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fst=false;}
+    c.strokeStyle=`rgba(85,148,218,${facing?0.58:0.28})`; c.lineWidth=facing?1.1:0.6; c.stroke();
+  }
+  // Gap arc cap
+  const gapPts=[];
+  for(let a=-halfGap;a<=halfGap+0.01;a+=STEP)
+    gapPts.push(proj(rotCan(R*Math.cos(a),R*Math.sin(a),zz)));
+  if(cPt&&gapPts.some(Boolean)){
+    c.beginPath(); let fst=true;
+    for(const p of gapPts){if(!p){fst=true;continue;} fst?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fst=false;}
+    c.lineTo(cPt[0],cPt[1]); c.closePath();
+    c.fillStyle=`rgba(90,52,6,${facing?0.32:0.15})`; c.fill();
+    c.beginPath(); fst=true;
+    for(const p of gapPts){if(!p){fst=true;continue;} fst?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fst=false;}
+    c.strokeStyle=`rgba(220,148,28,${facing?0.48:0.22})`; c.lineWidth=0.8; c.setLineDash([2,3]); c.stroke(); c.setLineDash([]);
+  }
+}
+
+// ── Vertical wireframe edges (12, on top of shading) ──────────────────────
+for(let i=0;i<12;i++){
+  const a=i===0?0:i===11?2*Math.PI-halfGap:halfGap+(i-1)*paperAngle/10;
+  const tp=proj(rotCan(R*Math.cos(a),R*Math.sin(a), HH));
+  const bp=proj(rotCan(R*Math.cos(a),R*Math.sin(a),-HH));
+  if(!tp||!bp) continue;
+  const wn=rotCan(Math.cos(a),Math.sin(a),0);
+  const front=dot(wn,normalize(CAM))>0;
+  const gap2=inGap(a);
+  if(gap2){
+    c.strokeStyle=front?'rgba(232,160,32,0.68)':'rgba(140,100,18,0.25)';
+    c.lineWidth=front?1.2:0.6; c.setLineDash([3,3]);
+  }else{
+    c.strokeStyle=front?'rgba(105,172,225,0.72)':'rgba(50,80,125,0.28)';
+    c.lineWidth=front?1.4:0.7; c.setLineDash(front?[]:[3,3]);
+  }
+  c.beginPath();c.moveTo(tp[0],tp[1]);c.lineTo(bp[0],bp[1]);c.stroke();c.setLineDash([]);
+}
+
+// ── Pinhole level ring ────────────────────────────────────────────────────
+{const hRing=[];
+ for(let a=0;a<=2*Math.PI+0.01;a+=Math.PI/40)
+   hRing.push(proj(rotCan(R*Math.cos(a),R*Math.sin(a),hO)));
+ c.beginPath();let hf=true;
+ for(const p of hRing){if(!p){hf=true;continue;} hf?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);hf=false;}
+ c.strokeStyle='rgba(128,208,162,0.52)';c.lineWidth=0.9;c.setLineDash([2,4]);c.stroke();c.setLineDash([]);}
+
+// ── Noon ray (optical axis) ───────────────────────────────────────────────
+const pinPt=rotCan(R,0,hO), pp=proj(pinPt);
+const hitPt=rotCan(-R*0.96,0.02,hO), pa=proj(hitPt);
+if(pp&&pa){
+  // Inward dashed
+  c.beginPath();c.moveTo(pp[0],pp[1]);c.lineTo(pa[0],pa[1]);
+  c.strokeStyle='#e8a020';c.lineWidth=2.2;c.setLineDash([4,3]);c.stroke();c.setLineDash([]);
+  // Arrowhead
+  const dx=pa[0]-pp[0],dy=pa[1]-pp[1],l=Math.sqrt(dx*dx+dy*dy);
+  if(l>5){const nx=dx/l,ny=dy/l;
+    c.beginPath();c.moveTo(pa[0],pa[1]);
+    c.lineTo(pa[0]-nx*11-ny*5,pa[1]-ny*11+nx*5);
+    c.lineTo(pa[0]-nx*11+ny*5,pa[1]-ny*11-nx*5);
+    c.closePath();c.fillStyle='#e8a020';c.fill();}
+  // Outward ray
+  const ox=pp[0]-pa[0],oy=pp[1]-pa[1],ol=Math.sqrt(ox*ox+oy*oy);
+  if(ol>0.5){const nx=ox/ol,ny=oy/ol;
+    let t=Infinity;
+    if(nx>0)t=Math.min(t,(W-pp[0])/nx);else if(nx<0)t=Math.min(t,-pp[0]/nx);
+    if(ny>0)t=Math.min(t,(H-pp[1])/ny);else if(ny<0)t=Math.min(t,-pp[1]/ny);
+    if(t>0&&t<Infinity){c.beginPath();c.moveTo(pp[0],pp[1]);c.lineTo(pp[0]+nx*t,pp[1]+ny*t);
+      c.strokeStyle='rgba(232,160,32,0.78)';c.lineWidth=2.2;c.stroke();}
+  }
+}
+
+// ── Pinhole dot + glow ────────────────────────────────────────────────────
+if(pp){
+  const glow=c.createRadialGradient(pp[0],pp[1],0,pp[0],pp[1],16);
+  glow.addColorStop(0,'rgba(232,160,32,0.60)'); glow.addColorStop(1,'rgba(232,160,32,0)');
+  c.fillStyle=glow; c.fillRect(pp[0]-17,pp[1]-17,34,34);
+  c.beginPath();c.arc(pp[0],pp[1],5.5,0,Math.PI*2);
+  c.fillStyle='#e8a020';c.fill();
+  c.strokeStyle='rgba(0,0,0,0.55)';c.lineWidth=1.2;c.stroke();
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────
+c.font="10px 'Share Tech Mono', monospace";
+c.textAlign='left';
+const LX=18, LY=H-98, LS=18;
+const legend=[
+  {col:'#e8a020', sym:'●', txt:'pinhole'},
+  {col:'#e8a020', sym:'→', txt:'optical axis (Sun)', dash:true},
+  {col:'rgba(128,208,162,0.7)', sym:'--', txt:'pinhole level', dash:true},
+  {col:'rgba(90,150,218,0.85)',sym:'——', txt:'photopaper zone'},
+  {col:'rgba(220,148,28,0.80)',sym:'--', txt:'pinhole gap', dash:true},
+  {col:'#3870e0', sym:'Z↑', txt:'zenith axis'},
+];
+legend.forEach((item,i)=>{
+  const y=LY+i*LS;
+  c.fillStyle='rgba(8,14,24,0.70)';
+  c.fillRect(LX-4,y-12,200,14);
+  if(item.sym==='●'){
+    c.beginPath();c.arc(LX+6,y-3,4,0,Math.PI*2);c.fillStyle=item.col;c.fill();
+  } else if(item.sym==='Z↑'){
+    c.fillStyle=item.col;c.fillText('Z↑',LX+1,y);
+  } else {
+    c.beginPath();c.moveTo(LX,y-3);c.lineTo(LX+14,y-3);
+    c.strokeStyle=item.col;c.lineWidth=item.dash?1.2:2;
+    if(item.dash)c.setLineDash([3,2]);
+    c.stroke();c.setLineDash([]);
+  }
+  c.fillStyle='rgba(180,200,220,0.75)';c.fillText(item.txt,LX+20,y);
+});
+
+// Title
+c.font="11px 'Share Tech Mono', monospace";
+c.fillStyle='rgba(80,110,150,0.70)';c.textAlign='center';
+c.fillText('3D VIS — CONCEPT: SHADED SURFACE + DIFFUSE LIGHTING',W/2,22);
+</script></body></html>
