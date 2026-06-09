@@ -854,17 +854,6 @@
   #can3d { display: block; outline: 1px dashed rgba(90,120,150,0.55); }
   body.light #can3d { outline: 1px dashed rgba(60,90,120,0.65); }
 
-  /* Cladding toggle – shared style for panel and theater */
-  .cladding-row {
-    display: flex; align-items: center; gap: 5px;
-    cursor: pointer;
-    font-family: var(--mono); font-size: 10px; color: var(--dim);
-    padding: 2px 0;
-    user-select: none;
-  }
-  .cladding-row input[type=checkbox] { accent-color: var(--accent2); cursor: pointer; margin: 0; }
-  .cladding-row:hover { color: var(--text); }
-
   #can3dWrap { position: relative; align-self: flex-start; }
 
   @keyframes theaterPulse {
@@ -1128,6 +1117,28 @@
     background: rgba(240,208,64,0.08);
   }
   #noonChkIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
+
+  /* Cladding toggle – pod legendou, zarovnaný s noon checkboxem */
+  #claddingRow {
+    display: flex;
+    align-items: center;
+    gap: 5px;               /* stejný jako v #btnNoon */
+    margin-top: 10px;       /* výraznější mezera od btnNoon */
+    padding: 2px 6px;       /* left padding 6px = zarovná checkbox s #noonChkIcon */
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    user-select: none;
+  }
+  #claddingRow:hover { color: var(--text); }
+  #claddingRow input[type=checkbox] {
+    width: 13px; height: 13px;
+    margin: 0; flex-shrink: 0;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1255,7 +1266,7 @@
         <span>noon (custom date)</span>
         <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
       </button>
-      <label class="cladding-row" title="Toggle cylinder cladding on/off">
+      <label id="claddingRow" title="Zobrazit/skrýt opláštění plechovky">
         <input type="checkbox" id="chkCladding" checked>
         <span>cladding</span>
       </label>
@@ -1313,10 +1324,6 @@
       <div id="theaterZoomCtl">
         <input type="range" id="theaterZoom" min="0.5" max="2" step="0.1" value="1">
         <span id="theaterZoomVal">1.0×</span>
-        <label class="cladding-row" style="margin-top:4px;writing-mode:horizontal-tb" title="Toggle cylinder cladding">
-          <input type="checkbox" id="chkCladdingTheater" checked>
-          <span>clad</span>
-        </label>
       </div>
       <div id="splitHandle"></div>
       <button id="btnSplitInvert" title="Swap sides">↺</button>
@@ -2817,7 +2824,7 @@ let customMonth = 7; // 1-based, default July
 let customDay = 20;
 let showCustomArc = false;
 let show3DCulmination = false;
-let show3DCladding = true; // cladding on by default
+let show3DCladding    = true;  // opláštění plechovky – default zapnuto
 
 function updateDateLabels() {
   document.getElementById('lblMonth').textContent = MONTHS[customMonth - 1];
@@ -3350,14 +3357,14 @@ function draw3D() {
     paperFront:  'rgba(20,85,165,0.88)',
     paperArc:    'rgba(20,85,165,0.62)',
     gapArc:      'rgba(115,62,0,0.62)',
-    axisOut:     '#111111',            // light mode: black when noon inactive
+    axisOut:     '#111111',            // light mode: černá při neaktivním noon
     axisHit:     '#e8a020',            // sémantická barva – zachována v obou tématech
     axisMiss:    '#e04040',            // sémantická barva – zachována v obou tématech
     pinhole:     '#e8a020',            // sémantická barva – zachována v obou tématech
     pinholeRing: 'rgba(0,0,0,0.28)',
     horizon:     'rgba(12,72,40,0.50)',
     label:       'rgba(15,35,60,0.78)',
-    legAxis:     '#111111',            // sidebar legend – optical axis (black when noon inactive)
+    legAxis:     '#111111',            // sidebar legend – optical axis (černá při neaktivním noon)
     legHorizon:  '#1a7050',            // sidebar legend – pinhole level line
     legPaper:    '#1660a0',            // sidebar legend – photopaper line
     legN:        '#1245a0',
@@ -3588,7 +3595,7 @@ function draw3D() {
     const sp = Math.pow(Math.max(0,_dot3(norm,H2)),28)*0.20;
     return {b:Math.min(1.1,0.16+0.74*d1+d2), sp:Math.min(0.28,sp)};
   }
-  function _pCol(b,sp,front) { // paper zone – exterior
+  function _pCol(b,sp,front) { // paper zone
     if (_lt) {
       const r=Math.round(Math.min(255,70+100*b+sp*175)),g=Math.round(Math.min(255,105+108*b+sp*180)),bl=Math.round(Math.min(255,140+98*b+sp*195));
       return `rgba(${r},${g},${bl},${front?0.88:0.46})`;
@@ -3596,7 +3603,7 @@ function draw3D() {
     const r=Math.round(Math.min(255,22+110*b+sp*210)),g=Math.round(Math.min(255,48+125*b+sp*215)),bl=Math.round(Math.min(255,78+140*b+sp*235));
     return `rgba(${r},${g},${bl},${front?0.91:0.52})`;
   }
-  function _gCol(b,sp,front) { // gap zone – exterior
+  function _gCol(b,sp,front) { // gap zone
     if (_lt) {
       const r=Math.round(Math.min(255,110+105*b+sp*155)),g=Math.round(Math.min(255,68+72*b+sp*115)),bl=Math.round(Math.min(255,14+18*b+sp*50));
       return `rgba(${r},${g},${bl},${front?0.80:0.38})`;
@@ -3604,31 +3611,20 @@ function draw3D() {
     const r=Math.round(Math.min(255,50+155*b+sp*175)),g=Math.round(Math.min(255,28+75*b+sp*130)),bl=Math.round(Math.min(255,3+16*b+sp*55));
     return `rgba(${r},${g},${bl},${front?0.84:0.40})`;
   }
-  // Interior surface: paper zone = near-white (real solarcan is white inside), gap = dark grey (light-tight)
-  function _pColIn(b,sp) { // paper interior – warm off-white with shading gradient
-    const r=Math.round(Math.min(255,195+52*b+sp*28)),g=Math.round(Math.min(255,192+50*b+sp*25)),bl=Math.round(Math.min(255,182+46*b+sp*20));
-    return `rgba(${r},${g},${bl},0.92)`;
-  }
-  function _gColIn(b) { // gap interior – very dark grey (light-tight aluminium can body)
-    const v=Math.round(Math.min(75,18+32*b));
-    return `rgba(${v},${v},${v},0.90)`;
-  }
 
   // ── Shaded cylinder surface (360 strips, painter-sorted) ────────────────────
   { const NSTR = 360;
     const strips = [];
     for (let i = 0; i < NSTR; i++) {
       const a1 = i*2*Math.PI/NSTR, a2 = (i+1)*2*Math.PI/NSTR, aMid = (a1+a2)/2;
-      const norm    = R( Math.cos(aMid),  Math.sin(aMid), 0); // outward
-      const normIn  = R(-Math.cos(aMid), -Math.sin(aMid), 0); // inward (for interior shading)
+      const norm = R(Math.cos(aMid), Math.sin(aMid), 0);
       const pts3d = [
         R(RN*Math.cos(a1),RN*Math.sin(a1), HH), R(RN*Math.cos(a2),RN*Math.sin(a2), HH),
         R(RN*Math.cos(a2),RN*Math.sin(a2),-HH), R(RN*Math.cos(a1),RN*Math.sin(a1),-HH),
       ];
       const depth = (pts3d.reduce((s,p)=>s+_dep3(p),0))/4;
       const toCam = _nor3([_3D.CAM[0]-pts3d[0][0],_3D.CAM[1]-pts3d[0][1],_3D.CAM[2]-pts3d[0][2]]);
-      strips.push({pts3d, depth, front:_dot3(norm,toCam)>0, gap:inGap(aMid),
-                   sh:_shd(norm), shi:_shd(normIn)});
+      strips.push({pts3d, depth, front:_dot3(norm,toCam)>0, gap:inGap(aMid), sh:_shd(norm)});
     }
     strips.sort((a,b)=>a.depth-b.depth);
     if (show3DCladding) {
@@ -3638,13 +3634,7 @@ function draw3D() {
         c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
         for (let j=1;j<4;j++) c.lineTo(pts[j][0],pts[j][1]);
         c.closePath();
-        if (s.front) {
-          // exterior surface
-          c.fillStyle = s.gap ? _gCol(s.sh.b,s.sh.sp,true) : _pCol(s.sh.b,s.sh.sp,true);
-        } else {
-          // interior surface: near-white paper zone, dark grey gap zone
-          c.fillStyle = s.gap ? _gColIn(s.shi.b) : _pColIn(s.shi.b, s.shi.sp);
-        }
+        c.fillStyle = s.gap ? _gCol(s.sh.b,s.sh.sp,s.front) : _pCol(s.sh.b,s.sh.sp,s.front);
         c.fill();
       }
     }
@@ -3724,17 +3714,20 @@ function draw3D() {
     // dotted with camera direction from origin.  Positive → face toward camera → visible.
     const nx = Math.cos(ang), ny = Math.sin(ang);
     const [wx, wy] = [R(nx, ny, 0)[0], R(nx, ny, 0)[1]];
-    const isBack = wx * _3D.CAM[0] + wy * _3D.CAM[1] <= 0;
-    if (isBack) continue; // exterior only – no interior dashed lines
+    // Perspektivně správný test: hrana je viditelná zvenku jen pokud (CAM-edgePos)·n > 0
+    // = CAM·n - RN*(n·n) > 0  = dot - RN > 0.  Bez RN selhává při pohledu shora.
+    const dot_nCam = wx * _3D.CAM[0] + wy * _3D.CAM[1];
+    const isBack = dot_nCam <= RN;
+    if (isBack) continue; // exterior only – žádné svislice na vnitřní ploše
     const gap  = inGap(ang);
     if (gap) {
-      c.strokeStyle = isBack ? pal.gapBack : pal.gapFront;
-      c.lineWidth   = (isBack ? 0.6 : 1.0) * lwMul;
+      c.strokeStyle = pal.gapFront;
+      c.lineWidth   = 1.0 * lwMul;
       c.setLineDash([3, 3]);
     } else {
-      c.strokeStyle = isBack ? pal.paperBack : pal.paperFront;
-      c.lineWidth   = (isBack ? 0.7 : 1.2) * lwMul;
-      c.setLineDash(isBack ? [3, 3] : []);
+      c.strokeStyle = pal.paperFront;
+      c.lineWidth   = 1.2 * lwMul;
+      c.setLineDash([]);
     }
     c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(b[0], b[1]);
     c.stroke(); c.setLineDash([]);
@@ -4087,15 +4080,11 @@ document.getElementById('theaterZoom').addEventListener('input', (e) => {
   setTheaterZoom(parseFloat(e.target.value));
 });
 
-// ── Cladding toggle (panel + theater sync) ───────────────────────────────────
-function setCladdingMode(on) {
-  show3DCladding = on;
-  document.getElementById('chkCladding').checked = on;
-  document.getElementById('chkCladdingTheater').checked = on;
+// ── Cladding toggle ──────────────────────────────────────────────────────────
+document.getElementById('chkCladding').addEventListener('change', (e) => {
+  show3DCladding = e.target.checked;
   draw3D();
-}
-document.getElementById('chkCladding').addEventListener('change', (e) => setCladdingMode(e.target.checked));
-document.getElementById('chkCladdingTheater').addEventListener('change', (e) => setCladdingMode(e.target.checked));
+});
 
 // ── Theater drag-orbit (mouse + one-finger touch) ────────────────────────────
 {
