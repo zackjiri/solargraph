@@ -3721,13 +3721,18 @@ function draw3D() {
     // dotted with camera direction from origin.  Positive → face toward camera → visible.
     const nx = Math.cos(ang), ny = Math.sin(ang);
     const [wx, wy] = [R(nx, ny, 0)[0], R(nx, ny, 0)[1]];
-    // Perspektivně správný test: hrana je viditelná zvenku jen pokud (CAM-edgePos)·n > 0
-    // = CAM·n - RN*(n·n) > 0  = dot - RN > 0.  Bez RN selhává při pohledu shora.
+    // Perspektivně správný test: hrana je na vnějšku pokud (CAM-edgePos)·n > 0
+    // = dot - RN > 0.  Bez RN selhává při pohledu shora.
     const dot_nCam = wx * _3D.CAM[0] + wy * _3D.CAM[1];
     const isBack = dot_nCam <= RN;
-    if (isBack) continue; // exterior only – žádné svislice na vnitřní ploše
+    // Zadní (vnitřní) hrany vždy čárkovaně – zejména bez opláštění jsou potřeba
+    // Přední hrany: papírová zóna plnou čárou, mezerová čárkovaně
     const gap  = inGap(ang);
-    if (gap) {
+    if (isBack) {
+      c.strokeStyle = gap ? pal.gapBack : pal.paperBack;
+      c.lineWidth   = (gap ? 0.6 : 0.7) * lwMul;
+      c.setLineDash([3, 3]);
+    } else if (gap) {
       c.strokeStyle = pal.gapFront;
       c.lineWidth   = 1.0 * lwMul;
       c.setLineDash([3, 3]);
