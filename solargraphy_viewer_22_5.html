@@ -859,9 +859,7 @@
   }
   body.light #can3dWrap { border-color: rgba(60,90,120,0.65); }
 
-  /* Theater canvas – stejné orámování */
-  #can3dTheater { border: 1px dashed rgba(90,120,150,0.55); }
-  body.light #can3dTheater { border-color: rgba(60,90,120,0.65); }
+  /* Theater canvas – bez orámování (dashed border jen v panelu náhledu) */
 
   @keyframes theaterPulse {
     0%, 100% { color: rgba(160,190,220,0.65); filter: none; }
@@ -3383,9 +3381,9 @@ function draw3D() {
     compassW:    '#50dc78',
     compassE:    '#78c878',
     zAxis:       '#4080e8',
-    gapBack:     'rgba(140,100,20,0.3)',
+    gapBack:     'rgba(200,140,30,0.55)',
     gapFront:    'rgba(232,160,32,0.75)',
-    paperBack:   'rgba(50,80,115,0.5)',
+    paperBack:   'rgba(80,140,210,0.60)',
     paperFront:  'rgba(90,170,208,0.8)',
     paperArc:    'rgba(90,170,208,0.65)',
     gapArc:      'rgba(232,160,32,0.65)',
