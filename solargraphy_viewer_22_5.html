@@ -827,19 +827,19 @@
 
   /* 3D Can orientation panel – Analyzer mode only */
   #can3dPanel {
-    flex: 0 0 180px;
-    width: 180px;
+    flex: 0 0 200px;                     /* shodné s --sidebar (pravý panel) */
+    width: 200px;
     background: var(--panel);
     border-right: 1px solid var(--border);
     display: none;
     flex-direction: column;
     align-items: flex-start;
-    padding: 8px 0 4px 10px;
+    padding: 8px 10px 4px 10px;          /* pravý padding 10px – zabrání ořezu can3dWrap */
     gap: 0;
-    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
+    overflow-y: auto;                    /* scrollbar jen když je potřeba → neubírá šířku nadbytečně */
     overflow-x: hidden;
-    min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
-    -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
   }
   #can3dPanel.visible { display: flex; }
   #can3dPanel .panel-title {
@@ -849,7 +849,6 @@
     color: var(--accent-green);
     text-transform: uppercase;
     margin-bottom: 6px;
-    padding-right: 10px;        /* right breathing room, mirrors panel left padding */
   }
   #can3d { display: block; }
 
