@@ -851,7 +851,8 @@
     margin-bottom: 6px;
     padding-right: 10px;        /* right breathing room, mirrors panel left padding */
   }
-  #can3d { display: block; }
+  #can3d { display: block; outline: 1px dashed rgba(90,120,150,0.55); }
+  body.light #can3d { outline: 1px dashed rgba(60,90,120,0.65); }
 
   #can3dWrap { position: relative; align-self: flex-start; }
 
@@ -3494,7 +3495,7 @@ function draw3D() {
   c.setLineDash([]);
 
   // ── Compass rose at floor level (world-fixed N/S/E/W) ──
-  const CR = 0.55; // arrow length
+  const CR = gn * GS; // arrow length – reaches tile edges (= 1.05)
   const roseCenter = [0, 0, -HH];
   const rc = proj(roseCenter);
   if (rc) {
@@ -3584,8 +3585,8 @@ function draw3D() {
     return `rgba(${r},${g},${bl},${front?0.84:0.40})`;
   }
 
-  // ── Shaded cylinder surface (80 strips, painter-sorted) ─────────────────────
-  { const NSTR = 80;
+  // ── Shaded cylinder surface (360 strips, painter-sorted) ────────────────────
+  { const NSTR = 360;
     const strips = [];
     for (let i = 0; i < NSTR; i++) {
       const a1 = i*2*Math.PI/NSTR, a2 = (i+1)*2*Math.PI/NSTR, aMid = (a1+a2)/2;
@@ -3610,17 +3611,23 @@ function draw3D() {
     }
   }
 
-  // ── Caps: top + bottom (semi-transparent filled arcs) ──────────────────────
-  { const CSTEP = Math.PI/40;
-    for (const zz of [HH, -HH]) {
+  // ── Cap: bottom only (semi-transparent filled arcs) ────────────────────────
+  { const CSTEP = Math.PI/180; // 1° steps – exact halfGap boundary, no rounding
+    for (const zz of [-HH]) {
       const ctr3d = R(0,0,zz), cPt = proj(ctr3d);
       const capNorm = R(0,0,zz>0?1:-1);
       const toCam2 = _nor3([_3D.CAM[0]-ctr3d[0],_3D.CAM[1]-ctr3d[1],_3D.CAM[2]-ctr3d[2]]);
       const facing = _dot3(capNorm,toCam2) > 0;
-      // Paper cap
-      const fanP = [];
-      for (let a=halfGap; a<=2*Math.PI-halfGap+0.01; a+=CSTEP)
-        fanP.push(proj(R(RN*Math.cos(a),RN*Math.sin(a),zz)));
+      // Paper cap: fan from halfGap → 2π-halfGap (exact endpoints added explicitly)
+      const _fanArc = (aStart, aEnd) => {
+        const pts = [];
+        pts.push(proj(R(RN*Math.cos(aStart),RN*Math.sin(aStart),zz)));
+        for (let a = aStart + CSTEP; a < aEnd - CSTEP*0.5; a += CSTEP)
+          pts.push(proj(R(RN*Math.cos(a),RN*Math.sin(a),zz)));
+        pts.push(proj(R(RN*Math.cos(aEnd),RN*Math.sin(aEnd),zz)));
+        return pts;
+      };
+      const fanP = _fanArc(halfGap, 2*Math.PI - halfGap);
       if (cPt && fanP.some(Boolean)) {
         c.beginPath(); let fs2=true;
         for (const p of fanP){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
@@ -3631,10 +3638,8 @@ function draw3D() {
         for (const p of fanP){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
         c.strokeStyle = `rgba(${_lt?'55,130,215':'85,148,218'},${facing?0.55:0.26})`; c.lineWidth=(facing?1.0:0.6)*lwMul; c.stroke();
       }
-      // Gap cap
-      const fanG = [];
-      for (let a=-halfGap; a<=halfGap+0.01; a+=CSTEP)
-        fanG.push(proj(R(RN*Math.cos(a),RN*Math.sin(a),zz)));
+      // Gap cap: fan from -halfGap → +halfGap (exact endpoints)
+      const fanG = _fanArc(-halfGap, halfGap);
       if (cPt && fanG.some(Boolean)) {
         c.beginPath(); let fs2=true;
         for (const p of fanG){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
@@ -3677,6 +3682,7 @@ function draw3D() {
     const nx = Math.cos(ang), ny = Math.sin(ang);
     const [wx, wy] = [R(nx, ny, 0)[0], R(nx, ny, 0)[1]];
     const isBack = wx * _3D.CAM[0] + wy * _3D.CAM[1] <= 0;
+    if (isBack) continue; // exterior only – no interior dashed lines
     const gap  = inGap(ang);
     if (gap) {
       c.strokeStyle = isBack ? pal.gapBack : pal.gapFront;
