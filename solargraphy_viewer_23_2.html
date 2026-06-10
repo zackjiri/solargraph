@@ -4070,7 +4070,7 @@ function draw3D() {
 
     arrows.forEach((arw, i) => {
       // Travelling wave: phase advances with time and lags by index along the chain
-      const pulse = 0.5 + 0.5 * Math.sin(_wavePhase * 0.005 - i * 0.55);
+      const pulse = 0.5 + 0.5 * Math.sin(_wavePhase * (Math.PI / 2000) - i * 0.55);
       const len   = (5 + 3.2 * pulse) * lwMul;
       const wid   = len * 0.6;
       const tx = arw.x + arw.dx * len,       ty = arw.y + arw.dy * len;
