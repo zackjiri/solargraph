@@ -1364,7 +1364,7 @@
       </div>
       <div class="lat-row" style="margin-top:2px;margin-bottom:6px">
         <button class="lat-btn" id="btnScanWDec">◀</button>
-        <input type="number" class="lat-input" id="inpScanW" min="50" max="300" step="1" value="178">
+        <input type="number" class="lat-input" id="inpScanW" min="80" max="300" step="1" value="178">
         <button class="lat-btn" id="btnScanWInc">▶</button>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">mm</span>
         <input type="text" class="lat-input" id="inpScanH" value="—" readonly tabindex="-1"
@@ -1404,7 +1404,7 @@
           <span class="slider-label" style="color:#cc88cc">Radius</span>
           <span class="slider-val" style="color:#cc88cc" id="lblHScale">33.0 mm</span>
         </div>
-        <input type="range" id="rngHScale" min="10" max="80" step="0.5" value="33" style="accent-color:#cc88cc">
+        <input type="range" id="rngHScale" min="15" max="80" step="0.5" value="33" style="accent-color:#cc88cc">
       </div>
       <div class="slider-row">
         <div class="slider-header">
@@ -2747,7 +2747,7 @@ function refreshCalibLimits() {
 
   // 1) radius vs. scan width (řešeno první – tím se zamezí nechtěnému zkrácení papíru
   //    při zmenšování radiusu; radius se místo toho zastaví na minimu)
-  const rMin = Math.max(10, Math.ceil(scanWmm / TWO_PI * 2) / 2);
+  const rMin = Math.max(15, Math.ceil(scanWmm / TWO_PI * 2) / 2);
   if (rngR) rngR.min = rMin;
   if (radius < rMin) {
     radius = rMin; hScale = radius / R;
@@ -2779,7 +2779,7 @@ function refreshCalibLimits() {
 
 // ─── Scan width control ───────────────────────────────────────────────────
 function applyScanW(val) {
-  scanWmm = Math.round(Math.max(50, Math.min(300, val)));
+  scanWmm = Math.round(Math.max(80, Math.min(300, val)));
   // limit: papír nepřekročí obvod plechovky (max 360° opásání)
   scanWmm = Math.min(scanWmm, Math.floor(TWO_PI * radius));
   document.getElementById('inpScanW').value = scanWmm;
