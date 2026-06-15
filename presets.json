@@ -102,16 +102,16 @@
     "GEN-2_6": {
     "yaw_deg":     116.5,
     "pitch_deg":   14.5,
-    "roll_deg":     0.0,
-    "horizon_mm":   3.5,
-    "radius_mm":   32.0,
+    "roll_deg":     0.9,
+    "horizon_mm":   4.0,
+    "radius_mm":   29.5,
     "scan_w_mm":  178,
     "latitude":    49.5,
     "hemisphere":  "N"
   },  
     "GEN-2_7": {
     "yaw_deg":     -10.0,
-    "pitch_deg":   25.0,
+    "pitch_deg":   24.5,
     "roll_deg":     0.8,
     "horizon_mm":   -1.0,
     "radius_mm":   33.0,
