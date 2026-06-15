@@ -144,6 +144,32 @@
           }
         },
         {
+          "index": 6,
+          "layers": [
+            0,
+            1,
+            2
+          ],
+          "metadata": {
+            "exposure_start": "2026-01-17",
+            "exposure_end": "2026-06-13",
+            "location": "Bystrice nad Pernstejnem, Czechia"
+          }
+        },
+        {
+          "index": 7,
+          "layers": [
+            0,
+            1,
+            2
+          ],
+          "metadata": {
+            "exposure_start": "2026-01-17",
+            "exposure_end": "2026-06-13",
+            "location": "Bystrice nad Pernstejnem, Czechia"
+          }
+        },                
+        {
           "index": 8,
           "layers": [
             0,
