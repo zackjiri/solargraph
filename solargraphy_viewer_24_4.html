@@ -4395,44 +4395,76 @@ function stopSunAnim() {
   updateSunWave();   // cancel the loop in analyzer (kept running in theater for the wave)
 }
 
-// Is the sun's image on the paper at solar time t? (used to paint the slider regions)
-function sunOnPaperAt(t, ctx) {
+// Inverse can rotation in world space (global twin of draw3D's rotCanInv) – pure function
+// of the calibration angles. Used to test whether the sun faces the pinhole wall.
+function _rotCanInvWorld(x, y, z) {
+  const yr = (yawDeg + (hemisphere < 0 ? 180 : 0)) * Math.PI / 180;
+  const pr = pitchDeg * Math.PI / 180, rr = rollDeg * Math.PI / 180;
+  const x0 =  x * Math.cos(yr) + y * Math.sin(yr);
+  const y0 = -x * Math.sin(yr) + y * Math.cos(yr);
+  const z0 = z;
+  const x1 = x0;
+  const y1 =  y0 * Math.cos(rr) - z0 * Math.sin(rr);
+  const z1 =  y0 * Math.sin(rr) + z0 * Math.cos(rr);
+  const x2 =  x1 * Math.cos(pr) + z1 * Math.sin(pr);
+  const y2 =  y1;
+  const z2 = -x1 * Math.sin(pr) + z1 * Math.cos(pr);
+  return [x2, y2, z2];
+}
+// Classify the sun ray at solar time t for the slider track:
+//   2 = image lands on paper (green)
+//   1 = ray enters the can but misses the paper – cap/gap (red, like the MISS optical axis)
+//   0 = ray does not enter the can (sun below horizon / behind the pinhole wall) (grey)
+function sunRayState(t, ctx) {
+  // On paper? (path convention – matches the green curve / surfMap)
   const hDeg = (t - 12) * 15 * hemisphere;
   const s = sunPosition(hDeg * Math.PI / 180, ctx.delta, ctx.phi);
-  if (s.el <= 0) return false;
-  const pos = azElToPixel(s.beta - yawDeg, s.el);
-  if (!pos) return false;
-  const a = Math.PI + (pos.px - cx) / (scale * radius);
-  const z = (pos.py - cy) / (scale * ctx.halfHmm);
-  return a >= ctx.halfGap && a <= 2 * Math.PI - ctx.halfGap && z >= -1 && z <= 1;
+  if (s.el > 0) {
+    const pos = azElToPixel(s.beta - yawDeg, s.el);
+    if (pos) {
+      const a = Math.PI + (pos.px - cx) / (scale * radius);
+      const z = (pos.py - cy) / (scale * ctx.halfHmm);
+      if (a >= ctx.halfGap && a <= 2 * Math.PI - ctx.halfGap && z >= -1 && z <= 1) return 2;
+    }
+  }
+  // Enters the can but misses paper? (signed-φ world; sun above horizon AND faces pinhole)
+  const sp = sunPosition((t - 12) * 15 * Math.PI / 180, ctx.deltaS, ctx.phiS);
+  if (sp.el > 0) {
+    const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+    const sunDirW = [-Math.cos(azR) * Math.cos(elR), -Math.sin(azR) * Math.cos(elR), Math.sin(elR)];
+    if (_rotCanInvWorld(sunDirW[0], sunDirW[1], sunDirW[2])[0] > 1e-9) return 1;
+  }
+  return 0;
 }
-// Build the slider track gradient: green where the sun is imaged on paper (may be
-// several disjoint regions – e.g. around noon the ray can miss the paper).
+// Build the slider track gradient: green = on paper, red = enters but misses, grey = no entry.
+// Any of these may be several disjoint regions across the day.
 function updateSunFill() {
   const rng = document.getElementById('rngSunTime');
   if (!rng) return;
   const arc = customArcDate();
   const ctx = {
-    delta: sunDeclination(dayOfYear(arc.month, arc.day)),
-    phi:   effectiveLat(),
+    delta:  sunDeclination(dayOfYear(arc.month, arc.day)),       // path convention (positive φ)
+    phi:    effectiveLat(),
+    deltaS: sunDeclination(dayOfYear(customMonth, customDay)),   // signed-φ convention
+    phiS:   effectiveLat() * hemisphere,
     halfHmm: currentHalfHmm(),
     halfGap: (2 * Math.PI - Math.min(2 * Math.PI - 0.01, scanWmm / radius)) / 2,
   };
   const { tRise, tSet } = sunDayRange();
   const span = Math.max(0.001, tSet - tRise);
-  const GREEN = 'rgba(80,220,120,0.62)', OFF = 'rgba(120,140,160,0.18)';
+  const COL = ['rgba(120,140,160,0.18)', 'rgba(224,64,64,0.45)', 'rgba(80,220,120,0.62)']; // 0,1,2
   const N = 160, parts = [];
-  let prevOn = sunOnPaperAt(tRise, ctx);
-  parts.push((prevOn ? GREEN : OFF) + ' 0%');
+  let prev = sunRayState(tRise, ctx);
+  parts.push(COL[prev] + ' 0%');
   for (let i = 1; i <= N; i++) {
-    const on = sunOnPaperAt(tRise + span * i / N, ctx);
-    if (on !== prevOn) {
+    const st = sunRayState(tRise + span * i / N, ctx);
+    if (st !== prev) {
       const pct = (i / N * 100).toFixed(2);
-      parts.push((prevOn ? GREEN : OFF) + ' ' + pct + '%', (on ? GREEN : OFF) + ' ' + pct + '%');
-      prevOn = on;
+      parts.push(COL[prev] + ' ' + pct + '%', COL[st] + ' ' + pct + '%');
+      prev = st;
     }
   }
-  parts.push((prevOn ? GREEN : OFF) + ' 100%');
+  parts.push(COL[prev] + ' 100%');
   rng.style.setProperty('--sun-fill', 'linear-gradient(to right, ' + parts.join(',') + ')');
 }
 // Rebuild the gradient only when a relevant parameter changed (cheap key check)
