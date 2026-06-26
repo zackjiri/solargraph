@@ -1109,6 +1109,12 @@
     width: 3px; height: 24px;
     background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
   }
+  /* Sunrise / sunset end labels under the slider */
+  .sun-rise-set {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.14em;
+    color: var(--dim); margin-top: 1px;
+  }
 
   /* ── Theater status panel (top-left) ── */
   #theaterStatus {
@@ -1150,7 +1156,7 @@
 
   /* Noon button – in legend, styled like Isolines button */
   #btnNoon {
-    margin-top: 12px;
+    margin-top: 22px;
     width: 100%;
     display: flex;
     align-items: center;
@@ -1335,12 +1341,16 @@
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
           <span>ANIMATE SUNLIGHT</span>
         </button>
-        <div class="slider-row" style="margin-top:6px">
+        <div class="slider-row" style="margin-top:16px">
           <div class="slider-header">
             <span class="slider-label" style="color:#f0d040">Solar time</span>
             <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
           </div>
           <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%">
+          <div class="sun-rise-set">
+            <span>RISE</span>
+            <span>SET</span>
+          </div>
         </div>
       </div>
     </div>
@@ -3959,7 +3969,8 @@ function draw3D() {
     const hit  = surfMap(hitH);                                  // {pt,a,z} or null (miss)
     const sInf = sunPosition(hitH * Math.PI / 180, _cDelta, _cPhi);
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
-              + '  ' + Math.round(Math.max(0, sInf.el)) + '°';
+              + ' · ' + fmtSolarTime(sunTimeHours)
+              + ' · Alt ' + Math.round(Math.max(0, sInf.el)) + '°';
     if (hit) {
       pa = hit.pt;
       noonHitsPaper = true;
