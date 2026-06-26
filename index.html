@@ -1055,6 +1055,67 @@
   #btnL2Play.playing:hover { background: rgba(232,160,32,0.28); }
   #btnL2Play svg { display: block; }
 
+  /* Day-animation controls (Sun path) – play button styled like CROSSFADE LOOP */
+  #sunAnimCtl { width: 100%; margin-top: 6px; }
+  #btnSunPlay {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(240,208,64,0.14);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #btnSunPlay:hover { background: rgba(240,208,64,0.26); }
+  #btnSunPlay.playing {
+    background: rgba(232,120,40,0.16);
+    border-color: #e8782a;
+    color: #f0a050;
+  }
+  #btnSunPlay.playing:hover { background: rgba(232,120,40,0.30); }
+  #btnSunPlay svg { display: block; }
+  /* Solar-time slider: double-height track, green = sun-on-paper regions (--sun-fill),
+     thumb = thin vertical cursor line (no ball) */
+  #rngSunTime {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 16px;            /* ~2× a default range track */
+    background: transparent; cursor: pointer; margin: 3px 0;
+  }
+  #rngSunTime::-webkit-slider-runnable-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-moz-range-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 3px; height: 24px; margin-top: -5px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  #rngSunTime::-moz-range-thumb {
+    width: 3px; height: 24px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  /* Sunrise / sunset end labels under the slider */
+  .sun-rise-set {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.14em;
+    color: var(--dim); margin-top: 1px;
+  }
+
   /* ── Theater status panel (top-left) ── */
   #theaterStatus {
     position: absolute; top: 8px; left: 10px;
@@ -1095,7 +1156,7 @@
 
   /* Noon button – in legend, styled like Isolines button */
   #btnNoon {
-    margin-top: 12px;
+    margin-top: 22px;
     width: 100%;
     display: flex;
     align-items: center;
@@ -1266,15 +1327,32 @@
         <span class="leg-sym" style="color:#78c878;flex:0 0 14px">E</span>
         <span>compass rose</span>
       </div>
-      <button id="btnNoon" title="Show noon ray for custom date">
-        <span id="noonChkIcon">☐</span>
-        <span>noon (custom date)</span>
-        <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
-      </button>
       <label id="claddingRow" title="Toggle cylinder cladding on/off">
         <input type="checkbox" id="chkCladding" checked>
         <span>cladding</span>
       </label>
+      <button id="btnNoon" title="Show the sun path for the custom date">
+        <span id="noonChkIcon">☐</span>
+        <span>Sun path (custom date)</span>
+        <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
+      </button>
+      <div id="sunAnimCtl" style="display:none">
+        <button id="btnSunPlay" title="Animate the sunlight across the day (sunrise → sunset)">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+          <span>ANIMATE SUNLIGHT</span>
+        </button>
+        <div class="slider-row" style="margin-top:16px">
+          <div class="slider-header">
+            <span class="slider-label" style="color:#f0d040">Solar time</span>
+            <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
+          </div>
+          <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%">
+          <div class="sun-rise-set">
+            <span>RISE</span>
+            <span>SET</span>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="can3dButtons">
       <div class="panel-title" style="align-self:flex-start;margin-bottom:3px">Preset</div>
@@ -1464,7 +1542,7 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.6.15
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.6.26
 </div>
 
 <script>
@@ -2154,6 +2232,26 @@ function draw() {
       ctx.textAlign = 'left';
       ctx.strokeText(dateLabel, lx, ly);
       ctx.fillText(dateLabel,   lx, ly);
+    }
+
+    // Animated Sun marker on the path (Analyzer): yellow dot in the theater pinhole style
+    if (show3DCulmination) {
+      maybeUpdateSunFill();                          // keep slider regions in sync (analyzer)
+      const dDelta = sunDeclination(dayOfYear(cm, cd));
+      const hDeg = (sunTimeHours - 12) * 15 * hemisphere;
+      const s = sunPosition(hDeg * Math.PI / 180, dDelta, phi);
+      if (s.el >= 0) {
+        const sp = azElToPixel(s.beta - yawDeg, s.el);
+        if (sp && sp.px >= 0 && sp.px <= W && sp.py >= 0 && sp.py <= H) {
+          const glR = 14;
+          const glow = ctx.createRadialGradient(sp.px, sp.py, 0, sp.px, sp.py, glR);
+          glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
+          ctx.fillStyle = glow; ctx.fillRect(sp.px - glR, sp.py - glR, glR * 2, glR * 2);
+          ctx.beginPath(); ctx.arc(sp.px, sp.py, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#e8a020'; ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      }
     }
   }
 
@@ -2892,6 +2990,13 @@ let show3DCulmination = false;
 let show3DCladding    = true;  // cylinder cladding – on by default
 let _wavePhase        = 0;     // ms timestamp driving the hourly-arrow "Mexican wave"
 let sunWaveRAF        = null;  // requestAnimationFrame handle for the wave loop
+let sunTimeHours      = 12;    // current solar time of the animated sun ray (default = noon)
+let sunAnimActive     = false; // day animation playing?
+let sunAnimStart      = null;  // ms timestamp captured on the first frame after Play
+let sunAnimOffset     = 0;     // seconds into the cycle to resume from (Play continues from Stop)
+let _sunEnterT0       = 12;    // solar time when the ray starts entering the can (slider boundary)
+let _sunEnterT1       = 12;    // solar time when the ray stops entering the can
+const SUN_RATE_HPS    = 0.5;   // animation speed: hours of solar time per real second
 
 function updateDateLabels() {
   document.getElementById('lblMonth').textContent = MONTHS[customMonth - 1];
@@ -2901,12 +3006,12 @@ function updateDateLabels() {
 document.getElementById('btnMonDec').addEventListener('click', () => {
   customMonth = customMonth > 1 ? customMonth - 1 : 12;
   customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
 });
 document.getElementById('btnMonInc').addEventListener('click', () => {
   customMonth = customMonth < 12 ? customMonth + 1 : 1;
   customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
 });
 document.getElementById('btnDayDec').addEventListener('click', () => {
   if (customDay > 1) {
@@ -2916,7 +3021,7 @@ document.getElementById('btnDayDec').addEventListener('click', () => {
     customMonth = customMonth > 1 ? customMonth - 1 : 12;
     customDay   = DAYS_IN_MONTH[customMonth - 1];
   }
-  updateDateLabels(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
 });
 document.getElementById('btnDayInc').addEventListener('click', () => {
   if (customDay < DAYS_IN_MONTH[customMonth - 1]) {
@@ -2926,10 +3031,10 @@ document.getElementById('btnDayInc').addEventListener('click', () => {
     customMonth = customMonth < 12 ? customMonth + 1 : 1;
     customDay   = 1;
   }
-  updateDateLabels(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
 });
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
-  showCustomArc = e.target.checked; draw();
+  showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
 });
 function updateAxisLegend() {
   const sym = document.getElementById('legAxisSym');
@@ -2953,7 +3058,21 @@ function updateAxisLegend() {
 }
 // Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
 document.getElementById('btnNoon').addEventListener('click', () => {
-  show3DCulmination = !show3DCulmination; updateAxisLegend(); draw3D(); updateSunWave();
+  show3DCulmination = !show3DCulmination;
+  if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+  updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
+});
+
+// Day-animation controls: play/stop button + solar-time slider
+document.getElementById('btnSunPlay').addEventListener('click', () => {
+  if (sunAnimActive) stopSunAnim(); else startSunAnim();
+});
+document.getElementById('rngSunTime').addEventListener('input', (e) => {
+  if (sunAnimActive) stopSunAnim();            // manual scrub stops the loop
+  // Only the entering interval (green + red, between the white lines) is clickable
+  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, parseFloat(e.target.value)));
+  syncSunTimeUI();
+  draw(); draw3D();                            // 2D sun dot + 3D ray
 });
 
 // ─── Opacity label ──────────────────────────────────────────────────────────
@@ -3242,6 +3361,7 @@ function setMode(mode) {
     setPresetButtonsEnabled(imgBitmap !== null);
     draw3D();
   } else {
+    stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     btnA.className = 'mode-btn';
     btnG.className = 'mode-btn active-gallery';
     galleryPanel.classList.add('visible');
@@ -3554,6 +3674,29 @@ function draw3D() {
     return [x2, y2, z2];
   }
 
+  // ── Custom-day sun geometry, shared by the path, the hourly arrows and the
+  //    animated sun ray. Maps a sun hour-angle (deg) onto the paper surface.
+  //    Because the projection is x = 2·r·α, the flat-scan pixel IS the arc length,
+  //    so a 2D path point (px,py) maps onto the cylinder with no extra optics:
+  //      a = π + (px − cx)/(scale·radius)   central angle from the back-wall centre
+  //      z = (py − cy)/(scale·halfHmm)      height (canvas-down → paper-up)
+  //    Returns { pt:[x,y], a, z } or null (below horizon / off paper / behind camera).
+  const _cArc   = customArcDate();
+  const _cDelta = sunDeclination(dayOfYear(_cArc.month, _cArc.day));
+  const _cPhi   = effectiveLat();
+  const _aMin = halfGap, _aMax = 2 * Math.PI - halfGap;
+  function surfMap(hDeg) {
+    const s = sunPosition(hDeg * Math.PI / 180, _cDelta, _cPhi);
+    if (s.el < 0) return null;
+    const pos = azElToPixel(s.beta - yawDeg, s.el);
+    if (!pos) return null;
+    const a = Math.PI + (pos.px - cx) / (scale * radius);
+    const z = (pos.py - cy) / (scale * halfHmm);
+    if (a < _aMin || a > _aMax || z < -HH || z > HH) return null;   // off paper
+    const pt = proj(R(RN * Math.cos(a), RN * Math.sin(a), z));
+    return pt ? { pt, a, z } : null;
+  }
+
   // ── Floor gradient fill ──
   { const GS2 = 0.35, gn2 = 3;
     const fc = proj([0, 0, -HH]);
@@ -3848,104 +3991,74 @@ function draw3D() {
   let noonIncidenceDeg = null; // angle between incoming ray and cylinder-wall normal at hit point
 
   if (show3DCulmination) {
-    // Noon elevation for custom date
-    const doy   = dayOfYear(customMonth, customDay);
-    const delta = sunDeclination(doy);
-    const phi   = effectiveLat() * hemisphere;
-    const rayEl = Math.asin(
-      Math.max(-1, Math.min(1,
-        Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta)
-      ))
-    );
+    // ── Animated sun ray: position for the current solar time (sunTimeHours) ──
+    // Hour angle in the path convention (SH solar hour is mirrored: solarHour = 12 − hDeg/15).
+    const hitH = (sunTimeHours - 12) * 15 * hemisphere;
+    const hit  = surfMap(hitH);                                  // {pt,a,z} or null (miss)
+    const sInf = sunPosition(hitH * Math.PI / 180, _cDelta, _cPhi);
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
-              + '  ' + Math.round(rayEl * 180 / Math.PI) + '°';
-
-    // Physical validity check: light can only enter if the sun is on the correct side
-    // of the pinhole wall. Pinhole outward normal in world space = R(1,0,0).
-    // dot(sunDir_world, pinholeNormal) must be > 0.
-    const pinholeNormal = R(1, 0, 0);
-    const sunDot = Math.cos(rayEl) * hemisphere * pinholeNormal[0]
-                 + 0                             * pinholeNormal[1]
-                 + Math.sin(rayEl)               * pinholeNormal[2];
-    if (sunDot < 1e-9) {
-      // Sun behind or tangent to pinhole wall – ray never enters can
-      noonHitsPaper = false;
+              + ' · ' + fmtSolarTime(sunTimeHours)
+              + ' · Alt ' + Math.round(Math.max(0, sInf.el)) + '°';
+    if (hit) {
+      pa = hit.pt;
+      noonHitsPaper = true;
+      // Incidence: angle between the incoming ray (pinhole→hit) and the outward wall normal.
+      let rx = RN * Math.cos(hit.a) - RN, ry = RN * Math.sin(hit.a), rz = hit.z - hO;
+      const rl = Math.sqrt(rx*rx + ry*ry + rz*rz) || 1;
+      const cosInc = (rx / rl) * Math.cos(hit.a) + (ry / rl) * Math.sin(hit.a);
+      noonIncidenceDeg = Math.round(Math.acos(Math.max(-1, Math.min(1, cosInc))) * 180 / Math.PI);
     } else {
-
-    // World-space ray direction: from south (NH) / north (SH) at el_noon, into can
-    const dw = rotCanInv(
-      -Math.cos(rayEl) * hemisphere,   // x: toward N in NH, toward S in SH
-       0,                               // y: no east-west component at noon
-      -Math.sin(rayEl)                  // z: always downward
-    );
-    const [dx, dy, dz] = dw;
-
-    // Intersect ray (start: RN,0,hO; dir: dx,dy,dz) with can walls in local frame.
-    // Cylinder wall: (RN+t·dx)²+(t·dy)² = RN²  →  t = −2·RN·dx/(dx²+dy²)
-    const dxy2 = dx*dx + dy*dy;
-    const t_wall = dxy2 > 1e-6 ? -2*RN*dx / dxy2 : Infinity;
-    const z_wall = hO + t_wall * dz;
-    const t_wallValid = t_wall > 1e-4 && z_wall >= -HH && z_wall <= HH ? t_wall : Infinity;
-
-    // Cap intersections: z = ±HH
-    let t_cap = Infinity;
-    if (Math.abs(dz) > 1e-6) {
-      for (const capZ of [-HH, HH]) {
-        const tc = (capZ - hO) / dz;
-        if (tc > 1e-4) {
-          const xc = RN + tc*dx, yc = tc*dy;
-          if (xc*xc + yc*yc <= RN*RN + 1e-4) t_cap = Math.min(t_cap, tc);
-        }
-      }
-    }
-
-    const t_hit = Math.min(t_wallValid, t_cap);
-    // Ray hits paper only if: (a) wall hit before cap, AND (b) hit angle not in gap zone
-    noonHitsPaper = false;
-    if (t_wallValid <= t_cap && t_wallValid < Infinity) {
-      const xHit = RN + t_wallValid * dx;
-      const yHit = t_wallValid * dy;
-      noonHitsPaper = !inGap(Math.atan2(yHit, xHit));
-      if (noonHitsPaper) {
-        // Incidence angle: between incoming ray and outward cylinder-wall normal at hit point.
-        // Ray dir (dx,dy,dz) and outward normal (xHit/RN, yHit/RN, 0) point the same general
-        // direction (ray travels from pinhole toward back wall, normal also points outward there).
-        // Perpendicular hit → both parallel → dot = 1 → θ = 0°.  Grazing → dot ≈ 0 → θ ≈ 90°.
-        const cosInc = (dx * xHit + dy * yHit) / RN;
-        noonIncidenceDeg = Math.round(Math.acos(Math.max(-1, Math.min(1, cosInc))) * 180 / Math.PI);
-      }
-    }
-    const tipLocal = t_hit < Infinity
-      ? [RN + t_hit*dx, t_hit*dy, hO + t_hit*dz]
-      : [-RN, 0, hO];                             // fallback: straight through
-    pa = proj(R(tipLocal[0], tipLocal[1], tipLocal[2]));
-
-    // Outward line: fixed world-space direction toward sun, from pinhole to canvas edge
-    if (pp) {
-      const sunFar = proj([
-        pinholePt[0] + Math.cos(rayEl) * hemisphere * 3,
-        pinholePt[1],
-        pinholePt[2] + Math.sin(rayEl) * 3
-      ]);
-      if (sunFar) {
-        const odx = sunFar[0]-pp[0], ody = sunFar[1]-pp[1];
-        const olen = Math.sqrt(odx*odx+ody*ody);
-        if (olen > 0.5) {
-          const nx = odx/olen, ny = ody/olen;
-          let t = Infinity;
-          if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
-          else if (nx < 0) t = Math.min(t, -pp[0]/nx);
-          if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
-          else if (ny < 0) t = Math.min(t, -pp[1]/ny);
-          if (t > 0 && t < Infinity) {
-            c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-            c.strokeStyle = pal.axisHit; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+      // MISS: the sun's image doesn't fall on the paper — still draw the optical axis to
+      // where the ray actually goes (cap / back wall), as before 24_1. Exact ray-trace,
+      // signed-latitude convention so the world azimuth is correct in both hemispheres.
+      noonHitsPaper = false; noonIncidenceDeg = null; pa = null;
+      const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
+      const phiS = effectiveLat() * hemisphere;
+      const dS   = sunDeclination(dayOfYear(customMonth, customDay));
+      const sp   = sunPosition(Hs, dS, phiS);
+      if (sp.el > 0) {
+        const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+        // incoming ray dir (into can), world frame +x=S +y=W +z=up
+        const inW = [Math.cos(azR)*Math.cos(elR), Math.sin(azR)*Math.cos(elR), -Math.sin(elR)];
+        const pn = R(1, 0, 0);   // pinhole outward normal (world)
+        if ((-inW[0])*pn[0] + (-inW[1])*pn[1] + (-inW[2])*pn[2] > 1e-9) {   // sun faces the pinhole
+          const dw = rotCanInv(inW[0], inW[1], inW[2]);
+          const dx = dw[0], dy = dw[1], dz = dw[2];
+          const dxy2 = dx*dx + dy*dy;
+          const t_wall = dxy2 > 1e-6 ? -2*RN*dx / dxy2 : Infinity;
+          const z_wall = hO + t_wall*dz;
+          const t_wallValid = (t_wall > 1e-4 && z_wall >= -HH && z_wall <= HH) ? t_wall : Infinity;
+          let t_cap = Infinity;
+          if (Math.abs(dz) > 1e-6) {
+            for (const capZ of [-HH, HH]) {
+              const tc = (capZ - hO) / dz;
+              if (tc > 1e-4) { const xc = RN + tc*dx, yc = tc*dy; if (xc*xc + yc*yc <= RN*RN + 1e-4) t_cap = Math.min(t_cap, tc); }
+            }
           }
+          const t_hit = Math.min(t_wallValid, t_cap);
+          const tip = t_hit < Infinity ? [RN + t_hit*dx, t_hit*dy, hO + t_hit*dz] : [-RN, 0, hO];
+          pa = proj(R(tip[0], tip[1], tip[2]));
         }
       }
     }
 
-    } // end sunDot > 0
+    // Outward line toward the sun (collinear pa→pp→canvas edge), colored by hit/miss
+    if (pa && pp) {
+      const odx = pp[0]-pa[0], ody = pp[1]-pa[1], olen = Math.sqrt(odx*odx+ody*ody);
+      if (olen > 0.5) {
+        const nx = odx/olen, ny = ody/olen;
+        let t = Infinity;
+        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
+        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
+        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
+        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
+        if (t > 0 && t < Infinity) {
+          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+          c.strokeStyle = noonHitsPaper ? pal.axisHit : pal.axisMiss;
+          c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+        }
+      }
+    }
 
   } else {
     // ── Default mode: el = 0, ray horizontal through can to back wall ──
@@ -3975,7 +4088,9 @@ function draw3D() {
     const circ    = Math.round(2 * Math.PI * radius);   // whole mm
     const fillPct = (paperAngle / (2 * Math.PI) * 100).toFixed(1);
     const covDeg  = Math.round(paperAngle / 2 * 180 / Math.PI);
-    const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay + ' (noon)';
+    // Date + current solar time; the time is styled like a value (paper-filling style)
+    const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay
+      + ' <span class="ts-val" style="display:inline">(' + fmtSolarTime(sunTimeHours) + ')</span>';
 
     const tsCirc         = document.getElementById('tsCirc');
     const tsFill         = document.getElementById('tsFill');
@@ -3989,7 +4104,7 @@ function draw3D() {
     if (tsCirc)     tsCirc.textContent     = circ;
     if (tsFill)     tsFill.textContent     = fillPct;
     if (tsCoverage) tsCoverage.textContent = covDeg + '°';
-    if (tsNoonLbl)  tsNoonLbl.textContent  = noonLbl;
+    if (tsNoonLbl)  tsNoonLbl.innerHTML    = noonLbl;
 
     // Noon row: visible only when noon mode is active
     const tsNoonRow = document.getElementById('tsNoonRow');
@@ -4017,23 +4132,8 @@ function draw3D() {
   //   z = (py − cy)/(scale·halfHmm)      height (canvas-down → paper-up; pinhole inversion)
   // Anchored to the noon ray: the H=0 point lands on the back-wall centre at the noon height.
   if (theaterMode3D && show3DCulmination) {
-    const { month: cm, day: cd } = customArcDate();
-    const cDelta = sunDeclination(dayOfYear(cm, cd));
-    const cPhi   = effectiveLat();
-    const aMin = halfGap, aMax = 2 * Math.PI - halfGap;
-
-    // Project a sun position (given hour angle in degrees) onto the paper surface.
-    // Returns [x,y] screen point, or null if below horizon / off paper / behind camera.
-    const surfProj = (hDeg) => {
-      const s = sunPosition(hDeg * Math.PI / 180, cDelta, cPhi);
-      if (s.el < 0) return null;
-      const pos = azElToPixel(s.beta - yawDeg, s.el);
-      if (!pos) return null;
-      const a = Math.PI + (pos.px - cx) / (scale * radius);
-      const z = (pos.py - cy) / (scale * halfHmm);
-      if (a < aMin || a > aMax || z < -HH || z > HH) return null;   // off paper
-      return proj(R(RN * Math.cos(a), RN * Math.sin(a), z));
-    };
+    maybeUpdateSunFill();   // keep the slider's on-paper regions in sync with geometry
+    const surfProj = (hDeg) => { const m = surfMap(hDeg); return m ? m.pt : null; };
 
     // Smooth curve (0.5° steps); null = break in the polyline
     const surfPath = [];
@@ -4203,17 +4303,216 @@ function draw3D() {
 let _waveLast = 0;
 function sunWaveFrame(ts) {
   _wavePhase = ts;
-  if (ts - _waveLast > 33) { _waveLast = ts; draw3D(); }   // throttle to ~30 fps
+  if (sunAnimActive) advanceSunAnim(ts);                   // advance the day animation
+  if (ts - _waveLast > 33) {                               // throttle to ~30 fps
+    _waveLast = ts;
+    if (theaterMode3D) draw3D();                           // theater: 3D ray + arrow wave
+    else { draw(); draw3D(); }                             // analyzer: 2D sun dot (+ preview)
+  }
   sunWaveRAF = requestAnimationFrame(sunWaveFrame);
 }
 function updateSunWave() {
-  const shouldRun = theaterMode3D && show3DCulmination;
+  // Loop drives the arrow wave (theater) and/or the day animation (when playing)
+  const shouldRun = show3DCulmination && (theaterMode3D || sunAnimActive);
   if (shouldRun && sunWaveRAF === null) {
     sunWaveRAF = requestAnimationFrame(sunWaveFrame);
   } else if (!shouldRun && sunWaveRAF !== null) {
     cancelAnimationFrame(sunWaveRAF);
     sunWaveRAF = null;
   }
+}
+
+// ─── Day animation: sun ray sweeping sunrise → sunset (custom date) ───────────
+// Solar time string "H:MM"
+function fmtSolarTime(t) {
+  let h = Math.floor(t), m = Math.round((t - h) * 60);
+  if (m === 60) { h += 1; m = 0; }
+  return h + ':' + String(m).padStart(2, '0');
+}
+// Sunrise/sunset solar times for the current custom date (symmetric around noon).
+// cos(H0) = −tan(φ)·tan(δ); polar day → full 24 h, polar night → empty (rise=set=12).
+function sunDayRange() {
+  const arc   = customArcDate();
+  const delta = sunDeclination(dayOfYear(arc.month, arc.day));
+  const phi   = effectiveLat();
+  const cosH0 = -Math.tan(phi) * Math.tan(delta);
+  let H0h;                                  // half-day length in hours
+  if (cosH0 <= -1)      H0h = 12;           // polar day (sun always up)
+  else if (cosH0 >= 1)  H0h = 0;            // polar night (sun never rises)
+  else                  H0h = Math.acos(cosH0) * 12 / Math.PI;
+  return { tRise: 12 - H0h, tSet: 12 + H0h };
+}
+// Advance the animation clock: SUN_RATE_HPS hours of solar time per real second, +2 s pause.
+// The loop sweeps only the interval where the ray enters the can (green + red on the slider).
+// Starts from sunAnimOffset (seconds into the cycle) so Play resumes where Stop left off.
+function advanceSunAnim(ts) {
+  const { tEnter, tExit } = sunEnterRange();
+  const spanH  = Math.max(0.001, tExit - tEnter);   // hours the ray enters the can
+  const motion = spanH / SUN_RATE_HPS;              // seconds to sweep that interval
+  if (sunAnimStart === null) sunAnimStart = ts;
+  const elapsed = (ts - sunAnimStart) / 1000;       // seconds since Play
+  const local   = (sunAnimOffset + elapsed) % (motion + 2);   // +2 s pause before each new loop
+  sunTimeHours  = local <= motion ? tEnter + local * SUN_RATE_HPS : tExit;  // hold at end during pause
+  syncSunTimeUI();
+}
+// Reflect sunTimeHours in the slider + label
+function syncSunTimeUI() {
+  const rng = document.getElementById('rngSunTime');
+  const lbl = document.getElementById('lblSunTime');
+  if (rng && parseFloat(rng.value) !== sunTimeHours) rng.value = sunTimeHours;
+  if (lbl) lbl.textContent = fmtSolarTime(sunTimeHours);
+}
+// Slider spans the full day (sunrise..sunset) visually, but only the entering interval
+// (green + red) is clickable → clamp the value there.
+function refreshSunTimeRange() {
+  maybeUpdateSunFill();                          // refresh fill + cached enter range first
+  const { tRise, tSet } = sunDayRange();
+  const rng = document.getElementById('rngSunTime');
+  if (rng) {
+    rng.min = tRise.toFixed(3);
+    rng.max = tSet.toFixed(3);
+  }
+  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, sunTimeHours));
+  syncSunTimeUI();
+}
+function setSunPlayIcon(playing) {
+  const btn = document.getElementById('btnSunPlay');
+  if (!btn) return;
+  btn.classList.toggle('playing', playing);
+  const ic = btn.querySelector('svg');
+  if (ic) ic.innerHTML = playing
+    ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'                 // stop (square)
+    : '<polygon points="2,1 11,6 2,11"/>';                              // play (triangle)
+  const lbl = btn.querySelector('span');
+  if (lbl) lbl.textContent = playing ? 'STOP' : 'ANIMATE SUNLIGHT';
+}
+function startSunAnim() {
+  if (sunAnimActive) return;
+  sunAnimActive = true;
+  sunAnimStart  = null;            // captured on first frame
+  // Resume from the current solar time (where Stop / the slider left off)
+  const { tEnter, tExit } = sunEnterRange();
+  const motion = Math.max(0.001, tExit - tEnter) / SUN_RATE_HPS;
+  sunAnimOffset = Math.min(motion, Math.max(0, (sunTimeHours - tEnter) / SUN_RATE_HPS));
+  setSunPlayIcon(true);
+  updateSunWave();                 // ensure the rAF loop is running
+}
+function stopSunAnim() {
+  sunAnimActive = false;
+  setSunPlayIcon(false);
+  updateSunWave();   // cancel the loop in analyzer (kept running in theater for the wave)
+}
+
+// Inverse can rotation in world space (global twin of draw3D's rotCanInv) – pure function
+// of the calibration angles. Used to test whether the sun faces the pinhole wall.
+function _rotCanInvWorld(x, y, z) {
+  const yr = (yawDeg + (hemisphere < 0 ? 180 : 0)) * Math.PI / 180;
+  const pr = pitchDeg * Math.PI / 180, rr = rollDeg * Math.PI / 180;
+  const x0 =  x * Math.cos(yr) + y * Math.sin(yr);
+  const y0 = -x * Math.sin(yr) + y * Math.cos(yr);
+  const z0 = z;
+  const x1 = x0;
+  const y1 =  y0 * Math.cos(rr) - z0 * Math.sin(rr);
+  const z1 =  y0 * Math.sin(rr) + z0 * Math.cos(rr);
+  const x2 =  x1 * Math.cos(pr) + z1 * Math.sin(pr);
+  const y2 =  y1;
+  const z2 = -x1 * Math.sin(pr) + z1 * Math.cos(pr);
+  return [x2, y2, z2];
+}
+// Classify the sun ray at solar time t for the slider track:
+//   2 = image lands on paper (green)
+//   1 = ray enters the can but misses the paper – cap/gap (red, like the MISS optical axis)
+//   0 = ray does not enter the can (sun below horizon / behind the pinhole wall) (grey)
+function sunRayState(t, ctx) {
+  // On paper? (path convention – matches the green curve / surfMap)
+  const hDeg = (t - 12) * 15 * hemisphere;
+  const s = sunPosition(hDeg * Math.PI / 180, ctx.delta, ctx.phi);
+  if (s.el > 0) {
+    const pos = azElToPixel(s.beta - yawDeg, s.el);
+    if (pos) {
+      const a = Math.PI + (pos.px - cx) / (scale * radius);
+      const z = (pos.py - cy) / (scale * ctx.halfHmm);
+      if (a >= ctx.halfGap && a <= 2 * Math.PI - ctx.halfGap && z >= -1 && z <= 1) return 2;
+    }
+  }
+  // Enters the can but misses paper? (signed-φ world; sun above horizon AND faces pinhole)
+  const sp = sunPosition((t - 12) * 15 * Math.PI / 180, ctx.deltaS, ctx.phiS);
+  if (sp.el > 0) {
+    const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+    const sunDirW = [-Math.cos(azR) * Math.cos(elR), -Math.sin(azR) * Math.cos(elR), Math.sin(elR)];
+    if (_rotCanInvWorld(sunDirW[0], sunDirW[1], sunDirW[2])[0] > 1e-9) return 1;
+  }
+  return 0;
+}
+// Build the slider track gradient: green = on paper, red = enters but misses, grey = no entry.
+// Any of these may be several disjoint regions across the day.
+function updateSunFill() {
+  const rng = document.getElementById('rngSunTime');
+  if (!rng) return;
+  const arc = customArcDate();
+  const ctx = {
+    delta:  sunDeclination(dayOfYear(arc.month, arc.day)),       // path convention (positive φ)
+    phi:    effectiveLat(),
+    deltaS: sunDeclination(dayOfYear(customMonth, customDay)),   // signed-φ convention
+    phiS:   effectiveLat() * hemisphere,
+    halfHmm: currentHalfHmm(),
+    halfGap: (2 * Math.PI - Math.min(2 * Math.PI - 0.01, scanWmm / radius)) / 2,
+  };
+  const { tRise, tSet } = sunDayRange();
+  const span = Math.max(0.001, tSet - tRise);
+  const COL = ['rgba(120,140,160,0.18)', 'rgba(224,64,64,0.45)', 'rgba(80,220,120,0.62)']; // 0,1,2
+  const N = 200, parts = [];
+  let prev = sunRayState(tRise, ctx);
+  let t0 = null, t1 = null;                       // first / last time the ray enters (state ≥ 1)
+  if (prev >= 1) { t0 = tRise; t1 = tRise; }
+  parts.push(COL[prev] + ' 0%');
+  for (let i = 1; i <= N; i++) {
+    const t = tRise + span * i / N;
+    const st = sunRayState(t, ctx);
+    if (st >= 1) { if (t0 === null) t0 = t; t1 = t; }
+    if (st !== prev) {
+      const pct = (i / N * 100).toFixed(2);
+      parts.push(COL[prev] + ' ' + pct + '%', COL[st] + ' ' + pct + '%');
+      prev = st;
+    }
+  }
+  parts.push(COL[prev] + ' 100%');
+  if (t0 === null) { t0 = t1 = 12; }              // ray never enters – degenerate
+  _sunEnterT0 = t0; _sunEnterT1 = t1;             // cache for the loop / clamp / boundary lines
+
+  // White vertical boundary lines at the entering interval (the clickable / animated part)
+  const colorGrad = 'linear-gradient(to right, ' + parts.join(',') + ')';
+  let lineGrad = '';
+  if (t1 > t0) {
+    const pE = ((t0 - tRise) / span * 100).toFixed(2);
+    const pX = ((t1 - tRise) / span * 100).toFixed(2);
+    lineGrad =
+      'linear-gradient(90deg,' +
+      ` transparent calc(${pE}% - 1px), #fff calc(${pE}% - 1px), #fff calc(${pE}% + 1px),` +
+      ` transparent calc(${pE}% + 1px), transparent calc(${pX}% - 1px), #fff calc(${pX}% - 1px),` +
+      ` #fff calc(${pX}% + 1px), transparent calc(${pX}% + 1px)), `;
+  }
+  rng.style.setProperty('--sun-fill', lineGrad + colorGrad);
+}
+// Cached interval (solar hours) where the ray enters the can – set by updateSunFill()
+function sunEnterRange() { return { tEnter: _sunEnterT0, tExit: _sunEnterT1 }; }
+// Rebuild the gradient only when a relevant parameter changed (cheap key check)
+let _sunFillKey = '';
+function maybeUpdateSunFill() {
+  const key = [customMonth, customDay, LAT, hemisphere, yawDeg, pitchDeg, rollDeg,
+               horizonMm, radius, scanWmm, canvas.width, canvas.height].join(',');
+  if (key !== _sunFillKey) { _sunFillKey = key; updateSunFill(); }
+}
+// Show/hide the day-animation controls and refresh their range + fill.
+// Visible in theater (with Sun path on) OR in Analyzer with Custom date + Sun path on.
+function updateSunAnimCtl() {
+  const show = show3DCulmination && (theaterMode3D || showCustomArc);
+  const ctl = document.getElementById('sunAnimCtl');
+  if (ctl) ctl.style.display = show ? 'block' : 'none';
+  if (show) {
+    refreshSunTimeRange();   // keeps current time (clamped); theater transitions preserve it
+    maybeUpdateSunFill();
+  } else stopSunAnim();
 }
 
 // ─── Theater mode ────────────────────────────────────────────────────────────
@@ -4255,6 +4554,7 @@ function enterTheater3D() {
   document.getElementById('theaterZoomCtl').style.display = 'flex';
   document.getElementById('theaterStatus').style.display  = 'flex';
   theaterMode3D = true;
+  updateSunAnimCtl();   // reveal the day-animation controls (theater + noon)
   draw3D();
   updateSunWave();   // start the arrow wave if noon mode is on
 }
@@ -4276,7 +4576,8 @@ function exitTheater3D() {
     btnSplitInvert.style.display = 'flex';
   }
   theaterMode3D = false;
-  updateSunWave();   // stop the arrow wave when leaving theater
+  updateSunAnimCtl();   // controls follow Analyzer rules; animation keeps running across theater
+  updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
   draw3D();
 }
 
