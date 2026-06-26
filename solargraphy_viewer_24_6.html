@@ -1,0 +1,4797 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solargraphy Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --panel: #0f1318;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --accent2: #20a0e8;
+    --accent-red: #e84040;
+    --accent-green: #50dc78;
+    --text: #c8d4e0;
+    --dim: #4a5a6a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --sidebar: 200px;
+    --gallery-panel: var(--sidebar);   /* same width as the right panel = 200px */
+    --header-h: 72px;
+    --infobar-h: 28px;
+  }
+
+  /* ── Light theme ── */
+  body.light {
+    --bg: #e2e7ec;          /* strong background – sharp separation from panels */
+    --panel: #f5f7f9;       /* panel: light, but not pure white */
+    --border: #8fa4b8;      /* darker border → visible separators and hovers */
+    --accent: #8a4400;      /* dark orange-brown → contrast ~7:1 on panel */
+    --accent2: #0a4e8c;     /* dark blue → contrast ~7:1 */
+    --accent-red: #b01818;
+    --accent-green: #0e6030;
+    --text: #0c1820;        /* almost black */
+    --dim: #445a6e;         /* dark enough for small text */
+  }
+
+  /* Light: canvas-container bg */
+  body.light .canvas-container { background: #ffffff; }
+
+  /* Light: upload zone hover */
+  body.light .upload-zone:hover { background: #dce2e8; border-color: var(--accent); }
+
+  /* Light: theater canvases */
+  body.light #theaterPlaceholder,
+  body.light #can3dTheater { background: #ffffff; }
+
+  /* Light: splitHandle */
+  body.light #splitHandle::after {
+    background: rgba(230,235,240,0.82);
+    border-color: rgba(60,90,120,0.6);
+    color: rgba(30,60,90,0.95);
+  }
+
+  /* Light: mode-toggle outer border */
+  body.light .mode-toggle { border-color: #8fa4b8; }
+
+  /* Light: theater zoom slider bg – dark backdrop invisible on light canvas */
+  body.light #theaterZoomCtl {
+    background: rgba(220,228,236,0.82);
+  }
+
+  /* Light: hover states that use rgba(white) – invisible on light bg */
+  body.light .mode-btn:not([class*=active]):hover {
+    color: var(--text);
+    background: rgba(0,0,0,0.06);
+  }
+  body.light .radio-row:hover {
+    color: var(--text);
+    border-color: var(--border);
+    background: rgba(0,0,0,0.04);
+  }
+  body.light .radio-row.active {
+    background: rgba(10,78,140,0.07);
+  }
+  body.light .radio-row.view-enh.active {
+    background: rgba(138,68,0,0.07);
+  }
+  body.light .radio-row.view-raw.active {
+    background: rgba(12,24,32,0.06);
+  }
+
+  /* Light: #btnHeatmap – override inline white-based color */
+  body.light #btnHeatmap {
+    border-color: var(--border) !important;
+    color: var(--dim) !important;
+  }
+  body.light #btnHeatmap.active {
+    border-color: var(--text) !important;
+    color: var(--text) !important;
+    background: rgba(0,0,0,0.06) !important;
+  }
+
+  /* Light: #btnNoon – white background, more saturated yellow */
+  body.light #btnNoon {
+    color: #c88000;
+    border-color: rgba(200,128,0,0.45);
+    background: #ffffff;
+  }
+  body.light #btnNoon:hover {
+    color: #b07000;
+    border-color: rgba(200,128,0,0.75);
+    background: #ffffff;
+  }
+  body.light #btnNoon.active {
+    color: #a06000;
+    border-color: #c88000;
+    background: #fff8e8;
+  }
+
+  /* ── Theme toggle button ── */
+  #btnTheme {
+    background: rgb(218 236 255 / 90%);  /* dark mode: sun icon on light bg */
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 13px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    margin-left: 8px;
+    line-height: 1;
+  }
+  #btnTheme:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(128,128,128,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;     /* fallback for older browsers */
+    height: 100dvh;    /* visible viewport on iOS/iPad – excludes browser UI, no fold cut-off */
+  }
+
+  /* ── Global UI magnification (+25%) – like browser zoom, but the canvas / model
+        is left at natural size. Applied to the chrome (panels, readout, overlays);
+        the canvas containers are untouched so all canvas-sizing maths stays exact.
+        #can3dWrap is counter-zoomed so the 3D preview model is not magnified. ── */
+  .top-strip, .info-bar, .sidebar, .gallery-panel, #can3dPanel,
+  #statusWrap, #theaterZoomCtl, #btnTheaterExit, #btnSplitInvert { zoom: 1.25; }
+  #can3dWrap { zoom: 0.8; }
+
+  /* ── Top strip: header + readout ── */
+  .top-strip {
+    flex: 0 0 auto;
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: #e8a020;          /* yellow kept in both themes */
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* Light: almost black – moon icon stands out on dark background */
+  body.light #btnTheme {
+    background: rgba(18,22,28,0.82);
+  }
+  /* Light hover: blends with the top-strip bg */
+  body.light #btnTheme:hover {
+    background: #e2e7ec !important;
+    border-color: var(--border);
+    color: var(--dim);
+  }
+
+  header span {
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+  }
+
+  /* Readout bar */
+  .readout {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .readout-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .readout-label {
+    color: var(--dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .readout-value {
+    color: var(--accent);
+    font-size: 13px;
+    min-width: 62px;
+  }
+
+  .readout-value.blue { color: var(--accent2); }
+
+  .readout-sep {
+    color: var(--border);
+    font-size: 16px;
+  }
+
+  /* ── Main area: canvas + sidebar ── */
+  .main-area {
+    flex: 1 1 0;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Canvas column */
+  .canvas-col {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .upload-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px dashed var(--border);
+    margin: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--panel);
+  }
+
+  .upload-zone:hover {
+    border-color: var(--accent);
+    background: #12161c;
+  }
+
+  .upload-zone.hidden { display: none; }
+
+  .upload-zone p {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.13em;
+  }
+
+  .upload-zone p span { color: var(--accent); }
+
+  #fileInput { display: none; }
+
+  .canvas-container {
+    flex: 1 1 0;
+    position: relative;
+    overflow: hidden;
+    background: #050608;
+    cursor: none;
+    min-height: 0;
+  }
+
+  .canvas-container.hidden { display: none; }
+
+  /* Split handle – vertical white line */
+  #splitHandle {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.7);
+    pointer-events: none;
+    display: none;
+    z-index: 10;
+  }
+
+  #splitHandle::after {
+    content: '↔';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: rgba(15,18,24,0.55);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: rgba(255,255,255,1);
+    font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+
+  /* Invert button – in the corner of the canvas container */
+  #btnSplitInvert {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent2);
+    background: rgba(32,160,232,0.18);
+    color: var(--accent2);
+    font-family: var(--mono);
+    font-size: 22px;
+    cursor: pointer;
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  #btnSplitInvert:hover {
+    background: rgba(32,160,232,0.32);
+    border-color: var(--accent2);
+    color: #fff;
+  }
+
+  #btnSplitInvert.active {
+    background: rgba(32,160,232,0.40);
+    border-color: #fff;
+    color: #fff;
+  }
+
+  #mainCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    flex: 0 0 var(--sidebar);
+    width: var(--sidebar);
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
+    overflow-x: hidden;
+    min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
+    -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
+    padding: 10px 10px 16px;
+    gap: 0;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;   /* keep natural height so panel overflows & scrolls (Chrome/Blink) */
+  }
+
+  /* Thin, themed scrollbar for the always-on side panels */
+  .sidebar, .gallery-panel, #can3dPanel {
+    scrollbar-width: thin;                       /* Firefox */
+    scrollbar-color: var(--border) transparent;  /* Firefox: thumb / track */
+  }
+  .sidebar::-webkit-scrollbar,
+  .gallery-panel::-webkit-scrollbar,
+  #can3dPanel::-webkit-scrollbar {
+    width: 8px;
+  }
+  .sidebar::-webkit-scrollbar-track,
+  .gallery-panel::-webkit-scrollbar-track,
+  #can3dPanel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar::-webkit-scrollbar-thumb,
+  .gallery-panel::-webkit-scrollbar-thumb,
+  #can3dPanel::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .sidebar::-webkit-scrollbar-thumb:hover,
+  .gallery-panel::-webkit-scrollbar-thumb:hover,
+  #can3dPanel::-webkit-scrollbar-thumb:hover {
+    background: var(--dim);
+  }
+
+  .sidebar-section:last-child { border-bottom: none; }
+
+  .sidebar-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--accent-green);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  /* Checkboxes */
+  .chk-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    letter-spacing: 0.1em;
+  }
+
+  .chk-row input[type=checkbox] {
+    accent-color: var(--accent);
+    width: 12px; height: 12px;
+    flex-shrink: 0;
+  }
+
+  /* Sliders */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .slider-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .slider-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: right;
+  }
+
+  .sidebar input[type=range] {
+    width: 100%;
+    cursor: pointer;
+  }
+
+  /* Date picker */
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .date-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 18px; height: 18px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .date-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .date-val {
+    flex: 1;
+    text-align: center;
+    color: var(--text);
+    font-size: 11px;
+    min-width: 0;
+  }
+
+  /* Latitude in sidebar */
+  .lat-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .lat-input {
+    width: 32px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+    padding: 2px 2px;
+    border-radius: 2px;
+    -moz-appearance: textfield;
+  }
+  .lat-input::-webkit-inner-spin-button,
+  .lat-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .lat-input:focus { outline: none; border-color: var(--accent); }
+
+  .lat-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 18px; height: 18px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .lat-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .ns-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .ns-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.08em;
+  }
+
+  .ns-btn.active { background: var(--accent); color: #000; font-weight: bold; }
+  .ns-btn.active-s { background: var(--accent2); color: #000; font-weight: bold; }
+  .ns-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* Reset + Load buttons */
+  .sidebar-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    width: 100%;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .sidebar-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  #btnHeatmap.active {
+    border-color: rgba(255,255,255,0.7);
+    color: rgba(255,255,255,0.9);
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* Info bar */
+  .info-bar {
+    flex: 0 0 auto;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    padding: 4px 12px;
+    border-top: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Mode toggle in header */
+  .mode-toggle {
+    display: flex;
+    border: 5px solid #202020;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .mode-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 5px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .mode-btn:not([class*=active]):hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .mode-btn.active-analyzer {
+    background: repeating-linear-gradient(
+      45deg,
+      #b06010,
+      #b06010 5px,
+      #f0b030 5px,
+      #f0b030 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  .mode-btn.active-gallery {
+    background: repeating-linear-gradient(
+      45deg,
+      #1e6aaa,
+      #1e6aaa 5px,
+      #35aae8 5px,
+      #35aae8 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  /* Gallery panel (left of canvas) */
+  .gallery-panel {
+    flex: 0 0 var(--gallery-panel);
+    width: var(--gallery-panel);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
+    overflow-x: hidden;
+    min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
+    -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
+    padding: 10px 10px 16px;
+    gap: 0;
+  }
+
+  .gallery-panel.visible { display: flex; }
+
+  /* Radio group for generation / image / view */
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    transition: color 0.15s, background 0.12s, border-color 0.15s;
+  }
+
+  .radio-row:hover {
+    color: var(--text);
+    border-color: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .radio-row input[type=radio] {
+    accent-color: var(--accent2);
+    width: 12px; height: 12px;
+    flex-shrink: 0;
+  }
+
+  .radio-row.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(32,160,232,0.08);
+  }
+
+  .radio-row.disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* View mode radio – special colors */
+  .radio-row.view-raw   input { accent-color: var(--text); }
+  .radio-row.view-enh   input { accent-color: var(--accent); }
+  .radio-row.view-split input { accent-color: var(--accent2); }
+
+  .radio-row.view-raw.active {
+    color: var(--text);
+    border-color: rgba(200,212,224,0.5);
+    background: rgba(200,212,224,0.06);
+  }
+  .radio-row.view-enh.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(232,160,32,0.08);
+  }
+  .radio-row.view-split.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(32,160,232,0.08);
+  }
+
+  /* Gallery mode – calibration locked */
+  .calibration-locked input[type=range],
+  .calibration-locked input[type=number],
+  .calibration-locked .lat-btn,
+  .calibration-locked .ns-btn,
+  .calibration-locked #btnCalibReset,
+  .calibration-locked #btnImportPreset,
+  .calibration-locked #btnExportPreset {
+    pointer-events: none;
+    opacity: 0.35;
+  }
+
+  .calibration-locked .slider-label,
+  .calibration-locked .slider-val,
+  .calibration-locked .lat-input {
+    opacity: 0.35;
+  }
+
+  /* ── Metadata "i" button ── */
+  #btnMeta {
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    line-height: 1;
+    font-family: var(--sans);
+    transition: color 0.15s, transform 0.1s;
+    flex-shrink: 0;
+    opacity: 0.75;
+  }
+  #btnMeta:hover { opacity: 1; transform: scale(1.15); }
+  #btnMeta.active { opacity: 1; color: var(--accent); }
+
+  /* ── Metadata popup ── */
+  #metaPopup {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 13px 16px 15px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    z-index: 200;
+    min-width: 250px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.65);
+    display: none;
+    letter-spacing: 0.05em;
+  }
+  #metaPopup.visible { display: block; }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 4px 0;
+  }
+  .meta-label {
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .meta-val {
+    color: var(--text);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  /* 3D Can orientation panel – Analyzer mode only */
+  #can3dPanel {
+    flex: 0 0 200px;                     /* same as --sidebar (right panel) */
+    width: 200px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px 10px 4px 10px;          /* right padding 10px – prevents clipping of can3dWrap */
+    gap: 0;
+    overflow-y: auto;                    /* scrollbar only when needed → doesn't waste width */
+    overflow-x: hidden;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  #can3dPanel.visible { display: flex; }
+  #can3dPanel .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--accent-green);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  #can3d { display: block; }
+
+  /* Dashed border on the wrap element – not clipped by overflow like an outline on #can3d */
+  #can3dWrap {
+    position: relative; align-self: flex-start;
+    border: 1px dashed rgba(90,120,150,0.55);
+  }
+  body.light #can3dWrap { border-color: rgba(60,90,120,0.65); }
+
+  /* Theater canvas – no border (dashed border only in the preview panel) */
+
+  @keyframes theaterPulse {
+    0%, 100% { color: rgba(160,190,220,0.65); filter: none; }
+    50%       { color: rgba(210,235,255,1.00); filter: drop-shadow(0 0 5px rgba(140,190,255,0.85)); }
+  }
+  @keyframes theaterPulseLight {
+    0%, 100% { color: rgba(30,78,168,0.55); filter: none; }
+    50%       { color: rgba(10,55,150,0.95); filter: drop-shadow(0 0 4px rgba(30,90,200,0.55)); }
+  }
+
+  #btn3DTheater {
+    position: absolute; top: 4px; left: 4px;
+    width: 18px; height: 18px;
+    background: none; border: none;
+    color: rgba(160,190,220,0.65);
+    cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.12s;
+    z-index: 2;
+    animation: theaterPulse 2.8s ease-in-out infinite;
+  }
+  #btn3DTheater:hover          { color: rgba(220,238,255,1.00); animation: none; }
+  #btn3DTheater.theater-active { color: rgba(160,190,220,0.65); animation: none; }
+
+  /* Light mode: dark animation on light panel */
+  body.light #btn3DTheater {
+    animation: theaterPulseLight 2.8s ease-in-out infinite;
+    color: rgba(30,78,168,0.55);
+  }
+  body.light #btn3DTheater:hover          { color: rgba(10,45,140,0.95); animation: none; }
+  body.light #btn3DTheater.theater-active { color: rgba(30,78,168,0.55); animation: none; }
+
+  /* Can3d canvas clickable hint */
+  #can3d { display: block; cursor: pointer; }
+
+  #theaterPlaceholder {
+    display: none;
+    position: absolute; inset: 0;
+    background: #07090d;
+    align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--dim); letter-spacing: 0.08em;
+    flex-direction: column; gap: 6px;
+    cursor: pointer;
+  }
+
+  #can3dTheater {
+    position: absolute; inset: 0;
+    display: none;
+    background: #07090d;
+    cursor: grab;
+    z-index: 10;
+    touch-action: none;   /* capture one-finger orbit drag (no page scroll/zoom) */
+  }
+
+  #btnTheaterExit {
+    position: absolute; top: 8px; right: 10px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--dim); background: none;
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 2px 6px; cursor: pointer;
+    z-index: 11; display: none;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  #btnTheaterExit:hover { color: var(--text); border-color: var(--text); }
+
+  /* Theater zoom – vertical slider under the exit button */
+  #theaterZoomCtl {
+    position: absolute; top: 40px; right: 10px;
+    z-index: 11; display: none;
+    flex-direction: column; align-items: center; gap: 6px;
+    padding: 8px 4px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: 4px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    overflow: hidden;               /* contain slider on iOS Safari if it renders wide */
+    width: 28px;                    /* explicit width keeps container from growing on WebKit */
+  }
+  #theaterZoom {
+    writing-mode: vertical-lr;          /* modern Chrome/Firefox: vertical */
+    direction: rtl;                     /* top = max */
+    -webkit-appearance: slider-vertical;/* iOS Safari / older WebKit */
+    appearance: slider-vertical;
+    width: 8px; height: 130px;
+    max-width: 20px;                    /* guard against horizontal render overflow on iPad */
+    accent-color: var(--accent2);
+    cursor: pointer;
+    touch-action: none;                 /* prevent page scroll while dragging slider on iOS */
+  }
+  #theaterZoomVal {
+    font-family: var(--mono); font-size: 9px;
+    color: var(--accent2); letter-spacing: 0.04em;
+  }
+
+  #can3dLegend {
+    width: 100%;
+    padding: 6px 10px 2px 0;   /* right 10px mirrors panel left padding; canvas unaffected */
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .leg-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .leg-sym {
+    flex: 0 0 22px;
+    text-align: center;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .leg-line {
+    flex: 0 0 22px;
+    height: 0;
+    border-top-width: 1.5px;
+    border-top-style: solid;
+  }
+  .leg-line.dashed { border-top-style: dashed; }
+
+  /* Buttons at the bottom of can3dPanel */
+  #can3dButtons {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 36px;
+    padding: 2px 10px 0 0;     /* right 10px mirrors panel left padding */
+  }
+  .can3d-btn-row {
+    display: flex;
+    gap: 4px;
+  }
+  .can3d-btn-row .sidebar-btn { flex: 1; }
+  .can3d-sep {
+    border-top: 1px solid var(--border);
+    margin: 2px 0;
+  }
+
+  /* Mobile: stack vertically */
+  @media (max-width: 640px) {
+    html, body { overflow: auto; height: auto; }
+    .main-area { flex-direction: column; overflow: visible; }
+    .canvas-container { height: 60vw; min-height: 240px; flex: none; }
+    .sidebar {
+      flex: none;
+      width: 100%;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+    }
+    .sidebar-section {
+      border-bottom: none;
+      border-right: 1px solid var(--border);
+      padding: 0 12px 0 0;
+      min-width: 140px;
+    }
+  }
+
+  /* L2 opacity auto-loop play/stop button */
+  #btnL2Play {
+    margin-top: 6px;
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(32,160,232,0.12);
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #btnL2Play:hover { background: rgba(32,160,232,0.26); }
+  #btnL2Play.playing {
+    background: rgba(232,160,32,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #btnL2Play.playing:hover { background: rgba(232,160,32,0.28); }
+  #btnL2Play svg { display: block; }
+
+  /* Day-animation controls (Sun path) – play button styled like CROSSFADE LOOP */
+  #sunAnimCtl { width: 100%; margin-top: 6px; }
+  #btnSunPlay {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(240,208,64,0.14);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #btnSunPlay:hover { background: rgba(240,208,64,0.26); }
+  #btnSunPlay.playing {
+    background: rgba(232,120,40,0.16);
+    border-color: #e8782a;
+    color: #f0a050;
+  }
+  #btnSunPlay.playing:hover { background: rgba(232,120,40,0.30); }
+  #btnSunPlay svg { display: block; }
+  /* Solar-time slider: double-height track, green = sun-on-paper regions (--sun-fill),
+     thumb = thin vertical cursor line (no ball) */
+  #rngSunTime {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 16px;            /* ~2× a default range track */
+    background: transparent; cursor: pointer; margin: 3px 0;
+  }
+  #rngSunTime::-webkit-slider-runnable-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-moz-range-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 3px; height: 24px; margin-top: -5px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  #rngSunTime::-moz-range-thumb {
+    width: 3px; height: 24px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  /* Sunrise / sunset end labels under the slider */
+  .sun-rise-set {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.14em;
+    color: var(--dim); margin-top: 1px;
+  }
+
+  /* ── Status panel (top-left) – shown in Analyzer + Theater, collapsible ── */
+  #statusWrap {
+    position: absolute; top: 8px; left: 10px;
+    z-index: 11; display: none;          /* shown by JS in Analyzer / Theater */
+    flex-direction: column; align-items: flex-start;
+  }
+  #theaterStatus {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 13px 16px 15px;
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 5px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.65);
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); letter-spacing: 0.05em;
+    min-width: 220px;
+    cursor: pointer;                      /* click panel to collapse */
+    overflow: hidden;
+    max-height: 360px;
+    transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
+  }
+  #statusWrap.collapsed #theaterStatus {
+    max-height: 0; opacity: 0;
+    padding-top: 0; padding-bottom: 0;
+    border-width: 0; box-shadow: none;
+  }
+  /* Triangular show/hide arrow under the panel */
+  #statusToggle {
+    margin-top: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 3px;
+    color: var(--dim); cursor: pointer;
+    font-family: var(--mono); font-size: 10px; line-height: 1;
+    padding: 2px 8px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  #statusToggle:hover { color: var(--text); border-color: var(--text); }
+  .ts-row {
+    display: flex; justify-content: space-between;
+    align-items: baseline; gap: 14px; padding: 4px 0;
+  }
+  .ts-lbl {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--dim); white-space: nowrap; flex-shrink: 0;
+  }
+  .ts-val {
+    font-size: 12px; color: var(--text); text-align: right;
+  }
+  /* Noon HIT / MISS row */
+  #tsNoonRow {
+    margin-top: 6px; border-top: 1px solid var(--border); padding-top: 7px;
+  }
+  #tsIncidenceRow { padding-top: 2px; }
+  #tsHit, #tsMiss {
+    font-size: 12px; letter-spacing: 0.12em;
+    color: var(--dim); transition: color 0.2s;
+  }
+  .ts-noon-sep { font-size: 11px; color: var(--border); margin: 0 3px; }
+  #tsHit.active  { color: #50dc78; font-weight: bold; }
+  #tsMiss.active { color: #e04040; font-weight: bold; }
+
+  /* Noon button – in legend, styled like Isolines button */
+  #btnNoon {
+    margin-top: 22px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid rgba(240,208,64,0.3);
+    color: rgba(240,208,64,0.55);
+    border-radius: 2px;
+    padding: 4px 6px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-align: left;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  #btnNoon:hover {
+    border-color: rgba(240,208,64,0.6);
+    color: rgba(240,208,64,0.8);
+  }
+  #btnNoon.active {
+    border-color: #f0d040;
+    color: #f0d040;
+    background: rgba(240,208,64,0.08);
+  }
+  #noonChkIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
+
+  /* Cladding toggle – below the legend, aligned with the noon checkbox */
+  #claddingRow {
+    display: flex;
+    align-items: center;
+    gap: 5px;               /* same as in #btnNoon */
+    margin-top: 10px;       /* larger gap from btnNoon */
+    padding: 2px 6px;       /* left padding 6px = aligns checkbox with #noonChkIcon */
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    user-select: none;
+  }
+  #claddingRow:hover { color: var(--text); }
+  #claddingRow input[type=checkbox] {
+    width: 13px; height: 13px;
+    margin: 0; flex-shrink: 0;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<!-- Top strip: header + readout -->
+<div class="top-strip">
+  <header>
+    <h1>Solargraphy Projection Viewer</h1>
+    <span>pinhole projection definition: x = 2 r α &nbsp;•&nbsp; y = 2 r cos α tan ϕ</span>
+    <div class="mode-toggle">
+      <button class="mode-btn active-gallery" id="btnModeGallery">Gallery</button>
+      <button class="mode-btn" id="btnModeAnalyzer">Analyzer</button>
+    </div>
+    <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
+  </header>
+  <div class="readout" id="readout">
+    <div class="readout-item">
+      <span class="readout-label">Az</span>
+      <span class="readout-value" id="valAz">—</span>
+    </div>
+    <span class="readout-sep">|</span>
+    <div class="readout-item">
+      <span class="readout-label">Alt</span>
+      <span class="readout-value blue" id="valAlt">—</span>
+    </div>
+    <span class="readout-sep">|</span>
+    <div class="readout-item">
+      <span class="readout-label">Day</span>
+      <span class="readout-value" id="valDay" style="color:var(--text);font-size:11px;min-width:110px">—</span>
+    </div>
+    <span class="readout-sep">|</span>
+    <div class="readout-item">
+      <span class="readout-label">Time</span>
+      <span class="readout-value" id="valTime" style="color:var(--text);font-size:11px;min-width:44px">—</span>
+    </div>
+    <span class="readout-sep">|</span>
+    <div class="readout-item">
+      <span class="readout-label">Dir</span>
+      <span class="readout-value" id="valDir" style="color:#88cc88;font-size:12px;min-width:40px">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- Main area -->
+<div class="main-area">
+
+  <!-- Gallery panel (left, visible in gallery mode) -->
+  <div class="gallery-panel" id="galleryPanel">
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Generation</div>
+      <div class="radio-group" id="genGroup"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Image</span>
+        <button id="btnMeta" title="Image metadata">ⓘ</button>
+      </div>
+      <div class="radio-group" id="imageGroup"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">View</div>
+      <div class="radio-group" id="viewGroup">
+        <label class="radio-row view-raw">
+          <input type="radio" name="view" value="0"> RAW SCAN
+        </label>
+        <label class="radio-row view-enh active">
+          <input type="radio" name="view" value="1" checked> ENHANCED
+        </label>
+        <label class="radio-row view-split disabled">
+          <input type="radio" name="view" value="2" disabled> SPLIT SCREEN
+        </label>
+      </div>
+      <div id="l2OpacityRow" style="display:none;margin-top:6px">
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label" style="color:var(--dim)">Opacity</span>
+            <span class="slider-val" style="color:var(--dim)" id="lblL2Opacity">100%</span>
+          </div>
+          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)">
+        </div>
+        <button id="btnL2Play" title="Crossfade loop (10 s / cycle)">
+          <span id="l2PlayIcon"></span>
+          <span>Crossfade Loop</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3D Can orientation panel (Analyzer mode) -->
+  <div id="can3dPanel">
+    <div class="panel-title">3D Visualisation</div>
+    <div id="can3dWrap">
+      <canvas id="can3d" width="164" height="200"></canvas>
+      <div id="theaterPlaceholder">
+        <span>[theater mode]</span>
+      </div>
+      <button id="btn3DTheater" title="Theater mode">
+        <svg id="theaterIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <!-- expand: arrows pointing outward -->
+          <polyline points="1,4 1,1 4,1"/><line x1="1" y1="1" x2="4.5" y2="4.5"/>
+          <polyline points="11,8 11,11 8,11"/><line x1="11" y1="11" x2="7.5" y2="7.5"/>
+        </svg>
+      </button>
+    </div>
+    <div id="can3dLegend">
+      <div class="leg-row"><span class="leg-sym" style="color:#e8a020">●</span><span>pinhole</span></div>
+      <div class="leg-row" id="legAxisRow"><span class="leg-sym" id="legAxisSym" style="color:#d8e8f8">→</span><span id="legAxisLbl">optical axis</span></div>
+      <div class="leg-row"><span class="leg-line dashed" style="border-color:#88ccaa"></span><span>pinhole level</span></div>
+      <div class="leg-row"><span class="leg-line" style="border-color:#5aaad0"></span><span id="legPaperSpan">photopaper</span></div>
+      <div class="leg-row"><span class="leg-line dashed" style="border-color:#e8a020"></span><span>pinhole zone</span></div>
+      <div class="leg-row"><span class="leg-sym" style="color:#4080e8">Z</span><span>zenith axis</span></div>
+      <div class="leg-row" style="gap:3px">
+        <span class="leg-sym" id="legS" style="color:#e84040;flex:0 0 14px">S</span>
+        <span class="leg-sym" id="legN" style="color:#e87070;flex:0 0 14px">N</span>
+        <span class="leg-sym" style="color:#50dc78;flex:0 0 14px">W</span>
+        <span class="leg-sym" style="color:#78c878;flex:0 0 14px">E</span>
+        <span>compass rose</span>
+      </div>
+      <label id="claddingRow" title="Toggle cylinder cladding on/off">
+        <input type="checkbox" id="chkCladding" checked>
+        <span>cladding</span>
+      </label>
+      <button id="btnNoon" title="Show the sun path for the custom date">
+        <span id="noonChkIcon">☐</span>
+        <span>Sun path (custom date)</span>
+        <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
+      </button>
+      <div id="sunAnimCtl" style="display:none">
+        <button id="btnSunPlay" title="Animate the sunlight across the day (sunrise → sunset)">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+          <span>ANIMATE SUNLIGHT</span>
+        </button>
+        <div class="slider-row" style="margin-top:16px">
+          <div class="slider-header">
+            <span class="slider-label" style="color:#f0d040">Solar time</span>
+            <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
+          </div>
+          <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%">
+          <div class="sun-rise-set">
+            <span>RISE</span>
+            <span>SET</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="can3dButtons">
+      <div class="panel-title" style="align-self:flex-start;margin-bottom:3px">Preset</div>
+      <div class="can3d-btn-row">
+        <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35">Import</button>
+        <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35">Export</button>
+      </div>
+      <div class="can3d-sep"></div>
+      <button class="sidebar-btn" id="btnReset">↩ Load new image</button>
+    </div>
+    <input type="file" id="presetFileInput" accept=".json" style="display:none">
+  </div>
+
+  <!-- Canvas column -->
+  <div class="canvas-col">
+    <div class="upload-zone" id="uploadZone">
+      <p>Drop scan here or <span>click to select file</span></p>
+      <p style="margin-top:4px;font-size:10px">Longer side normalised to 1280 px</p>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div class="canvas-container hidden" id="canvasContainer">
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="can3dTheater"></canvas>
+      <button id="btnTheaterExit">✕ exit</button>
+      <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
+      <div id="statusWrap">
+        <div id="theaterStatus" title="Click to hide">
+          <div class="ts-row">
+            <span class="ts-lbl">circumference</span>
+            <span class="ts-val"><span id="tsCirc">—</span> mm</span>
+          </div>
+          <div class="ts-row">
+            <span class="ts-lbl">paper filling</span>
+            <span class="ts-val"><span id="tsFill">—</span> %</span>
+          </div>
+          <div class="ts-row">
+            <span class="ts-lbl">Perimeter coverage</span>
+            <span class="ts-val" id="tsCoverage">—</span>
+          </div>
+          <div class="ts-row" id="tsNoonRow">
+            <span class="ts-lbl" id="tsNoonLbl">noon</span>
+            <span>
+              <span id="tsHit">HIT</span>
+              <span class="ts-noon-sep">/</span>
+              <span id="tsMiss">MISS</span>
+            </span>
+          </div>
+          <div class="ts-row" id="tsAzAltRow" style="display:none">
+            <span class="ts-lbl">Az / Alt (Sun)</span>
+            <span class="ts-val" id="tsAzAlt">—</span>
+          </div>
+          <div class="ts-row" id="tsIncidenceRow" style="display:none">
+            <span class="ts-lbl">incidence angle of light</span>
+            <span class="ts-val" id="tsIncidence">—</span>
+          </div>
+        </div>
+        <button id="statusToggle" title="Hide / show the info panel">▲</button>
+      </div>
+      <div id="theaterZoomCtl">
+        <input type="range" id="theaterZoom" min="0.5" max="2" step="0.1" value="1">
+        <span id="theaterZoomVal">1.0×</span>
+      </div>
+      <div id="splitHandle"></div>
+      <button id="btnSplitInvert" title="Swap sides">↺</button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+
+    <div class="sidebar-section" id="displaySection">
+      <div class="sidebar-title">Display</div>
+      <label class="chk-row"><input type="checkbox" id="chkGrid" checked> Az/Alt Grid</label>
+      <label class="chk-row"><input type="checkbox" id="chkLabels" checked> Labels</label>
+      <label class="chk-row"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
+      <label class="chk-row"><input type="checkbox" id="chkSunArc"> Sun's paths</label>
+      <label class="chk-row"><input type="checkbox" id="chkCustomArc"> Custom date</label>
+      <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.45)">Show Isolines</button>
+      <div class="slider-row" style="margin-top:4px">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--dim)">Opacity</span>
+          <span class="slider-val" style="color:var(--dim)" id="lblOpacity">75%</span>
+        </div>
+        <input type="range" id="rngOpacity" min="10" max="100" value="75" style="accent-color:var(--dim)">
+      </div>
+    </div>
+
+    <div class="sidebar-section" id="calibrationSection">
+      <div class="sidebar-title">Calibration</div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:#a0c8e0">Scan width / height</span>
+        </div>
+      </div>
+      <div class="lat-row" style="margin-top:2px;margin-bottom:6px">
+        <button class="lat-btn" id="btnScanWDec">◀</button>
+        <input type="number" class="lat-input" id="inpScanW" min="80" max="300" step="1" value="178">
+        <button class="lat-btn" id="btnScanWInc">▶</button>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">mm</span>
+        <input type="text" class="lat-input" id="inpScanH" value="—" readonly tabindex="-1"
+          style="color:var(--dim);border-color:var(--border);cursor:default">
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">mm</span>
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--accent)">Yaw</span>
+          <span class="slider-val" style="color:var(--accent)" id="lblYaw">0.0°</span>
+        </div>
+        <input type="range" id="rngYaw" min="-120" max="120" step="0.5" value="0" style="accent-color:var(--accent)">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--accent2)">Pitch</span>
+          <span class="slider-val" style="color:var(--accent2)" id="lblPitch">0.0°</span>
+        </div>
+        <input type="range" id="rngPitch" min="-45" max="45" step="0.5" value="0" style="accent-color:var(--accent2)">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:#c8a040">Roll</span>
+          <span class="slider-val" style="color:#c8a040" id="lblRoll">0.0°</span>
+        </div>
+        <input type="range" id="rngRoll" min="-10" max="10" step="0.1" value="0" style="accent-color:#c8a040">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:#88ccaa">Horizon</span>
+          <span class="slider-val" style="color:#88ccaa" id="lblHorizon">0.0 mm</span>
+        </div>
+        <input type="range" id="rngHorizon" min="-50" max="50" step="0.5" value="0" style="accent-color:#88ccaa">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:#cc88cc">Radius</span>
+          <span class="slider-val" style="color:#cc88cc" id="lblHScale">33.0 mm</span>
+        </div>
+        <input type="range" id="rngHScale" min="15" max="80" step="0.5" value="33" style="accent-color:#cc88cc">
+      </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--accent-red)">Location</span>
+        </div>
+      </div>
+      <div class="lat-row" style="margin-top:2px">
+        <button class="lat-btn" id="btnLatDec">◀</button>
+        <input type="number" class="lat-input" id="inpLat" min="0" max="90" step="0.1" value="50.0">
+        <button class="lat-btn" id="btnLatInc">▶</button>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">°</span>
+        <div class="ns-toggle">
+          <button class="ns-btn active" id="btnN">N</button>
+          <button class="ns-btn" id="btnS">S</button>
+        </div>
+      </div>
+      <button class="sidebar-btn" id="btnCalibReset">Reset calibration</button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">Custom Path</div>
+      <div class="date-row">
+        <button class="date-btn" id="btnMonDec">◀</button>
+        <span class="date-val" id="lblMonth">Jul</span>
+        <button class="date-btn" id="btnMonInc">▶</button>
+      </div>
+      <div class="date-row">
+        <button class="date-btn" id="btnDayDec">◀</button>
+        <span class="date-val" id="lblDay">20</span>
+        <button class="date-btn" id="btnDayInc">▶</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Metadata popup -->
+<div id="metaPopup">
+  <div id="metaTitle" style="color:var(--accent2);font-size:13px;letter-spacing:0.18em;margin-bottom:9px"></div>
+  <div style="border-top:1px solid var(--border);margin-bottom:7px"></div>
+  <div class="meta-row">
+    <span class="meta-label">Location</span>
+    <span class="meta-val" id="metaLocation"></span>
+  </div>
+  <div class="meta-row">
+    <span class="meta-label">Start</span>
+    <span class="meta-val" id="metaStart"></span>
+  </div>
+  <div class="meta-row">
+    <span class="meta-label">End</span>
+    <span class="meta-val" id="metaEnd"></span>
+  </div>
+  <div class="meta-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:7px">
+    <span class="meta-label">Duration</span>
+    <span class="meta-val" id="metaDuration" style="color:var(--accent)"></span>
+  </div>
+</div>
+
+<div class="info-bar">
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.5.7
+</div>
+
+<script>
+// ─── Projection constants ────────────────────────────────────────────────────
+const R = 33;          // cylinder radius [mm]
+const PAPER_W = 178;   // paper width [mm]
+const PAPER_H = 127;   // paper height [mm]
+const IMG_W = 1280;    // pixels for longer side (scan normalised to this)
+
+let IMG_H = Math.round(IMG_W * PAPER_H / PAPER_W); // ~913
+let scale = IMG_W / PAPER_W; // px/mm
+
+// Image centre in pixels
+let cx = IMG_W / 2;
+let cy;  // set after image load
+
+// ─── Pitch rotation: world (β,θ) → local camera coordinates ───────────────
+// Pitch p (rad): positive = pinhole tilted toward zenith (can tilted forward/south)
+// Rotation Ry(p) around east–west axis (Y-axis):
+//   coordinate system: x = south, y = west, z = up
+//   Ry(p) rotates in the x–z plane (south–up):
+//     x' =  x·cos p + z·sin p
+//     y' =  y
+//     z' = −x·sin p + z·cos p
+function applyPitch(beta_rad, theta_rad, p) {
+  if (p === 0) return { b: beta_rad, t: theta_rad };
+  const dx =  Math.cos(theta_rad) * Math.cos(beta_rad);  // south
+  const dy =  Math.cos(theta_rad) * Math.sin(beta_rad);  // west
+  const dz =  Math.sin(theta_rad);                        // up
+
+  // Rotation Ry(p): in south–up plane
+  const dx2 = dx * Math.cos(p) + dz * Math.sin(p);
+  const dy2 = dy;
+  const dz2 = -dx * Math.sin(p) + dz * Math.cos(p);
+
+  const t2 = Math.asin(Math.max(-1, Math.min(1, dz2)));
+  const b2 = Math.atan2(dy2, dx2);
+  return { b: b2, t: t2 };
+}
+
+// Inverse pitch: local → world (used in pixelToAzEl)
+function applyPitchInverse(beta_rad, theta_rad, p) {
+  return applyPitch(beta_rad, theta_rad, -p);
+}
+
+// Roll: rotation around south axis (x), in west–up plane
+// rho > 0: top of cylinder leans west (pushed from east); rho < 0: leans east
+// Models lateral lean of cylinder axis – horizon becomes sinusoidal, not a straight tilt
+function applyRoll(beta_rad, theta_rad, rho) {
+  if (rho === 0) return { b: beta_rad, t: theta_rad };
+  const dx =  Math.cos(theta_rad) * Math.cos(beta_rad);  // south
+  const dy =  Math.cos(theta_rad) * Math.sin(beta_rad);  // west
+  const dz =  Math.sin(theta_rad);                        // up
+
+  // Rx(rho): keeps south fixed, rotates west–up plane
+  const dy2 =  dy * Math.cos(rho) - dz * Math.sin(rho);
+  const dz2 =  dy * Math.sin(rho) + dz * Math.cos(rho);
+
+  const t2 = Math.asin(Math.max(-1, Math.min(1, dz2)));
+  const b2 = Math.atan2(dy2, dx);
+  return { b: b2, t: t2 };
+}
+
+function applyRollInverse(beta_rad, theta_rad, rho) {
+  return applyRoll(beta_rad, theta_rad, -rho);
+}
+
+// ─── Inverse projection: pixel → (azimuth, elevation) ────────────────────
+function pixelToAzEl(px, py) {
+  const eCy = getEffectiveCy();
+  const sx = (px - cx) / scale;
+  const sy = (eCy - py) / scale;
+
+  // Inverse linear horizontal: β = sx / (2·R·hScale)
+  // Inverse vertical with cos(β) correction: tan(θ) = sy / (2·R·hScale·cos(β))
+  const beta_local  = sx / (2 * R * hScale);
+  const theta_local = Math.atan(sy / (2 * R * hScale * Math.cos(beta_local)));
+
+  // Back to world coordinates: inverse pitch then inverse roll
+  const p = pitchDeg * Math.PI / 180;
+  const { b: b1, t: t1 } = applyPitchInverse(beta_local, theta_local, p);
+  const rho = rollDeg * Math.PI / 180;
+  const { b: beta_world, t: theta_world } = applyRollInverse(b1, t1, rho);
+
+  const beta_deg  = beta_world  * 180 / Math.PI;
+  const theta_deg = theta_world * 180 / Math.PI;
+
+  const azimut_world = ((180 + beta_deg + yawDeg) + 360) % 360;
+
+  return { beta_deg, theta_deg, azimut_world };
+}
+
+// ─── Forward projection: world (β, θ) → pixel ─────────────────────────────
+// beta_deg: from south, positive = west; theta_deg: elevation
+function azElToPixel(beta_deg, theta_deg) {
+  const beta_rad  = beta_deg  * Math.PI / 180;
+  const theta_rad = theta_deg * Math.PI / 180;
+
+  // Transform world → camera frame: roll first, then pitch
+  const rho = rollDeg * Math.PI / 180;
+  const { b: b1, t: t1 } = applyRoll(beta_rad, theta_rad, rho);
+  const p = pitchDeg * Math.PI / 180;
+  let { b: bl, t: tl } = applyPitch(b1, t1, p);
+
+  // Normalize bl to (−π, π] – applyRoll/Pitch early-return when rho/p=0
+  // bypasses atan2, so bl may be outside (−π, π) for large yaw offsets.
+  if (bl >  Math.PI) bl -= 2 * Math.PI;
+  if (bl < -Math.PI) bl += 2 * Math.PI;
+
+  // Guard against ±90° local elevation (tan overflow); full azimuth range is valid
+  if (Math.abs(tl) >= Math.PI / 2 - 0.001) return null;
+
+  // Linear horizontal: sx = 2·R·hScale·β
+  // Perspective vertical with cos(β) correction: sy = 2·R·hScale·cos(β)·tan(θ)
+  const sx = 2 * R * hScale * bl;
+  const sy = 2 * R * hScale * Math.cos(bl) * Math.tan(tl);
+  const px = cx + sx * scale;
+  const py = getEffectiveCy() - sy * scale;
+
+  return { px, py };
+}
+
+// ─── Inverse solar calculations ───────────────────────────────────────────
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTH_DAYS  = [31,28,31,30,31,30,31,31,30,31,30,31];
+
+// Convert day-of-year to month/day string e.g. "Mar 15"
+function doyToString(doy) {
+  doy = ((Math.round(doy) - 1 + 365) % 365) + 1;
+  let m = 0, d = doy;
+  while (d > MONTH_DAYS[m]) { d -= MONTH_DAYS[m]; m++; }
+  return MONTH_NAMES[m] + ' ' + d;
+}
+
+// From (azimut_world °, elevation °, lat rad) → { day1, day2, time }
+// Returns null if outside valid range
+function inverseSolar(az_world_deg, el_deg, phi_rad) {
+  if (el_deg < 0) return null;
+
+  const el  = el_deg  * Math.PI / 180;
+  // az_south: azimuth measured from south (β), positive = west
+  // az_world → az_south = az_world - 180
+  const az_south = (az_world_deg - 180) * Math.PI / 180;
+
+  // Declination from spherical trigonometry:
+  // sin(δ) = sin(el)·sin(φ) - cos(el)·cos(φ)·cos(az_south)
+  // (az_south=0 = south: sun on meridian → δ = el - φ or φ - el)
+  const sinDelta = Math.sin(el) * Math.sin(phi_rad)
+                 - Math.cos(el) * Math.cos(phi_rad) * Math.cos(az_south);
+  if (Math.abs(sinDelta) > 1) return null;
+  const delta = Math.asin(sinDelta);
+
+  // Day of year from declination (two solutions: spring and autumn)
+  // δ = 23.45° · sin(2π/365 · (d - 81))
+  // sin⁻¹(δ / 23.45°) = 2π/365 · (d - 81)
+  const maxDecl = 23.45 * Math.PI / 180;
+  if (Math.abs(delta) > maxDecl) return null;
+  const sinArg = delta / maxDecl;
+  const angle  = Math.asin(sinArg); // −π/2 .. π/2
+
+  // Two solutions in [1,365]:
+  // d1 = 81 + angle·365/(2π)        (spring side)
+  // d2 = 81 + (π − angle)·365/(2π)  (autumn side)
+  const d1 = 81 + angle * 365 / (2 * Math.PI);
+  const d2 = 81 + (Math.PI - angle) * 365 / (2 * Math.PI);
+
+  // Hour angle H from el/phi/delta:
+  // cos(H) = (sin(el) - sin(φ)·sin(δ)) / (cos(φ)·cos(δ))
+  const cosH = (Math.sin(el) - Math.sin(phi_rad) * sinDelta)
+             / (Math.cos(phi_rad) * Math.cos(delta));
+  if (Math.abs(cosH) > 1) return null;
+  let H = Math.acos(cosH); // 0..π
+  // Afternoon: sun west of south on N, east of north on S
+  // az_south > 0 means west of south (afternoon on N, morning on S)
+  const westOfSouth = az_south > 0;
+  if (hemisphere >= 0) {
+    if (westOfSouth) H = -H;  // N: west = afternoon
+  } else {
+    if (!westOfSouth) H = -H; // S: east = afternoon (opposite)
+  }
+
+  // Solar time: H=0 → noon
+  const solarHour = 12 - H * 180 / Math.PI / 15;
+  if (solarHour < 0 || solarHour > 24) return null;
+
+  const hh = Math.floor(solarHour);
+  const mm = Math.floor((solarHour - hh) * 60);
+  const timeStr = hh + ':' + String(mm).padStart(2, '0');
+
+  // Southern hemisphere: shift dates by 182 days (local season correction)
+  const shift = hemisphere >= 0 ? 0 : 182;
+  return {
+    day1: doyToString(d1 + shift),
+    day2: doyToString(d2 + shift),
+    time: timeStr
+  };
+}
+function azimutToDir(az) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const idx = Math.round(az / 22.5) % 16;
+  return dirs[idx];
+}
+
+// ─── Solar position calculations ──────────────────────────────────────────
+let LAT = 50.0;        // latitude °N, precision 0.5°
+let hemisphere = 1;    // +1 = northern, -1 = southern
+const LON = 15.0;      // longitude °E (unused in solar time mode)
+
+// Effective latitude: clamp poles and equator to avoid singularities
+function effectiveLat() {
+  const lat = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
+  return lat * Math.PI / 180;
+}
+
+// Solar declination for day-of-year d (1 = Jan 1)
+function sunDeclination(dayOfYear) {
+  return 23.45 * Math.PI / 180 * Math.sin(2 * Math.PI / 365 * (dayOfYear - 81));
+}
+
+// Day of year for given month/day
+function dayOfYear(month, day) {
+  const daysInMonth = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+  let d = day;
+  for (let m = 1; m < month; m++) d += daysInMonth[m];
+  return d;
+}
+
+// Azimuth and elevation of sun for hour angle H (rad), declination δ (rad), latitude φ (rad)
+// Returns { az, el } in degrees; az = world azimuth 0=N, 90=E, 180=S, 270=W
+function sunPosition(H, delta, phi) {
+  const sinEl = Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta) * Math.cos(H);
+  const el = Math.asin(Math.max(-1, Math.min(1, sinEl)));
+
+  const cosAz = (Math.sin(delta) - Math.sin(phi) * sinEl) / (Math.cos(phi) * Math.cos(el));
+  let az = Math.acos(Math.max(-1, Math.min(1, cosAz)));
+  // Afternoon correction (H > 0 → west side)
+  if (Math.sin(H) > 0) az = 2 * Math.PI - az;
+
+  return {
+    az: az * 180 / Math.PI,          // world azimuth
+    el: el * 180 / Math.PI,          // elevation
+    beta: az * 180 / Math.PI - 180   // β from south (camera centre = south always)
+  };
+}
+
+// Draw a single solar arc
+// style: { color, lineWidth, showHourDots, showHourLabels, edgeLabel }
+function drawSunArc(W, H, month, day, style) {
+  const doy   = dayOfYear(month, day);
+  const delta = sunDeclination(doy);
+  const phi   = effectiveLat();
+
+  // Sample at 0.25° steps for smooth curve
+  const curvePoints = [];
+  for (let hDeg = -180; hDeg <= 180; hDeg += 0.25) {
+    const Hrad = hDeg * Math.PI / 180;
+    const { el, beta } = sunPosition(Hrad, delta, phi);
+    if (el < 0) continue;
+    const pos = azElToPixel(beta - yawDeg, el);
+    if (!pos) continue;
+    if (pos.px < -20 || pos.px > W + 20) continue;
+    curvePoints.push(pos);
+  }
+
+  if (curvePoints.length < 2) return;
+
+  // Draw arc curve
+  ctx.beginPath();
+  ctx.moveTo(curvePoints[0].px, curvePoints[0].py);
+  for (let i = 1; i < curvePoints.length; i++) ctx.lineTo(curvePoints[i].px, curvePoints[i].py);
+  ctx.strokeStyle = style.color;
+  ctx.lineWidth = style.lineWidth;
+  ctx.setLineDash([]);
+  ctx.stroke();
+
+  // Edge label – clamped inside canvas
+  if (showLabels && style.edgeLabel) {
+    ctx.font = `${style.lineWidth >= 1.4 ? 'bold ' : ''}10px 'Share Tech Mono'`;
+    // Labels always at full opacity – extract RGB from style.color and force alpha=1
+    ctx.fillStyle = style.color.replace(/rgba\(([^,]+,[^,]+,[^,]+),[^)]+\)/, 'rgba($1,1)');
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 2.5;
+
+    const left  = curvePoints[0];
+    const right = curvePoints[curvePoints.length - 1];
+    const pad = 2;
+
+    ctx.textAlign = 'left';
+    const lx = Math.max(pad, left.px + 4);
+    ctx.strokeText(style.edgeLabel, lx, left.py - 4);
+    ctx.fillText(style.edgeLabel,   lx, left.py - 4);
+
+    ctx.textAlign = 'right';
+    const rx = Math.min(W - pad, right.px - 4);
+    ctx.strokeText(style.edgeLabel, rx, right.py - 4);
+    ctx.fillText(style.edgeLabel,   rx, right.py - 4);
+  }
+
+  // Hourly dots and labels (equinox only)
+  if (style.showHourDots) {
+    for (let hDeg = -12 * 15; hDeg <= 12 * 15; hDeg += 15) {
+      const Hrad = hDeg * Math.PI / 180;
+      const { el, beta } = sunPosition(Hrad, delta, phi);
+      if (el < 0) continue;
+      const pos = azElToPixel(beta - yawDeg, el);
+      if (!pos) continue;
+      if (pos.px < 0 || pos.px > W || pos.py < 0 || pos.py > H) continue;
+
+      // Solar hour label: mirror for southern hemisphere
+      const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+      const label = Math.floor(solarHour) + ':00';
+
+      ctx.beginPath();
+      ctx.arc(pos.px, pos.py, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = style.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      if (showLabels && style.showHourLabels) {
+        ctx.font = "bold 10px 'Share Tech Mono'";
+        ctx.fillStyle = style.color.replace(/rgba\(([^,]+,[^,]+,[^,]+),[^)]+\)/, 'rgba($1,1)');
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2.5;
+        ctx.textAlign = pos.px < W / 2 ? 'left' : 'right';
+        const ox = pos.px < W / 2 ? 7 : -7;
+        ctx.strokeText(label, pos.px + ox, pos.py - 4);
+        ctx.fillText(label,   pos.px + ox, pos.py - 4);
+      }
+    }
+  }
+}
+
+// Draw full set of solar arcs
+function drawAllSunArcs(W, H) {
+  const op = dispOpacity;
+  // Intermediate arcs – thin yellow, no labels
+  const thin = `rgba(255, 220, 60, ${Math.min(1, op * 0.40)})`;
+  [[1,21],[2,21],[4,21],[5,21]].forEach(([m,d]) => {
+    drawSunArc(W, H, m, d, { color: thin, lineWidth: 0.8,
+      showHourDots: false, showHourLabels: false, edgeLabel: null });
+  });
+
+  // Local winter solstice – blue
+  const winterMonth = hemisphere >= 0 ? 12 : 6;
+  drawSunArc(W, H, winterMonth, 21, {
+    color: `rgba(60, 180, 255, ${Math.min(1, op * 0.85)})`, lineWidth: 1.5,
+    showHourDots: false, showHourLabels: false, edgeLabel: 'solstice'
+  });
+
+  // Equinox – yellow (with hour dots + labels)
+  drawSunArc(W, H, 3, 21, {
+    color: `rgba(255, 220, 60, ${Math.min(1, op * 0.85)})`, lineWidth: 1.5,
+    showHourDots: true, showHourLabels: true, edgeLabel: 'equinox'
+  });
+
+  // Local summer solstice – red
+  const summerMonth = hemisphere >= 0 ? 6 : 12;
+  drawSunArc(W, H, summerMonth, 21, {
+    color: `rgba(255, 100, 60, ${Math.min(1, op * 0.85)})`, lineWidth: 1.5,
+    showHourDots: false, showHourLabels: false, edgeLabel: 'solstice'
+  });
+}
+
+let showSunArc = false;
+let showHeatmap = false;
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvasContainer');
+let imgBitmap = null;
+let mouseX = -1, mouseY = -1;
+let showGrid = true, showLabels = true, showHorizon = true;
+let dispOpacity = 0.75;  // master opacity for all display overlays
+let yawDeg   = 0;   // degrees, rotation from south (positive = west)
+let pitchDeg   = 0;   // degrees, pitch – bends horizon via Ry rotation
+let rollDeg = 0;   // degrees, roll around optical axis (±5°, step 0.1°)
+let hScale     = 1.0; // derived: radius / R (updated when radius changes)
+let radius     = 33;  // effective cylinder radius [mm]
+let horizonMm = 0;   // mm, vertical offset of pinhole from paper centre (positive = above centre)
+let scanWmm   = 178;  // mm represented by the full scan width (set by user)
+
+// Effective cy corrected for pinhole vertical offset
+function getEffectiveCy() {
+  return cy + horizonMm * scale;
+}
+
+function setupCanvas(w, h) {
+  canvas.width = w;
+  canvas.height = h;
+  IMG_H = h;
+  cy = h / 2;
+  cx = w / 2;
+  scale = w / scanWmm;
+  updateScanH();
+  refreshCalibLimits();   // aspect ratio affects the horizon range
+}
+
+function updateScanH() {
+  const el = document.getElementById('inpScanH');
+  if (!el) return;
+  el.value = canvas.width > 0
+    ? Math.round(scanWmm * canvas.height / canvas.width)
+    : '—';
+}
+
+// ─── Split screen ─────────────────────────────────────────────────────────
+const splitHandle    = document.getElementById('splitHandle');
+const btnSplitInvert = document.getElementById('btnSplitInvert');
+
+let splitActive     = false;
+let splitInverted   = false;
+let splitBitmap     = null;   // L2 image bitmap
+let splitX          = 0.5;    // relative 0–1 within image bounds
+let isDraggingSplit = false;
+let splitOpacity    = 1.0;    // L2 layer opacity (0.1–1.0)
+
+// Returns the actual image bounds inside the canvas-container
+// (canvas is CSS width/height 100% but image has a natural aspect ratio)
+function getImageBounds() {
+  const rect = container.getBoundingClientRect();
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const cr = rect.width / rect.height;
+  const ir = cw / ch;
+  let iw, ih, ox, oy;
+  if (ir > cr) {
+    iw = rect.width;
+    ih = rect.width / ir;
+    ox = 0;
+    oy = (rect.height - ih) / 2;
+  } else {
+    ih = rect.height;
+    iw = rect.height * ir;
+    ox = (rect.width - iw) / 2;
+    oy = 0;
+  }
+  return { iw, ih, ox, oy };
+}
+
+function setSplitMode(active) {
+  stopL2Loop();                 // cancel auto-loop on any split state change
+  splitActive = active;
+  splitHandle.style.display    = active ? 'block' : 'none';
+  btnSplitInvert.style.display = active ? 'flex'  : 'none';
+  container.style.cursor = active ? 'col-resize' : 'none';
+  document.getElementById('l2OpacityRow').style.display = active ? 'block' : 'none';
+  draw();
+}
+
+// Called from draw() – draws L2 with opacity blend onto mainCanvas
+function drawSplitOverlay(W, H) {
+  if (!splitActive || !splitBitmap) return;
+  const splitPx = Math.round(splitX * W);
+
+  ctx.save();
+  ctx.beginPath();
+  if (!splitInverted) {
+    ctx.rect(0, 0, splitPx, H);             // L2 on left (default)
+  } else {
+    ctx.rect(splitPx, 0, W - splitPx, H);   // L2 on right (swapped)
+  }
+  ctx.clip();
+
+  // Inside L2 clip only:
+  // 1. Draw L2 at 100% — covers the L1 that was drawn beneath
+  ctx.drawImage(splitBitmap, 0, 0, W, H);
+  // 2. Draw L1 back at (1 − splitOpacity) — blends L1 into L2
+  //    Result: L2 * splitOpacity + L1 * (1 − splitOpacity)
+  if (imgBitmap && splitOpacity < 1.0) {
+    ctx.globalAlpha = 1.0 - splitOpacity;
+    ctx.drawImage(imgBitmap, 0, 0, W, H);
+    ctx.globalAlpha = 1.0;
+  }
+
+  ctx.restore();   // removes clip, restores globalAlpha — L1 side untouched
+
+  // Update handle position – map canvas px → container px
+  updateHandlePosition(splitPx, W);
+}
+
+function updateHandlePosition(splitPx, canvasW) {
+  const bounds = getImageBounds();
+  const handleX = bounds.ox + (splitPx / canvasW) * bounds.iw;
+  splitHandle.style.left = handleX + 'px';
+}
+
+// Load L2 bitmap for split
+function loadSplitImage(genId, imageIndex) {
+  const path = `img/GEN-${genId}_${imageIndex}_L2.jpg`;
+  const imgEl = new Image();
+  imgEl.onload = () => {
+    createImageBitmap(imgEl).then(bm => {
+      splitBitmap = bm;
+      if (splitActive) draw();
+    });
+  };
+  imgEl.onerror = () => { splitBitmap = null; };
+  imgEl.src = path;
+}
+
+// Drag – move split position
+container.addEventListener('mousedown', (e) => {
+  if (!splitActive) return;
+  if (e.target === btnSplitInvert) return; // click on the button is not part of the split drag
+  isDraggingSplit = true;
+  moveSplit(e.clientX);
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!splitActive || !isDraggingSplit) return;
+  moveSplit(e.clientX);
+});
+
+window.addEventListener('mouseup', () => { isDraggingSplit = false; });
+
+container.addEventListener('touchstart', (e) => {
+  if (!splitActive) return;
+  if (e.target.closest('#btnSplitInvert')) return; // tap on rotate button – don't move split
+  isDraggingSplit = true;
+  moveSplit(e.touches[0].clientX);
+}, { passive: true });
+
+container.addEventListener('touchmove', (e) => {
+  if (!splitActive || !isDraggingSplit) return;
+  moveSplit(e.touches[0].clientX);
+}, { passive: true });
+
+container.addEventListener('touchend', () => { isDraggingSplit = false; });
+
+function moveSplit(clientX) {
+  const bounds = getImageBounds();
+  const rect   = container.getBoundingClientRect();
+  // Clamp to image bounds only (not letterbox area)
+  const relX = (clientX - rect.left - bounds.ox) / bounds.iw;
+  splitX = Math.max(0, Math.min(1, relX));
+  draw();
+}
+
+btnSplitInvert.addEventListener('click', () => {
+  splitInverted = !splitInverted;
+  btnSplitInvert.classList.toggle('active', splitInverted);
+  draw();
+});
+
+// ─── Vignetting isolines: constant α = angle from optical axis ───────────
+// cos(α) = cos(β_local) · cos(θ_local)
+// Isolines for α = 70–80° step 2°, white dotted, opacity scales with dispOpacity.
+// Labels (showLabels) only for 70° and 80°, at all four corners of canvas.
+
+function drawVignetteIsolines(W, H) {
+  const op = dispOpacity;
+  const alphas = [60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80];
+  const eCy = getEffectiveCy();
+
+  // Track extreme visible points per isoline per side for label placement
+  const bottomL = new Array(alphas.length).fill(null);
+  const bottomR = new Array(alphas.length).fill(null);
+  const topL    = new Array(alphas.length).fill(null);
+  const topR    = new Array(alphas.length).fill(null);
+
+  for (let i = 0; i < alphas.length; i++) {
+    const alpha = alphas[i];
+    const baseOpacity = 0.20 + i * (0.80 / (alphas.length - 1));
+    const finalOpacity = Math.min(1, baseOpacity * op);
+    const color = `rgba(255,255,255,${finalOpacity.toFixed(3)})`;
+    const cosA = Math.cos(alpha * Math.PI / 180);
+
+    for (const sign of [+1, -1]) {
+      const points = [];
+      for (let bDeg = -89; bDeg <= 89; bDeg += 0.5) {
+        const beta_local = bDeg * Math.PI / 180;
+        const cosB = Math.cos(beta_local);
+        if (Math.abs(cosB) < 1e-6) continue;
+        const cosTheta = cosA / cosB;
+        if (Math.abs(cosTheta) > 1) continue;
+        const theta_local = sign * Math.acos(cosTheta);
+        const sx = 2 * R * hScale * beta_local;
+        const sy = 2 * R * hScale * Math.cos(beta_local) * Math.tan(theta_local);
+        const px = cx + sx * scale;
+        const py = eCy - sy * scale;
+        if (px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
+        points.push({ px, py });
+
+        if (px >= 0 && px <= W && py >= 0 && py <= H) {
+          if (bDeg <= 0) {
+            if (!bottomL[i] || py > bottomL[i].py) bottomL[i] = { px, py };
+            if (!topL[i]    || py < topL[i].py)    topL[i]    = { px, py };
+          }
+          if (bDeg >= 0) {
+            if (!bottomR[i] || py > bottomR[i].py) bottomR[i] = { px, py };
+            if (!topR[i]    || py < topR[i].py)    topR[i]    = { px, py };
+          }
+        }
+      }
+      if (points.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(points[0].px, points[0].py);
+      for (let j = 1; j < points.length; j++) ctx.lineTo(points[j].px, points[j].py);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.0;
+      ctx.setLineDash([2, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Labels: only 70° and 80°, at all four corners (top/bottom × left/right)
+  if (!showLabels) return;
+
+  ctx.font = "9px 'Share Tech Mono'";
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.textAlign = 'center';
+
+  for (const i of [0, 5, alphas.length - 1]) {
+    const t = alphas[i] + '°';
+    if (bottomL[i]) { ctx.strokeText(t, bottomL[i].px, H - 6);  ctx.fillText(t, bottomL[i].px, H - 6); }
+    if (bottomR[i]) { ctx.strokeText(t, bottomR[i].px, H - 6);  ctx.fillText(t, bottomR[i].px, H - 6); }
+    if (topL[i])    { ctx.strokeText(t, topL[i].px,    10);      ctx.fillText(t, topL[i].px,    10); }
+    if (topR[i])    { ctx.strokeText(t, topR[i].px,    10);      ctx.fillText(t, topR[i].px,    10); }
+  }
+}
+
+// ─── Rendering ─────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background image (L1)
+  if (imgBitmap) {
+    ctx.drawImage(imgBitmap, 0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#080a0e';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Split overlay (L2) – drawn before display elements
+  if (splitActive) drawSplitOverlay(W, H);
+
+  // Vignetting isolines (α = 70°, 80°, 90°)
+  if (showHeatmap) drawVignetteIsolines(W, H);
+
+  // Grid
+  if (showGrid) drawGrid(W, H);
+
+  // Horizon
+  if (showHorizon) drawHorizon(W, H);
+
+  // Sun arcs – full annual set
+  if (showSunArc) drawAllSunArcs(W, H);
+
+  // Custom date arc – black outline + green fill, with label at south axis
+  if (showCustomArc) {
+    const op = dispOpacity;
+    const { month: cm, day: cd } = customArcDate();
+    drawSunArc(W, H, cm, cd, {
+      color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
+      showHourDots: false, showHourLabels: false, edgeLabel: null
+    });
+    drawSunArc(W, H, cm, cd, {
+      color: `rgba(80, 220, 120, ${Math.min(1, op * 0.9)})`, lineWidth: 1.5,
+      showHourDots: false, showHourLabels: false, edgeLabel: null
+    });
+
+    // Label anchored to south axis, offset 8px right, above the arc at that point
+    // Find arc y-position at south axis (β=0, i.e. pixel x = cx adjusted for yawDeg)
+    const doy   = dayOfYear(customMonth, customDay);
+    const delta = sunDeclination(doy);
+    const phi   = effectiveLat();
+    // Hour angle at exactly south transit (H=0)
+    const { el: elSouth, beta: betaSouth } = sunPosition(0, delta, phi);
+    const southPos = elSouth > 0 ? azElToPixel(betaSouth - yawDeg, elSouth) : null;
+
+    if (southPos && southPos.px >= 0 && southPos.px <= W && southPos.py >= 0 && southPos.py <= H && showLabels) {
+        const dateLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay;
+      const lx = southPos.px + 8;
+      const ly = southPos.py - 6;
+      ctx.font = "10px 'Share Tech Mono'";
+      ctx.fillStyle = 'rgba(80, 220, 120, 1)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.lineWidth = 2.5;
+      ctx.textAlign = 'left';
+      ctx.strokeText(dateLabel, lx, ly);
+      ctx.fillText(dateLabel,   lx, ly);
+    }
+
+    // Animated Sun marker on the path (Analyzer): yellow dot in the theater pinhole style
+    if (show3DCulmination) {
+      maybeUpdateSunFill();                          // keep slider regions in sync (analyzer)
+      const dDelta = sunDeclination(dayOfYear(cm, cd));
+      const hDeg = (sunTimeHours - 12) * 15 * hemisphere;
+      const s = sunPosition(hDeg * Math.PI / 180, dDelta, phi);
+      if (s.el >= 0) {
+        const sp = azElToPixel(s.beta - yawDeg, s.el);
+        if (sp && sp.px >= 0 && sp.px <= W && sp.py >= 0 && sp.py <= H) {
+          const glR = 14;
+          const glow = ctx.createRadialGradient(sp.px, sp.py, 0, sp.px, sp.py, glR);
+          glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
+          ctx.fillStyle = glow; ctx.fillRect(sp.px - glR, sp.py - glR, glR * 2, glR * 2);
+          ctx.beginPath(); ctx.arc(sp.px, sp.py, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#e8a020'; ctx.fill();
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Cursor crosshair – hide in split mode
+  if (mouseX >= 0 && !splitActive) drawCrosshair(W, H);
+}
+
+function drawGrid(W, H) {
+  const op = dispOpacity;
+
+  // Azimuth isolines every 15° – full 360°, hemisphere-aware styling
+  const NH_AZ_LABELS = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+  const SH_AZ_LABELS = { 0: 'S', 90: 'W', 180: 'N', 270: 'E' };
+  const azLabelMap = hemisphere >= 0 ? NH_AZ_LABELS : SH_AZ_LABELS;
+  // Sun-facing direction: S in NH (az=180), N in SH (az=0)
+  const importantAz = hemisphere >= 0 ? 180 : 0;
+
+  for (let az = 0; az < 360; az += 15) {
+    const beta = az - 180 - yawDeg;
+    const isCardinal  = (az % 90 === 0);
+    const isImportant = (az === importantAz);
+    const isNorthAz   = (az === (hemisphere >= 0 ? 0 : 180));  // pole-facing direction
+    const is30        = (az % 30 === 0);
+
+    const points = [];
+    for (let el = -85; el <= 85; el += 0.5) {
+      const pos = azElToPixel(beta, el);
+      if (!pos) continue;
+      if (pos.py < -20 || pos.py > H + 20) continue;
+      if (pos.px < -20 || pos.px > W + 20) continue;
+      points.push(pos);
+    }
+    if (points.length < 2) continue;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].px, points[0].py);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].px, points[i].py);
+
+    if (isImportant) {
+      ctx.strokeStyle = `rgba(232,160,32,${Math.min(1, op * 1.1)})`;
+      ctx.lineWidth = 2; ctx.setLineDash([]);
+    } else if (isNorthAz) {
+      ctx.strokeStyle = `rgba(32,160,232,${Math.min(1, op * 1.1)})`;
+      ctx.lineWidth = 2; ctx.setLineDash([]);
+    } else if (isCardinal) {
+      ctx.strokeStyle = `rgba(32,160,232,${Math.min(1, op * 0.95)})`;
+      ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+    } else if (is30) {
+      ctx.strokeStyle = `rgba(232,160,32,${Math.min(1, op * 0.65)})`;
+      ctx.lineWidth = 1.1; ctx.setLineDash([5, 5]);
+    } else {
+      ctx.strokeStyle = `rgba(232,160,32,${Math.min(1, op * 0.42)})`;
+      ctx.lineWidth = 0.9; ctx.setLineDash([3, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (showLabels && points.length > 0) {
+      const fontSize = (isImportant || isNorthAz || isCardinal) ? 12 : 10;
+      ctx.font = `${(isImportant || isNorthAz) ? 'bold ' : ''}${fontSize}px 'Share Tech Mono'`;
+      ctx.fillStyle = isImportant ? 'rgba(232,160,32,1)'
+        : isNorthAz ? 'rgba(32,160,232,1)'
+        : isCardinal ? 'rgba(32,160,232,1)'
+        : is30 ? 'rgba(200,180,120,1)' : 'rgba(180,160,100,1)';
+      const displayAz = hemisphere >= 0 ? az : (az + 180) % 360;
+      const label = isCardinal ? azLabelMap[az] : displayAz + '°';
+      const top = points[0], bot = points[points.length - 1];
+      ctx.textAlign = 'center';
+      ctx.fillText(label, top.px, top.py + 12);
+      ctx.fillText(label, bot.px, bot.py - 4);
+    }
+  }
+
+  // Elevation isolines every 10° – full 360° with segment handling
+  for (let el = -80; el <= 80; el += 10) {
+    if (el === 0) continue; // horizon drawn separately
+
+    const segments = [];
+    let seg = [];
+    for (let az = 0; az <= 360; az += 1) {
+      const beta = az - 180 - yawDeg;
+      const pos  = azElToPixel(beta, el);
+      if (pos && pos.px >= -20 && pos.px <= canvas.width + 20
+              && pos.py >= -20 && pos.py <= canvas.height + 20) {
+        seg.push(pos);
+      } else {
+        if (seg.length >= 2) segments.push(seg);
+        seg = [];
+      }
+    }
+    if (seg.length >= 2) segments.push(seg);
+    if (segments.length === 0) continue;
+
+    ctx.strokeStyle = `rgba(32,160,232,${Math.min(1, op * 0.65)})`;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 4]);
+    for (const s of segments) {
+      ctx.beginPath();
+      ctx.moveTo(s[0].px, s[0].py);
+      for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].px, s[i].py);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    if (showLabels) {
+      ctx.font = "10px 'Share Tech Mono'";
+      ctx.fillStyle = 'rgba(32,160,232,1)';
+      let best = null;
+      for (const s of segments) {
+        for (const p of s) {
+          if (p.px >= cx && (!best || p.px < best.px)) best = p;
+        }
+      }
+      if (best) {
+        ctx.textAlign = 'left';
+        ctx.fillText((el > 0 ? '+' : '') + el + '°', best.px + 4, best.py - 3);
+      }
+    }
+  }
+}
+
+function drawHorizon(W, H) {
+  if (!showHorizon) return;
+  const op = dispOpacity;
+
+  // Horizon = el 0° sampled over full 360° – breaks at null (behind camera)
+  const segments = [];
+  let current = [];
+  for (let az = 0; az <= 361; az += 1) {
+    const beta = az - 180 - yawDeg;
+    const pos = azElToPixel(beta, 0);
+    if (pos && pos.px >= -40 && pos.px <= W + 40) {
+      current.push({ ...pos, az: az % 360 });
+    } else {
+      if (current.length >= 2) segments.push(current);
+      current = [];
+    }
+  }
+  if (current.length >= 2) segments.push(current);
+  if (segments.length === 0) return;
+
+  // Draw horizon line – white dashed
+  ctx.strokeStyle = `rgba(255,255,255,${Math.min(1, op * 0.85)})`;
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([8, 4]);
+  for (const seg of segments) {
+    ctx.beginPath();
+    ctx.moveTo(seg[0].px, seg[0].py);
+    for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].px, seg[i].py);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Azimuth tick marks every 20° – full 360°
+  const tickAzimuths = [];
+  for (let az = 0; az < 360; az += 20) tickAzimuths.push(az);
+  const horizImportantAz = hemisphere >= 0 ? 180 : 0; // sun-facing direction
+
+  for (const az of tickAzimuths) {
+    const beta = az - 180;
+    const pos = azElToPixel(beta - yawDeg, 0);
+    if (!pos) continue;
+    if (pos.px < 0 || pos.px > W) continue;
+
+    const isCentre = (az === horizImportantAz);
+    const tickH = isCentre ? 10 : 6;
+    const col = isCentre
+      ? `rgba(232,160,32,${Math.min(1, op * 1.1)})`
+      : `rgba(255,255,255,${Math.min(1, op * 0.85)})`;
+
+    ctx.beginPath();
+    ctx.moveTo(pos.px, pos.py);
+    ctx.lineTo(pos.px, pos.py - tickH);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = isCentre ? 1.5 : 1;
+    ctx.setLineDash([]);
+    ctx.stroke();
+
+    if (showLabels) {
+      ctx.font = `${isCentre ? 'bold ' : ''}10px 'Share Tech Mono'`;
+      ctx.fillStyle = isCentre ? 'rgba(232,160,32,1)' : 'rgba(255,255,255,1)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 2;
+      ctx.textAlign = 'center';
+      const displayAz = hemisphere >= 0 ? az : (az + 180) % 360;
+      const labelStr = displayAz + '°';
+      ctx.strokeText(labelStr, pos.px, pos.py - tickH - 3);
+      ctx.fillText(labelStr,   pos.px, pos.py - tickH - 3);
+    }
+  }
+
+  // Horizon label: under showLabels, anchored to camera south axis (β=0), 8px right
+  if (showLabels) {
+    const axisPos = azElToPixel(-yawDeg, 0);  // β=0 = south, always the axis
+    if (axisPos && axisPos.px >= 0 && axisPos.px <= W) {
+      const lx = axisPos.px + 8;
+      const ly = axisPos.py - 6;
+      ctx.font = "bold 10px 'Share Tech Mono'";
+      ctx.fillStyle = 'rgba(255,255,255,1)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.lineWidth = 2.5;
+      ctx.textAlign = 'left';
+      ctx.strokeText('horizon', lx, ly);
+      ctx.fillText('horizon',   lx, ly);
+    }
+  }
+}
+
+function drawCrosshair(W, H) {
+  const mx = mouseX;
+  const my = mouseY;
+
+  const { beta_deg, theta_deg } = pixelToAzEl(mx, my);
+  const inRange = Math.abs(beta_deg) < 180;
+
+  if (inRange) {
+    // ── Elevation isoline (horizontal part) – constant θ, varying β ──
+    // Full 360°, with segment handling; note: yawDeg applied (fixes prior bug)
+    const elSegs = [];
+    let elSeg = [];
+    for (let az = 0; az < 360; az += 0.5) {
+      const b   = az - 180 - yawDeg;
+      const pos = azElToPixel(b, theta_deg);
+      if (pos && pos.px >= -20 && pos.px <= W + 20 && pos.py >= -20 && pos.py <= H + 20) {
+        elSeg.push(pos);
+      } else {
+        if (elSeg.length >= 2) elSegs.push(elSeg);
+        elSeg = [];
+      }
+    }
+    if (elSeg.length >= 2) elSegs.push(elSeg);
+    if (elSegs.length > 0) {
+      ctx.strokeStyle = 'rgba(80,80,80,0.85)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      for (const s of elSegs) {
+        ctx.beginPath();
+        ctx.moveTo(s[0].px, s[0].py);
+        for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].px, s[i].py);
+        ctx.stroke();
+      }
+    }
+
+    // ── Azimuth isoline (vertical part) – constant β, varying θ ──
+    const azPoints = [];
+    for (let el = -85; el <= 85; el += 0.5) {
+      const pos = azElToPixel(beta_deg, el);
+      if (!pos) continue;
+      if (pos.py < -20 || pos.py > H + 20) continue;
+      azPoints.push(pos);
+    }
+    if (azPoints.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(azPoints[0].px, azPoints[0].py);
+      for (let i = 1; i < azPoints.length; i++) ctx.lineTo(azPoints[i].px, azPoints[i].py);
+      ctx.strokeStyle = 'rgba(80,80,80,0.85)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.stroke();
+    }
+  } else {
+    // Out of range – plain straight lines as fallback
+    ctx.beginPath();
+    ctx.moveTo(0, my); ctx.lineTo(W, my);
+    ctx.moveTo(mx, 0); ctx.lineTo(mx, H);
+    ctx.strokeStyle = 'rgba(80,80,80,0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Crosshair centre circle
+  ctx.beginPath();
+  ctx.arc(mx, my, 5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(80,80,80,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  ctx.stroke();
+
+  // Small filled centre dot
+  ctx.beginPath();
+  ctx.arc(mx, my, 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(80,80,80,0.9)';
+  ctx.fill();
+}
+
+// ─── Event listeners ───────────────────────────────────────────────────────
+container.addEventListener('mousemove', (e) => {
+  if (splitActive) return;
+  if (theaterMode3D) return;  // theater mode: no readout, no crosshair
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  mouseX = (e.clientX - rect.left) * scaleX;
+  mouseY = (e.clientY - rect.top) * scaleY;
+
+  const { beta_deg, theta_deg, azimut_world } = pixelToAzEl(mouseX, mouseY);
+
+  // Valid for any canvas pixel (full-sphere projection)
+  const inRange = Math.abs(beta_deg) < 180;
+
+  // Southern hemisphere: shift azimuth reference from south (180°) to north (0°)
+  const displayAz = hemisphere >= 0
+    ? azimut_world
+    : (azimut_world + 180) % 360;
+
+  // Inverse solar: use raw world azimuth (before hemisphere display shift)
+  const sol = inRange && theta_deg >= 0
+    ? inverseSolar(azimut_world, theta_deg, effectiveLat())
+    : null;
+
+  document.getElementById('valAz').textContent  = inRange ? displayAz.toFixed(1) + '°' : '—';
+  document.getElementById('valAlt').textContent  = inRange ? (theta_deg >= 0 ? '+' : '') + theta_deg.toFixed(1) + '°' : '—';
+  document.getElementById('valDay').textContent  = sol ? sol.day1 + ' / ' + sol.day2 : '—';
+  document.getElementById('valTime').textContent = sol ? sol.time : '—';
+  document.getElementById('valDir').textContent  = inRange ? azimutToDir(displayAz) : '—';
+
+  draw();
+});
+
+container.addEventListener('mouseleave', () => {
+  if (splitActive) return;
+  mouseX = -1; mouseY = -1;
+  document.getElementById('valAz').textContent  = '—';
+  document.getElementById('valAlt').textContent  = '—';
+  document.getElementById('valDay').textContent  = '—';
+  document.getElementById('valTime').textContent = '—';
+  document.getElementById('valDir').textContent  = '—';
+  draw();
+});
+
+document.getElementById('chkSunArc').addEventListener('change', (e) => {
+  showSunArc = e.target.checked; draw();
+});
+
+document.getElementById('btnHeatmap').addEventListener('click', () => {
+  showHeatmap = !showHeatmap;
+  const btn = document.getElementById('btnHeatmap');
+  if (showHeatmap) {
+    btn.textContent = 'Hide Isolines';
+    btn.classList.add('active');
+  } else {
+    btn.textContent = 'Show Isolines';
+    btn.classList.remove('active');
+  }
+  draw();
+});
+
+document.getElementById('chkGrid').addEventListener('change', (e) => {
+  showGrid = e.target.checked; draw();
+});
+document.getElementById('chkLabels').addEventListener('change', (e) => {
+  showLabels = e.target.checked; draw();
+});
+document.getElementById('chkHorizon').addEventListener('change', (e) => {
+  showHorizon = e.target.checked; draw();
+});
+
+document.getElementById('rngYaw').addEventListener('input', (e) => {
+  yawDeg = parseFloat(e.target.value);
+  document.getElementById('lblYaw').textContent = (yawDeg >= 0 ? '+' : '') + yawDeg.toFixed(1) + '°';
+  draw(); draw3D();
+});
+
+document.getElementById('rngPitch').addEventListener('input', (e) => {
+  pitchDeg = parseFloat(e.target.value);
+  document.getElementById('lblPitch').textContent = (pitchDeg >= 0 ? '+' : '') + pitchDeg.toFixed(1) + '°';
+  draw(); draw3D();
+});
+
+document.getElementById('rngRoll').addEventListener('input', (e) => {
+  rollDeg = parseFloat(e.target.value);
+  document.getElementById('lblRoll').textContent = (rollDeg >= 0 ? '+' : '') + rollDeg.toFixed(1) + '°';
+  draw(); draw3D();
+});
+
+document.getElementById('rngHScale').addEventListener('input', (e) => {
+  radius = parseFloat(e.target.value);
+  hScale = radius / R;
+  document.getElementById('lblHScale').textContent = radius.toFixed(1) + ' mm';
+  refreshCalibLimits();   // radius must not drop below scanWmm/(2π); also syncs horizon
+  draw(); draw3D();
+});
+
+document.getElementById('rngHorizon').addEventListener('input', (e) => {
+  const hLim = currentHalfHmm();   // pinhole must stay inside the can
+  horizonMm = Math.max(-hLim, Math.min(hLim, parseFloat(e.target.value)));
+  document.getElementById('rngHorizon').value = horizonMm;
+  document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
+  draw(); draw3D();
+});
+
+function doCalibReset() {
+  // 1. Reset ALL global state first – no draw call until everything is in final state
+  yawDeg = 0; pitchDeg = 0; rollDeg = 0; radius = 33; hScale = 1.0; horizonMm = 0;
+  scanWmm = 178;
+  if (canvas.width > 0) scale = canvas.width / scanWmm;
+  LAT = 50.0;
+  hemisphere = 1;
+
+  // 2. Update ALL UI elements in one pass (sliders, labels, lat input, N/S buttons)
+  document.getElementById('inpScanW').value = 178;
+  document.getElementById('rngYaw').value      = 0;
+  document.getElementById('rngPitch').value    = 0;
+  document.getElementById('rngRoll').value     = 0;
+  document.getElementById('rngHScale').value   = 33;
+  document.getElementById('rngHorizon').value  = 0;
+  document.getElementById('lblYaw').textContent     = '+0.0°';
+  document.getElementById('lblPitch').textContent   = '+0.0°';
+  document.getElementById('lblRoll').textContent    = '+0.0°';
+  document.getElementById('lblHScale').textContent  = '33.0 mm';
+  document.getElementById('lblHorizon').textContent = '+0.0 mm';
+  document.getElementById('inpLat').value       = '50.0';
+  document.getElementById('btnN').disabled = false;
+  document.getElementById('btnS').disabled = false;
+  document.getElementById('btnN').className = 'ns-btn active';
+  document.getElementById('btnS').className = 'ns-btn';
+
+  // 3. Single draw with ALL values in their final state
+  updateScanH();
+  refreshCalibLimits();
+  draw(); draw3D();
+}
+document.getElementById('btnCalibReset').addEventListener('click', doCalibReset);
+
+// ─── Preset import / export ───────────────────────────────────────────────
+function setPresetButtonsEnabled(enabled) {
+  const btnImp = document.getElementById('btnImportPreset');
+  const btnExp = document.getElementById('btnExportPreset');
+  btnImp.disabled = !enabled;
+  btnExp.disabled = !enabled;
+  btnImp.style.opacity = enabled ? '1' : '0.35';
+  btnExp.style.opacity = enabled ? '1' : '0.35';
+}
+
+function exportPreset() {
+  const preset = {
+    yaw_deg:    yawDeg,
+    pitch_deg:  pitchDeg,
+    roll_deg:   rollDeg,
+    horizon_mm: horizonMm,
+    radius_mm:  radius,
+    scan_w_mm:  scanWmm,
+    latitude:   LAT,
+    hemisphere: hemisphere >= 0 ? 'N' : 'S'
+  };
+  const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'preset.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importPreset(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let preset;
+    try {
+      preset = JSON.parse(e.target.result);
+    } catch {
+      alert('Invalid preset file – could not parse JSON.');
+      return;
+    }
+
+    // Validate required fields and value ranges
+    const checks = [
+      typeof preset.yaw_deg    === 'number' && preset.yaw_deg    >= -120 && preset.yaw_deg    <= 120,
+      typeof preset.pitch_deg  === 'number' && preset.pitch_deg  >= -45  && preset.pitch_deg  <= 45,
+      typeof preset.roll_deg   === 'number' && preset.roll_deg   >= -10  && preset.roll_deg   <= 10,
+      typeof preset.horizon_mm === 'number' && preset.horizon_mm >= -50  && preset.horizon_mm <= 50,
+      typeof preset.radius_mm  === 'number' && preset.radius_mm  >= 10  && preset.radius_mm  <= 80,
+      typeof preset.latitude   === 'number' && preset.latitude   >= 0   && preset.latitude   <= 90,
+      preset.hemisphere === 'N' || preset.hemisphere === 'S'
+    ];
+    if (checks.some(c => !c)) {
+      alert('Invalid preset file – values out of range or missing fields.');
+      return;
+    }
+
+    // Apply calibration
+    yawDeg    = preset.yaw_deg;
+    pitchDeg  = preset.pitch_deg;
+    rollDeg   = preset.roll_deg;
+    horizonMm = preset.horizon_mm;
+    radius     = preset.radius_mm;
+    hScale     = radius / R;
+    applyScanW(preset.scan_w_mm ?? 178);
+    document.getElementById('rngYaw').value   = yawDeg;
+    document.getElementById('rngPitch').value   = pitchDeg;
+    document.getElementById('rngRoll').value = rollDeg;
+    document.getElementById('rngHorizon').value = horizonMm;
+    document.getElementById('rngHScale').value     = radius;
+    document.getElementById('lblYaw').textContent   = (yawDeg   >= 0 ? '+' : '') + yawDeg.toFixed(1)   + '°';
+    document.getElementById('lblPitch').textContent   = (pitchDeg   >= 0 ? '+' : '') + pitchDeg.toFixed(1)   + '°';
+    document.getElementById('lblRoll').textContent = (rollDeg >= 0 ? '+' : '') + rollDeg.toFixed(1) + '°';
+    document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
+    document.getElementById('lblHScale').textContent     = radius.toFixed(1) + ' mm';
+
+    // Apply location
+    applyLat(preset.latitude);
+    hemisphere = preset.hemisphere === 'S' ? -1 : 1;
+    document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+
+    refreshCalibLimits();
+    draw(); draw3D();
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('btnExportPreset').addEventListener('click', exportPreset);
+
+document.getElementById('btnImportPreset').addEventListener('click', () => {
+  document.getElementById('presetFileInput').click();
+});
+
+document.getElementById('presetFileInput').addEventListener('change', (e) => {
+  if (e.target.files[0]) importPreset(e.target.files[0]);
+  e.target.value = ''; // reset so same file can be re-imported
+});
+
+// ─── Latitude control ──────────────────────────────────────────────────────
+function applyLat(val) {
+  // Round to 1 decimal place, clamp 0–90
+  LAT = Math.round(Math.max(0, Math.min(90, val)) * 10) / 10;
+  document.getElementById('inpLat').value = LAT.toFixed(1);
+
+  const atEquator = LAT === 0;
+  document.getElementById('btnN').disabled = atEquator;
+  document.getElementById('btnS').disabled = atEquator;
+  if (atEquator) {
+    hemisphere = 1;
+    document.getElementById('btnN').className = 'ns-btn active';
+    document.getElementById('btnS').className = 'ns-btn';
+  }
+  draw(); draw3D();
+}
+
+document.getElementById('inpLat').addEventListener('change', (e) => {
+  applyLat(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpLat').addEventListener('blur', (e) => {
+  applyLat(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpLat').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyLat(parseFloat(e.target.value) || 0);
+});
+document.getElementById('btnLatDec').addEventListener('click', () => {
+  applyLat(LAT - 0.1);
+});
+document.getElementById('btnLatInc').addEventListener('click', () => {
+  applyLat(LAT + 0.1);
+});
+document.getElementById('btnN').addEventListener('click', () => {
+  if (LAT === 0) return;
+  hemisphere = 1;
+  document.getElementById('btnN').className = 'ns-btn active';
+  document.getElementById('btnS').className = 'ns-btn';
+  draw(); draw3D();
+});
+document.getElementById('btnS').addEventListener('click', () => {
+  if (LAT === 0) return;
+  hemisphere = -1;
+  document.getElementById('btnN').className = 'ns-btn';
+  document.getElementById('btnS').className = 'ns-btn active-s';
+  draw(); draw3D();
+});
+
+// ─── Dimension limits (validation: scan width ⇄ radius ⇄ horizon) ───────────
+const TWO_PI = 2 * Math.PI;
+
+// Half paper height [mm] from the current scan aspect ratio (same as draw3D)
+function currentHalfHmm() {
+  return canvas.width > 0
+    ? scanWmm * canvas.height / canvas.width / 2
+    : scanWmm * PAPER_H / PAPER_W / 2;
+}
+
+// Syncs the limits of all three calibration controls and clamps the current values.
+//  • scan width ≤ circumference (2π·r)  → paper wrap does not exceed 360°
+//  • radius     ≥ scanWmm/(2π)          → the same constraint from the other side
+//  • |horizon|  ≤ half-height           → pinhole stays inside the can
+function refreshCalibLimits() {
+  const inpW = document.getElementById('inpScanW');
+  const rngR = document.getElementById('rngHScale');
+  const rngH = document.getElementById('rngHorizon');
+
+  // 1) radius vs. scan width (handled first – this prevents unwanted paper shortening
+  //    when shrinking the radius; the radius stops at its minimum instead)
+  const rMin = Math.max(15, Math.ceil(scanWmm / TWO_PI * 2) / 2);
+  if (rngR) rngR.min = rMin;
+  if (radius < rMin) {
+    radius = rMin; hScale = radius / R;
+    if (rngR) rngR.value = radius;
+    const l = document.getElementById('lblHScale');
+    if (l) l.textContent = radius.toFixed(1) + ' mm';
+  }
+
+  // 2) scan width vs. circumference (after the radius step wMax ≥ scanWmm, so the
+  //    scan width is shortened only if it was directly raised above the circumference in applyScanW)
+  const wMax = Math.min(300, Math.floor(TWO_PI * radius));
+  if (inpW) inpW.max = wMax;
+  if (scanWmm > wMax) {
+    scanWmm = wMax;
+    if (inpW) inpW.value = scanWmm;
+    if (canvas.width > 0) scale = canvas.width / scanWmm;
+    updateScanH();
+  }
+
+  // 3) horizon vs. half paper height
+  const hLim = Math.max(0, Math.floor(currentHalfHmm() * 2) / 2);
+  if (rngH) { rngH.min = -hLim; rngH.max = hLim; }
+  if (horizonMm >  hLim) horizonMm =  hLim;
+  if (horizonMm < -hLim) horizonMm = -hLim;
+  if (rngH) rngH.value = horizonMm;
+  const lh = document.getElementById('lblHorizon');
+  if (lh) lh.textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
+}
+
+// ─── Scan width control ───────────────────────────────────────────────────
+function applyScanW(val) {
+  scanWmm = Math.round(Math.max(80, Math.min(300, val)));
+  // limit: paper does not exceed the can circumference (max 360° wrap)
+  scanWmm = Math.min(scanWmm, Math.floor(TWO_PI * radius));
+  document.getElementById('inpScanW').value = scanWmm;
+  updateScanH();
+  refreshCalibLimits();   // recomputes the radius minimum and the horizon range
+  if (canvas.width > 0) {
+    scale = canvas.width / scanWmm;
+    draw(); draw3D();
+  }
+}
+document.getElementById('inpScanW').addEventListener('change', (e) => {
+  applyScanW(parseInt(e.target.value) || 178);
+});
+document.getElementById('inpScanW').addEventListener('blur', (e) => {
+  applyScanW(parseInt(e.target.value) || 178);
+});
+document.getElementById('inpScanW').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyScanW(parseInt(e.target.value) || 178);
+});
+document.getElementById('btnScanWDec').addEventListener('click', () => applyScanW(scanWmm - 1));
+document.getElementById('btnScanWInc').addEventListener('click', () => applyScanW(scanWmm + 1));
+
+function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    // Normalise: longer side = 1280 px
+    let w, h;
+    if (img.width >= img.height) {
+      w = IMG_W;
+      h = Math.round(img.height * IMG_W / img.width);
+    } else {
+      h = IMG_W;
+      w = Math.round(img.width * IMG_W / img.height);
+    }
+
+    createImageBitmap(img, { resizeWidth: w, resizeHeight: h })
+      .then(bm => {
+        imgBitmap = bm;
+        document.getElementById('uploadZone').classList.add('hidden');
+        document.getElementById('canvasContainer').classList.remove('hidden');
+        setPresetButtonsEnabled(true);
+        // Let layout settle then resize
+        requestAnimationFrame(() => resizeCanvas());
+        URL.revokeObjectURL(url);
+      });
+  };
+  img.src = url;
+}
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadImage(e.target.files[0]);
+});
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--accent)'; });
+uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = 'var(--border)'; });
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.style.borderColor = 'var(--border)';
+  if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  imgBitmap = null;
+  mouseX = -1; mouseY = -1;
+  document.getElementById('uploadZone').classList.remove('hidden');
+  document.getElementById('canvasContainer').classList.add('hidden');
+  setPresetButtonsEnabled(false);
+  fileInput.value = '';
+  doCalibReset();
+});
+
+// Custom arc date – shift by 182 days for southern hemisphere
+function customArcDate() {
+  if (hemisphere >= 0) return { month: customMonth, day: customDay };
+  const doy = dayOfYear(customMonth, customDay);
+  const shifted = ((doy - 1 + 182) % 365) + 1;
+  const months = [31,28,31,30,31,30,31,31,30,31,30,31];
+  let m = 0, d = shifted;
+  while (d > months[m]) { d -= months[m]; m++; }
+  return { month: m + 1, day: d };
+}
+function resizeCanvas() {
+  if (!imgBitmap) return;
+  const container = document.getElementById('canvasContainer');
+  const cw = container.clientWidth;
+  const ch = container.clientHeight;
+  const imgRatio = imgBitmap.width / imgBitmap.height;
+  const conRatio = cw / ch;
+  let w, h;
+  if (imgRatio > conRatio) { w = cw; h = Math.round(cw / imgRatio); }
+  else { h = ch; w = Math.round(ch * imgRatio); }
+  setupCanvas(w, h);
+  draw();
+}
+
+new ResizeObserver(() => { if (imgBitmap) resizeCanvas(); })
+  .observe(document.getElementById('canvasContainer'));
+
+// ─── Custom arc ────────────────────────────────────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS_IN_MONTH = [31,28,31,30,31,30,31,31,30,31,30,31];
+let customMonth = 7; // 1-based, default July
+let customDay = 20;
+let showCustomArc = false;
+let show3DCulmination = false;
+let show3DCladding    = true;  // cylinder cladding – on by default
+let _wavePhase        = 0;     // ms timestamp driving the hourly-arrow "Mexican wave"
+let sunWaveRAF        = null;  // requestAnimationFrame handle for the wave loop
+let sunTimeHours      = 12;    // current solar time of the animated sun ray (default = noon)
+let sunAnimActive     = false; // day animation playing?
+let sunAnimStart      = null;  // ms timestamp captured on the first frame after Play
+let sunAnimOffset     = 0;     // seconds into the cycle to resume from (Play continues from Stop)
+let _sunEnterT0       = 12;    // solar time when the ray starts entering the can (slider boundary)
+let _sunEnterT1       = 12;    // solar time when the ray stops entering the can
+const SUN_RATE_HPS    = 0.5;   // animation speed: hours of solar time per real second
+
+function updateDateLabels() {
+  document.getElementById('lblMonth').textContent = MONTHS[customMonth - 1];
+  document.getElementById('lblDay').textContent = customDay;
+}
+
+document.getElementById('btnMonDec').addEventListener('click', () => {
+  customMonth = customMonth > 1 ? customMonth - 1 : 12;
+  customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+});
+document.getElementById('btnMonInc').addEventListener('click', () => {
+  customMonth = customMonth < 12 ? customMonth + 1 : 1;
+  customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+});
+document.getElementById('btnDayDec').addEventListener('click', () => {
+  if (customDay > 1) {
+    customDay--;
+  } else {
+    // move to the previous month (wrapping)
+    customMonth = customMonth > 1 ? customMonth - 1 : 12;
+    customDay   = DAYS_IN_MONTH[customMonth - 1];
+  }
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+});
+document.getElementById('btnDayInc').addEventListener('click', () => {
+  if (customDay < DAYS_IN_MONTH[customMonth - 1]) {
+    customDay++;
+  } else {
+    // move to the next month (wrapping)
+    customMonth = customMonth < 12 ? customMonth + 1 : 1;
+    customDay   = 1;
+  }
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+});
+document.getElementById('chkCustomArc').addEventListener('change', (e) => {
+  showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
+});
+function updateAxisLegend() {
+  const sym = document.getElementById('legAxisSym');
+  const lbl = document.getElementById('legAxisLbl');
+  if (!sym || !lbl) return;
+  const _isLight = document.body.classList.contains('light');
+  if (show3DCulmination) {
+    sym.style.color = '#e8a020';   // semantic color, same in both themes
+    lbl.textContent = 'optical axis (Sun)';
+  } else {
+    sym.style.color = _isLight ? '#111111' : '#d8e8f8';
+    lbl.textContent = 'optical axis';
+  }
+  // sync noon button visual state
+  const noonBtn  = document.getElementById('btnNoon');
+  const noonIcon = document.getElementById('noonChkIcon');
+  const noonChk  = document.getElementById('chk3DCulmination');
+  if (noonBtn)  noonBtn.classList.toggle('active', show3DCulmination);
+  if (noonIcon) noonIcon.textContent = show3DCulmination ? '☑' : '☐';
+  if (noonChk)  noonChk.checked = show3DCulmination;
+}
+// Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
+document.getElementById('btnNoon').addEventListener('click', () => {
+  show3DCulmination = !show3DCulmination;
+  if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+  updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
+});
+
+// Day-animation controls: play/stop button + solar-time slider
+document.getElementById('btnSunPlay').addEventListener('click', () => {
+  if (sunAnimActive) stopSunAnim(); else startSunAnim();
+});
+document.getElementById('rngSunTime').addEventListener('input', (e) => {
+  if (sunAnimActive) stopSunAnim();            // manual scrub stops the loop
+  // Only the entering interval (green + red, between the white lines) is clickable
+  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, parseFloat(e.target.value)));
+  syncSunTimeUI();
+  draw(); draw3D();                            // 2D sun dot + 3D ray
+});
+
+// ─── Opacity label ──────────────────────────────────────────────────────────
+document.getElementById('rngOpacity').addEventListener('input', (e) => {
+  dispOpacity = e.target.value / 100;
+  document.getElementById('lblOpacity').textContent = e.target.value + '%';
+  draw();
+});
+
+// ─── L2 split opacity ───────────────────────────────────────────────────────
+document.getElementById('rngL2Opacity').addEventListener('input', (e) => {
+  if (l2LoopActive) return;            // ignore manual input while looping
+  splitOpacity = e.target.value / 100;
+  document.getElementById('lblL2Opacity').textContent = e.target.value + '%';
+  draw();
+});
+
+// ─── L2 opacity auto-loop (Play / Stop) ──────────────────────────────────────
+const L2_PLAY_SVG = '<svg width="11" height="11" viewBox="0 0 14 14" fill="currentColor"><polygon points="3,2 12,7 3,12"/></svg>';
+const L2_STOP_SVG = '<svg width="11" height="11" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="3" width="8" height="8"/></svg>';
+const L2_LOOP_MS  = 10000;             // one full 100→0→100 cycle
+
+let l2LoopActive  = false;
+let l2LoopRAF     = null;
+let l2LoopStart   = 0;
+let l2PhaseOffset = 0;          // entry phase on the descending leg
+
+function setL2PlayIcon(playing) {
+  document.getElementById('l2PlayIcon').innerHTML = playing ? L2_STOP_SVG : L2_PLAY_SVG;
+  document.getElementById('btnL2Play').classList.toggle('playing', playing);
+}
+
+function l2LoopFrame(ts) {
+  if (!l2LoopActive) return;
+  if (!l2LoopStart) l2LoopStart = ts;
+  // Constant speed: full 100→0→100 loop always takes L2_LOOP_MS.
+  // Start phase is offset so the loop begins at the current opacity, descending.
+  const phase = (l2PhaseOffset + (ts - l2LoopStart) / L2_LOOP_MS) % 1;   // 0..1
+  const v = phase < 0.5 ? (1 - phase * 2) : (phase * 2 - 1);             // 1→0→1
+  splitOpacity = v;
+  const pct = Math.round(v * 100);
+  document.getElementById('rngL2Opacity').value     = pct;
+  document.getElementById('lblL2Opacity').textContent = pct + '%';
+  draw();
+  l2LoopRAF = requestAnimationFrame(l2LoopFrame);
+}
+
+function startL2Loop() {
+  if (l2LoopActive || !splitActive) return;
+  l2LoopActive = true;
+  l2LoopStart  = 0;
+  // Map current opacity onto the descending leg: v = 1 − 2·phase  →  phase = (1 − v)/2
+  l2PhaseOffset = (1 - splitOpacity) / 2;
+  document.getElementById('rngL2Opacity').disabled = true;
+  setL2PlayIcon(true);
+  l2LoopRAF = requestAnimationFrame(l2LoopFrame);
+}
+
+function stopL2Loop() {
+  if (!l2LoopActive) return;
+  l2LoopActive = false;
+  if (l2LoopRAF) cancelAnimationFrame(l2LoopRAF);
+  l2LoopRAF = null;
+  document.getElementById('rngL2Opacity').disabled = false;
+  setL2PlayIcon(false);
+  // splitOpacity is left at its current value
+}
+
+setL2PlayIcon(false);   // initial icon
+document.getElementById('btnL2Play').addEventListener('click', () => {
+  l2LoopActive ? stopL2Loop() : startL2Loop();
+});
+
+// ─── Gallery management ──────────────────────────────────────────────────────
+let FILELIST = null;
+let PRESETS  = null;
+let galleryState = { genId: null, imageIndex: null, layer: 0 };
+
+async function loadFilelist() {
+  try {
+    const [flRes, prRes] = await Promise.all([
+      fetch('filelist.json'),
+      fetch('presets.json')
+    ]);
+    FILELIST = await flRes.json();
+    PRESETS  = await prRes.json();
+    buildGenGroup();
+  } catch (e) {
+    console.warn('Error loading gallery data:', e);
+  }
+}
+
+function applyGalleryPreset(genId, imageIndex) {
+  const key = `GEN-${genId}_${imageIndex}`;
+  const preset = PRESETS ? PRESETS[key] : null;
+  if (!preset) return;
+
+  yawDeg    = preset.yaw_deg    ?? 0;
+  pitchDeg  = preset.pitch_deg  ?? 0;
+  rollDeg   = preset.roll_deg   ?? 0;
+  horizonMm = preset.horizon_mm ?? 0;
+  radius     = preset.radius_mm ?? 33;
+  hScale     = radius / R;
+  applyScanW(preset.scan_w_mm ?? 178);
+
+  document.getElementById('rngYaw').value   = yawDeg;
+  document.getElementById('rngPitch').value   = pitchDeg;
+  document.getElementById('rngRoll').value = rollDeg;
+  document.getElementById('rngHorizon').value = horizonMm;
+  document.getElementById('rngHScale').value     = radius;
+  document.getElementById('lblYaw').textContent   = (yawDeg   >= 0 ? '+' : '') + yawDeg.toFixed(1)   + '°';
+  document.getElementById('lblPitch').textContent   = (pitchDeg   >= 0 ? '+' : '') + pitchDeg.toFixed(1)   + '°';
+  document.getElementById('lblRoll').textContent = (rollDeg >= 0 ? '+' : '') + rollDeg.toFixed(1) + '°';
+  document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
+  document.getElementById('lblHScale').textContent     = radius.toFixed(1) + ' mm';
+
+  if (preset.latitude !== undefined) applyLat(preset.latitude);
+  if (preset.hemisphere) {
+    hemisphere = preset.hemisphere === 'S' ? -1 : 1;
+    document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+  }
+  refreshCalibLimits();
+}
+
+// Build generation radio buttons
+function buildGenGroup() {
+  const group = document.getElementById('genGroup');
+  group.innerHTML = '';
+  const lastIdx = FILELIST.generations.length - 1;
+  FILELIST.generations.forEach((gen, i) => {
+    const label = document.createElement('label');
+    label.className = 'radio-row' + (i === lastIdx ? ' active' : '');
+    label.innerHTML = `<input type="radio" name="generation" value="${gen.id}"${i === lastIdx ? ' checked' : ''}> ${gen.label}`;
+    label.querySelector('input').addEventListener('change', () => {
+      group.querySelectorAll('.radio-row').forEach(r => r.classList.remove('active'));
+      label.classList.add('active');
+      galleryState.genId = gen.id;
+      buildImageGroup(gen.id);
+    });
+    group.appendChild(label);
+  });
+  // Init last generation
+  galleryState.genId = FILELIST.generations[lastIdx].id;
+  buildImageGroup(galleryState.genId);
+}
+
+// Build image radio buttons for selected generation
+function buildImageGroup(genId) {
+  const gen = FILELIST.generations.find(g => g.id === genId);
+  const group = document.getElementById('imageGroup');
+  group.innerHTML = '';
+  if (!gen) return;
+
+  gen.images.forEach((img, i) => {
+    const label = document.createElement('label');
+    label.className = 'radio-row' + (i === 0 ? ' active' : '');
+    label.innerHTML = `<input type="radio" name="image" value="${img.index}"${i === 0 ? ' checked' : ''}> #${img.index}`;
+    label.querySelector('input').addEventListener('change', () => {
+      group.querySelectorAll('.radio-row').forEach(r => r.classList.remove('active'));
+      label.classList.add('active');
+      galleryState.imageIndex = img.index;
+      setSplitMode(false);
+      splitBitmap = null;
+      splitInverted = false;
+      btnSplitInvert.classList.remove('active');
+      // Reset view radio to Enhanced
+      document.querySelector('.radio-row.view-enh input').checked = true;
+      document.querySelectorAll('#viewGroup .radio-row').forEach(r => r.classList.remove('active'));
+      document.querySelector('.radio-row.view-enh').classList.add('active');
+      galleryState.layer = 1;
+      updateViewGroup(img.layers);
+      loadGalleryImage();
+    });
+    group.appendChild(label);
+  });
+
+  // Init first image
+  galleryState.imageIndex = gen.images[0].index;
+  galleryState.layer = 1;  // default Enhanced
+  if (splitActive) setSplitMode(false);
+  // Reset view radio to Enhanced
+  document.querySelector('.radio-row.view-enh input').checked = true;
+  document.querySelectorAll('#viewGroup .radio-row').forEach(r => r.classList.remove('active'));
+  document.querySelector('.radio-row.view-enh').classList.add('active');
+  updateViewGroup(gen.images[0].layers);
+  loadGalleryImage();
+}
+
+// Update view radio buttons based on available layers
+function updateViewGroup(layers) {
+  const hasL2 = layers.includes(2);
+  const splitRow = document.querySelector('.radio-row.view-split');
+  const splitInput = splitRow.querySelector('input');
+
+  if (hasL2) {
+    splitRow.classList.remove('disabled');
+    splitInput.disabled = false;
+  } else {
+    splitRow.classList.add('disabled');
+    splitInput.disabled = true;
+    // If split was selected, fall back to L0
+    if (galleryState.layer === 2) {
+      galleryState.layer = 0;
+      document.querySelector('.radio-row.view-raw input').checked = true;
+      document.querySelectorAll('#viewGroup .radio-row').forEach(r => r.classList.remove('active'));
+      document.querySelector('.radio-row.view-raw').classList.add('active');
+    }
+  }
+}
+
+// Load image file for current gallery selection
+function loadGalleryImage() {
+  if (galleryState.genId === null || galleryState.imageIndex === null) return;
+
+  // Aplikuj kalibraci z presets.json
+  applyGalleryPreset(galleryState.genId, galleryState.imageIndex);
+
+  const path = `img/GEN-${galleryState.genId}_${galleryState.imageIndex}_L${galleryState.layer}.jpg`;
+  const imgEl = new Image();
+  imgEl.onload = () => {
+    let w, h;
+    if (imgEl.width >= imgEl.height) {
+      w = IMG_W; h = Math.round(imgEl.height * IMG_W / imgEl.width);
+    } else {
+      h = IMG_W; w = Math.round(imgEl.width * IMG_W / imgEl.height);
+    }
+    createImageBitmap(imgEl, { resizeWidth: w, resizeHeight: h }).then(bm => {
+      imgBitmap = bm;
+      document.getElementById('canvasContainer').classList.remove('hidden');
+      requestAnimationFrame(() => resizeCanvas());
+    });
+  };
+  imgEl.onerror = () => console.warn('Image not found:', path);
+  imgEl.src = path;
+}
+
+// View layer change
+document.getElementById('viewGroup').querySelectorAll('input[type=radio]').forEach(input => {
+  input.addEventListener('change', () => {
+    document.querySelectorAll('#viewGroup .radio-row').forEach(r => r.classList.remove('active'));
+    input.closest('.radio-row').classList.add('active');
+    const newLayer = parseInt(input.value);
+
+    if (newLayer === 2) {
+      // Split mode: L1 as base, L2 as overlay
+      galleryState.layer = 1;
+      setSplitMode(true);
+      loadGalleryImage();
+      loadSplitImage(galleryState.genId, galleryState.imageIndex);
+    } else {
+      // Deactivate split – turn off first, clear the bitmap, then load the new image
+      setSplitMode(false);
+      splitBitmap = null;
+      splitInverted = false;
+      btnSplitInvert.classList.remove('active');
+      galleryState.layer = newLayer;
+      loadGalleryImage();
+    }
+  });
+});
+
+// ─── Mode toggle: Analyzer / Gallery ────────────────────────────────────────
+let currentMode = 'gallery'; // 'analyzer' | 'gallery'
+
+function setMode(mode) {
+  stopL2Loop();                 // cancel auto-loop when switching modes
+  currentMode = mode;
+  const btnA = document.getElementById('btnModeAnalyzer');
+  const btnG = document.getElementById('btnModeGallery');
+  const galleryPanel = document.getElementById('galleryPanel');
+  const can3dPanel   = document.getElementById('can3dPanel');
+  const sidebar = document.getElementById('sidebar');
+  const uploadZoneEl = document.getElementById('uploadZone');
+
+  const calibSection = document.getElementById('calibrationSection');
+
+  if (mode === 'analyzer') {
+    btnA.className = 'mode-btn active-analyzer';
+    btnG.className = 'mode-btn';
+    galleryPanel.classList.remove('visible');
+    can3dPanel.classList.add('visible');
+    sidebar.style.display = '';
+    calibSection.classList.remove('calibration-locked');
+    if (!imgBitmap) uploadZoneEl.classList.remove('hidden');
+    setPresetButtonsEnabled(imgBitmap !== null);
+    document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
+    draw3D();
+  } else {
+    stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
+    document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
+    btnA.className = 'mode-btn';
+    btnG.className = 'mode-btn active-gallery';
+    galleryPanel.classList.add('visible');
+    can3dPanel.classList.remove('visible');
+    sidebar.style.display = '';
+    calibSection.classList.add('calibration-locked');
+    uploadZoneEl.classList.add('hidden');
+    if (imgBitmap) document.getElementById('canvasContainer').classList.remove('hidden');
+    if (!FILELIST) {
+      loadFilelist();
+    } else if (galleryState.genId !== null && galleryState.imageIndex !== null) {
+      loadGalleryImage(); // loads correct bitmap, applies preset, redraws
+    }
+  }
+}
+
+document.getElementById('btnModeAnalyzer').addEventListener('click', () => setMode('analyzer'));
+document.getElementById('btnModeGallery').addEventListener('click', () => {
+  if (theaterMode3D) exitTheater3D();
+  setMode('gallery');
+});
+
+// ─── Theme toggle ─────────────────────────────────────────────────────────────
+(function() {
+  const btn = document.getElementById('btnTheme');
+  const LIGHT_KEY = 'solargraphyTheme';
+  function applyTheme(light) {
+    document.body.classList.toggle('light', light);
+    btn.textContent = light ? '🌙' : '☀️';
+    btn.title = light ? 'Switch to dark theme' : 'Switch to light theme';
+    try { localStorage.setItem(LIGHT_KEY, light ? 'light' : 'dark'); } catch(e) {}
+  }
+  // Restore saved preference
+  let saved = 'dark';
+  try { saved = localStorage.getItem(LIGHT_KEY) || 'dark'; } catch(e) {}
+  applyTheme(saved === 'light');
+  btn.addEventListener('click', () => {
+    applyTheme(!document.body.classList.contains('light'));
+    // Redraw 3D vis with new palette + refresh axis legend swatch colours
+    if (typeof draw3D === 'function') { updateAxisLegend(); draw3D(); }
+  });
+})();
+
+// ─── Metadata popup ──────────────────────────────────────────────────────────
+function formatMetaDate(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return MONTH_NAMES[m - 1] + ' ' + d + ' ' + y;
+}
+
+function exposureDays(start, end) {
+  const ms = new Date(end) - new Date(start);
+  return Math.round(ms / 86400000) + ' days';
+}
+
+function updateMetaPopup() {
+  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
+  const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
+  if (!gen) return;
+  const img = gen.images.find(i => i.index === galleryState.imageIndex);
+  if (!img || !img.metadata) return;
+  const m = img.metadata;
+  document.getElementById('metaTitle').textContent    = `GEN-${galleryState.genId}_${galleryState.imageIndex}`;
+  document.getElementById('metaLocation').textContent = m.location      || '—';
+  document.getElementById('metaStart').textContent    = m.exposure_start ? formatMetaDate(m.exposure_start) : '—';
+  document.getElementById('metaEnd').textContent      = m.exposure_end   ? formatMetaDate(m.exposure_end)   : '—';
+  document.getElementById('metaDuration').textContent = (m.exposure_start && m.exposure_end)
+    ? exposureDays(m.exposure_start, m.exposure_end) : '—';
+}
+
+function openMetaPopup() {
+  updateMetaPopup();
+  const btn  = document.getElementById('btnMeta');
+  const popup = document.getElementById('metaPopup');
+  const rect  = btn.getBoundingClientRect();
+  // Position below-right of the button, nudge inside viewport
+  let top  = rect.bottom + 6;
+  let left = rect.right  + 6;
+  const pw = 214; // approx popup width
+  if (left + pw > window.innerWidth - 8) left = rect.left - pw - 6;
+  popup.style.top  = top  + 'px';
+  popup.style.left = left + 'px';
+  popup.classList.add('visible');
+  btn.classList.add('active');
+}
+
+function closeMetaPopup() {
+  document.getElementById('metaPopup').classList.remove('visible');
+  document.getElementById('btnMeta').classList.remove('active');
+}
+
+document.getElementById('btnMeta').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const popup = document.getElementById('metaPopup');
+  popup.classList.contains('visible') ? closeMetaPopup() : openMetaPopup();
+});
+
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('metaPopup');
+  if (popup.classList.contains('visible') &&
+      !popup.contains(e.target) &&
+      e.target.id !== 'btnMeta') {
+    closeMetaPopup();
+  }
+});
+
+// ─── 3D Can Orientation Visualizer ─────────────────────────────────────────
+// Camera: SW + above (south=+X, west=+Y, up=+Z in world coords)
+// CAM = (2.32, 2.32, 2.29) → camera is south-west-above, looking at origin
+// From SW: south appears RIGHT, west appears LEFT — intuitive axis layout.
+// Camera basis (verified: origin projects to screen center):
+// Camera for 3D projection (world: x=south, y=west, z=up)
+// Parameterised by azimuth (angle from +x axis toward +y) and elevation above horizon.
+const _3D = {
+  camAz:    Math.PI / 4,       // 45° — camera sits SW of origin (x=south+, y=west+)
+  camEl:    0.35,              // ~20° above horizon (was ~35°)
+  camDist:  4.0,
+  FOCAL:    3.0,
+  BASE_SCL: 85,
+  BASE_MIN: 164,
+  zoom:     1.0,              // theater zoom factor (0.5–2×, applied only in theater)
+  // derived vectors – computed by updateCamera():
+  CAM:   [0, 0, 0],
+  FWD:   [0, 0, 0],
+  RIGHT: [0, 0, 0],
+  CAMUP: [0, 0, 0],
+};
+
+function updateCamera() {
+  const { camAz, camEl, camDist } = _3D;
+  const cx = camDist * Math.cos(camEl) * Math.cos(camAz);
+  const cy = camDist * Math.cos(camEl) * Math.sin(camAz);
+  const cz = camDist * Math.sin(camEl);
+  _3D.CAM = [cx, cy, cz];
+  _3D.FWD = [-cx / camDist, -cy / camDist, -cz / camDist];
+  // RIGHT = world_up × FWD, normalised in XY plane
+  const rlen = Math.sqrt(_3D.FWD[0] ** 2 + _3D.FWD[1] ** 2) || 1e-9;
+  _3D.RIGHT = [-_3D.FWD[1] / rlen, _3D.FWD[0] / rlen, 0];  // world_up × FWD, normalised
+  // CAMUP = FWD × RIGHT  (points sky-ward)
+  _3D.CAMUP = [
+    _3D.FWD[1] * _3D.RIGHT[2] - _3D.FWD[2] * _3D.RIGHT[1],
+    _3D.FWD[2] * _3D.RIGHT[0] - _3D.FWD[0] * _3D.RIGHT[2],
+    _3D.FWD[0] * _3D.RIGHT[1] - _3D.FWD[1] * _3D.RIGHT[0],
+  ];
+}
+updateCamera();  // initialise vectors from default angles
+
+let theaterMode3D = false;
+
+function draw3D() {
+  const cv = theaterMode3D
+    ? document.getElementById('can3dTheater')
+    : document.getElementById('can3d');
+  const c  = cv.getContext('2d');
+  const CW = cv.width, CH = cv.height;
+  const SCL = _3D.BASE_SCL * Math.min(CW, CH) / _3D.BASE_MIN * (theaterMode3D ? _3D.zoom : 1);
+  const OX  = CW / 2, OY = CH * 0.50;
+  function proj([x, y, z]) {
+    const dx = x - _3D.CAM[0], dy = y - _3D.CAM[1], dz = z - _3D.CAM[2];
+    const d  = _3D.FWD[0]*dx + _3D.FWD[1]*dy + _3D.FWD[2]*dz;
+    if (d < 0.05) return null;
+    const f  = _3D.FOCAL / d;
+    const sx = _3D.RIGHT[0]*dx + _3D.RIGHT[1]*dy;
+    const sy = _3D.CAMUP[0]*dx + _3D.CAMUP[1]*dy + _3D.CAMUP[2]*dz;
+    return [OX + sx * f * SCL, OY - sy * f * SCL];
+  }
+  c.clearRect(0, 0, CW, CH);
+
+  // ── Theme-aware colour palette ────────────────────────────────────────────
+  const _lt = document.body.classList.contains('light');
+  const pal = _lt ? {
+    bg:          '#ffffff',
+    grid:        'rgba(25,60,120,0.38)',
+    compassS:    '#b81212',
+    compassN:    '#1245a0',
+    compassW:    '#0c5828',
+    compassE:    '#186e20',
+    zAxis:       '#0c38b8',
+    gapBack:     'rgba(85,48,0,0.30)',
+    gapFront:    'rgba(115,62,0,0.82)',
+    paperBack:   'rgba(18,52,100,0.35)',
+    paperFront:  'rgba(20,85,165,0.88)',
+    paperArc:    'rgba(20,85,165,0.62)',
+    gapArc:      'rgba(115,62,0,0.62)',
+    axisOut:     '#111111',            // light mode: black when noon is inactive
+    axisHit:     '#e8a020',            // semantic color – kept in both themes
+    axisMiss:    '#e04040',            // semantic color – kept in both themes
+    pinhole:     '#e8a020',            // semantic color – kept in both themes
+    pinholeRing: 'rgba(0,0,0,0.28)',
+    horizon:     'rgba(12,72,40,0.50)',
+    label:       'rgba(15,35,60,0.78)',
+    legAxis:     '#111111',            // sidebar legend – optical axis (black when noon is inactive)
+    legHorizon:  '#1a7050',            // sidebar legend – pinhole level line
+    legPaper:    '#1660a0',            // sidebar legend – photopaper line
+    legN:        '#1245a0',
+  } : {
+    bg:          '#07090d',
+    grid:        'rgba(50,100,155,0.85)',
+    compassS:    '#e84040',
+    compassN:    '#7090c0',
+    compassW:    '#50dc78',
+    compassE:    '#78c878',
+    zAxis:       '#4080e8',
+    gapBack:     'rgba(200,140,30,0.55)',
+    gapFront:    'rgba(232,160,32,0.75)',
+    paperBack:   'rgba(80,140,210,0.60)',
+    paperFront:  'rgba(90,170,208,0.8)',
+    paperArc:    'rgba(90,170,208,0.65)',
+    gapArc:      'rgba(232,160,32,0.65)',
+    axisOut:     '#d8e8f8',
+    axisHit:     '#e8a020',
+    axisMiss:    '#e04040',
+    pinhole:     '#e8a020',
+    pinholeRing: 'rgba(0,0,0,0.60)',
+    horizon:     'rgba(136,204,170,0.55)',
+    label:       'rgba(74,90,106,0.85)',
+    legAxis:     '#d8e8f8',
+    legHorizon:  '#88ccaa',
+    legPaper:    '#5aaad0',
+    legN:        '#7090c0',
+  };
+
+  c.fillStyle = pal.bg;
+  c.fillRect(0, 0, CW, CH);
+
+  // Legend: fixed world-space labels + sidebar swatch colours (theme-aware)
+  { const ls = document.getElementById('legS');
+    const ln = document.getElementById('legN');
+    if (ls) { ls.style.color = _lt ? pal.compassS : '#e84040'; ls.textContent = 'S'; }
+    if (ln) { ln.style.color = pal.legN; ln.textContent = 'N'; }
+    // Sidebar swatches that have hardcoded light colours
+    const legHorizLine = document.querySelector('#can3dLegend .leg-line:not(.dashed)');
+    const legPaperLine = document.querySelectorAll('#can3dLegend .leg-line')[1];
+    if (legHorizLine) legHorizLine.style.borderColor = pal.legHorizon;
+    if (legPaperLine) legPaperLine.style.borderColor = pal.legPaper;
+  }
+
+  // SH: add 180° so the can faces north (world −x), matching real-world placement.
+  // All subsequent hemisphere-aware calculations still work correctly with this flip.
+  const yr = (yawDeg + (hemisphere < 0 ? 180 : 0)) * Math.PI / 180;
+  const pr = pitchDeg * Math.PI / 180;
+  const rr = rollDeg  * Math.PI / 180;
+  // Half-height in mm derived from current scan aspect ratio
+  const halfHmm = canvas.width > 0
+    ? scanWmm * canvas.height / canvas.width / 2
+    : scanWmm * PAPER_H / PAPER_W / 2;
+  const RN = radius / halfHmm;      // normalized radius
+  const hO = horizonMm / halfHmm;   // normalized pinhole vertical offset
+  const N  = 12;                // vertical edge count: 2 gap segments + 10 paper segments
+  // Label font size + line weight: scale proportionally in theater mode
+  const fs    = theaterMode3D ? Math.min(14, Math.max(9, Math.round(CW / 65))) : 8;
+  const lwMul = fs / 8;
+  const HH = 1.0;               // normalized half-height
+
+  // ── Dynamic paper arc: actual scan width wrapped around cylinder ──────────
+  // Arc length = scan_w_mm = radius * paper_angle  →  paper_angle = scan_w_mm / radius
+  const paperAngle = Math.min(2 * Math.PI - 0.01, scanWmm / radius);
+  const halfGap    = (2 * Math.PI - paperAngle) / 2;   // half-angle of pinhole zone
+
+  // Update legend label with computed degrees
+  { const sp = document.getElementById('legPaperSpan');
+    if (sp) sp.textContent = 'photopaper (' + Math.round(paperAngle * 180 / Math.PI) + '°)'; }
+
+  // 12 edge angles: edge 0 at pinhole (south=0), edges 1–10 in paper zone, edge 11 at -halfGap
+  function edgeAngle(i) {
+    if (i === 0)  return 0;
+    if (i === 11) return 2 * Math.PI - halfGap;
+    return halfGap + (i - 1) * paperAngle / 10;
+  }
+
+  // Pinhole gap: dynamic half-angle (replaces fixed GAP = 30°)
+  function inGap(a) {
+    let n = ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    if (n > Math.PI) n = 2 * Math.PI - n;
+    return n <= halfGap + 1e-9;
+  }
+
+  // Rotate can geometry: inverse of camera transforms (negate pitch & roll).
+  // applyRoll/applyPitch transform world rays → camera space.
+  // To show can in world space we apply the inverse: Ry(-pitch) ∘ Rx(-roll) ∘ Rz(yaw).
+  function rotCan(x, y, z) {
+    // 1. Ry(-pitch): inverse camera pitch — in can-local frame before yaw
+    let x0 = x*Math.cos(pr) - z*Math.sin(pr);
+    let y0 = y;
+    let z0 = x*Math.sin(pr) + z*Math.cos(pr);
+    // 2. Rx(-roll): inverse camera roll — in can-local frame after pitch correction
+    let x1 = x0;
+    let y1 = y0*Math.cos(rr) + z0*Math.sin(rr);
+    let z1 = -y0*Math.sin(rr) + z0*Math.cos(rr);
+    // 3. Rz(yaw): rotate whole can to correct world azimuth
+    let x2 = x1*Math.cos(yr) - y1*Math.sin(yr);
+    let y2 = x1*Math.sin(yr) + y1*Math.cos(yr);
+    let z2 = z1;
+    return [x2, y2, z2];
+  }
+  const R = rotCan;
+
+  // Inverse of rotCan: transforms world-space vector back to can-local frame.
+  // rotCan = Ry(−pitch) → Rx(−roll) → Rz(yaw)
+  // inverse = Rz(−yaw) → Rx(+roll) → Ry(+pitch)
+  function rotCanInv(x, y, z) {
+    let x0 =  x*Math.cos(yr) + y*Math.sin(yr);   // Rz(-yaw)
+    let y0 = -x*Math.sin(yr) + y*Math.cos(yr);
+    let z0 = z;
+    let x1 = x0;                                   // Rx(+roll)
+    let y1 =  y0*Math.cos(rr) - z0*Math.sin(rr);
+    let z1 =  y0*Math.sin(rr) + z0*Math.cos(rr);
+    let x2 =  x1*Math.cos(pr) + z1*Math.sin(pr);  // Ry(+pitch)
+    let y2 = y1;
+    let z2 = -x1*Math.sin(pr) + z1*Math.cos(pr);
+    return [x2, y2, z2];
+  }
+
+  // ── Custom-day sun geometry, shared by the path, the hourly arrows and the
+  //    animated sun ray. Maps a sun hour-angle (deg) onto the paper surface.
+  //    Because the projection is x = 2·r·α, the flat-scan pixel IS the arc length,
+  //    so a 2D path point (px,py) maps onto the cylinder with no extra optics:
+  //      a = π + (px − cx)/(scale·radius)   central angle from the back-wall centre
+  //      z = (py − cy)/(scale·halfHmm)      height (canvas-down → paper-up)
+  //    Returns { pt:[x,y], a, z } or null (below horizon / off paper / behind camera).
+  const _cArc   = customArcDate();
+  const _cDelta = sunDeclination(dayOfYear(_cArc.month, _cArc.day));
+  const _cPhi   = effectiveLat();
+  const _aMin = halfGap, _aMax = 2 * Math.PI - halfGap;
+  function surfMap(hDeg) {
+    const s = sunPosition(hDeg * Math.PI / 180, _cDelta, _cPhi);
+    if (s.el < 0) return null;
+    const pos = azElToPixel(s.beta - yawDeg, s.el);
+    if (!pos) return null;
+    const a = Math.PI + (pos.px - cx) / (scale * radius);
+    const z = (pos.py - cy) / (scale * halfHmm);
+    if (a < _aMin || a > _aMax || z < -HH || z > HH) return null;   // off paper
+    const pt = proj(R(RN * Math.cos(a), RN * Math.sin(a), z));
+    return pt ? { pt, a, z } : null;
+  }
+
+  // ── Floor gradient fill ──
+  { const GS2 = 0.35, gn2 = 3;
+    const fc = proj([0, 0, -HH]);
+    const fl = [proj([-gn2*GS2,-gn2*GS2,-HH]),proj([gn2*GS2,-gn2*GS2,-HH]),proj([gn2*GS2,gn2*GS2,-HH]),proj([-gn2*GS2,gn2*GS2,-HH])];
+    if (fl.every(Boolean) && fc) {
+      c.beginPath(); c.moveTo(fl[0][0],fl[0][1]); fl.slice(1).forEach(p=>c.lineTo(p[0],p[1])); c.closePath();
+      const gr = c.createRadialGradient(fc[0],fc[1],0, fc[0],fc[1], Math.min(CW,CH)*0.55);
+      if (_lt) {
+        gr.addColorStop(0,'rgba(175,190,210,0.68)');
+        gr.addColorStop(0.65,'rgba(200,210,225,0.38)');
+        gr.addColorStop(1,'rgba(220,225,235,0.08)');
+      } else {
+        gr.addColorStop(0,'rgba(18,36,62,0.78)');
+        gr.addColorStop(0.65,'rgba(9,18,36,0.55)');
+        gr.addColorStop(1,'rgba(3,7,15,0.18)');
+      }
+      c.fillStyle = gr; c.fill();
+    }
+  }
+
+  // ── Floor grid (world-space, does not rotate) ──
+  c.lineWidth = 0.8 * lwMul;
+  c.setLineDash([2, 4]);
+  const GS = 0.35, gn = 3;
+  for (let i = -gn; i <= gn; i++) {
+    const a = proj([i * GS, -gn * GS, -HH]);
+    const b = proj([i * GS,  gn * GS, -HH]);
+    const d = proj([-gn * GS, i * GS, -HH]);
+    const e = proj([ gn * GS, i * GS, -HH]);
+    c.strokeStyle = pal.grid;
+    if (a && b) { c.beginPath(); c.moveTo(a[0],a[1]); c.lineTo(b[0],b[1]); c.stroke(); }
+    if (d && e) { c.beginPath(); c.moveTo(d[0],d[1]); c.lineTo(e[0],e[1]); c.stroke(); }
+  }
+  c.setLineDash([]);
+
+  // ── Compass rose at floor level (world-fixed N/S/E/W) ──
+  const CR = gn * GS; // arrow length – reaches tile edges (= 1.05)
+  const roseCenter = [0, 0, -HH];
+  const rc = proj(roseCenter);
+  if (rc) {
+    // Fixed world-space labels: +x = south, -x = north, regardless of hemisphere.
+    // The SH 180° yaw flip already orients the can correctly, so no label swap needed.
+    const cardinals = [
+      { tip: [ CR,  0, -HH], color: pal.compassS, label: 'S' },
+      { tip: [-CR,  0, -HH], color: pal.compassN, label: 'N' },
+      { tip: [  0, CR, -HH], color: pal.compassW, label: 'W' },
+      { tip: [  0,-CR, -HH], color: pal.compassE, label: 'E' },
+    ];
+    for (const card of cardinals) {
+      const ep = proj(card.tip);
+      if (!ep) continue;
+      c.beginPath(); c.moveTo(rc[0], rc[1]); c.lineTo(ep[0], ep[1]);
+      c.strokeStyle = card.color; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
+      // Arrowhead
+      const dx = ep[0]-rc[0], dy = ep[1]-rc[1], len = Math.sqrt(dx*dx+dy*dy);
+      if (len > 3) {
+        const nx = dx/len, ny = dy/len;
+        c.beginPath();
+        c.moveTo(ep[0], ep[1]);
+        c.lineTo(ep[0]-nx*6-ny*3, ep[1]-ny*6+nx*3);
+        c.lineTo(ep[0]-nx*6+ny*3, ep[1]-ny*6-nx*3);
+        c.closePath(); c.fillStyle = card.color; c.fill();
+      }
+      c.font = `bold ${fs}px 'Share Tech Mono'`;
+      c.fillStyle = card.color; c.textAlign = 'center';
+      c.fillText(card.label, ep[0] + (ep[0]-rc[0])*0.25, ep[1] + (ep[1]-rc[1])*0.25 - 1);
+    }
+  }
+
+  // ── Z axis: solid up + dashed below floor ──
+  const zO = proj([0, 0, -HH]);
+  const zUp   = proj([0, 0, -HH + 0.9]);
+  const zDown = proj([0, 0, -HH - 0.5]);
+  if (zO && zUp) {
+    c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zUp[0], zUp[1]);
+    c.strokeStyle = pal.zAxis; c.lineWidth = 1.5 * lwMul; c.setLineDash([]); c.stroke();
+    const dx = zUp[0]-zO[0], dy = zUp[1]-zO[1], len = Math.sqrt(dx*dx+dy*dy);
+    if (len > 3) {
+      const nx = dx/len, ny = dy/len;
+      c.beginPath();
+      c.moveTo(zUp[0], zUp[1]);
+      c.lineTo(zUp[0]-nx*6-ny*3, zUp[1]-ny*6+nx*3);
+      c.lineTo(zUp[0]-nx*6+ny*3, zUp[1]-ny*6-nx*3);
+      c.closePath(); c.fillStyle = pal.zAxis; c.fill();
+    }
+    c.font = `bold ${fs}px 'Share Tech Mono'`;
+    c.fillStyle = pal.zAxis; c.textAlign = 'center';
+    c.fillText('Z', zUp[0], zUp[1] - 4);
+  }
+  if (zO && zDown) {
+    c.beginPath(); c.moveTo(zO[0], zO[1]); c.lineTo(zDown[0], zDown[1]);
+    c.strokeStyle = pal.zAxis; c.lineWidth = 1.0 * lwMul; c.setLineDash([3, 3]); c.stroke();
+    c.setLineDash([]);
+  }
+
+  // ── Shading helpers ──────────────────────────────────────────────────────────
+  function _dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+  function _nor3(v){const l=Math.sqrt(v[0]**2+v[1]**2+v[2]**2);return l<1e-10?v:[v[0]/l,v[1]/l,v[2]/l];}
+  function _dep3(p){return _3D.FWD[0]*(p[0]-_3D.CAM[0])+_3D.FWD[1]*(p[1]-_3D.CAM[1])+_3D.FWD[2]*(p[2]-_3D.CAM[2]);}
+  const _LMAIN = _nor3([0.58,-0.10,0.80]);   // main light (sun-ish, south-upper)
+  const _LFILL = _nor3([-0.32,0.22,0.14]);   // soft fill from opposite
+  const _LCAM  = _nor3([_3D.CAM[0],_3D.CAM[1],_3D.CAM[2]]); // camera direction (for specular)
+  function _shd(norm) {
+    const d1 = Math.max(0,_dot3(norm,_LMAIN));
+    const d2 = Math.max(0,_dot3(norm,_LFILL))*0.11;
+    const H2 = _nor3([_LMAIN[0]+_LCAM[0],_LMAIN[1]+_LCAM[1],_LMAIN[2]+_LCAM[2]]);
+    const sp = Math.pow(Math.max(0,_dot3(norm,H2)),28)*0.20;
+    return {b:Math.min(1.1,0.16+0.74*d1+d2), sp:Math.min(0.28,sp)};
+  }
+  function _pCol(b,sp,front) { // paper zone
+    if (_lt) {
+      const r=Math.round(Math.min(255,70+100*b+sp*175)),g=Math.round(Math.min(255,105+108*b+sp*180)),bl=Math.round(Math.min(255,140+98*b+sp*195));
+      return `rgba(${r},${g},${bl},${front?0.88:0.46})`;
+    }
+    const r=Math.round(Math.min(255,22+110*b+sp*210)),g=Math.round(Math.min(255,48+125*b+sp*215)),bl=Math.round(Math.min(255,78+140*b+sp*235));
+    return `rgba(${r},${g},${bl},${front?0.91:0.52})`;
+  }
+  function _gCol(b,sp,front) { // gap zone
+    if (_lt) {
+      const r=Math.round(Math.min(255,110+105*b+sp*155)),g=Math.round(Math.min(255,68+72*b+sp*115)),bl=Math.round(Math.min(255,14+18*b+sp*50));
+      return `rgba(${r},${g},${bl},${front?0.80:0.38})`;
+    }
+    const r=Math.round(Math.min(255,50+155*b+sp*175)),g=Math.round(Math.min(255,28+75*b+sp*130)),bl=Math.round(Math.min(255,3+16*b+sp*55));
+    return `rgba(${r},${g},${bl},${front?0.84:0.40})`;
+  }
+
+  // ── Shaded cylinder surface (360 strips, painter-sorted) ────────────────────
+  { const NSTR = 360;
+    const strips = [];
+    for (let i = 0; i < NSTR; i++) {
+      const a1 = i*2*Math.PI/NSTR, a2 = (i+1)*2*Math.PI/NSTR, aMid = (a1+a2)/2;
+      const norm = R(Math.cos(aMid), Math.sin(aMid), 0);
+      const pts3d = [
+        R(RN*Math.cos(a1),RN*Math.sin(a1), HH), R(RN*Math.cos(a2),RN*Math.sin(a2), HH),
+        R(RN*Math.cos(a2),RN*Math.sin(a2),-HH), R(RN*Math.cos(a1),RN*Math.sin(a1),-HH),
+      ];
+      const depth = (pts3d.reduce((s,p)=>s+_dep3(p),0))/4;
+      const toCam = _nor3([_3D.CAM[0]-pts3d[0][0],_3D.CAM[1]-pts3d[0][1],_3D.CAM[2]-pts3d[0][2]]);
+      strips.push({pts3d, depth, front:_dot3(norm,toCam)>0, gap:inGap(aMid), sh:_shd(norm)});
+    }
+    strips.sort((a,b)=>a.depth-b.depth);
+    if (show3DCladding) {
+      for (const s of strips) {
+        const pts = s.pts3d.map(p=>proj(p));
+        if (!pts.every(Boolean)) continue;
+        c.beginPath(); c.moveTo(pts[0][0],pts[0][1]);
+        for (let j=1;j<4;j++) c.lineTo(pts[j][0],pts[j][1]);
+        c.closePath();
+        c.fillStyle = s.gap ? _gCol(s.sh.b,s.sh.sp,s.front) : _pCol(s.sh.b,s.sh.sp,s.front);
+        c.fill();
+      }
+    }
+  }
+
+  // ── Cap: bottom only (semi-transparent filled arcs) ────────────────────────
+  { const CSTEP = Math.PI/180; // 1° steps – exact halfGap boundary, no rounding
+    for (const zz of [-HH]) {
+      const ctr3d = R(0,0,zz), cPt = proj(ctr3d);
+      const capNorm = R(0,0,zz>0?1:-1);
+      const toCam2 = _nor3([_3D.CAM[0]-ctr3d[0],_3D.CAM[1]-ctr3d[1],_3D.CAM[2]-ctr3d[2]]);
+      const facing = _dot3(capNorm,toCam2) > 0;
+      // Paper cap: fan from halfGap → 2π-halfGap (exact endpoints added explicitly)
+      const _fanArc = (aStart, aEnd) => {
+        const pts = [];
+        pts.push(proj(R(RN*Math.cos(aStart),RN*Math.sin(aStart),zz)));
+        for (let a = aStart + CSTEP; a < aEnd - CSTEP*0.5; a += CSTEP)
+          pts.push(proj(R(RN*Math.cos(a),RN*Math.sin(a),zz)));
+        pts.push(proj(R(RN*Math.cos(aEnd),RN*Math.sin(aEnd),zz)));
+        return pts;
+      };
+      const fanP = _fanArc(halfGap, 2*Math.PI - halfGap);
+      if (cPt && fanP.some(Boolean)) {
+        if (show3DCladding) {
+          c.beginPath(); let fs2=true;
+          for (const p of fanP){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
+          c.lineTo(cPt[0],cPt[1]); c.closePath();
+          c.fillStyle = _lt ? `rgba(55,95,155,${facing?0.30:0.14})` : `rgba(48,84,138,${facing?0.38:0.18})`;
+          c.fill();
+        }
+        c.beginPath(); let fs2=true;
+        for (const p of fanP){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
+        c.strokeStyle = `rgba(${_lt?'55,130,215':'85,148,218'},${facing?0.55:0.26})`; c.lineWidth=(facing?1.0:0.6)*lwMul; c.stroke();
+      }
+      // Gap cap: fan from -halfGap → +halfGap (exact endpoints)
+      const fanG = _fanArc(-halfGap, halfGap);
+      if (cPt && fanG.some(Boolean)) {
+        if (show3DCladding) {
+          c.beginPath(); let fs2=true;
+          for (const p of fanG){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
+          c.lineTo(cPt[0],cPt[1]); c.closePath();
+          c.fillStyle = `rgba(88,50,5,${facing?0.30:0.14})`; c.fill();
+        }
+        c.beginPath(); let fs2=true;
+        for (const p of fanG){if(!p){fs2=true;continue;} fs2?c.moveTo(p[0],p[1]):c.lineTo(p[0],p[1]);fs2=false;}
+        c.strokeStyle=`rgba(220,148,28,${facing?0.44:0.20})`; c.lineWidth=0.8*lwMul; c.setLineDash([2,3]); c.stroke(); c.setLineDash([]);
+      }
+    }
+  }
+
+  // ── Generate cylinder points (non-uniform spacing: 2 gap + 10 paper segments) ──
+  const topPts = [], botPts = [];
+  for (let i = 0; i < N; i++) {
+    const a = edgeAngle(i);
+    const x = RN * Math.cos(a), y = RN * Math.sin(a);
+    topPts.push(R(x, y,  HH));
+    botPts.push(R(x, y, -HH));
+  }
+  const topP = topPts.map(p => proj(p));
+  const botP = botPts.map(p => proj(p));
+
+  // Sort edges back-to-front: project world midpoint onto camera FWD vector
+  // (painter's algorithm – edges furthest from camera drawn first)
+  const edgeIdx = Array.from({length: N}, (_, i) => i)
+    .sort((a, b) => {
+      const da = _3D.FWD[0]*(topPts[a][0]+botPts[a][0]) + _3D.FWD[1]*(topPts[a][1]+botPts[a][1]) + _3D.FWD[2]*(topPts[a][2]+botPts[a][2]);
+      const db = _3D.FWD[0]*(topPts[b][0]+botPts[b][0]) + _3D.FWD[1]*(topPts[b][1]+botPts[b][1]) + _3D.FWD[2]*(topPts[b][2]+botPts[b][2]);
+      return da - db; // most negative FWD-projection = furthest away = drawn first
+    });
+
+  // ── Vertical edges – drawn back-to-front, differentiated ──
+  for (const i of edgeIdx) {
+    const t = topP[i], b = botP[i];
+    if (!t || !b) continue;
+    const ang = edgeAngle(i);
+    // True visibility: outward normal of cylinder at angle `ang`, rotated to world space,
+    // dotted with camera direction from origin.  Positive → face toward camera → visible.
+    const nx = Math.cos(ang), ny = Math.sin(ang);
+    const [wx, wy] = [R(nx, ny, 0)[0], R(nx, ny, 0)[1]];
+    // Perspective-correct test: an edge is on the outside if (CAM-edgePos)·n > 0
+    // = dot - RN > 0.  Without RN it fails for top-down views.
+    const dot_nCam = wx * _3D.CAM[0] + wy * _3D.CAM[1];
+    const isBack = dot_nCam <= RN;
+    // Back (interior) edges are always dashed – needed especially when cladding is off
+    // Front edges: paper zone solid, gap zone dashed
+    const gap  = inGap(ang);
+    if (isBack) {
+      c.strokeStyle = gap ? pal.gapBack : pal.paperBack;
+      c.lineWidth   = (gap ? 0.6 : 0.7) * lwMul;
+      c.setLineDash([3, 3]);
+    } else if (gap) {
+      c.strokeStyle = pal.gapFront;
+      c.lineWidth   = 1.0 * lwMul;
+      c.setLineDash([3, 3]);
+    } else {
+      c.strokeStyle = pal.paperFront;
+      c.lineWidth   = 1.2 * lwMul;
+      c.setLineDash([]);
+    }
+    c.beginPath(); c.moveTo(t[0], t[1]); c.lineTo(b[0], b[1]);
+    c.stroke(); c.setLineDash([]);
+  }
+
+  // ── Top + bottom rings: paper arc (dynamic) and pinhole gap arc ──
+  const STEP = Math.PI / 60; // 3° steps (smooth curve)
+  for (const zz of [HH, -HH]) {
+    // Paper arc: from +halfGap to 2π–halfGap
+    const paperPts = [];
+    for (let a = halfGap; a <= 2*Math.PI - halfGap + 0.01; a += STEP)
+      paperPts.push(proj(R(RN*Math.cos(a), RN*Math.sin(a), zz)));
+    c.beginPath();
+    let first = true;
+    for (const p of paperPts) {
+      if (!p) { first = true; continue; }
+      first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
+      first = false;
+    }
+    c.strokeStyle = pal.paperArc; c.lineWidth = 1.0 * lwMul; c.setLineDash([]);
+    c.stroke();
+
+    // Pinhole gap arc: from –halfGap to +halfGap
+    const gapPts = [];
+    for (let a = -halfGap; a <= halfGap + 0.01; a += STEP)
+      gapPts.push(proj(R(RN*Math.cos(a), RN*Math.sin(a), zz)));
+    c.beginPath();
+    first = true;
+    for (const p of gapPts) {
+      if (!p) { first = true; continue; }
+      first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
+      first = false;
+    }
+    c.strokeStyle = pal.gapArc; c.lineWidth = 0.8 * lwMul;
+    c.setLineDash([2, 2]); c.stroke(); c.setLineDash([]);
+  }
+
+  // ── Pinhole dot + optical axis arrow ──
+  const pinholePt = R(RN, 0, hO);   // pinhole in world space
+  const pp = proj(pinholePt);
+
+  // ── Noon mode: ray fixed in world space, only hit-point moves with can ──
+  let pa, noonLabel = null;
+  let noonHitsPaper = true;   // false → ray hits cap/bottom or gap, inner dashed line turns red
+  let noonIncidenceDeg = null; // angle between incoming ray and cylinder-wall normal at hit point
+
+  if (show3DCulmination) {
+    // ── Animated sun ray: position for the current solar time (sunTimeHours) ──
+    // Hour angle in the path convention (SH solar hour is mirrored: solarHour = 12 − hDeg/15).
+    const hitH = (sunTimeHours - 12) * 15 * hemisphere;
+    const hit  = surfMap(hitH);                                  // {pt,a,z} or null (miss)
+    const sInf = sunPosition(hitH * Math.PI / 180, _cDelta, _cPhi);
+    noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
+              + ' · ' + fmtSolarTime(sunTimeHours)
+              + ' · Alt ' + Math.round(Math.max(0, sInf.el)) + '°';
+    if (hit) {
+      pa = hit.pt;
+      noonHitsPaper = true;
+      // Incidence: angle between the incoming ray (pinhole→hit) and the outward wall normal.
+      let rx = RN * Math.cos(hit.a) - RN, ry = RN * Math.sin(hit.a), rz = hit.z - hO;
+      const rl = Math.sqrt(rx*rx + ry*ry + rz*rz) || 1;
+      const cosInc = (rx / rl) * Math.cos(hit.a) + (ry / rl) * Math.sin(hit.a);
+      noonIncidenceDeg = Math.round(Math.acos(Math.max(-1, Math.min(1, cosInc))) * 180 / Math.PI);
+    } else {
+      // MISS: the sun's image doesn't fall on the paper — still draw the optical axis to
+      // where the ray actually goes (cap / back wall), as before 24_1. Exact ray-trace,
+      // signed-latitude convention so the world azimuth is correct in both hemispheres.
+      noonHitsPaper = false; noonIncidenceDeg = null; pa = null;
+      const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
+      const phiS = effectiveLat() * hemisphere;
+      const dS   = sunDeclination(dayOfYear(customMonth, customDay));
+      const sp   = sunPosition(Hs, dS, phiS);
+      if (sp.el > 0) {
+        const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+        // incoming ray dir (into can), world frame +x=S +y=W +z=up
+        const inW = [Math.cos(azR)*Math.cos(elR), Math.sin(azR)*Math.cos(elR), -Math.sin(elR)];
+        const pn = R(1, 0, 0);   // pinhole outward normal (world)
+        if ((-inW[0])*pn[0] + (-inW[1])*pn[1] + (-inW[2])*pn[2] > 1e-9) {   // sun faces the pinhole
+          const dw = rotCanInv(inW[0], inW[1], inW[2]);
+          const dx = dw[0], dy = dw[1], dz = dw[2];
+          const dxy2 = dx*dx + dy*dy;
+          const t_wall = dxy2 > 1e-6 ? -2*RN*dx / dxy2 : Infinity;
+          const z_wall = hO + t_wall*dz;
+          const t_wallValid = (t_wall > 1e-4 && z_wall >= -HH && z_wall <= HH) ? t_wall : Infinity;
+          let t_cap = Infinity;
+          if (Math.abs(dz) > 1e-6) {
+            for (const capZ of [-HH, HH]) {
+              const tc = (capZ - hO) / dz;
+              if (tc > 1e-4) { const xc = RN + tc*dx, yc = tc*dy; if (xc*xc + yc*yc <= RN*RN + 1e-4) t_cap = Math.min(t_cap, tc); }
+            }
+          }
+          const t_hit = Math.min(t_wallValid, t_cap);
+          const tip = t_hit < Infinity ? [RN + t_hit*dx, t_hit*dy, hO + t_hit*dz] : [-RN, 0, hO];
+          pa = proj(R(tip[0], tip[1], tip[2]));
+        }
+      }
+    }
+
+    // Outward line toward the sun (collinear pa→pp→canvas edge), colored by hit/miss
+    if (pa && pp) {
+      const odx = pp[0]-pa[0], ody = pp[1]-pa[1], olen = Math.sqrt(odx*odx+ody*ody);
+      if (olen > 0.5) {
+        const nx = odx/olen, ny = ody/olen;
+        let t = Infinity;
+        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
+        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
+        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
+        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
+        if (t > 0 && t < Infinity) {
+          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+          c.strokeStyle = noonHitsPaper ? pal.axisHit : pal.axisMiss;
+          c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+        }
+      }
+    }
+
+  } else {
+    // ── Default mode: el = 0, ray horizontal through can to back wall ──
+    pa = proj(R(-RN, 0, hO));
+
+    // Outward extension: screen-space trick (direction from pa through pp, extended)
+    if (pp && pa) {
+      const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
+      const len = Math.sqrt(dx*dx+dy*dy);
+      if (len > 0.5) {
+        const nx = dx/len, ny = dy/len;
+        let t = Infinity;
+        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
+        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
+        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
+        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
+        if (t > 0 && t < Infinity) {
+          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
+          c.strokeStyle = pal.axisOut; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+        }
+      }
+    }
+  }
+
+  // ── Status panel: update values (Analyzer preview + Theater) ──
+  if (currentMode === 'analyzer') {
+    const circ    = Math.round(2 * Math.PI * radius);   // whole mm
+    const fillPct = (paperAngle / (2 * Math.PI) * 100).toFixed(1);
+    const covDeg  = Math.round(paperAngle / 2 * 180 / Math.PI);
+    // Date + current solar time; the time is styled like a value (paper-filling style)
+    const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay
+      + ' <span class="ts-val" style="display:inline">(' + fmtSolarTime(sunTimeHours) + ')</span>';
+
+    const tsCirc         = document.getElementById('tsCirc');
+    const tsFill         = document.getElementById('tsFill');
+    const tsCoverage     = document.getElementById('tsCoverage');
+    const tsNoonLbl      = document.getElementById('tsNoonLbl');
+    const tsHit          = document.getElementById('tsHit');
+    const tsMiss         = document.getElementById('tsMiss');
+    const tsIncidenceRow = document.getElementById('tsIncidenceRow');
+    const tsIncidence    = document.getElementById('tsIncidence');
+
+    if (tsCirc)     tsCirc.textContent     = circ;
+    if (tsFill)     tsFill.textContent     = fillPct;
+    if (tsCoverage) tsCoverage.textContent = covDeg + '°';
+    if (tsNoonLbl)  tsNoonLbl.innerHTML    = noonLbl;
+
+    // Noon row: visible only when noon mode is active
+    const tsNoonRow = document.getElementById('tsNoonRow');
+    if (tsNoonRow) tsNoonRow.style.display = show3DCulmination ? '' : 'none';
+
+    if (tsHit && tsMiss && show3DCulmination) {
+      tsHit.classList.toggle('active',  noonHitsPaper);
+      tsMiss.classList.toggle('active', !noonHitsPaper);
+    }
+    // Az / Alt of the Sun at the current solar time (custom date) – above incidence
+    const tsAzAltRow = document.getElementById('tsAzAltRow');
+    const tsAzAlt    = document.getElementById('tsAzAlt');
+    if (tsAzAltRow && tsAzAlt) {
+      if (show3DCulmination) {
+        const Hs = (sunTimeHours - 12) * 15 * Math.PI / 180;
+        const sp = sunPosition(Hs, sunDeclination(dayOfYear(customMonth, customDay)), effectiveLat() * hemisphere);
+        tsAzAltRow.style.display = '';
+        tsAzAlt.textContent = sp.el >= 0
+          ? Math.round(sp.az) + '° / ' + Math.round(sp.el) + '°'
+          : '—';
+      } else {
+        tsAzAltRow.style.display = 'none';
+      }
+    }
+    // Incidence angle: show only in HIT scenario
+    if (tsIncidenceRow && tsIncidence) {
+      const showInc = show3DCulmination && noonHitsPaper && noonIncidenceDeg !== null;
+      tsIncidenceRow.style.display = showInc ? '' : 'none';
+      if (showInc) tsIncidence.textContent = noonIncidenceDeg + '°';
+    }
+  }
+
+  // ── Custom-day sun path mapped onto the curved paper surface (theater + noon) ──
+  // The flat scan is the unrolled photo paper. Because the projection is x = 2·r·α
+  // (inscribed-angle relation: the pinhole sits ON the circle, so a ray at azimuth α
+  // from the optical axis lands at central angle 2α), the scan's horizontal pixel IS
+  // the arc length along the cylinder. So a 2D path point (px,py) maps onto the paper
+  // surface with no extra optics:
+  //   a = π + (px − cx)/(scale·radius)   central angle measured from the back-wall centre
+  //   z = (py − cy)/(scale·halfHmm)      height (canvas-down → paper-up; pinhole inversion)
+  // Anchored to the noon ray: the H=0 point lands on the back-wall centre at the noon height.
+  if (theaterMode3D && show3DCulmination) {
+    maybeUpdateSunFill();   // keep the slider's on-paper regions in sync with geometry
+    const surfProj = (hDeg) => { const m = surfMap(hDeg); return m ? m.pt : null; };
+
+    // Smooth curve (0.5° steps); null = break in the polyline
+    const surfPath = [];
+    for (let hDeg = -180; hDeg <= 180; hDeg += 0.5) surfPath.push(surfProj(hDeg));
+    const noonSurf = surfProj(0);
+
+    // Black outline under, green path over – matches the 2D custom-path styling
+    for (const pass of [{ col: 'rgba(0,0,0,0.85)', w: 3.4 }, { col: 'rgba(80,220,120,0.95)', w: 1.6 }]) {
+      c.strokeStyle = pass.col; c.lineWidth = pass.w * lwMul; c.setLineDash([]);
+      c.beginPath(); let first = true;
+      for (const p of surfPath) {
+        if (!p) { first = true; continue; }
+        first ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
+        first = false;
+      }
+      c.stroke();
+    }
+
+    // Hourly direction arrows (step 15° = 1 h), reusing the equinox hour-dot sampling.
+    // Each arrow points along the sun's daily motion (toward increasing hour angle) and
+    // pulses in sequence → a travelling "Mexican wave" of arrows.
+    // Direction of time flow: NH later = increasing hour angle, SH later = decreasing
+    // (SH solar hour is mirrored: solarHour = 12 − hDeg/15) → flip the step in SH.
+    const step = 3 * (hemisphere >= 0 ? 1 : -1);
+    const arrows = [];
+    for (let hDeg = -180; hDeg <= 180; hDeg += 15) {
+      const p0 = surfProj(hDeg);
+      if (!p0) continue;
+      const ahead = surfProj(hDeg + step), behind = surfProj(hDeg - step);
+      let dx, dy;
+      if (ahead)       { dx = ahead[0]  - p0[0];   dy = ahead[1]  - p0[1]; }
+      else if (behind) { dx = p0[0] - behind[0];   dy = p0[1] - behind[1]; }
+      else continue;
+      const L = Math.hypot(dx, dy) || 1;
+      arrows.push({ x: p0[0], y: p0[1], dx: dx / L, dy: dy / L });
+    }
+
+    arrows.forEach((arw, i) => {
+      // Travelling wave: phase advances with time and lags by index along the chain
+      const pulse = 0.5 + 0.5 * Math.sin(_wavePhase * (Math.PI / 2000) - i * 0.55);
+      const len   = (5 + 3.2 * pulse) * lwMul * (2 / 3);   // 2/3 of previous size
+      const wid   = len * 0.6;
+      const tx = arw.x + arw.dx * len,       ty = arw.y + arw.dy * len;
+      const bx = arw.x - arw.dx * len * 0.4, by = arw.y - arw.dy * len * 0.4;
+      const nx = -arw.dy, ny = arw.dx;       // perpendicular
+      c.beginPath();
+      c.moveTo(tx, ty);
+      c.lineTo(bx + nx * wid, by + ny * wid);
+      c.lineTo(bx - nx * wid, by - ny * wid);
+      c.closePath();
+      c.fillStyle = `rgba(80,220,120,${(0.45 + 0.55 * pulse).toFixed(3)})`;
+      c.fill();   // no outline (23_3)
+    });
+
+    // Marker at the solar-noon position on the paper
+    if (noonSurf) {
+      c.beginPath(); c.arc(noonSurf[0], noonSurf[1], 3.2 * lwMul, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(80,220,120,1)'; c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.85)'; c.lineWidth = 1 * lwMul; c.stroke();
+    }
+  }
+
+  // ── Inward ray: pinhole → back wall (dashed, arrowhead at hit point) ──
+  // In noon mode: orange = hits paper wall, red = hits cap/bottom (sun misses paper)
+  const axisColor = show3DCulmination
+    ? (noonHitsPaper ? pal.axisHit : pal.axisMiss)
+    : pal.axisOut;
+  if (pp && pa) {
+    c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pa[0], pa[1]);
+    c.strokeStyle = axisColor; c.lineWidth = 1.5 * lwMul; c.setLineDash([3, 3]); c.stroke();
+    c.setLineDash([]);
+    const dx = pa[0]-pp[0], dy = pa[1]-pp[1], len = Math.sqrt(dx*dx+dy*dy);
+    if (len > 4) {
+      const nx = dx/len, ny = dy/len;
+      c.beginPath();
+      c.moveTo(pa[0], pa[1]);
+      c.lineTo(pa[0]-nx*9-ny*4, pa[1]-ny*9+nx*4);
+      c.lineTo(pa[0]-nx*9+ny*4, pa[1]-ny*9-nx*4);
+      c.closePath(); c.fillStyle = axisColor; c.fill();
+    }
+    if (noonLabel) {
+      c.font = `${Math.max(7, Math.round(fs * 0.85))}px 'Share Tech Mono'`;
+      c.fillStyle = pal.axisHit; c.textAlign = 'center';
+      c.fillText(noonLabel, pa[0], pa[1] + Math.round(fs * 1.4));
+    }
+  }
+
+  // ── Pinhole dot – always visible ──
+  if (pp) {
+    const glR = 14 * lwMul;
+    const glow = c.createRadialGradient(pp[0],pp[1],0, pp[0],pp[1],glR);
+    glow.addColorStop(0,'rgba(232,160,32,0.60)'); glow.addColorStop(1,'rgba(232,160,32,0)');
+    c.fillStyle = glow; c.fillRect(pp[0]-glR,pp[1]-glR,glR*2,glR*2);
+    c.beginPath(); c.arc(pp[0], pp[1], 4.5 * lwMul, 0, Math.PI*2);
+    c.fillStyle = pal.pinhole; c.fill();
+    c.strokeStyle = pal.pinholeRing; c.lineWidth = 1 * lwMul; c.stroke();
+  }
+
+  // ── Pinhole level ring on can surface (smooth circle) ──
+  const horizonPts = [];
+  for (let a = 0; a <= 2 * Math.PI + 0.01; a += STEP)
+    horizonPts.push(proj(R(RN * Math.cos(a), RN * Math.sin(a), hO)));
+  c.beginPath();
+  let hfirst = true;
+  for (const p of horizonPts) {
+    if (!p) { hfirst = true; continue; }
+    hfirst ? c.moveTo(p[0], p[1]) : c.lineTo(p[0], p[1]);
+    hfirst = false;
+  }
+  c.strokeStyle = pal.horizon; c.lineWidth = 0.8 * lwMul;
+  c.setLineDash([2, 3]); c.stroke(); c.setLineDash([]);
+
+  // ── Label ──
+  c.font = `${fs}px 'Share Tech Mono'`;
+  c.fillStyle = pal.label;
+  c.textAlign = 'center';
+
+  // ── Scale ruler (theater only): 0 → radius, 5 mm segments, alternating filled/empty ──
+  if (theaterMode3D) {
+    const pxPerMm = (_3D.FOCAL / _3D.camDist) * SCL / halfHmm; // scale at the depth of the can centre
+    const UNIT  = 5;                       // mm per segment
+    const segPx = UNIT * pxPerMm;
+    if (isFinite(segPx) && segPx > 1.5) {  // draw only when a segment is legible
+      const nFull   = Math.floor(radius / UNIT);
+      const remMm   = radius - nFull * UNIT;
+      const totalPx = radius * pxPerMm;
+      const barH    = Math.max(5, Math.round(fs * 0.7));
+      const pad     = Math.round(fs * 1.6);
+      const lblH    = Math.round(fs * 1.2);
+      const x0      = pad;
+      const y0      = CH - pad - barH;
+      const inkCol  = _lt ? '#0c1820' : '#dce8f5';
+      const fillCol = _lt ? 'rgba(12,24,32,0.88)' : 'rgba(220,232,245,0.90)';
+      // subtle backdrop for legibility over the floor grid
+      c.fillStyle = _lt ? 'rgba(255,255,255,0.60)' : 'rgba(8,12,18,0.55)';
+      c.fillRect(x0 - 6, y0 - lblH - 4, totalPx + 12, barH + lblH + 10);
+      // full 5mm segments – even filled, odd empty
+      c.lineWidth = Math.max(1, lwMul);
+      c.strokeStyle = inkCol;
+      for (let i = 0; i < nFull; i++) {
+        const sx = x0 + i * segPx;
+        if (i % 2 === 0) { c.fillStyle = fillCol; c.fillRect(sx, y0, segPx, barH); }
+        c.strokeRect(sx, y0, segPx, barH);
+      }
+      // remainder segment after the last 5 mm (up to the full radius value)
+      if (remMm > 0.01) {
+        const sx = x0 + nFull * segPx, w = remMm * pxPerMm;
+        if (nFull % 2 === 0) { c.fillStyle = fillCol; c.fillRect(sx, y0, w, barH); }
+        c.strokeRect(sx, y0, w, barH);
+      }
+      // labels: 0 on the left, radius on the right
+      c.fillStyle = inkCol;
+      c.font = `${Math.max(8, Math.round(fs * 0.85))}px 'Share Tech Mono'`;
+      c.textBaseline = 'alphabetic';
+      c.textAlign = 'left';
+      c.fillText('0', x0, y0 - 4);
+      c.textAlign = 'right';
+      c.fillText((radius % 1 === 0 ? radius.toFixed(0) : radius.toFixed(1)) + ' mm', x0 + totalPx, y0 - 4);
+      c.textAlign = 'center';
+    }
+  }
+}
+
+// ─── Hourly-arrow "Mexican wave" animation ───────────────────────────────────
+// Runs only while the day-path is visible (theater + noon). Re-renders the 3D view
+// at ~30 fps so the per-arrow pulse (driven by _wavePhase) travels along the chain.
+let _waveLast = 0;
+function sunWaveFrame(ts) {
+  _wavePhase = ts;
+  if (sunAnimActive) advanceSunAnim(ts);                   // advance the day animation
+  if (ts - _waveLast > 33) {                               // throttle to ~30 fps
+    _waveLast = ts;
+    if (theaterMode3D) draw3D();                           // theater: 3D ray + arrow wave
+    else { draw(); draw3D(); }                             // analyzer: 2D sun dot (+ preview)
+  }
+  sunWaveRAF = requestAnimationFrame(sunWaveFrame);
+}
+function updateSunWave() {
+  // Loop drives the arrow wave (theater) and/or the day animation (when playing)
+  const shouldRun = show3DCulmination && (theaterMode3D || sunAnimActive);
+  if (shouldRun && sunWaveRAF === null) {
+    sunWaveRAF = requestAnimationFrame(sunWaveFrame);
+  } else if (!shouldRun && sunWaveRAF !== null) {
+    cancelAnimationFrame(sunWaveRAF);
+    sunWaveRAF = null;
+  }
+}
+
+// ─── Day animation: sun ray sweeping sunrise → sunset (custom date) ───────────
+// Solar time string "H:MM"
+function fmtSolarTime(t) {
+  let h = Math.floor(t), m = Math.round((t - h) * 60);
+  if (m === 60) { h += 1; m = 0; }
+  return h + ':' + String(m).padStart(2, '0');
+}
+// Sunrise/sunset solar times for the current custom date (symmetric around noon).
+// cos(H0) = −tan(φ)·tan(δ); polar day → full 24 h, polar night → empty (rise=set=12).
+function sunDayRange() {
+  const arc   = customArcDate();
+  const delta = sunDeclination(dayOfYear(arc.month, arc.day));
+  const phi   = effectiveLat();
+  const cosH0 = -Math.tan(phi) * Math.tan(delta);
+  let H0h;                                  // half-day length in hours
+  if (cosH0 <= -1)      H0h = 12;           // polar day (sun always up)
+  else if (cosH0 >= 1)  H0h = 0;            // polar night (sun never rises)
+  else                  H0h = Math.acos(cosH0) * 12 / Math.PI;
+  return { tRise: 12 - H0h, tSet: 12 + H0h };
+}
+// Advance the animation clock: SUN_RATE_HPS hours of solar time per real second, +2 s pause.
+// The loop sweeps only the interval where the ray enters the can (green + red on the slider).
+// Starts from sunAnimOffset (seconds into the cycle) so Play resumes where Stop left off.
+function advanceSunAnim(ts) {
+  const { tEnter, tExit } = sunEnterRange();
+  const spanH  = Math.max(0.001, tExit - tEnter);   // hours the ray enters the can
+  const motion = spanH / SUN_RATE_HPS;              // seconds to sweep that interval
+  if (sunAnimStart === null) sunAnimStart = ts;
+  const elapsed = (ts - sunAnimStart) / 1000;       // seconds since Play
+  const local   = (sunAnimOffset + elapsed) % (motion + 2);   // +2 s pause before each new loop
+  sunTimeHours  = local <= motion ? tEnter + local * SUN_RATE_HPS : tExit;  // hold at end during pause
+  syncSunTimeUI();
+}
+// Reflect sunTimeHours in the slider + label
+function syncSunTimeUI() {
+  const rng = document.getElementById('rngSunTime');
+  const lbl = document.getElementById('lblSunTime');
+  if (rng && parseFloat(rng.value) !== sunTimeHours) rng.value = sunTimeHours;
+  if (lbl) lbl.textContent = fmtSolarTime(sunTimeHours);
+}
+// Slider spans the full day (sunrise..sunset) visually, but only the entering interval
+// (green + red) is clickable → clamp the value there.
+function refreshSunTimeRange() {
+  maybeUpdateSunFill();                          // refresh fill + cached enter range first
+  const { tRise, tSet } = sunDayRange();
+  const rng = document.getElementById('rngSunTime');
+  if (rng) {
+    rng.min = tRise.toFixed(3);
+    rng.max = tSet.toFixed(3);
+  }
+  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, sunTimeHours));
+  syncSunTimeUI();
+}
+function setSunPlayIcon(playing) {
+  const btn = document.getElementById('btnSunPlay');
+  if (!btn) return;
+  btn.classList.toggle('playing', playing);
+  const ic = btn.querySelector('svg');
+  if (ic) ic.innerHTML = playing
+    ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'                 // stop (square)
+    : '<polygon points="2,1 11,6 2,11"/>';                              // play (triangle)
+  const lbl = btn.querySelector('span');
+  if (lbl) lbl.textContent = playing ? 'STOP' : 'ANIMATE SUNLIGHT';
+}
+function startSunAnim() {
+  if (sunAnimActive) return;
+  sunAnimActive = true;
+  sunAnimStart  = null;            // captured on first frame
+  // Resume from the current solar time (where Stop / the slider left off)
+  const { tEnter, tExit } = sunEnterRange();
+  const motion = Math.max(0.001, tExit - tEnter) / SUN_RATE_HPS;
+  sunAnimOffset = Math.min(motion, Math.max(0, (sunTimeHours - tEnter) / SUN_RATE_HPS));
+  setSunPlayIcon(true);
+  updateSunWave();                 // ensure the rAF loop is running
+}
+function stopSunAnim() {
+  sunAnimActive = false;
+  setSunPlayIcon(false);
+  updateSunWave();   // cancel the loop in analyzer (kept running in theater for the wave)
+}
+
+// Inverse can rotation in world space (global twin of draw3D's rotCanInv) – pure function
+// of the calibration angles. Used to test whether the sun faces the pinhole wall.
+function _rotCanInvWorld(x, y, z) {
+  const yr = (yawDeg + (hemisphere < 0 ? 180 : 0)) * Math.PI / 180;
+  const pr = pitchDeg * Math.PI / 180, rr = rollDeg * Math.PI / 180;
+  const x0 =  x * Math.cos(yr) + y * Math.sin(yr);
+  const y0 = -x * Math.sin(yr) + y * Math.cos(yr);
+  const z0 = z;
+  const x1 = x0;
+  const y1 =  y0 * Math.cos(rr) - z0 * Math.sin(rr);
+  const z1 =  y0 * Math.sin(rr) + z0 * Math.cos(rr);
+  const x2 =  x1 * Math.cos(pr) + z1 * Math.sin(pr);
+  const y2 =  y1;
+  const z2 = -x1 * Math.sin(pr) + z1 * Math.cos(pr);
+  return [x2, y2, z2];
+}
+// Classify the sun ray at solar time t for the slider track:
+//   2 = image lands on paper (green)
+//   1 = ray enters the can but misses the paper – cap/gap (red, like the MISS optical axis)
+//   0 = ray does not enter the can (sun below horizon / behind the pinhole wall) (grey)
+function sunRayState(t, ctx) {
+  // On paper? (path convention – matches the green curve / surfMap)
+  const hDeg = (t - 12) * 15 * hemisphere;
+  const s = sunPosition(hDeg * Math.PI / 180, ctx.delta, ctx.phi);
+  if (s.el > 0) {
+    const pos = azElToPixel(s.beta - yawDeg, s.el);
+    if (pos) {
+      const a = Math.PI + (pos.px - cx) / (scale * radius);
+      const z = (pos.py - cy) / (scale * ctx.halfHmm);
+      if (a >= ctx.halfGap && a <= 2 * Math.PI - ctx.halfGap && z >= -1 && z <= 1) return 2;
+    }
+  }
+  // Enters the can but misses paper? (signed-φ world; sun above horizon AND faces pinhole)
+  const sp = sunPosition((t - 12) * 15 * Math.PI / 180, ctx.deltaS, ctx.phiS);
+  if (sp.el > 0) {
+    const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+    const sunDirW = [-Math.cos(azR) * Math.cos(elR), -Math.sin(azR) * Math.cos(elR), Math.sin(elR)];
+    if (_rotCanInvWorld(sunDirW[0], sunDirW[1], sunDirW[2])[0] > 1e-9) return 1;
+  }
+  return 0;
+}
+// Build the slider track gradient: green = on paper, red = enters but misses, grey = no entry.
+// Any of these may be several disjoint regions across the day.
+function updateSunFill() {
+  const rng = document.getElementById('rngSunTime');
+  if (!rng) return;
+  const arc = customArcDate();
+  const ctx = {
+    delta:  sunDeclination(dayOfYear(arc.month, arc.day)),       // path convention (positive φ)
+    phi:    effectiveLat(),
+    deltaS: sunDeclination(dayOfYear(customMonth, customDay)),   // signed-φ convention
+    phiS:   effectiveLat() * hemisphere,
+    halfHmm: currentHalfHmm(),
+    halfGap: (2 * Math.PI - Math.min(2 * Math.PI - 0.01, scanWmm / radius)) / 2,
+  };
+  const { tRise, tSet } = sunDayRange();
+  const span = Math.max(0.001, tSet - tRise);
+  const COL = ['rgba(120,140,160,0.18)', 'rgba(224,64,64,0.45)', 'rgba(80,220,120,0.62)']; // 0,1,2
+  const N = 200, parts = [];
+  let prev = sunRayState(tRise, ctx);
+  let t0 = null, t1 = null;                       // first / last time the ray enters (state ≥ 1)
+  if (prev >= 1) { t0 = tRise; t1 = tRise; }
+  parts.push(COL[prev] + ' 0%');
+  for (let i = 1; i <= N; i++) {
+    const t = tRise + span * i / N;
+    const st = sunRayState(t, ctx);
+    if (st >= 1) { if (t0 === null) t0 = t; t1 = t; }
+    if (st !== prev) {
+      const pct = (i / N * 100).toFixed(2);
+      parts.push(COL[prev] + ' ' + pct + '%', COL[st] + ' ' + pct + '%');
+      prev = st;
+    }
+  }
+  parts.push(COL[prev] + ' 100%');
+  if (t0 === null) { t0 = t1 = 12; }              // ray never enters – degenerate
+  _sunEnterT0 = t0; _sunEnterT1 = t1;             // cache for the loop / clamp / boundary lines
+
+  // White vertical boundary lines at the entering interval (the clickable / animated part)
+  const colorGrad = 'linear-gradient(to right, ' + parts.join(',') + ')';
+  let lineGrad = '';
+  if (t1 > t0) {
+    const pE = ((t0 - tRise) / span * 100).toFixed(2);
+    const pX = ((t1 - tRise) / span * 100).toFixed(2);
+    lineGrad =
+      'linear-gradient(90deg,' +
+      ` transparent calc(${pE}% - 1px), #fff calc(${pE}% - 1px), #fff calc(${pE}% + 1px),` +
+      ` transparent calc(${pE}% + 1px), transparent calc(${pX}% - 1px), #fff calc(${pX}% - 1px),` +
+      ` #fff calc(${pX}% + 1px), transparent calc(${pX}% + 1px)), `;
+  }
+  rng.style.setProperty('--sun-fill', lineGrad + colorGrad);
+}
+// Cached interval (solar hours) where the ray enters the can – set by updateSunFill()
+function sunEnterRange() { return { tEnter: _sunEnterT0, tExit: _sunEnterT1 }; }
+// Rebuild the gradient only when a relevant parameter changed (cheap key check)
+let _sunFillKey = '';
+function maybeUpdateSunFill() {
+  const key = [customMonth, customDay, LAT, hemisphere, yawDeg, pitchDeg, rollDeg,
+               horizonMm, radius, scanWmm, canvas.width, canvas.height].join(',');
+  if (key !== _sunFillKey) { _sunFillKey = key; updateSunFill(); }
+}
+// Show/hide the day-animation controls and refresh their range + fill.
+// Visible in theater (with Sun path on) OR in Analyzer with Custom date + Sun path on.
+function updateSunAnimCtl() {
+  const show = show3DCulmination && (theaterMode3D || showCustomArc);
+  const ctl = document.getElementById('sunAnimCtl');
+  if (ctl) ctl.style.display = show ? 'block' : 'none';
+  if (show) {
+    refreshSunTimeRange();   // keeps current time (clamped); theater transitions preserve it
+    maybeUpdateSunFill();
+  } else stopSunAnim();
+}
+
+// ─── Status panel collapse (click the panel or the ▲/▼ arrow) ────────────────
+let statusCollapsed = false;
+function setStatusCollapsed(c) {
+  statusCollapsed = c;
+  const wrap = document.getElementById('statusWrap');
+  const tog  = document.getElementById('statusToggle');
+  if (wrap) wrap.classList.toggle('collapsed', c);
+  if (tog)  tog.textContent = c ? '▼' : '▲';   // up = shown, down = hidden
+}
+document.getElementById('statusToggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  setStatusCollapsed(!statusCollapsed);
+});
+document.getElementById('theaterStatus').addEventListener('click', () => setStatusCollapsed(true));
+
+// ─── Theater mode ────────────────────────────────────────────────────────────
+const SVG_EXPAND  = `<polyline points="1,4 1,1 4,1"/><line x1="1" y1="1" x2="4.5" y2="4.5"/><polyline points="11,8 11,11 8,11"/><line x1="11" y1="11" x2="7.5" y2="7.5"/>`;
+const SVG_COLLAPSE = `<polyline points="1,4.5 4.5,4.5 4.5,1"/><line x1="4.5" y1="4.5" x2="1" y2="1"/><polyline points="11,7.5 7.5,7.5 7.5,11"/><line x1="7.5" y1="7.5" x2="11" y2="11"/>`;
+
+function setTheaterIcon(theater) {
+  const icon = document.getElementById('theaterIcon');
+  icon.innerHTML = theater ? SVG_COLLAPSE : SVG_EXPAND;
+}
+
+function setDisplaySectionEnabled(enabled) {
+  const section = document.getElementById('displaySection');
+  if (!section) return;
+  section.querySelectorAll('input, button').forEach(el => { el.disabled = !enabled; });
+  section.style.opacity       = enabled ? '' : '0.35';
+  section.style.pointerEvents = enabled ? '' : 'none';
+}
+
+function enterTheater3D() {
+  const container = document.getElementById('canvasContainer');
+  const theaterCv = document.getElementById('can3dTheater');
+  theaterCv.width  = container.clientWidth;
+  theaterCv.height = container.clientHeight;
+  // Show theater canvas over main image, hide readout cursor
+  theaterCv.style.display = 'block';
+  document.getElementById('btnTheaterExit').style.display = 'block';
+  document.getElementById('mainCanvas').style.pointerEvents = 'none';
+  // In the panel: hide the 3D canvas, show placeholder (legenda + noon stay visible)
+  document.getElementById('can3d').style.visibility = 'hidden';
+  const ph = document.getElementById('theaterPlaceholder');
+  ph.style.display = 'flex';
+  setTheaterIcon(true);
+  document.getElementById('btn3DTheater').classList.add('theater-active');
+  setDisplaySectionEnabled(false);
+  // Hide split-screen divider + swap button — they would overlay the 3D view
+  splitHandle.style.display    = 'none';
+  btnSplitInvert.style.display = 'none';
+  document.getElementById('theaterZoomCtl').style.display = 'flex';
+  theaterMode3D = true;
+  updateSunAnimCtl();   // reveal the day-animation controls (theater + noon)
+  draw3D();
+  updateSunWave();   // start the arrow wave if noon mode is on
+}
+
+function exitTheater3D() {
+  document.getElementById('can3dTheater').style.display   = 'none';
+  document.getElementById('btnTheaterExit').style.display = 'none';
+  document.getElementById('mainCanvas').style.pointerEvents = '';
+  document.getElementById('can3d').style.visibility = '';
+  document.getElementById('theaterPlaceholder').style.display = 'none';
+  setTheaterIcon(false);
+  document.getElementById('btn3DTheater').classList.remove('theater-active');
+  setDisplaySectionEnabled(true);
+  document.getElementById('theaterZoomCtl').style.display = 'none';
+  // Restore split-screen divider + swap button if split is still active
+  if (splitActive) {
+    splitHandle.style.display    = 'block';
+    btnSplitInvert.style.display = 'flex';
+  }
+  theaterMode3D = false;
+  updateSunAnimCtl();   // controls follow Analyzer rules; animation keeps running across theater
+  updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
+  draw3D();
+}
+
+document.getElementById('btn3DTheater').addEventListener('click', () => {
+  if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
+});
+// Click on the 3D preview canvas: enter theater
+document.getElementById('can3d').addEventListener('click', () => {
+  if (!theaterMode3D) enterTheater3D();
+});
+// Click on the theater placeholder (shown when theater is active): exit theater
+document.getElementById('theaterPlaceholder').addEventListener('click', () => {
+  if (theaterMode3D) exitTheater3D();
+});
+document.getElementById('btnTheaterExit').addEventListener('click', exitTheater3D);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && theaterMode3D) exitTheater3D();
+});
+
+// ── Theater zoom (vertical slider + pinch) ───────────────────────────────────
+function setTheaterZoom(z) {
+  _3D.zoom = Math.max(0.5, Math.min(2, z));
+  const rng = document.getElementById('theaterZoom');
+  if (rng && parseFloat(rng.value) !== _3D.zoom) rng.value = _3D.zoom;
+  document.getElementById('theaterZoomVal').textContent = _3D.zoom.toFixed(1) + '×';
+  draw3D();
+}
+document.getElementById('theaterZoom').addEventListener('input', (e) => {
+  setTheaterZoom(parseFloat(e.target.value));
+});
+
+// ── Cladding toggle ──────────────────────────────────────────────────────────
+document.getElementById('chkCladding').addEventListener('change', (e) => {
+  show3DCladding = e.target.checked;
+  draw3D();
+});
+
+// ── Theater drag-orbit (mouse + one-finger touch) ────────────────────────────
+{
+  const theaterCv = document.getElementById('can3dTheater');
+  let orbitDrag = false;
+  let orbitLastX = 0, orbitLastY = 0;
+
+  function orbitStart(x, y) {
+    orbitDrag = true;
+    orbitLastX = x;
+    orbitLastY = y;
+    theaterCv.style.cursor = 'grabbing';
+  }
+
+  function orbitMove(x, y) {
+    if (!orbitDrag) return;
+    const dx = x - orbitLastX;
+    const dy = y - orbitLastY;
+    orbitLastX = x;
+    orbitLastY = y;
+    _3D.camAz += dx * 0.005;           // horizontal drag → rotate azimuth
+    _3D.camEl  = Math.max(0.06, Math.min(Math.PI / 2 - 0.04,
+                    _3D.camEl + dy * 0.004));  // vertical drag → change elevation
+    updateCamera();
+    draw3D();
+  }
+
+  function orbitEnd() {
+    if (!orbitDrag) return;
+    orbitDrag = false;
+    theaterCv.style.cursor = 'default';
+  }
+
+  // Mouse
+  theaterCv.addEventListener('mousedown', (e) => {
+    if (!theaterMode3D) return;
+    orbitStart(e.clientX, e.clientY);
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => orbitMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', orbitEnd);
+
+  // Touch: one finger = orbit, two fingers = pinch-zoom
+  let pinching = false, pinchStartDist = 0, pinchStartZoom = 1;
+  function touchDist(t) {
+    const dx = t[0].clientX - t[1].clientX;
+    const dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  theaterCv.addEventListener('touchstart', (e) => {
+    if (!theaterMode3D) return;
+    if (e.touches.length === 2) {
+      pinching = true; orbitDrag = false;
+      pinchStartDist = touchDist(e.touches) || 1;
+      pinchStartZoom = _3D.zoom;
+    } else if (e.touches.length === 1) {
+      orbitStart(e.touches[0].clientX, e.touches[0].clientY);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  theaterCv.addEventListener('touchmove', (e) => {
+    if (pinching && e.touches.length === 2) {
+      setTheaterZoom(pinchStartZoom * (touchDist(e.touches) / pinchStartDist));
+      e.preventDefault();
+    } else if (orbitDrag && e.touches.length === 1) {
+      orbitMove(e.touches[0].clientX, e.touches[0].clientY);
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  function touchEnd(e) {
+    if (e.touches.length === 0) { orbitEnd(); pinching = false; }
+    else if (e.touches.length === 1) { pinching = false; }  // dropped to one finger
+  }
+  theaterCv.addEventListener('touchend', touchEnd);
+  theaterCv.addEventListener('touchcancel', touchEnd);
+}
+
+// Resize theater canvas when container changes size
+new ResizeObserver(() => {
+  if (!theaterMode3D) return;
+  const container = document.getElementById('canvasContainer');
+  const theaterCv = document.getElementById('can3dTheater');
+  theaterCv.width  = container.clientWidth;
+  theaterCv.height = container.clientHeight;
+  draw3D();
+}).observe(document.getElementById('canvasContainer'));
+
+// Init: start in gallery mode
+setMode('gallery');
+updateAxisLegend();
+refreshCalibLimits();   // set initial slider limits (scan width / radius / horizon)
+
+// ─── Force a clean reflow so side panels become scrollable on first paint ─────
+// Chrome (Blink) sometimes fails to compute the scroll-container height until a
+// resize occurs (typically after async Google Fonts settle). Emulate that resize
+// once on load and after fonts are ready — no visible flash (reverted same frame).
+function forcePanelReflow() {
+  const b = document.body;
+  const prev = b.style.display;
+  b.style.display = 'none';
+  void b.offsetHeight;          // read to flush the display:none reflow
+  b.style.display = prev || '';
+}
+window.addEventListener('load', () => requestAnimationFrame(forcePanelReflow));
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => requestAnimationFrame(forcePanelReflow));
+}
+
+</script>
+</body>
+</html>
