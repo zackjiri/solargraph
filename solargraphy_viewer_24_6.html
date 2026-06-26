@@ -153,7 +153,8 @@
         #can3dWrap is counter-zoomed so the 3D preview model is not magnified. ── */
   .top-strip, .info-bar, .sidebar, .gallery-panel, #can3dPanel,
   #statusWrap, #theaterZoomCtl, #btnTheaterExit, #btnSplitInvert { zoom: 1.25; }
-  #can3dWrap { zoom: 0.8; }
+  /* #can3d is zoomed with the panel (so it's as wide as the other elements); the model
+     inside is drawn 1/1.25× in the preview (see draw3D) so the cylinder is NOT magnified. */
 
   /* ── Top strip: header + readout ── */
   .top-strip {
@@ -1133,7 +1134,8 @@
   #theaterStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 13px 16px 15px;
-    background: var(--panel);
+    background: rgba(15,19,24,0.75);      /* semi-transparent (75%) */
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
     border: 1px solid var(--border); border-radius: 5px;
     box-shadow: 0 4px 24px rgba(0,0,0,0.65);
     font-family: var(--mono); font-size: 12px;
@@ -1144,6 +1146,7 @@
     max-height: 360px;
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
   }
+  body.light #theaterStatus { background: rgba(245,247,249,0.78); }
   #statusWrap.collapsed #theaterStatus {
     max-height: 0; opacity: 0;
     padding-top: 0; padding-bottom: 0;
@@ -1434,7 +1437,7 @@
             <span class="ts-lbl">Az / Alt (Sun)</span>
             <span class="ts-val" id="tsAzAlt">—</span>
           </div>
-          <div class="ts-row" id="tsIncidenceRow" style="display:none">
+          <div class="ts-row" id="tsIncidenceRow">
             <span class="ts-lbl">incidence angle of light</span>
             <span class="ts-val" id="tsIncidence">—</span>
           </div>
@@ -3555,7 +3558,9 @@ function draw3D() {
     : document.getElementById('can3d');
   const c  = cv.getContext('2d');
   const CW = cv.width, CH = cv.height;
-  const SCL = _3D.BASE_SCL * Math.min(CW, CH) / _3D.BASE_MIN * (theaterMode3D ? _3D.zoom : 1);
+  // Preview panel is CSS-zoomed 1.25× (UI magnification); counter the model by 1/1.25 so the
+  // cylinder is not magnified, while the canvas element stays as wide as the other panel items.
+  const SCL = _3D.BASE_SCL * Math.min(CW, CH) / _3D.BASE_MIN * (theaterMode3D ? _3D.zoom : 0.8);
   const OX  = CW / 2, OY = CH * 0.50;
   function proj([x, y, z]) {
     const dx = x - _3D.CAM[0], dy = y - _3D.CAM[1], dz = z - _3D.CAM[2];
@@ -4128,7 +4133,8 @@ function draw3D() {
     const fillPct = (paperAngle / (2 * Math.PI) * 100).toFixed(1);
     const covDeg  = Math.round(paperAngle / 2 * 180 / Math.PI);
     // Date + current solar time; the time is styled like a value (paper-filling style)
-    const noonLbl = MONTH_NAMES[customMonth - 1] + ' ' + customDay
+    const noonLbl = '<span style="color:var(--text);font-weight:bold">'
+      + MONTH_NAMES[customMonth - 1] + ' ' + customDay + '</span>'
       + ' <span class="ts-val" style="display:inline">(' + fmtSolarTime(sunTimeHours) + ')</span>';
 
     const tsCirc         = document.getElementById('tsCirc');
@@ -4168,11 +4174,11 @@ function draw3D() {
         tsAzAltRow.style.display = 'none';
       }
     }
-    // Incidence angle: show only in HIT scenario
+    // Incidence angle: row always visible; "—" when not relevant (no hit)
     if (tsIncidenceRow && tsIncidence) {
       const showInc = show3DCulmination && noonHitsPaper && noonIncidenceDeg !== null;
-      tsIncidenceRow.style.display = showInc ? '' : 'none';
-      if (showInc) tsIncidence.textContent = noonIncidenceDeg + '°';
+      tsIncidenceRow.style.display = '';
+      tsIncidence.textContent = showInc ? noonIncidenceDeg + '°' : '—';
     }
   }
 
