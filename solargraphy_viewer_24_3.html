@@ -3354,6 +3354,7 @@ function setMode(mode) {
     setPresetButtonsEnabled(imgBitmap !== null);
     draw3D();
   } else {
+    stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     btnA.className = 'mode-btn';
     btnG.className = 'mode-btn active-gallery';
     galleryPanel.classList.add('visible');
@@ -4406,8 +4407,11 @@ function updateSunAnimCtl() {
   const show = show3DCulmination && (theaterMode3D || showCustomArc);
   const ctl = document.getElementById('sunAnimCtl');
   if (ctl) ctl.style.display = show ? 'block' : 'none';
-  if (show) { sunTimeHours = 12; refreshSunTimeRange(); maybeUpdateSunFill(); }
-  else stopSunAnim();
+  if (show) {
+    if (!sunAnimActive) sunTimeHours = 12;   // fresh start at noon; don't jump a running animation
+    refreshSunTimeRange();
+    maybeUpdateSunFill();
+  } else stopSunAnim();
 }
 
 // ─── Theater mode ────────────────────────────────────────────────────────────
@@ -4471,9 +4475,8 @@ function exitTheater3D() {
     btnSplitInvert.style.display = 'flex';
   }
   theaterMode3D = false;
-  stopSunAnim();        // day animation is a theater feature
-  updateSunAnimCtl();   // hide the day-animation controls outside theater
-  updateSunWave();   // stop the arrow wave when leaving theater
+  updateSunAnimCtl();   // controls follow Analyzer rules; animation keeps running across theater
+  updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
   draw3D();
 }
 
