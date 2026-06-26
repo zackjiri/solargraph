@@ -2993,6 +2993,7 @@ let sunWaveRAF        = null;  // requestAnimationFrame handle for the wave loop
 let sunTimeHours      = 12;    // current solar time of the animated sun ray (default = noon)
 let sunAnimActive     = false; // day animation playing?
 let sunAnimStart      = null;  // ms timestamp captured on the first frame after Play
+let sunAnimOffset     = 0;     // seconds into the cycle to resume from (Play continues from Stop)
 
 function updateDateLabels() {
   document.getElementById('lblMonth').textContent = MONTHS[customMonth - 1];
@@ -4303,13 +4304,14 @@ function sunDayRange() {
   return { tRise: 12 - H0h, tSet: 12 + H0h };
 }
 // Advance the animation clock: 1 h of solar time per real second, +2 s pause per loop.
+// Starts from sunAnimOffset (seconds into the cycle) so Play resumes where Stop left off.
 function advanceSunAnim(ts) {
   const { tRise, tSet } = sunDayRange();
   const span = Math.max(0.001, tSet - tRise);   // seconds of motion = hours of daylight
   if (sunAnimStart === null) sunAnimStart = ts;
-  const elapsed = (ts - sunAnimStart) / 1000;   // seconds
-  const local   = elapsed % (span + 2);         // +2 s pause before each new loop
-  sunTimeHours  = local <= span ? tRise + local : tSet;   // hold at sunset during pause
+  const elapsed = (ts - sunAnimStart) / 1000;   // seconds since Play
+  const local   = (sunAnimOffset + elapsed) % (span + 2);   // +2 s pause before each new loop
+  sunTimeHours  = local <= span ? tRise + local : tSet;     // hold at sunset during pause
   syncSunTimeUI();
 }
 // Reflect sunTimeHours in the slider + label
@@ -4344,7 +4346,11 @@ function setSunPlayIcon(playing) {
 function startSunAnim() {
   if (sunAnimActive) return;
   sunAnimActive = true;
-  sunAnimStart  = null;            // captured on first frame → starts at sunrise
+  sunAnimStart  = null;            // captured on first frame
+  // Resume from the current solar time (where Stop / the slider left off)
+  const { tRise, tSet } = sunDayRange();
+  const span = Math.max(0.001, tSet - tRise);
+  sunAnimOffset = Math.min(span, Math.max(0, sunTimeHours - tRise));
   setSunPlayIcon(true);
   updateSunWave();                 // ensure the rAF loop is running
 }
