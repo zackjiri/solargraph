@@ -3055,7 +3055,9 @@ function updateAxisLegend() {
 }
 // Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
 document.getElementById('btnNoon').addEventListener('click', () => {
-  show3DCulmination = !show3DCulmination; updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
+  show3DCulmination = !show3DCulmination;
+  if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+  updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
 });
 
 // Day-animation controls: play/stop button + solar-time slider
@@ -4414,8 +4416,7 @@ function updateSunAnimCtl() {
   const ctl = document.getElementById('sunAnimCtl');
   if (ctl) ctl.style.display = show ? 'block' : 'none';
   if (show) {
-    if (!sunAnimActive) sunTimeHours = 12;   // fresh start at noon; don't jump a running animation
-    refreshSunTimeRange();
+    refreshSunTimeRange();   // keeps current time (clamped); theater transitions preserve it
     maybeUpdateSunFill();
   } else stopSunAnim();
 }
