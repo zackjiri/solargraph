@@ -1,0 +1,1233 @@
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --panel: #0f1318;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --accent2: #20a0e8;
+    --accent-red: #e84040;
+    --accent-green: #50dc78;
+    --text: #c8d4e0;
+    --dim: #4a5a6a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --sidebar: 200px;
+    --gallery-panel: var(--sidebar);   /* same width as the right panel = 200px */
+    --header-h: 72px;
+    --infobar-h: 28px;
+  }
+
+  /* ── Light theme ── */
+  body.light {
+    --bg: #e2e7ec;          /* strong background – sharp separation from panels */
+    --panel: #f5f7f9;       /* panel: light, but not pure white */
+    --border: #8fa4b8;      /* darker border → visible separators and hovers */
+    --accent: #8a4400;      /* dark orange-brown → contrast ~7:1 on panel */
+    --accent2: #0a4e8c;     /* dark blue → contrast ~7:1 */
+    --accent-red: #b01818;
+    --accent-green: #0e6030;
+    --text: #0c1820;        /* almost black */
+    --dim: #445a6e;         /* dark enough for small text */
+  }
+
+  /* Light: canvas-container bg */
+  body.light .canvas-container { background: #ffffff; }
+
+  /* Light: upload zone hover */
+  body.light .upload-zone:hover { background: #dce2e8; border-color: var(--accent); }
+
+  /* Light: theater canvases */
+  body.light #theaterPlaceholder,
+  body.light #can3dTheater { background: #ffffff; }
+
+  /* Light: splitHandle */
+  body.light #splitHandle::after {
+    background: rgba(230,235,240,0.82);
+    border-color: rgba(60,90,120,0.6);
+    color: rgba(30,60,90,0.95);
+  }
+
+  /* Light: mode-toggle outer border */
+  body.light .mode-toggle { border-color: #8fa4b8; }
+
+  /* Light: theater zoom slider bg – dark backdrop invisible on light canvas */
+  body.light #theaterZoomCtl {
+    background: rgba(220,228,236,0.82);
+  }
+
+  /* Light: hover states that use rgba(white) – invisible on light bg */
+  body.light .mode-btn:not([class*=active]):hover {
+    color: var(--text);
+    background: rgba(0,0,0,0.06);
+  }
+  body.light .radio-row:hover {
+    color: var(--text);
+    border-color: var(--border);
+    background: rgba(0,0,0,0.04);
+  }
+  body.light .radio-row.active {
+    background: rgba(10,78,140,0.07);
+  }
+  body.light .radio-row.view-enh.active {
+    background: rgba(138,68,0,0.07);
+  }
+  body.light .radio-row.view-raw.active {
+    background: rgba(12,24,32,0.06);
+  }
+
+  /* Light: #btnHeatmap – override inline white-based color */
+  body.light #btnHeatmap {
+    border-color: var(--border) !important;
+    color: var(--dim) !important;
+  }
+  body.light #btnHeatmap.active {
+    border-color: var(--text) !important;
+    color: var(--text) !important;
+    background: rgba(0,0,0,0.06) !important;
+  }
+
+  /* Light: #btnNoon – white background, more saturated yellow */
+  body.light #btnNoon {
+    color: #c88000;
+    border-color: rgba(200,128,0,0.45);
+    background: #ffffff;
+  }
+  body.light #btnNoon:hover {
+    color: #b07000;
+    border-color: rgba(200,128,0,0.75);
+    background: #ffffff;
+  }
+  body.light #btnNoon.active {
+    color: #a06000;
+    border-color: #c88000;
+    background: #fff8e8;
+  }
+
+  /* ── Theme toggle button ── */
+  #btnTheme {
+    background: rgb(218 236 255 / 90%);  /* dark mode: sun icon on light bg */
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 13px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    margin-left: 8px;
+    line-height: 1;
+  }
+  #btnTheme:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(128,128,128,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;     /* fallback for older browsers */
+    height: 100dvh;    /* visible viewport on iOS/iPad – excludes browser UI, no fold cut-off */
+  }
+
+  /* ── Global UI magnification (+25%) – like browser zoom, but the canvas / model
+        is left at natural size. Applied to the chrome (panels, readout, overlays);
+        the canvas containers are untouched so all canvas-sizing maths stays exact.
+        #can3dWrap is counter-zoomed so the 3D preview model is not magnified. ── */
+  .top-strip, .info-bar, .sidebar, .gallery-panel, #can3dPanel,
+  #statusWrap, #theaterZoomCtl, #btnTheaterExit, #btnSplitInvert { zoom: 1.25; }
+  /* #can3d is zoomed with the panel (so it's as wide as the other elements); the model
+     inside is drawn 1/1.25× in the preview (see draw3D) so the cylinder is NOT magnified. */
+
+  /* ── Top strip: header + readout ── */
+  .top-strip {
+    flex: 0 0 auto;
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: #e8a020;          /* yellow kept in both themes */
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* Light: almost black – moon icon stands out on dark background */
+  body.light #btnTheme {
+    background: rgba(18,22,28,0.82);
+  }
+  /* Light hover: blends with the top-strip bg */
+  body.light #btnTheme:hover {
+    background: #e2e7ec !important;
+    border-color: var(--border);
+    color: var(--dim);
+  }
+
+  header span {
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+  }
+
+  /* Readout bar */
+  .readout {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .readout-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .readout-label {
+    color: var(--dim);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .readout-value {
+    color: var(--accent);
+    font-size: 13px;
+    min-width: 62px;
+  }
+
+  .readout-value.blue { color: var(--accent2); }
+
+  .readout-sep {
+    color: var(--border);
+    font-size: 16px;
+  }
+
+  /* ── Main area: canvas + sidebar ── */
+  .main-area {
+    flex: 1 1 0;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* Canvas column */
+  .canvas-col {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .upload-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px dashed var(--border);
+    margin: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: var(--panel);
+  }
+
+  .upload-zone:hover {
+    border-color: var(--accent);
+    background: #12161c;
+  }
+
+  .upload-zone.hidden { display: none; }
+
+  .upload-zone p {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.13em;
+  }
+
+  .upload-zone p span { color: var(--accent); }
+
+  #fileInput { display: none; }
+
+  .canvas-container {
+    flex: 1 1 0;
+    position: relative;
+    overflow: hidden;
+    background: #050608;
+    cursor: none;
+    min-height: 0;
+  }
+
+  .canvas-container.hidden { display: none; }
+
+  /* Split handle – vertical white line */
+  #splitHandle {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.7);
+    pointer-events: none;
+    display: none;
+    z-index: 10;
+  }
+
+  #splitHandle::after {
+    content: '↔';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: rgba(15,18,24,0.55);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    color: rgba(255,255,255,1);
+    font-size: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  }
+
+  /* Invert button – in the corner of the canvas container */
+  #btnSplitInvert {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent2);
+    background: rgba(32,160,232,0.18);
+    color: var(--accent2);
+    font-family: var(--mono);
+    font-size: 22px;
+    cursor: pointer;
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  #btnSplitInvert:hover {
+    background: rgba(32,160,232,0.32);
+    border-color: var(--accent2);
+    color: #fff;
+  }
+
+  #btnSplitInvert.active {
+    background: rgba(32,160,232,0.40);
+    border-color: #fff;
+    color: #fff;
+  }
+
+  #mainCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    flex: 0 0 var(--sidebar);
+    width: var(--sidebar);
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
+    overflow-x: hidden;
+    min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
+    -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
+    padding: 10px 10px 16px;
+    gap: 0;
+  }
+
+  .sidebar-section {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;   /* keep natural height so panel overflows & scrolls (Chrome/Blink) */
+  }
+
+  /* Thin, themed scrollbar for the always-on side panels */
+  .sidebar, .gallery-panel, #can3dPanel {
+    scrollbar-width: thin;                       /* Firefox */
+    scrollbar-color: var(--border) transparent;  /* Firefox: thumb / track */
+  }
+  .sidebar::-webkit-scrollbar,
+  .gallery-panel::-webkit-scrollbar,
+  #can3dPanel::-webkit-scrollbar {
+    width: 8px;
+  }
+  .sidebar::-webkit-scrollbar-track,
+  .gallery-panel::-webkit-scrollbar-track,
+  #can3dPanel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar::-webkit-scrollbar-thumb,
+  .gallery-panel::-webkit-scrollbar-thumb,
+  #can3dPanel::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+  .sidebar::-webkit-scrollbar-thumb:hover,
+  .gallery-panel::-webkit-scrollbar-thumb:hover,
+  #can3dPanel::-webkit-scrollbar-thumb:hover {
+    background: var(--dim);
+  }
+
+  .sidebar-section:last-child { border-bottom: none; }
+
+  .sidebar-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--accent-green);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  /* Checkboxes */
+  .chk-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    cursor: pointer;
+    letter-spacing: 0.1em;
+  }
+
+  .chk-row input[type=checkbox] {
+    accent-color: var(--accent);
+    width: 12px; height: 12px;
+    flex-shrink: 0;
+  }
+
+  /* Sliders */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .slider-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .slider-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: right;
+  }
+
+  .sidebar input[type=range] {
+    width: 100%;
+    cursor: pointer;
+  }
+
+  /* Date picker */
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .date-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 18px; height: 18px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .date-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .date-val {
+    flex: 1;
+    text-align: center;
+    color: var(--text);
+    font-size: 11px;
+    min-width: 0;
+  }
+
+  /* Latitude in sidebar */
+  .lat-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .lat-input {
+    width: 32px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+    padding: 2px 2px;
+    border-radius: 2px;
+    -moz-appearance: textfield;
+  }
+  .lat-input::-webkit-inner-spin-button,
+  .lat-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .lat-input:focus { outline: none; border-color: var(--accent); }
+
+  .lat-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 18px; height: 18px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 10px;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .lat-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .ns-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  .ns-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 2px 6px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.08em;
+  }
+
+  .ns-btn.active { background: var(--accent); color: #000; font-weight: bold; }
+  .ns-btn.active-s { background: var(--accent2); color: #000; font-weight: bold; }
+  .ns-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* Reset + Load buttons */
+  .sidebar-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.13em;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 4px 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    width: 100%;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .sidebar-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  #btnHeatmap.active {
+    border-color: rgba(255,255,255,0.7);
+    color: rgba(255,255,255,0.9);
+    background: rgba(255,255,255,0.06);
+  }
+
+  /* Info bar */
+  .info-bar {
+    flex: 0 0 auto;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+    padding: 4px 12px;
+    border-top: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Mode toggle in header */
+  .mode-toggle {
+    display: flex;
+    border: 5px solid #202020;
+    border-radius: 4px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .mode-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    padding: 5px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .mode-btn:not([class*=active]):hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .mode-btn.active-analyzer {
+    background: repeating-linear-gradient(
+      45deg,
+      #b06010,
+      #b06010 5px,
+      #f0b030 5px,
+      #f0b030 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  .mode-btn.active-gallery {
+    background: repeating-linear-gradient(
+      45deg,
+      #1e6aaa,
+      #1e6aaa 5px,
+      #35aae8 5px,
+      #35aae8 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  /* Gallery panel (left of canvas) */
+  .gallery-panel {
+    flex: 0 0 var(--gallery-panel);
+    width: var(--gallery-panel);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    overflow-y: scroll;                  /* always-on scrollbar (deterministic across browsers) */
+    overflow-x: hidden;
+    min-height: 0;                       /* allow flex item to shrink & scroll (iOS) */
+    -webkit-overflow-scrolling: touch;   /* momentum scroll on iPad/iOS */
+    padding: 10px 10px 16px;
+    gap: 0;
+  }
+
+  .gallery-panel.visible { display: flex; }
+
+  /* Radio group for generation / image / view */
+  .radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .radio-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    transition: color 0.15s, background 0.12s, border-color 0.15s;
+  }
+
+  .radio-row:hover {
+    color: var(--text);
+    border-color: rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.05);
+  }
+
+  .radio-row input[type=radio] {
+    accent-color: var(--accent2);
+    width: 12px; height: 12px;
+    flex-shrink: 0;
+  }
+
+  .radio-row.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(32,160,232,0.08);
+  }
+
+  .radio-row.disabled {
+    opacity: 0.3;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* View mode radio – special colors */
+  .radio-row.view-raw   input { accent-color: var(--text); }
+  .radio-row.view-enh   input { accent-color: var(--accent); }
+  .radio-row.view-split input { accent-color: var(--accent2); }
+
+  .radio-row.view-raw.active {
+    color: var(--text);
+    border-color: rgba(200,212,224,0.5);
+    background: rgba(200,212,224,0.06);
+  }
+  .radio-row.view-enh.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(232,160,32,0.08);
+  }
+  .radio-row.view-split.active {
+    color: var(--accent2);
+    border-color: var(--accent2);
+    background: rgba(32,160,232,0.08);
+  }
+
+  /* Gallery mode – calibration locked */
+  .calibration-locked input[type=range],
+  .calibration-locked input[type=number],
+  .calibration-locked .lat-btn,
+  .calibration-locked .ns-btn,
+  .calibration-locked #btnCalibReset,
+  .calibration-locked #btnImportPreset,
+  .calibration-locked #btnExportPreset {
+    pointer-events: none;
+    opacity: 0.35;
+  }
+
+  .calibration-locked .slider-label,
+  .calibration-locked .slider-val,
+  .calibration-locked .lat-input {
+    opacity: 0.35;
+  }
+
+  /* ── Metadata "i" button ── */
+  #btnMeta {
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    line-height: 1;
+    font-family: var(--sans);
+    transition: color 0.15s, transform 0.1s;
+    flex-shrink: 0;
+    opacity: 0.75;
+  }
+  #btnMeta:hover { opacity: 1; transform: scale(1.15); }
+  #btnMeta.active { opacity: 1; color: var(--accent); }
+
+  /* ── Metadata popup ── */
+  #metaPopup {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 13px 16px 15px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    z-index: 200;
+    min-width: 250px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.65);
+    display: none;
+    letter-spacing: 0.05em;
+  }
+  #metaPopup.visible { display: block; }
+
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding: 4px 0;
+  }
+  .meta-label {
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .meta-val {
+    color: var(--text);
+    font-size: 12px;
+    text-align: right;
+  }
+
+  /* 3D Can orientation panel – Analyzer mode only */
+  #can3dPanel {
+    flex: 0 0 200px;                     /* same as --sidebar (right panel) */
+    width: 200px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px 10px 4px 10px;          /* right padding 10px – prevents clipping of can3dWrap */
+    gap: 0;
+    overflow-y: auto;                    /* scrollbar only when needed → doesn't waste width */
+    overflow-x: hidden;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  #can3dPanel.visible { display: flex; }
+  #can3dPanel .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--accent-green);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  #can3d { display: block; }
+
+  /* Dashed border on the wrap element – not clipped by overflow like an outline on #can3d */
+  #can3dWrap {
+    position: relative; align-self: flex-start;
+    border: 1px dashed rgba(90,120,150,0.55);
+  }
+  body.light #can3dWrap { border-color: rgba(60,90,120,0.65); }
+
+  /* Theater canvas – no border (dashed border only in the preview panel) */
+
+  @keyframes theaterPulse {
+    0%, 100% { color: rgba(160,190,220,0.65); filter: none; }
+    50%       { color: rgba(210,235,255,1.00); filter: drop-shadow(0 0 5px rgba(140,190,255,0.85)); }
+  }
+  @keyframes theaterPulseLight {
+    0%, 100% { color: rgba(30,78,168,0.55); filter: none; }
+    50%       { color: rgba(10,55,150,0.95); filter: drop-shadow(0 0 4px rgba(30,90,200,0.55)); }
+  }
+
+  #btn3DTheater {
+    position: absolute; top: 4px; left: 4px;
+    width: 18px; height: 18px;
+    background: none; border: none;
+    color: rgba(160,190,220,0.65);
+    cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.12s;
+    z-index: 2;
+    animation: theaterPulse 2.8s ease-in-out infinite;
+  }
+  #btn3DTheater:hover          { color: rgba(220,238,255,1.00); animation: none; }
+  #btn3DTheater.theater-active { color: rgba(160,190,220,0.65); animation: none; }
+
+  /* Light mode: dark animation on light panel */
+  body.light #btn3DTheater {
+    animation: theaterPulseLight 2.8s ease-in-out infinite;
+    color: rgba(30,78,168,0.55);
+  }
+  body.light #btn3DTheater:hover          { color: rgba(10,45,140,0.95); animation: none; }
+  body.light #btn3DTheater.theater-active { color: rgba(30,78,168,0.55); animation: none; }
+
+  /* Can3d canvas clickable hint */
+  #can3d { display: block; cursor: pointer; }
+
+  #theaterPlaceholder {
+    display: none;
+    position: absolute; inset: 0;
+    background: #07090d;
+    align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--dim); letter-spacing: 0.08em;
+    flex-direction: column; gap: 6px;
+    cursor: pointer;
+  }
+
+  #can3dTheater {
+    position: absolute; inset: 0;
+    display: none;
+    background: #07090d;
+    cursor: grab;
+    z-index: 10;
+    touch-action: none;   /* capture one-finger orbit drag (no page scroll/zoom) */
+  }
+
+  #btnTheaterExit {
+    position: absolute; top: 8px; right: 10px;
+    font-family: var(--mono); font-size: 10px;
+    color: var(--dim); background: none;
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 2px 6px; cursor: pointer;
+    z-index: 11; display: none;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  #btnTheaterExit:hover { color: var(--text); border-color: var(--text); }
+
+  /* Theater zoom – vertical slider under the exit button */
+  #theaterZoomCtl {
+    position: absolute; top: 40px; right: 10px;
+    z-index: 11; display: none;
+    flex-direction: column; align-items: center; gap: 6px;
+    padding: 8px 4px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: 4px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    overflow: hidden;               /* contain slider on iOS Safari if it renders wide */
+    width: 28px;                    /* explicit width keeps container from growing on WebKit */
+  }
+  #theaterZoom {
+    writing-mode: vertical-lr;          /* modern Chrome/Firefox: vertical */
+    direction: rtl;                     /* top = max */
+    -webkit-appearance: slider-vertical;/* iOS Safari / older WebKit */
+    appearance: slider-vertical;
+    width: 8px; height: 130px;
+    max-width: 20px;                    /* guard against horizontal render overflow on iPad */
+    accent-color: var(--accent2);
+    cursor: pointer;
+    touch-action: none;                 /* prevent page scroll while dragging slider on iOS */
+  }
+  #theaterZoomVal {
+    font-family: var(--mono); font-size: 9px;
+    color: var(--accent2); letter-spacing: 0.04em;
+  }
+
+  #can3dLegend {
+    width: 100%;
+    padding: 6px 10px 2px 0;   /* right 10px mirrors panel left padding; canvas unaffected */
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .leg-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+  }
+  .leg-sym {
+    flex: 0 0 22px;
+    text-align: center;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .leg-line {
+    flex: 0 0 22px;
+    height: 0;
+    border-top-width: 1.5px;
+    border-top-style: solid;
+  }
+  .leg-line.dashed { border-top-style: dashed; }
+
+  /* Buttons at the bottom of can3dPanel */
+  #can3dButtons {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 36px;
+    padding: 2px 10px 0 0;     /* right 10px mirrors panel left padding */
+  }
+  .can3d-btn-row {
+    display: flex;
+    gap: 4px;
+  }
+  .can3d-btn-row .sidebar-btn { flex: 1; }
+  .can3d-sep {
+    border-top: 1px solid var(--border);
+    margin: 2px 0;
+  }
+
+  /* Mobile: stack vertically */
+  @media (max-width: 640px) {
+    html, body { overflow: auto; height: auto; }
+    .main-area { flex-direction: column; overflow: visible; }
+    .canvas-container { height: 60vw; min-height: 240px; flex: none; }
+    .sidebar {
+      flex: none;
+      width: 100%;
+      border-left: none;
+      border-top: 1px solid var(--border);
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+    }
+    .sidebar-section {
+      border-bottom: none;
+      border-right: 1px solid var(--border);
+      padding: 0 12px 0 0;
+      min-width: 140px;
+    }
+  }
+
+  /* L2 opacity auto-loop play/stop button */
+  #btnL2Play {
+    margin-top: 6px;
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(32,160,232,0.12);
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #btnL2Play:hover { background: rgba(32,160,232,0.26); }
+  #btnL2Play.playing {
+    background: rgba(232,160,32,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  #btnL2Play.playing:hover { background: rgba(232,160,32,0.28); }
+  #btnL2Play svg { display: block; }
+
+  /* Day-animation controls (Sun path) – play button styled like CROSSFADE LOOP */
+  #sunAnimCtl { width: 100%; margin-top: 6px; }
+  #btnSunPlay {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(240,208,64,0.14);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  #btnSunPlay:hover { background: rgba(240,208,64,0.26); }
+  #btnSunPlay.playing {
+    background: rgba(232,120,40,0.16);
+    border-color: #e8782a;
+    color: #f0a050;
+  }
+  #btnSunPlay.playing:hover { background: rgba(232,120,40,0.30); }
+  #btnSunPlay svg { display: block; }
+  /* Solar-time slider: double-height track, green = sun-on-paper regions (--sun-fill),
+     thumb = thin vertical cursor line (no ball) */
+  #rngSunTime {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 16px;            /* ~2× a default range track */
+    background: transparent; cursor: pointer; margin: 3px 0;
+  }
+  #rngSunTime::-webkit-slider-runnable-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-moz-range-track {
+    height: 16px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--sun-fill, rgba(120,140,160,0.18));
+  }
+  #rngSunTime::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 3px; height: 24px; margin-top: -5px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  #rngSunTime::-moz-range-thumb {
+    width: 3px; height: 24px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  /* Sunrise / sunset end labels under the slider */
+  .sun-rise-set {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.14em;
+    color: var(--dim); margin-top: 1px;
+  }
+
+  /* ── Status panel (top-left) – shown in Analyzer + Theater, collapsible ── */
+  #statusWrap {
+    position: absolute; top: 8px; left: 10px;
+    z-index: 11; display: none;          /* shown by JS in Analyzer / Theater */
+    flex-direction: column; align-items: flex-start;
+  }
+  #theaterStatus {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 13px 16px 15px;
+    background: rgba(15,19,24,0.75);      /* semi-transparent (75%) */
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+    border: 1px solid var(--border); border-radius: 5px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.65);
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text); letter-spacing: 0.05em;
+    width: 250px; box-sizing: border-box; /* fixed width – panel never resizes with content */
+    cursor: pointer;                      /* click panel to collapse */
+    overflow: hidden;
+    max-height: 360px;
+    transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
+  }
+  body.light #theaterStatus { background: rgba(245,247,249,0.78); }
+  #statusWrap.collapsed #theaterStatus {
+    max-height: 0; opacity: 0;
+    padding-top: 0; padding-bottom: 0;
+    border-width: 0; box-shadow: none;
+  }
+  /* Triangular show/hide arrow under the panel */
+  #statusToggle {
+    margin-top: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 3px;
+    color: var(--dim); cursor: pointer;
+    font-family: var(--mono); font-size: 10px; line-height: 1;
+    padding: 2px 8px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  #statusToggle:hover { color: var(--text); border-color: var(--text); }
+  .ts-row {
+    display: flex; justify-content: space-between;
+    align-items: baseline; gap: 14px; padding: 4px 0;
+  }
+  .ts-lbl {
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--dim); white-space: nowrap; flex-shrink: 0;
+  }
+  .ts-val {
+    font-size: 12px; color: var(--text); text-align: right;
+  }
+  /* Noon HIT / MISS row */
+  #tsNoonRow {
+    margin-top: 6px; border-top: 1px solid var(--border); padding-top: 7px;
+  }
+  #tsIncidenceRow { padding-top: 2px; }
+  #tsHit, #tsMiss {
+    font-size: 12px; letter-spacing: 0.12em;
+    color: var(--dim); transition: color 0.2s;
+  }
+  .ts-noon-sep { font-size: 11px; color: var(--border); margin: 0 3px; }
+  #tsHit.active  { color: #50dc78; font-weight: bold; }
+  #tsMiss.active { color: #e04040; font-weight: bold; }
+
+  /* Noon button – in legend, styled like Isolines button */
+  #btnNoon {
+    margin-top: 22px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid rgba(240,208,64,0.3);
+    color: rgba(240,208,64,0.55);
+    border-radius: 2px;
+    padding: 4px 6px;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-align: left;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  #btnNoon:hover {
+    border-color: rgba(240,208,64,0.6);
+    color: rgba(240,208,64,0.8);
+  }
+  #btnNoon.active {
+    border-color: #f0d040;
+    color: #f0d040;
+    background: rgba(240,208,64,0.08);
+  }
+  #noonChkIcon { font-size: 17px; line-height: 1; flex-shrink: 0; }
+
+  /* Cladding toggle – below the legend, aligned with the noon checkbox */
+  #claddingRow {
+    display: flex;
+    align-items: center;
+    gap: 5px;               /* same as in #btnNoon */
+    margin-top: 10px;       /* larger gap from btnNoon */
+    padding: 2px 6px;       /* left padding 6px = aligns checkbox with #noonChkIcon */
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--dim);
+    user-select: none;
+  }
+  #claddingRow:hover { color: var(--text); }
+  #claddingRow input[type=checkbox] {
+    width: 13px; height: 13px;
+    margin: 0; flex-shrink: 0;
+    accent-color: var(--accent2);
+    cursor: pointer;
+  }
