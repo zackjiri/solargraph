@@ -671,6 +671,50 @@
        0    2px 4px rgba(0,0,0,0.9);
   }
 
+  /* Wrapper lets the Sun Graph sub-toggle hang below the Analyzer button without
+     affecting header height (it is absolutely positioned). */
+  .mode-toggle-wrap {
+    position: relative;
+    margin-left: auto;        /* push the whole toggle group to the right of the header */
+    flex-shrink: 0;
+  }
+
+  /* Sun Graph sub-toggle – shown only in Analyzer (display set by JS); width matched to the
+     ANALYZER button in JS so it sits flush under it. */
+  #btnModeSunGraph {
+    position: absolute;
+    top: 100%; right: 0;
+    margin-top: -1px;                 /* overlap the toggle border → seamless join */
+    display: none;
+    box-sizing: border-box;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border: 5px solid #202020;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    background: none;
+    color: var(--dim);
+    cursor: pointer;
+    white-space: nowrap;
+    z-index: 6;
+    transition: background 0.15s, color 0.15s;
+  }
+  #btnModeSunGraph:not(.active):hover {
+    color: var(--text);
+    background: rgba(255,255,255,0.05);
+  }
+  #btnModeSunGraph.active {
+    background: repeating-linear-gradient(
+      45deg, #b06010, #b06010 5px, #f0b030 5px, #f0b030 10px);
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  }
+
   /* Gallery panel (left of canvas) */
   .gallery-panel {
     flex: 0 0 var(--gallery-panel);
@@ -922,6 +966,15 @@
     z-index: 10;
     touch-action: none;   /* capture one-finger orbit drag (no page scroll/zoom) */
   }
+
+  /* Sun Graph view – full-canvas annual chart, overlays the canvas area like theater */
+  #sunGraphCanvas {
+    position: absolute; inset: 0;
+    display: none;
+    background: #07090d;
+    z-index: 10;
+  }
+  body.light #sunGraphCanvas { background: #ffffff; }
 
   #btnTheaterExit {
     position: absolute; top: 10px; right: 12.5px;
