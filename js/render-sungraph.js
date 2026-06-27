@@ -38,7 +38,8 @@ function enterSunGraph() {
 
   document.getElementById('sunGraphCanvas').style.display = 'block';
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
-  document.getElementById('statusWrap').style.display = 'none';   // info panel not relevant here
+  document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
+  document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
   setDisplaySectionEnabled(false);                               // Display off; Calibration stays live
   document.getElementById('btnModeSunGraph').classList.add('active');
 
@@ -48,6 +49,7 @@ function enterSunGraph() {
 
 function exitSunGraph() {
   document.getElementById('sunGraphCanvas').style.display = 'none';
+  document.getElementById('sgStatusWrap').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   const btn = document.getElementById('btnModeSunGraph');
   if (btn) btn.classList.remove('active');
@@ -115,14 +117,37 @@ function _sgDayWidths(doy, sphi, cphi) {
   };
 }
 
-// Day-of-year → "JUL 15" (uppercase).
-function _sgDoyLabel(doy) {
+// Day-of-year → "Jul 15".
+function _sgDoyMD(doy) {
   let d = Math.max(1, Math.min(_DAYS_IN_YEAR, Math.round(doy)));
   for (let m = 0; m < 12; m++) {
-    if (d <= DAYS_IN_MONTH[m]) return (MONTH_NAMES[m] + ' ' + d).toUpperCase();
+    if (d <= DAYS_IN_MONTH[m]) return MONTH_NAMES[m] + ' ' + d;
     d -= DAYS_IN_MONTH[m];
   }
-  return (MONTH_NAMES[11] + ' 31').toUpperCase();
+  return MONTH_NAMES[11] + ' 31';
+}
+function _sgDoyLabel(doy) { return _sgDoyMD(doy).toUpperCase(); }   // "JUL 15" for the strip
+
+// Hours (0–24) → "HH:MM".
+function _sgHM(t) {
+  let h = Math.floor(t), m = Math.round((t - h) * 60);
+  if (m === 60) { h += 1; m = 0; }
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+// Fills the top-right info panel (DATE / SUNRISE-SUNSET / DAYLENGTH) for the active day.
+// Solar time, signed-φ with real dates → matches the graph's daylight band exactly.
+function updateSunGraphStatus() {
+  const dEl = document.getElementById('sgDate');
+  if (!dEl) return;
+  const phi = effectiveLat() * hemisphere;
+  const activeDay = (sgHoverDay !== null) ? sgHoverDay : dayOfYear(customMonth, customDay);
+  const w = _sgDayWidths(activeDay, Math.sin(phi), Math.cos(phi)).day;   // daylight half-width [h]
+  dEl.textContent = _sgDoyMD(activeDay);
+  const rs = document.getElementById('sgRiseSet'), dl = document.getElementById('sgDayLen');
+  if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; }   // polar night
+  else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; }   // polar day
+  else { rs.textContent = _sgHM(12 - w) + ' / ' + _sgHM(12 + w); dl.textContent = _sgHM(2 * w); }
 }
 
 function drawSunGraph() {
@@ -289,6 +314,8 @@ function drawSunGraph() {
   ctx.fillText('Sun Graph', mL, 26);
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
   ctx.fillText('solar time · Lat ' + latStr, mL + 96, 26);
+
+  updateSunGraphStatus();   // keep the top-right info panel in sync with the active day
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
@@ -299,6 +326,21 @@ document.getElementById('btnModeSunGraph').addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sunGraphActive) exitSunGraph();
 });
+
+// Info-panel collapse (click panel or the ▲/▼ arrow) — mirrors the theaterStatus behaviour.
+let sgStatusCollapsed = false;
+function setSgStatusCollapsed(c) {
+  sgStatusCollapsed = c;
+  const w = document.getElementById('sgStatusWrap'), t = document.getElementById('sgStatusToggle');
+  if (w) w.classList.toggle('collapsed', c);
+  if (t) t.textContent = c ? '▼' : '▲';   // up = shown, down = hidden
+}
+(function () {
+  const tog = document.getElementById('sgStatusToggle');
+  const panel = document.getElementById('sgStatus');
+  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setSgStatusCollapsed(!sgStatusCollapsed); });
+  if (panel) panel.addEventListener('click', () => setSgStatusCollapsed(true));
+})();
 
 // Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.
 (function () {
