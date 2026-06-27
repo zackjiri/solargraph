@@ -973,6 +973,7 @@
     display: none;
     background: #07090d;
     z-index: 10;
+    cursor: default;   /* container is cursor:none (custom crosshair); restore OS cursor here */
   }
   body.light #sunGraphCanvas { background: #ffffff; }
 
