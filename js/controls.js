@@ -820,7 +820,10 @@ function setMode(mode) {
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
     draw3D();
+    if (typeof updateSunGraphButton === 'function') updateSunGraphButton();  // reveal SUN GRAPH sub-toggle
   } else {
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();  // leaving Analyzer closes Sun Graph
+    if (typeof updateSunGraphButton === 'function') updateSunGraphButton();        // hide the sub-toggle
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
     btnA.className = 'mode-btn';

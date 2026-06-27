@@ -844,6 +844,11 @@ function draw3D() {
       c.textAlign = 'center';
     }
   }
+
+  // Sun Graph view shares the calibration state → keep it in sync when calibration changes
+  // (every calibration slider calls draw3D). Guarded: function lives in render-sungraph.js.
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive
+      && typeof drawSunGraph === 'function') drawSunGraph();
 }
 
 // ─── Hourly-arrow "Mexican wave" animation ───────────────────────────────────
