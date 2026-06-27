@@ -1,13 +1,17 @@
 // ─── Sun Graph view ──────────────────────────────────────────────────────────
 // Annual sun / twilight chart (à la timeanddate.com), in SOLAR TIME.
-// Phase 1 (26_1): skeleton only — frame, month axis, hour axis, gridlines, title.
-// The twilight bands and the "sun hits paper" green areas come in later phases;
-// calibration stays editable because those areas depend on it.
+// - Year chart: twilight bands (night / astro / nautical / civil / daylight) at 75% opacity.
+// - Bottom strip: the band sequence for ONE selected day at 100% opacity, with a centered label.
+//   Source day = the day under the cursor when hovering the plot (orange marker → "SELECTED DATE"),
+//   otherwise the Custom Path date (green marker → "CUSTOM DATE").
+// The "sun hits paper" green areas come in a later phase; calibration stays editable for it.
 //
 // Sub-mode of Analyzer (analogous to theater): takes over the canvas area, keeps the
 // calibration controls live, disables the Display section (not meaningful here).
 
 let sunGraphActive = false;
+let sgHoverDay = null;      // day-of-year under cursor while over the plot, else null → custom date
+let _sgLayout  = null;      // {px0,py0,pw,ph,laneY,recapH} for cursor hit-testing
 
 // Shows / hides + sizes the SUN GRAPH sub-toggle. Visible only in Analyzer; its width is
 // matched to the ANALYZER button so it sits flush underneath.
@@ -100,6 +104,27 @@ function _sgHalfWidth(hRad, sphi, cphi, sdelta, cdelta) {
   return Math.acos(X) * (12 / Math.PI);   // hour-angle/15 = acos·(12/π)
 }
 
+// All four twilight half-widths (hours from solar noon) for a given day-of-year.
+function _sgDayWidths(doy, sphi, cphi) {
+  const dl = sunDeclination(doy), sd = Math.sin(dl), cd = Math.cos(dl), D2R = Math.PI / 180;
+  return {
+    day:   _sgHalfWidth(_SG_THRESH.day   * D2R, sphi, cphi, sd, cd),
+    civ:   _sgHalfWidth(_SG_THRESH.civil * D2R, sphi, cphi, sd, cd),
+    naut:  _sgHalfWidth(_SG_THRESH.naut  * D2R, sphi, cphi, sd, cd),
+    astro: _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sd, cd),
+  };
+}
+
+// Day-of-year → "JUL 15" (uppercase).
+function _sgDoyLabel(doy) {
+  let d = Math.max(1, Math.min(_DAYS_IN_YEAR, Math.round(doy)));
+  for (let m = 0; m < 12; m++) {
+    if (d <= DAYS_IN_MONTH[m]) return (MONTH_NAMES[m] + ' ' + d).toUpperCase();
+    d -= DAYS_IN_MONTH[m];
+  }
+  return (MONTH_NAMES[11] + ' 31').toUpperCase();
+}
+
 function drawSunGraph() {
   const cv = document.getElementById('sunGraphCanvas');
   if (!cv) return;
@@ -129,6 +154,11 @@ function drawSunGraph() {
   const recapH    = 30;   // reserved: per-day band strip + recap (cursor / custom date) — next phase
   const mB  = monthLblH + recapGap + recapH;
   const px0 = mL, py0 = mT, pw = Math.max(10, W - mL - mR), ph = Math.max(10, H - mT - mB);
+  const laneY = py0 + ph + monthLblH + recapGap;   // top of the bottom strip
+  _sgLayout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
+
+  ctx.fillStyle = pal.plot;
+  ctx.fillRect(px0, py0, pw, ph);
 
   // Coordinate helpers — X = day of year (Jan→Dec), Y = hour (0 at bottom, 24 at top)
   const dayToX  = (doy)  => px0 + ((doy - 1) / _DAYS_IN_YEAR) * pw;
@@ -145,6 +175,9 @@ function drawSunGraph() {
   const sdel = new Array(NDAYS + 1), cdel = new Array(NDAYS + 1);
   for (let d = 1; d <= NDAYS; d++) { const dl = sunDeclination(d); sdel[d] = Math.sin(dl); cdel[d] = Math.cos(dl); }
 
+  // Bands at 75% opacity so the gridlines / axes remain visible through them.
+  ctx.save();
+  ctx.globalAlpha = 0.75;
   // Night fills the whole plot; nested twilight/day lenses overwrite toward noon.
   ctx.fillStyle = _SG_BANDS.night;
   ctx.fillRect(px0, py0, pw, ph);
@@ -173,6 +206,7 @@ function drawSunGraph() {
     ctx.fillStyle = lv.col;
     ctx.fill();
   }
+  ctx.restore();
 
   // ── Gridlines (subtle, on top of bands) + axis labels ────────────────────────
   ctx.font = "10px 'Share Tech Mono', monospace";
@@ -207,16 +241,45 @@ function drawSunGraph() {
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1.5;
   ctx.strokeRect(px0, py0, pw, ph);
 
-  // ── Reserved lane for the future selected-day breakdown bar ───────────────────
-  const laneY = py0 + ph + monthLblH + recapGap;
-  ctx.save();
-  ctx.globalAlpha = 0.5;
-  ctx.strokeStyle = pal.border; ctx.lineWidth = 1;
-  ctx.strokeRect(px0, laneY, pw, recapH);
-  ctx.fillStyle = pal.text; ctx.font = "10px 'Share Tech Mono', monospace";
+  // ── Day markers in the plot ──────────────────────────────────────────────────
+  const customDoy = dayOfYear(customMonth, customDay);
+  // Green vertical line at the Custom Path date (always shown).
+  {
+    const x = dayToX(customDoy);
+    ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
+  }
+  // Semi-transparent orange line at the cursor-hovered day.
+  if (sgHoverDay !== null) {
+    const x = dayToX(sgHoverDay);
+    ctx.strokeStyle = 'rgba(232,160,32,0.55)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
+  }
+
+  // ── Selected-day strip (100% opacity) + centered date label ───────────────────
+  const activeDay = (sgHoverDay !== null) ? sgHoverDay : customDoy;
+  const sw = _sgDayWidths(activeDay, sphi, cphi);
+  const xh = (h) => px0 + (h / 24) * pw;            // strip x-axis = hours 0..24
+  ctx.fillStyle = _SG_BANDS.night; ctx.fillRect(px0, laneY, pw, recapH);
+  const seg = (col, wh) => {
+    if (wh <= 0) return;
+    const xl = xh(Math.max(0, 12 - wh)), xr = xh(Math.min(24, 12 + wh));
+    ctx.fillStyle = col; ctx.fillRect(xl, laneY, xr - xl, recapH);
+  };
+  seg(_SG_BANDS.astro, sw.astro); seg(_SG_BANDS.naut, sw.naut);
+  seg(_SG_BANDS.civil, sw.civ);   seg(_SG_BANDS.day,  sw.day);
+  ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
+
+  // Centered date label — readable on any band (white fill + dark outline).
+  const label = (sgHoverDay !== null)
+    ? 'SELECTED DATE: ' + _sgDoyLabel(sgHoverDay)
+    : 'CUSTOM DATE: ' + (MONTH_NAMES[customMonth - 1] + ' ' + customDay).toUpperCase();
+  ctx.font = "bold 11px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('selected-day breakdown — next phase (cursor / custom date)', px0 + pw / 2, laneY + recapH / 2);
-  ctx.restore();
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+  ctx.strokeText(label, px0 + pw / 2, laneY + recapH / 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
 
   // Title (uses current calibration latitude / hemisphere)
   const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
@@ -236,6 +299,26 @@ document.getElementById('btnModeSunGraph').addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sunGraphActive) exitSunGraph();
 });
+
+// Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.
+(function () {
+  const cv = document.getElementById('sunGraphCanvas');
+  if (!cv) return;
+  cv.addEventListener('mousemove', (e) => {
+    if (!sunGraphActive || !_sgLayout) return;
+    const r = cv.getBoundingClientRect();      // CSS box = logical size (see resizeSunGraph)
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const L = _sgLayout;
+    let day = null;
+    if (x >= L.px0 && x <= L.px0 + L.pw && y >= L.py0 && y <= L.py0 + L.ph) {
+      day = Math.max(1, Math.min(_DAYS_IN_YEAR, Math.round(1 + (x - L.px0) / L.pw * _DAYS_IN_YEAR)));
+    }
+    if (day !== sgHoverDay) { sgHoverDay = day; drawSunGraph(); }
+  });
+  cv.addEventListener('mouseleave', () => {
+    if (sgHoverDay !== null) { sgHoverDay = null; drawSunGraph(); }
+  });
+})();
 
 // Redraw the chart when the canvas area resizes (window / panel changes).
 (function () {

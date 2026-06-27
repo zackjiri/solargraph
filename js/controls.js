@@ -466,12 +466,12 @@ function updateDateLabels() {
 document.getElementById('btnMonDec').addEventListener('click', () => {
   customMonth = customMonth > 1 ? customMonth - 1 : 12;
   customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 document.getElementById('btnMonInc').addEventListener('click', () => {
   customMonth = customMonth < 12 ? customMonth + 1 : 1;
   customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 document.getElementById('btnDayDec').addEventListener('click', () => {
   if (customDay > 1) {
@@ -481,7 +481,7 @@ document.getElementById('btnDayDec').addEventListener('click', () => {
     customMonth = customMonth > 1 ? customMonth - 1 : 12;
     customDay   = DAYS_IN_MONTH[customMonth - 1];
   }
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 document.getElementById('btnDayInc').addEventListener('click', () => {
   if (customDay < DAYS_IN_MONTH[customMonth - 1]) {
@@ -491,7 +491,7 @@ document.getElementById('btnDayInc').addEventListener('click', () => {
     customMonth = customMonth < 12 ? customMonth + 1 : 1;
     customDay   = 1;
   }
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D();
+  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
