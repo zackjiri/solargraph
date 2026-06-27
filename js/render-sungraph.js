@@ -4,7 +4,8 @@
 // - Bottom strip: the band sequence for ONE selected day at 100% opacity, with a centered label.
 //   Source day = the day under the cursor when hovering the plot (orange marker → "SELECTED DATE"),
 //   otherwise the Custom Path date (green marker → "CUSTOM DATE").
-// The "sun hits paper" green areas come in a later phase; calibration stays editable for it.
+// - Sun-on-paper overlay: green = image lands on the paper, red (suppressed) = ray enters the can
+//   but misses. Depends on calibration (kept editable); reuses sunRayState() from render-3d.js.
 //
 // Sub-mode of Analyzer (analogous to theater): takes over the canvas area, keeps the
 // calibration controls live, disables the Display section (not meaningful here).
@@ -148,11 +149,75 @@ function updateSunGraphStatus() {
   if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; }   // polar night
   else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; }   // polar day
   else { rs.textContent = _sgHM(12 - w) + ' / ' + _sgHM(12 + w); dl.textContent = _sgHM(2 * w); }
+  const op = document.getElementById('sgOnPaper');   // interval the image is on the paper (set by drawSunGraph)
+  if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper);
 }
+
+// ── Sun-on-paper overlay (green = image on paper, red = ray enters but misses) ──
+// Reuses sunRayState(t, ctx) from render-3d.js (the same classifier the time-slider uses),
+// generalised from the custom date to any day-of-year. State 2 = green, 1 = red, 0 = none.
+const _SG_D2R   = Math.PI / 180;
+const _SG_GREEN = 'rgba(80,220,120,0.45)';   // on paper – prominent
+const _SG_RED   = 'rgba(224,64,64,0.16)';    // enters but misses – suppressed
+let _sgActiveOnPaper = null;                  // on-paper interval [t0,t1] for the active day (panel)
+
+// sunRayState ctx for a real calendar day (signed-φ + real date; path branch uses the ±182-day
+// SH shift, mirroring customArcDate). halfHmm / halfGap are calibration-only.
+function _sgRayCtx(doy) {
+  const pathDoy = (hemisphere >= 0) ? doy : (((doy - 1 + 182) % 365) + 1);
+  return {
+    delta:   sunDeclination(pathDoy),
+    phi:     effectiveLat(),
+    deltaS:  sunDeclination(doy),
+    phiS:    effectiveLat() * hemisphere,
+    // With a scan loaded use its real aspect; without one fall back to nominal paper aspect
+    // (currentHalfHmm would otherwise use the default 300×150 canvas → wrong paper height).
+    halfHmm: imgBitmap ? currentHalfHmm() : (scanWmm * PAPER_H / PAPER_W / 2),
+    halfGap: (2 * Math.PI - Math.min(2 * Math.PI - 0.01, scanWmm / radius)) / 2,
+  };
+}
+
+// Contiguous green (state 2) and red (state 1) intervals [t0,t1] (solar time) for one day.
+function _sgDayRuns(doy, N) {
+  const ctx  = _sgRayCtx(doy);
+  const wDay = _sgHalfWidth(_SG_THRESH.day * _SG_D2R,
+                            Math.sin(ctx.phiS), Math.cos(ctx.phiS),
+                            Math.sin(ctx.deltaS), Math.cos(ctx.deltaS));
+  const green = [], red = [];
+  if (wDay <= 0) return { green, red, onPaper: null };      // polar night – nothing enters
+  const tA = Math.max(0, 12 - wDay - 0.5), tB = Math.min(24, 12 + wDay + 0.5);
+  const push = (st, a, b) => { if (st === 2) green.push([a, b]); else if (st === 1) red.push([a, b]); };
+  let prev = sunRayState(tA, ctx), start = tA;
+  for (let i = 1; i <= N; i++) {
+    const t = tA + (tB - tA) * i / N;
+    const st = sunRayState(t, ctx);
+    if (st !== prev) { push(prev, start, t); prev = st; start = t; }
+  }
+  push(prev, start, tB);
+  const onPaper = green.length ? [green[0][0], green[green.length - 1][1]] : null;
+  return { green, red, onPaper };
+}
+
+// Year-wide green/red runs, cached — depend only on calibration + latitude (not hover / date).
+let _sgYearRuns = null, _sgYearKey = '';
+function _sgEnsureYearRuns() {
+  const key = [LAT, hemisphere, yawDeg, pitchDeg, rollDeg, horizonMm, radius, scanWmm,
+               canvas.width, canvas.height].join(',');
+  if (key === _sgYearKey && _sgYearRuns) return _sgYearRuns;
+  _sgYearKey  = key;
+  _sgYearRuns = new Array(_DAYS_IN_YEAR + 1);
+  for (let d = 1; d <= _DAYS_IN_YEAR; d++) _sgYearRuns[d] = _sgDayRuns(d, 120);  // coarser N over the year
+  return _sgYearRuns;
+}
+
+function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
 
 function drawSunGraph() {
   const cv = document.getElementById('sunGraphCanvas');
   if (!cv) return;
+  // Without a loaded scan, cy is undefined → azElToPixel().py = NaN → the on-paper (green) test
+  // always fails. cx/cy/scale cancel out in sunRayState, so any finite cy works; use nominal.
+  if (!isFinite(cy)) cy = IMG_H / 2;
   const RES = cv._res || 1;
   const ctx = cv.getContext('2d');
   const W = cv.width  / RES;          // logical size
@@ -233,6 +298,17 @@ function drawSunGraph() {
   }
   ctx.restore();
 
+  // ── Sun-on-paper overlay (green hits paper, red enters-but-misses) ────────────
+  const yearRuns = _sgEnsureYearRuns();
+  for (let d = 1; d <= NDAYS; d++) {
+    const r = yearRuns[d]; if (!r) continue;
+    const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
+    ctx.fillStyle = _SG_RED;
+    for (const iv of r.red)   ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+    ctx.fillStyle = _SG_GREEN;
+    for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+  }
+
   // ── Gridlines (subtle, on top of bands) + axis labels ────────────────────────
   ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.textBaseline = 'middle';
@@ -293,6 +369,14 @@ function drawSunGraph() {
   };
   seg(_SG_BANDS.astro, sw.astro); seg(_SG_BANDS.naut, sw.naut);
   seg(_SG_BANDS.civil, sw.civ);   seg(_SG_BANDS.day,  sw.day);
+  // Sun-on-paper overlay on the strip (green prominent, red suppressed); also feeds the panel.
+  const activeRuns = _sgDayRuns(activeDay, 240);
+  _sgActiveOnPaper = activeRuns.onPaper;
+  const segGR = (col, ivs) => {
+    ctx.fillStyle = col;
+    for (const iv of ivs) { const xl = xh(Math.max(0, iv[0])), xr = xh(Math.min(24, iv[1])); ctx.fillRect(xl, laneY, xr - xl, recapH); }
+  };
+  segGR(_SG_RED, activeRuns.red); segGR(_SG_GREEN, activeRuns.green);
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
 
   // Centered date label — readable on any band (white fill + dark outline).
