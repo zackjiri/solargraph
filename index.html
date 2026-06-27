@@ -180,6 +180,24 @@
       <canvas id="mainCanvas"></canvas>
       <canvas id="can3dTheater"></canvas>
       <canvas id="sunGraphCanvas"></canvas>
+      <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
+      <div id="sgStatusWrap">
+        <div id="sgStatus" title="Click to hide">
+          <div class="ts-row">
+            <span class="ts-lbl">date</span>
+            <span class="ts-val" id="sgDate">—</span>
+          </div>
+          <div class="ts-row">
+            <span class="ts-lbl">sunrise / sunset</span>
+            <span class="ts-val" id="sgRiseSet">—</span>
+          </div>
+          <div class="ts-row">
+            <span class="ts-lbl">daylength</span>
+            <span class="ts-val" id="sgDayLen">—</span>
+          </div>
+        </div>
+        <button id="sgStatusToggle" title="Hide / show the info panel">▲</button>
+      </div>
       <button id="btnTheaterExit">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
