@@ -65,9 +65,15 @@ function resizeSunGraph() {
   const container = document.getElementById('canvasContainer');
   const cv = document.getElementById('sunGraphCanvas');
   const RES = Math.max(2, Math.ceil(window.devicePixelRatio || 1));   // crisp on HiDPI (see 25_1)
+  const cw = container.clientWidth, ch = container.clientHeight;
   cv._res = RES;
-  cv.width  = Math.round(container.clientWidth  * RES);
-  cv.height = Math.round(container.clientHeight * RES);
+  cv.width  = Math.round(cw * RES);
+  cv.height = Math.round(ch * RES);
+  // Canvas is a replaced element: position:absolute + inset:0 does NOT shrink it to the
+  // container (it keeps its attribute size). Pin the CSS box explicitly so the supersampled
+  // backing maps 1:1 to the container instead of overflowing (showing only the top-left).
+  cv.style.width  = cw + 'px';
+  cv.style.height = ch + 'px';
   drawSunGraph();
 }
 

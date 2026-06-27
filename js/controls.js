@@ -2,6 +2,7 @@
 container.addEventListener('mousemove', (e) => {
   if (splitActive) return;
   if (theaterMode3D) return;  // theater mode: no readout, no crosshair
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) return;  // sun graph: same as theater
 
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvasLW / rect.width;   // map to logical px (not the super-res backing store)
