@@ -13,9 +13,13 @@
   <header>
     <h1>Solargraphy Projection Viewer</h1>
     <span>pinhole projection definition: x = 2 r α &nbsp;•&nbsp; y = 2 r cos α tan ϕ</span>
-    <div class="mode-toggle">
-      <button class="mode-btn active-gallery" id="btnModeGallery">Gallery</button>
-      <button class="mode-btn" id="btnModeAnalyzer">Analyzer</button>
+    <div class="mode-toggle-wrap">
+      <div class="mode-toggle">
+        <button class="mode-btn active-gallery" id="btnModeGallery">Gallery</button>
+        <button class="mode-btn" id="btnModeAnalyzer">Analyzer</button>
+      </div>
+      <!-- Sub-toggle, shown only in Analyzer; sits flush under the ANALYZER button -->
+      <button id="btnModeSunGraph">Sun Graph</button>
     </div>
     <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
   </header>
@@ -175,6 +179,7 @@
     <div class="canvas-container hidden" id="canvasContainer">
       <canvas id="mainCanvas"></canvas>
       <canvas id="can3dTheater"></canvas>
+      <canvas id="sunGraphCanvas"></canvas>
       <button id="btnTheaterExit">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
@@ -354,6 +359,7 @@
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
 <script src="js/controls.js"></script>
+<script src="js/render-sungraph.js"></script>
 <script src="js/render-3d.js"></script>
 </body>
 </html>
