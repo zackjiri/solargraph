@@ -11,6 +11,13 @@ let scale = IMG_W / PAPER_W; // px/mm
 let cx = IMG_W / 2;
 let cy;  // set after image load
 
+// Logical drawing size (px), decoupled from the canvas backing store. All projection
+// maths and overlays use these; the backing store is logical × canvasRES so the canvas
+// renders at (super-)device resolution and text / thin lines stay crisp on HiDPI displays.
+let canvasLW  = IMG_W;
+let canvasLH  = IMG_H;
+let canvasRES = 1;     // supersample factor – set in setupCanvas() from devicePixelRatio
+
 // ─── Pitch rotation: world (β,θ) → local camera coordinates ───────────────
 // Pitch p (rad): positive = pinhole tilted toward zenith (can tilted forward/south)
 // Rotation Ry(p) around east–west axis (Y-axis):
@@ -384,8 +391,13 @@ function getEffectiveCy() {
 }
 
 function setupCanvas(w, h) {
-  canvas.width = w;
-  canvas.height = h;
+  canvasLW  = w;
+  canvasLH  = h;
+  // Backing store = logical size × supersample factor (≥2, bumped on HiDPI screens) so the
+  // canvas bitmap is denser than its on-screen size and overlay text / lines render sharp.
+  canvasRES = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+  canvas.width  = Math.round(w * canvasRES);
+  canvas.height = Math.round(h * canvasRES);
   IMG_H = h;
   cy = h / 2;
   cx = w / 2;

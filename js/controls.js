@@ -4,8 +4,8 @@ container.addEventListener('mousemove', (e) => {
   if (theaterMode3D) return;  // theater mode: no readout, no crosshair
 
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  const scaleX = canvasLW / rect.width;   // map to logical px (not the super-res backing store)
+  const scaleY = canvasLH / rect.height;
   mouseX = (e.clientX - rect.left) * scaleX;
   mouseY = (e.clientY - rect.top) * scaleY;
 
@@ -109,7 +109,7 @@ function doCalibReset() {
   // 1. Reset ALL global state first – no draw call until everything is in final state
   yawDeg = 0; pitchDeg = 0; rollDeg = 0; radius = 33; hScale = 1.0; horizonMm = 0;
   scanWmm = 178;
-  if (canvas.width > 0) scale = canvas.width / scanWmm;
+  if (canvasLW > 0) scale = canvasLW / scanWmm;
   LAT = 50.0;
   hemisphere = 1;
 
@@ -320,7 +320,7 @@ function refreshCalibLimits() {
   if (scanWmm > wMax) {
     scanWmm = wMax;
     if (inpW) inpW.value = scanWmm;
-    if (canvas.width > 0) scale = canvas.width / scanWmm;
+    if (canvasLW > 0) scale = canvasLW / scanWmm;
     updateScanH();
   }
 
@@ -342,8 +342,8 @@ function applyScanW(val) {
   document.getElementById('inpScanW').value = scanWmm;
   updateScanH();
   refreshCalibLimits();   // recomputes the radius minimum and the horizon range
-  if (canvas.width > 0) {
-    scale = canvas.width / scanWmm;
+  if (canvasLW > 0) {
+    scale = canvasLW / scanWmm;
     draw(); draw3D();
   }
 }

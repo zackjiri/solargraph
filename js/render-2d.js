@@ -1,8 +1,11 @@
 // ─── Rendering ─────────────────────────────────────────────────────────────
 function draw() {
-  const W = canvas.width;
-  const H = canvas.height;
+  const W = canvasLW;
+  const H = canvasLH;
 
+  // Map logical coordinates → backing store (super-resolution). Everything below draws in
+  // logical px (W×H); the transform scales it up so text and thin lines stay crisp.
+  ctx.setTransform(canvasRES, 0, 0, canvasRES, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
   // Background image (L1)
@@ -163,8 +166,8 @@ function drawGrid(W, H) {
     for (let az = 0; az <= 360; az += 1) {
       const beta = az - 180 - yawDeg;
       const pos  = azElToPixel(beta, el);
-      if (pos && pos.px >= -20 && pos.px <= canvas.width + 20
-              && pos.py >= -20 && pos.py <= canvas.height + 20) {
+      if (pos && pos.px >= -20 && pos.px <= W + 20
+              && pos.py >= -20 && pos.py <= H + 20) {
         seg.push(pos);
       } else {
         if (seg.length >= 2) segments.push(seg);
