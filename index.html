@@ -18,8 +18,11 @@
         <button class="mode-btn active-gallery" id="btnModeGallery">Gallery</button>
         <button class="mode-btn" id="btnModeAnalyzer">Analyzer</button>
       </div>
-      <!-- Sub-toggle, shown only in Analyzer; sits flush under the ANALYZER button -->
-      <button id="btnModeSunGraph">Sun Graph</button>
+      <!-- Sub-toggles, shown only in Analyzer; sit flush under the toggle (widths matched in JS) -->
+      <div class="mode-subrow">
+        <button class="submode-btn" id="btnModeTheater">3D Model</button>
+        <button class="submode-btn" id="btnModeSunGraph">Sun Graph</button>
+      </div>
     </div>
     <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
   </header>
@@ -188,12 +191,12 @@
             <span class="ts-val" id="sgDate">—</span>
           </div>
           <div class="ts-row">
-            <span class="ts-lbl">sunrise / sunset</span>
-            <span class="ts-val" id="sgRiseSet">—</span>
-          </div>
-          <div class="ts-row">
             <span class="ts-lbl">daylength</span>
             <span class="ts-val" id="sgDayLen">—</span>
+          </div>
+          <div class="ts-row">
+            <span class="ts-lbl">sunrise/set</span>
+            <span class="ts-val" id="sgRiseSet">—</span>
           </div>
           <div class="ts-row">
             <span class="ts-lbl">on paper</span>
@@ -254,8 +257,8 @@
       <label class="chk-row"><input type="checkbox" id="chkGrid" checked> Az/Alt Grid</label>
       <label class="chk-row"><input type="checkbox" id="chkLabels" checked> Labels</label>
       <label class="chk-row"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
-      <label class="chk-row"><input type="checkbox" id="chkSunArc"> Sun's paths</label>
-      <label class="chk-row"><input type="checkbox" id="chkCustomArc"> Custom date</label>
+      <label class="chk-row"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
+      <label class="chk-row"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
       <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.45)">Show Isolines</button>
       <div class="slider-row" style="margin-top:4px">
         <div class="slider-header">
