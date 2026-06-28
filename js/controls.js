@@ -361,6 +361,7 @@ document.getElementById('btnScanWDec').addEventListener('click', () => applyScan
 document.getElementById('btnScanWInc').addEventListener('click', () => applyScanW(scanWmm + 1));
 
 function loadImage(file) {
+  currentExposure = null;   // uploaded image has no filelist metadata → no exposure overlay
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -611,6 +612,21 @@ let FILELIST = null;
 let PRESETS  = null;
 let galleryState = { genId: null, imageIndex: null, layer: 0 };
 
+// Exposure interval (day-of-year) of the current GALLERY image from filelist; null for images
+// loaded via "load new image" (no metadata). Used by the Sun Graph exposure overlay.
+let currentExposure = null;
+function setCurrentExposureFromGallery() {
+  currentExposure = null;
+  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
+  const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
+  const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
+  const m = img && img.metadata;
+  if (m && m.exposure_start && m.exposure_end) {
+    const doy = (s) => { const [, mo, d] = s.split('-').map(Number); return dayOfYear(mo, d); };
+    currentExposure = { startDoy: doy(m.exposure_start), endDoy: doy(m.exposure_end) };
+  }
+}
+
 async function loadFilelist() {
   try {
     const [flRes, prRes] = await Promise.all([
@@ -747,6 +763,8 @@ function updateViewGroup(layers) {
 // Load image file for current gallery selection
 function loadGalleryImage() {
   if (galleryState.genId === null || galleryState.imageIndex === null) return;
+
+  setCurrentExposureFromGallery();   // exposure interval for the Sun Graph (from filelist metadata)
 
   // Aplikuj kalibraci z presets.json
   applyGalleryPreset(galleryState.genId, galleryState.imageIndex);

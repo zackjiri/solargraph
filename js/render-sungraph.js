@@ -162,8 +162,10 @@ function updateSunGraphStatus() {
 // Reuses sunRayState(t, ctx) from render-3d.js (the same classifier the time-slider uses),
 // generalised from the custom date to any day-of-year. State 2 = green, 1 = red, 0 = none.
 const _SG_D2R   = Math.PI / 180;
-const _SG_GREEN = 'rgba(80,220,120,0.45)';   // on paper – prominent
+const _SG_GREEN = 'rgba(80,220,120,0.45)';   // on paper – normal
 const _SG_RED   = 'rgba(224,64,64,0.16)';    // enters but misses – suppressed
+const _SG_GREEN_HI = 'rgba(80,220,120,0.80)';   // on paper, within the exposure interval – prominent
+const _SG_RED_HI   = 'rgba(224,64,64,0.42)';    // enters but misses, within exposure – prominent
 let _sgActiveOnPaper = null;                  // on-paper interval [t0,t1] for the active day (panel)
 
 // sunRayState ctx for a real calendar day (signed-φ + real date; path branch uses the ±182-day
@@ -246,8 +248,9 @@ function drawSunGraph() {
   const mL = 46, mR = 18, mT = 44;
   const monthLblH = 20;   // month labels under the plot
   const recapGap  = 8;
-  const recapH    = 30;   // reserved: per-day band strip + recap (cursor / custom date) — next phase
-  const mB  = monthLblH + recapGap + recapH;
+  const recapH    = 30;   // selected-day strip
+  const hourAxisH = 16;   // hour ruler (00–22) under the strip
+  const mB  = monthLblH + recapGap + recapH + hourAxisH;
   const px0 = mL, py0 = mT, pw = Math.max(10, W - mL - mR), ph = Math.max(10, H - mT - mB);
   const laneY = py0 + ph + monthLblH + recapGap;   // top of the bottom strip
   _sgLayout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
@@ -304,13 +307,22 @@ function drawSunGraph() {
   ctx.restore();
 
   // ── Sun-on-paper overlay (green hits paper, red enters-but-misses) ────────────
+  // Within the current gallery image's exposure interval the areas are drawn more prominently.
+  // (No exposure for "load new image" uploads → uniform normal opacity, no boundaries.)
+  const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  const inExp = exp
+    ? (exp.startDoy <= exp.endDoy
+        ? (d) => d >= exp.startDoy && d <= exp.endDoy
+        : (d) => d >= exp.startDoy || d <= exp.endDoy)   // exposure wrapping across year-end
+    : () => false;
   const yearRuns = _sgEnsureYearRuns();
   for (let d = 1; d <= NDAYS; d++) {
     const r = yearRuns[d]; if (!r) continue;
     const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
-    ctx.fillStyle = _SG_RED;
+    const hi = inExp(d);
+    ctx.fillStyle = hi ? _SG_RED_HI : _SG_RED;
     for (const iv of r.red)   ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
-    ctx.fillStyle = _SG_GREEN;
+    ctx.fillStyle = hi ? _SG_GREEN_HI : _SG_GREEN;
     for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
   }
 
@@ -321,8 +333,10 @@ function drawSunGraph() {
     const y = hourToY(h);
     ctx.strokeStyle = pal.grid; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(px0, y); ctx.lineTo(px0 + pw, y); ctx.stroke();
-    ctx.fillStyle = pal.text; ctx.textAlign = 'right';
-    ctx.fillText(String(h).padStart(2, '0'), px0 - 6, y);
+    if (h < 24) {   // omit the "24" label (coincides with the top border)
+      ctx.fillStyle = pal.text; ctx.textAlign = 'right';
+      ctx.fillText(String(h).padStart(2, '0'), px0 - 6, y);
+    }
   }
   const starts = _monthStartDoy();
   ctx.textBaseline = 'alphabetic';
@@ -346,6 +360,20 @@ function drawSunGraph() {
   // Plot border
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1.5;
   ctx.strokeRect(px0, py0, pw, ph);
+
+  // ── Exposure interval boundaries: white verticals spanning only the daylight zone ─
+  if (exp) {
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+    for (const doy of [exp.startDoy, exp.endDoy]) {
+      const wd = _sgDayWidths(doy, sphi, cphi).day;   // daylight half-width [h]
+      if (wd <= 0) continue;
+      const x = dayToX(doy);
+      ctx.beginPath();
+      ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
+      ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
+      ctx.stroke();
+    }
+  }
 
   // ── Day markers in the plot ──────────────────────────────────────────────────
   const customDoy = dayOfYear(customMonth, customDay);
@@ -392,6 +420,17 @@ function drawSunGraph() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ff8c00';   // saturated orange, no outline/shadow
   ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
+
+  // ── Hour axis under the strip (range 00–24, labels 00–22) ─────────────────────
+  const axisY = laneY + recapH;
+  ctx.strokeStyle = pal.grid; ctx.fillStyle = pal.text; ctx.lineWidth = 1;
+  ctx.font = "9px 'Share Tech Mono', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let h = 0; h <= 22; h += 2) {
+    const x = xh(h);
+    ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 3); ctx.stroke();
+    ctx.fillText(String(h).padStart(2, '0'), x, axisY + 5);
+  }
 
   // Title (uses current calibration latitude / hemisphere)
   const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
