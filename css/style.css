@@ -679,34 +679,38 @@
     flex-shrink: 0;
   }
 
-  /* Sun Graph sub-toggle – shown only in Analyzer (display set by JS); width matched to the
-     ANALYZER button in JS so it sits flush under it. */
-  #btnModeSunGraph {
+  /* 3D MODEL + SUN GRAPH sub-toggles – shown only in Analyzer (display set by JS); the two
+     buttons' widths are matched in JS to the GALLERY / ANALYZER buttons so they sit flush. */
+  .mode-subrow {
     position: absolute;
-    top: 100%; right: 0;
+    top: 100%; left: 0; right: 0;
     margin-top: -1px;                 /* overlap the toggle border → seamless join */
-    display: none;
+    display: none;                    /* flex, set by JS in Analyzer */
+    border: 5px solid #202020;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    overflow: hidden;
+    z-index: 6;
+  }
+  .submode-btn {
     box-sizing: border-box;
     font-family: var(--mono);
     font-size: 10px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    padding: 4px 14px;
-    border: 5px solid #202020;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
+    padding: 4px 0;
+    border: none;
     background: none;
     color: var(--dim);
     cursor: pointer;
     white-space: nowrap;
-    z-index: 6;
     transition: background 0.15s, color 0.15s;
   }
-  #btnModeSunGraph:not(.active):hover {
+  .submode-btn:not(.active):hover {
     color: var(--text);
     background: rgba(255,255,255,0.05);
   }
-  #btnModeSunGraph.active {
+  .submode-btn.active {
     background: repeating-linear-gradient(
       45deg, #b06010, #b06010 5px, #f0b030 5px, #f0b030 10px);
     color: #fff;
@@ -1232,7 +1236,7 @@
     color: var(--dim); white-space: nowrap; flex-shrink: 0;
   }
   .ts-val {
-    font-size: 15px; color: var(--text); text-align: right;
+    font-size: 15px; color: var(--text); text-align: right; white-space: nowrap;
   }
   /* Noon HIT / MISS row */
   #tsNoonRow {
