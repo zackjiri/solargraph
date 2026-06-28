@@ -13,6 +13,9 @@
 let sunGraphActive = false;
 let sgHoverDay = null;      // day-of-year under cursor while over the plot, else null → custom date
 let _sgLayout  = null;      // {px0,py0,pw,ph,laneY,recapH} for cursor hit-testing
+let _sgEmphBand  = null;    // legend item hovered → emphasise that band/area
+let _sgShowGreen = true;    // legend toggle: show on-paper (green) overlay
+let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overlay
 
 // Shows / hides + sizes the 3D MODEL and SUN GRAPH sub-toggles (visible only in Analyzer),
 // matching their widths to the GALLERY / ANALYZER buttons above, and reflecting the active view.
@@ -47,6 +50,7 @@ function enterSunGraph() {
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
+  document.getElementById('sgLegend').style.display = 'flex';     // legend (bottom-left)
   setDisplaySectionEnabled(false);                               // Display off; Calibration stays live
 
   sunGraphActive = true;
@@ -57,6 +61,7 @@ function enterSunGraph() {
 function exitSunGraph() {
   document.getElementById('sunGraphCanvas').style.display = 'none';
   document.getElementById('sgStatusWrap').style.display = 'none';
+  document.getElementById('sgLegend').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   sunGraphActive = false;
   if (typeof updateViewButtons === 'function') updateViewButtons();
@@ -166,6 +171,18 @@ const _SG_GREEN = 'rgba(80,220,120,0.45)';   // on paper – normal
 const _SG_RED   = 'rgba(224,64,64,0.16)';    // enters but misses – suppressed
 const _SG_GREEN_HI = 'rgba(80,220,120,0.80)';   // on paper, within the exposure interval – prominent
 const _SG_RED_HI   = 'rgba(224,64,64,0.42)';    // enters but misses, within exposure – prominent
+const _SG_GREEN_EMPH = 'rgba(80,220,120,0.95)'; // legend hover emphasis
+const _SG_RED_EMPH   = 'rgba(224,64,64,0.60)';
+
+// Slightly emphasise a band on legend hover: darken dark colours, lighten light ones.
+function _sgShade(hex, emph) {
+  if (!emph) return hex;
+  let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255, f = 0.25;
+  if (lum < 0.5) { r *= (1 - f); g *= (1 - f); b *= (1 - f); }            // darken dark
+  else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }    // lighten light
+  return 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+}
 let _sgActiveOnPaper = null;                  // on-paper interval [t0,t1] for the active day (panel)
 
 // sunRayState ctx for a real calendar day (signed-φ + real date; path branch uses the ±182-day
@@ -255,6 +272,11 @@ function drawSunGraph() {
   const laneY = py0 + ph + monthLblH + recapGap;   // top of the bottom strip
   _sgLayout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
 
+  // Pin the legend to the plot's bottom-left corner (axes intersection: Jan 1 / 00 h),
+  // i.e. its bottom-left sits at (px0, py0+ph) and it grows up-right into the plot.
+  const _leg = document.getElementById('sgLegend');
+  if (_leg) { _leg.style.left = px0 + 'px'; _leg.style.bottom = (H - (py0 + ph)) + 'px'; }
+
   ctx.fillStyle = pal.plot;
   ctx.fillRect(px0, py0, pw, ph);
 
@@ -273,18 +295,18 @@ function drawSunGraph() {
   const sdel = new Array(NDAYS + 1), cdel = new Array(NDAYS + 1);
   for (let d = 1; d <= NDAYS; d++) { const dl = sunDeclination(d); sdel[d] = Math.sin(dl); cdel[d] = Math.cos(dl); }
 
-  // Bands at 75% opacity so the gridlines / axes remain visible through them.
+  // Bands at 75% opacity (legend-hovered band emphasised). Night fills the plot; lenses overwrite.
   ctx.save();
-  ctx.globalAlpha = 0.75;
-  // Night fills the whole plot; nested twilight/day lenses overwrite toward noon.
-  ctx.fillStyle = _SG_BANDS.night;
+  const nightE = _sgEmphBand === 'night';
+  ctx.globalAlpha = nightE ? 0.95 : 0.75;
+  ctx.fillStyle = _sgShade(_SG_BANDS.night, nightE);
   ctx.fillRect(px0, py0, pw, ph);
 
   const levels = [
-    { col: _SG_BANDS.astro, h: _SG_THRESH.astro * D2R },
-    { col: _SG_BANDS.naut,  h: _SG_THRESH.naut  * D2R },
-    { col: _SG_BANDS.civil, h: _SG_THRESH.civil * D2R },
-    { col: _SG_BANDS.day,   h: _SG_THRESH.day   * D2R },
+    { key: 'astro', col: _SG_BANDS.astro, h: _SG_THRESH.astro * D2R },
+    { key: 'naut',  col: _SG_BANDS.naut,  h: _SG_THRESH.naut  * D2R },
+    { key: 'civil', col: _SG_BANDS.civil, h: _SG_THRESH.civil * D2R },
+    { key: 'day',   col: _SG_BANDS.day,   h: _SG_THRESH.day   * D2R },
   ];
   for (const lv of levels) {
     const up = new Array(NDAYS + 1), lo = new Array(NDAYS + 1);
@@ -293,6 +315,8 @@ function drawSunGraph() {
       up[d] = hourToY(Math.min(24, 12 + wh));   // upper boundary (toward later hours / top)
       lo[d] = hourToY(Math.max(0,  12 - wh));   // lower boundary (toward earlier hours / bottom)
     }
+    const e = _sgEmphBand === lv.key;
+    ctx.globalAlpha = e ? 0.95 : 0.75;
     ctx.beginPath();
     ctx.moveTo(px0, up[1]);
     for (let d = 1; d <= NDAYS; d++) ctx.lineTo(dayToX(d), up[d]);
@@ -301,7 +325,7 @@ function drawSunGraph() {
     for (let d = NDAYS; d >= 1; d--) ctx.lineTo(dayToX(d), lo[d]);
     ctx.lineTo(px0, lo[1]);
     ctx.closePath();
-    ctx.fillStyle = lv.col;
+    ctx.fillStyle = _sgShade(lv.col, e);
     ctx.fill();
   }
   ctx.restore();
@@ -316,14 +340,20 @@ function drawSunGraph() {
         : (d) => d >= exp.startDoy || d <= exp.endDoy)   // exposure wrapping across year-end
     : () => false;
   const yearRuns = _sgEnsureYearRuns();
+  const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
+  const greenCol = (hi) => _sgEmphBand === 'green' ? _SG_GREEN_EMPH : (hi ? _SG_GREEN_HI : _SG_GREEN);
   for (let d = 1; d <= NDAYS; d++) {
     const r = yearRuns[d]; if (!r) continue;
     const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
     const hi = inExp(d);
-    ctx.fillStyle = hi ? _SG_RED_HI : _SG_RED;
-    for (const iv of r.red)   ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
-    ctx.fillStyle = hi ? _SG_GREEN_HI : _SG_GREEN;
-    for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+    if (_sgShowRed) {
+      ctx.fillStyle = redCol(hi);
+      for (const iv of r.red)   ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+    }
+    if (_sgShowGreen) {
+      ctx.fillStyle = greenCol(hi);
+      for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+    }
   }
 
   // ── Gridlines (subtle, on top of bands) + axis labels ────────────────────────
@@ -394,22 +424,23 @@ function drawSunGraph() {
   const activeDay = (sgHoverDay !== null) ? sgHoverDay : customDoy;
   const sw = _sgDayWidths(activeDay, sphi, cphi);
   const xh = (h) => px0 + (h / 24) * pw;            // strip x-axis = hours 0..24
-  ctx.fillStyle = _SG_BANDS.night; ctx.fillRect(px0, laneY, pw, recapH);
-  const seg = (col, wh) => {
+  ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
+  const seg = (key, col, wh) => {
     if (wh <= 0) return;
     const xl = xh(Math.max(0, 12 - wh)), xr = xh(Math.min(24, 12 + wh));
-    ctx.fillStyle = col; ctx.fillRect(xl, laneY, xr - xl, recapH);
+    ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
   };
-  seg(_SG_BANDS.astro, sw.astro); seg(_SG_BANDS.naut, sw.naut);
-  seg(_SG_BANDS.civil, sw.civ);   seg(_SG_BANDS.day,  sw.day);
-  // Sun-on-paper overlay on the strip (green prominent, red suppressed); also feeds the panel.
+  seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
+  seg('civil', _SG_BANDS.civil, sw.civ);   seg('day',  _SG_BANDS.day,  sw.day);
+  // Sun-on-paper overlay on the strip (green/red, respecting legend toggles + hover emphasis); also feeds the panel.
   const activeRuns = _sgDayRuns(activeDay, 240);
   _sgActiveOnPaper = activeRuns.onPaper;
   const segGR = (col, ivs) => {
     ctx.fillStyle = col;
     for (const iv of ivs) { const xl = xh(Math.max(0, iv[0])), xr = xh(Math.min(24, iv[1])); ctx.fillRect(xl, laneY, xr - xl, recapH); }
   };
-  segGR(_SG_RED, activeRuns.red); segGR(_SG_GREEN, activeRuns.green);
+  if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
+  if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
 
   // Centered date label — readable on any band (white fill + dark outline).
@@ -418,7 +449,7 @@ function drawSunGraph() {
     : 'CUSTOM DATE: ' + (MONTH_NAMES[customMonth - 1] + ' ' + customDay).toUpperCase();
   ctx.font = "bold 11px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ff8c00';   // saturated orange, no outline/shadow
+  ctx.fillStyle = '#ff3b30';   // red, no outline/shadow (contrast on the strip)
   ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
 
   // ── Hour axis under the strip (range 00–24, labels 00–22) ─────────────────────
@@ -466,6 +497,23 @@ function setSgStatusCollapsed(c) {
   const panel = document.getElementById('sgStatus');
   if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setSgStatusCollapsed(!sgStatusCollapsed); });
   if (panel) panel.addEventListener('click', () => setSgStatusCollapsed(true));
+})();
+
+// Legend interaction: hover any item → emphasise that band; click a "Sunlight…" item → toggle it.
+(function () {
+  const items = document.querySelectorAll('#sgLegend .sg-leg-item');
+  items.forEach((el) => {
+    const band = el.dataset.band;
+    el.addEventListener('mouseenter', () => { _sgEmphBand = band; if (sunGraphActive) drawSunGraph(); });
+    el.addEventListener('mouseleave', () => { _sgEmphBand = null; if (sunGraphActive) drawSunGraph(); });
+    if (el.classList.contains('sg-leg-toggle')) {
+      el.addEventListener('click', () => {
+        if (band === 'green') _sgShowGreen = !_sgShowGreen; else if (band === 'red') _sgShowRed = !_sgShowRed;
+        el.classList.toggle('off', band === 'green' ? !_sgShowGreen : !_sgShowRed);
+        if (sunGraphActive) drawSunGraph();
+      });
+    }
+  });
 })();
 
 // Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.
