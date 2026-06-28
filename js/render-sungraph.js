@@ -237,13 +237,14 @@ function _sgEnsureYearRuns() {
 
 function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
 
-// Vertical (90°-rotated) label just to the LEFT of a vertical line, centred on the plot.
-function _sgVLabel(ctx, text, x, py0, ph, color) {
+// Vertical (90°-rotated) label just to the LEFT of a vertical line, starting at the noon line
+// and reading upward (small gap above noon).
+function _sgVLabel(ctx, text, x, noonY, color) {
   ctx.save();
-  ctx.translate(x - 3, py0 + ph / 2);
+  ctx.translate(x - 1, noonY - 5);     // small gap above the noon line
   ctx.rotate(-Math.PI / 2);
   ctx.font = "9px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';   // glyphs sit left of the line
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';   // reads upward; glyphs sit left of the line
   ctx.fillStyle = color;
   ctx.fillText(text, 0, 0);
   ctx.restore();
@@ -281,6 +282,7 @@ function drawSunGraph() {
     bg: '#07090d', plot: '#0b0f15', grid: 'rgba(255,255,255,0.10)',
     border: 'rgba(255,255,255,0.25)', text: '#9fb2c4', accent: '#e8a020'
   };
+  const RED = '#ff3b30';   // red only for the in-plot line labels (custom date, exposure start/end)
 
   ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, W, H);
@@ -440,9 +442,11 @@ function drawSunGraph() {
   const yNoon = hourToY(12);
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(px0, yNoon); ctx.lineTo(px0 + pw, yNoon); ctx.stroke();
-  ctx.fillStyle = '#e04040'; ctx.font = "9px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-  ctx.fillText('solar noon 12:00', px0 + pw - 4, yNoon - 2);
+  if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
+    ctx.fillStyle = '#e04040'; ctx.font = "9px 'Share Tech Mono', monospace";
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillText('solar noon 12:00', px0 + pw - 4, yNoon - 2);
+  }
 
   // Plot border
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1.5;
@@ -460,7 +464,7 @@ function drawSunGraph() {
       ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
       ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
       ctx.stroke();
-      if (showLabels) _sgVLabel(ctx, expLbl[i], x, py0, ph, '#ffffff');
+      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, RED);
     });
   }
 
@@ -471,7 +475,7 @@ function drawSunGraph() {
     const x = dayToX(customDoy);
     ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    if (showLabels) _sgVLabel(ctx, 'custom date', x, py0, ph, '#50dc78');
+    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, RED);
   }
   // Semi-transparent orange line at the cursor-hovered day.
   if (sgHoverDay !== null) {
