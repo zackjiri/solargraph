@@ -205,6 +205,17 @@
         </div>
         <button id="sgStatusToggle" title="Hide / show the info panel">▲</button>
       </div>
+      <!-- Sun Graph legend – bottom-left, flush to the corner (shown only in Sun Graph) -->
+      <div id="sgLegend">
+        <div class="sg-leg-item" data-band="night"><span class="sg-leg-sw" style="background:#1c2a35"></span>Night</div>
+        <div class="sg-leg-item" data-band="astro"><span class="sg-leg-sw" style="background:#39505f"></span>Astronomical Twilight</div>
+        <div class="sg-leg-item" data-band="naut"><span class="sg-leg-sw" style="background:#5a7588"></span>Nautical Twilight</div>
+        <div class="sg-leg-item" data-band="civil"><span class="sg-leg-sw" style="background:#9cbdd2"></span>Civil Twilight</div>
+        <div class="sg-leg-item" data-band="day"><span class="sg-leg-sw" style="background:#cfe8f6"></span>Daylight</div>
+        <div class="sg-leg-sep"></div>
+        <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
+        <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
+      </div>
       <button id="btnTheaterExit">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
