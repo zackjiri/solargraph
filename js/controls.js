@@ -67,6 +67,7 @@ document.getElementById('chkGrid').addEventListener('change', (e) => {
 });
 document.getElementById('chkLabels').addEventListener('change', (e) => {
   showLabels = e.target.checked; draw();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // line labels in the graph
 });
 document.getElementById('chkHorizon').addEventListener('change', (e) => {
   showHorizon = e.target.checked; draw();
@@ -496,6 +497,7 @@ document.getElementById('btnDayInc').addEventListener('click', () => {
 });
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
 });
 function updateAxisLegend() {
   const sym = document.getElementById('legAxisSym');
@@ -522,6 +524,7 @@ document.getElementById('btnNoon').addEventListener('click', () => {
   show3DCulmination = !show3DCulmination;
   if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
   updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // show/hide sun marker in the graph
 });
 
 // Day-animation controls: play/stop button + solar-time slider
@@ -534,6 +537,7 @@ document.getElementById('rngSunTime').addEventListener('input', (e) => {
   sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, parseFloat(e.target.value)));
   syncSunTimeUI();
   draw(); draw3D();                            // 2D sun dot + 3D ray
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // move the sun marker in the graph
 });
 
 // ─── Opacity label ──────────────────────────────────────────────────────────
@@ -835,6 +839,7 @@ function setMode(mode) {
     can3dPanel.classList.add('visible');
     sidebar.style.display = '';
     calibSection.classList.remove('calibration-locked');
+    if (typeof setDisplaySectionEnabled === 'function') setDisplaySectionEnabled(true);  // normal Analyzer: Display active
     if (!imgBitmap) uploadZoneEl.classList.remove('hidden');
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
@@ -853,6 +858,7 @@ function setMode(mode) {
     can3dPanel.classList.remove('visible');
     sidebar.style.display = '';
     calibSection.classList.add('calibration-locked');
+    if (typeof setDisplaySectionEnabled === 'function') setDisplaySectionEnabled(true);  // Gallery: Display always unlocked
     uploadZoneEl.classList.add('hidden');
     if (imgBitmap) document.getElementById('canvasContainer').classList.remove('hidden');
     if (!FILELIST) {
@@ -863,8 +869,12 @@ function setMode(mode) {
   }
 }
 
-document.getElementById('btnModeAnalyzer').addEventListener('click', () => setMode('analyzer'));
+// Already in Analyzer (incl. Sun Graph / 3D Model sub-views) → no-op; the graph is part of Analyzer.
+document.getElementById('btnModeAnalyzer').addEventListener('click', () => {
+  if (currentMode !== 'analyzer') setMode('analyzer');
+});
 document.getElementById('btnModeGallery').addEventListener('click', () => {
+  if (currentMode === 'gallery') return;
   if (theaterMode3D) exitTheater3D();
   setMode('gallery');
 });

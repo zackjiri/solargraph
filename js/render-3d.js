@@ -862,6 +862,9 @@ function sunWaveFrame(ts) {
     _waveLast = ts;
     if (theaterMode3D) draw3D();                           // theater: 3D ray + arrow wave
     else { draw(); draw3D(); }                             // analyzer: 2D sun dot (+ preview)
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive
+        && typeof drawSunGraph === 'function') drawSunGraph();   // animate the sun marker in the graph
+
   }
   sunWaveRAF = requestAnimationFrame(sunWaveFrame);
 }
@@ -1093,12 +1096,22 @@ function setTheaterIcon(theater) {
   icon.innerHTML = theater ? SVG_COLLAPSE : SVG_EXPAND;
 }
 
-function setDisplaySectionEnabled(enabled) {
+// enabled=true → whole section active. enabled=false → section disabled, EXCEPT controls whose id
+// is in keepIds (their rows stay active). Dimming is per-row so kept rows can remain bright
+// (parent opacity can't be undone by a child).
+function setDisplaySectionEnabled(enabled, keepIds) {
   const section = document.getElementById('displaySection');
   if (!section) return;
-  section.querySelectorAll('input, button').forEach(el => { el.disabled = !enabled; });
-  section.style.opacity       = enabled ? '' : '0.35';
-  section.style.pointerEvents = enabled ? '' : 'none';
+  const keep = keepIds || [];
+  section.style.opacity = ''; section.style.pointerEvents = '';   // control per-row now
+  section.querySelectorAll('input, button').forEach(el => {
+    el.disabled = !(enabled || keep.includes(el.id));
+  });
+  section.querySelectorAll('.chk-row, .slider-row, #btnHeatmap').forEach(row => {
+    const active = enabled || keep.some(id => row.id === id || row.querySelector('#' + id));
+    row.style.opacity = active ? '' : '0.35';
+    row.style.pointerEvents = active ? '' : 'none';
+  });
 }
 
 function enterTheater3D() {

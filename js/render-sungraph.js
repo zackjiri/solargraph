@@ -51,7 +51,8 @@ function enterSunGraph() {
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
   document.getElementById('sgLegend').style.display = 'flex';     // legend (bottom-left)
-  setDisplaySectionEnabled(false);                               // Display off; Calibration stays live
+  // Display off except Labels (line labels) + Custom date (green line), which control graph elements.
+  setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc']);
 
   sunGraphActive = true;
   if (typeof updateViewButtons === 'function') updateViewButtons();   // sync sub-toggle active states
@@ -236,6 +237,29 @@ function _sgEnsureYearRuns() {
 
 function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
 
+// Vertical (90°-rotated) label just to the LEFT of a vertical line, centred on the plot.
+function _sgVLabel(ctx, text, x, py0, ph, color) {
+  ctx.save();
+  ctx.translate(x - 3, py0 + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = "9px 'Share Tech Mono', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';   // glyphs sit left of the line
+  ctx.fillStyle = color;
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+// Add a band "lens" polygon (between its upper/lower boundary) as a subpath (for hatch clipping).
+function _sgLensSubpath(ctx, up, lo, dayToX, px0, pw, NDAYS) {
+  ctx.moveTo(px0, up[1]);
+  for (let d = 1; d <= NDAYS; d++) ctx.lineTo(dayToX(d), up[d]);
+  ctx.lineTo(px0 + pw, up[NDAYS]);
+  ctx.lineTo(px0 + pw, lo[NDAYS]);
+  for (let d = NDAYS; d >= 1; d--) ctx.lineTo(dayToX(d), lo[d]);
+  ctx.lineTo(px0, lo[1]);
+  ctx.closePath();
+}
+
 function drawSunGraph() {
   const cv = document.getElementById('sunGraphCanvas');
   if (!cv) return;
@@ -308,6 +332,7 @@ function drawSunGraph() {
     { key: 'civil', col: _SG_BANDS.civil, h: _SG_THRESH.civil * D2R },
     { key: 'day',   col: _SG_BANDS.day,   h: _SG_THRESH.day   * D2R },
   ];
+  const lensByKey = {};   // boundary polygons per band, reused for the legend-hover hatch
   for (const lv of levels) {
     const up = new Array(NDAYS + 1), lo = new Array(NDAYS + 1);
     for (let d = 1; d <= NDAYS; d++) {
@@ -315,6 +340,7 @@ function drawSunGraph() {
       up[d] = hourToY(Math.min(24, 12 + wh));   // upper boundary (toward later hours / top)
       lo[d] = hourToY(Math.max(0,  12 - wh));   // lower boundary (toward earlier hours / bottom)
     }
+    lensByKey[lv.key] = { up, lo };
     const e = _sgEmphBand === lv.key;
     ctx.globalAlpha = e ? 0.95 : 0.75;
     ctx.beginPath();
@@ -336,8 +362,8 @@ function drawSunGraph() {
   const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
   const inExp = exp
     ? (exp.startDoy <= exp.endDoy
-        ? (d) => d >= exp.startDoy && d <= exp.endDoy
-        : (d) => d >= exp.startDoy || d <= exp.endDoy)   // exposure wrapping across year-end
+        ? (d) => d >= exp.startDoy && d < exp.endDoy        // [start, end) → right edge meets the end line
+        : (d) => d >= exp.startDoy || d < exp.endDoy)       // exposure wrapping across year-end
     : () => false;
   const yearRuns = _sgEnsureYearRuns();
   const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
@@ -354,6 +380,37 @@ function drawSunGraph() {
       ctx.fillStyle = greenCol(hi);
       for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
     }
+  }
+
+  // ── Legend hover: lightly diagonal-hatch the hovered band's region ────────────
+  if (_sgEmphBand) {
+    ctx.save();
+    ctx.beginPath();
+    const addLens = (k) => { const L = lensByKey[k]; if (L) _sgLensSubpath(ctx, L.up, L.lo, dayToX, px0, pw, NDAYS); };
+    let ok = true;
+    if (_sgEmphBand === 'day')        addLens('day');
+    else if (_sgEmphBand === 'civil') { addLens('civil'); addLens('day'); }
+    else if (_sgEmphBand === 'naut')  { addLens('naut');  addLens('civil'); }
+    else if (_sgEmphBand === 'astro') { addLens('astro'); addLens('naut'); }
+    else if (_sgEmphBand === 'night') { ctx.rect(px0, py0, pw, ph); addLens('astro'); }
+    else if (_sgEmphBand === 'green' || _sgEmphBand === 'red') {
+      const key = _sgEmphBand;
+      for (let d = 1; d <= NDAYS; d++) {
+        const r = yearRuns[d]; if (!r) continue;
+        const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
+        for (const iv of (key === 'green' ? r.green : r.red))
+          ctx.rect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+      }
+    } else ok = false;
+    if (ok) {
+      ctx.clip('evenodd');
+      ctx.strokeStyle = lt ? 'rgba(0,0,0,0.20)' : 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let s = -ph; s < pw; s += 7) { ctx.moveTo(px0 + s, py0 + ph); ctx.lineTo(px0 + s + ph, py0); }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ── Gridlines (subtle, on top of bands) + axis labels ────────────────────────
@@ -394,30 +451,44 @@ function drawSunGraph() {
   // ── Exposure interval boundaries: white verticals spanning only the daylight zone ─
   if (exp) {
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
-    for (const doy of [exp.startDoy, exp.endDoy]) {
+    const expLbl = ['exposure start', 'exposure end'];
+    [exp.startDoy, exp.endDoy].forEach((doy, i) => {
       const wd = _sgDayWidths(doy, sphi, cphi).day;   // daylight half-width [h]
-      if (wd <= 0) continue;
+      if (wd <= 0) return;
       const x = dayToX(doy);
       ctx.beginPath();
       ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
       ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
       ctx.stroke();
-    }
+      if (showLabels) _sgVLabel(ctx, expLbl[i], x, py0, ph, '#ffffff');
+    });
   }
 
   // ── Day markers in the plot ──────────────────────────────────────────────────
   const customDoy = dayOfYear(customMonth, customDay);
-  // Green vertical line at the Custom Path date (always shown).
-  {
+  // Green vertical line at the Custom Path date (toggled by the Display "Custom date" checkbox).
+  if (showCustomArc) {
     const x = dayToX(customDoy);
     ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
+    if (showLabels) _sgVLabel(ctx, 'custom date', x, py0, ph, '#50dc78');
   }
   // Semi-transparent orange line at the cursor-hovered day.
   if (sgHoverDay !== null) {
     const x = dayToX(sgHoverDay);
     ctx.strokeStyle = 'rgba(232,160,32,0.55)'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
+  }
+  // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
+  if (typeof show3DCulmination !== 'undefined' && show3DCulmination) {
+    const sx = dayToX(customDoy), sy = hourToY(sunTimeHours);
+    const glR = 11;
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glR);
+    glow.addColorStop(0, 'rgba(232,160,32,0.65)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
+    ctx.fillStyle = glow; ctx.fillRect(sx - glR, sy - glR, glR * 2, glR * 2);
+    ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8a020'; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
   }
 
   // ── Selected-day strip (100% opacity) + centered date label ───────────────────
