@@ -445,8 +445,8 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const DAYS_IN_MONTH = [31,28,31,30,31,30,31,31,30,31,30,31];
 let customMonth = 7; // 1-based, default July
 let customDay = 20;
-let showCustomArc = false;
-let show3DCulmination = false;
+let showCustomArc = true;        // Custom date on by default (Gallery + Analyzer)
+let show3DCulmination = true;    // Sun path (custom date) on by default (Analyzer)
 let show3DCladding    = true;  // cylinder cladding – on by default
 let _wavePhase        = 0;     // ms timestamp driving the hourly-arrow "Mexican wave"
 let sunWaveRAF        = null;  // requestAnimationFrame handle for the wave loop
@@ -821,10 +821,12 @@ function setMode(mode) {
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
     draw3D();
-    if (typeof updateSunGraphButton === 'function') updateSunGraphButton();  // reveal SUN GRAPH sub-toggle
+    if (typeof updateViewButtons === 'function') updateViewButtons();  // reveal 3D MODEL / SUN GRAPH sub-toggles
+    if (typeof updateSunAnimCtl === 'function') updateSunAnimCtl();     // reflect default Sun-path state
   } else {
-    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();  // leaving Analyzer closes Sun Graph
-    if (typeof updateSunGraphButton === 'function') updateSunGraphButton();        // hide the sub-toggle
+    if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();  // leaving Analyzer closes 3D model
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();   // ...and Sun Graph
+    if (typeof updateViewButtons === 'function') updateViewButtons();              // hide the sub-toggles
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
     btnA.className = 'mode-btn';

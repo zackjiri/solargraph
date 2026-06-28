@@ -14,18 +14,24 @@ let sunGraphActive = false;
 let sgHoverDay = null;      // day-of-year under cursor while over the plot, else null → custom date
 let _sgLayout  = null;      // {px0,py0,pw,ph,laneY,recapH} for cursor hit-testing
 
-// Shows / hides + sizes the SUN GRAPH sub-toggle. Visible only in Analyzer; its width is
-// matched to the ANALYZER button so it sits flush underneath.
-function updateSunGraphButton() {
-  const btn = document.getElementById('btnModeSunGraph');
-  if (!btn) return;
+// Shows / hides + sizes the 3D MODEL and SUN GRAPH sub-toggles (visible only in Analyzer),
+// matching their widths to the GALLERY / ANALYZER buttons above, and reflecting the active view.
+function updateViewButtons() {
+  const sub = document.querySelector('.mode-subrow');
+  const bT  = document.getElementById('btnModeTheater');
+  const bS  = document.getElementById('btnModeSunGraph');
+  if (!sub || !bT || !bS) return;
   if (currentMode === 'analyzer') {
-    btn.style.display = 'block';
-    const btnA = document.getElementById('btnModeAnalyzer');
-    if (btnA) btn.style.width = btnA.offsetWidth + 'px';
+    sub.style.display = 'flex';
+    const bG = document.getElementById('btnModeGallery');
+    const bA = document.getElementById('btnModeAnalyzer');
+    if (bG) bT.style.width = bG.offsetWidth + 'px';   // 3D MODEL ↔ GALLERY width
+    if (bA) bS.style.width = bA.offsetWidth + 'px';   // SUN GRAPH ↔ ANALYZER width
   } else {
-    btn.style.display = 'none';
+    sub.style.display = 'none';
   }
+  bT.classList.toggle('active', typeof theaterMode3D !== 'undefined' && theaterMode3D);
+  bS.classList.toggle('active', sunGraphActive);
 }
 
 function enterSunGraph() {
@@ -42,9 +48,9 @@ function enterSunGraph() {
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
   setDisplaySectionEnabled(false);                               // Display off; Calibration stays live
-  document.getElementById('btnModeSunGraph').classList.add('active');
 
   sunGraphActive = true;
+  if (typeof updateViewButtons === 'function') updateViewButtons();   // sync sub-toggle active states
   resizeSunGraph();
 }
 
@@ -52,9 +58,8 @@ function exitSunGraph() {
   document.getElementById('sunGraphCanvas').style.display = 'none';
   document.getElementById('sgStatusWrap').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
-  const btn = document.getElementById('btnModeSunGraph');
-  if (btn) btn.classList.remove('active');
   sunGraphActive = false;
+  if (typeof updateViewButtons === 'function') updateViewButtons();
 
   if (currentMode === 'analyzer') {
     setDisplaySectionEnabled(true);
@@ -385,9 +390,7 @@ function drawSunGraph() {
     : 'CUSTOM DATE: ' + (MONTH_NAMES[customMonth - 1] + ' ' + customDay).toUpperCase();
   ctx.font = "bold 11px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.65)';
-  ctx.strokeText(label, px0 + pw / 2, laneY + recapH / 2);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#ff8c00';   // saturated orange, no outline/shadow
   ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
 
   // Title (uses current calibration latitude / hemisphere)

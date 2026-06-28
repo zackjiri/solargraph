@@ -367,7 +367,7 @@ function drawAllSunArcs(W, H) {
   });
 }
 
-let showSunArc = false;
+let showSunArc = true;   // Sun's paths on by default (Gallery + Analyzer)
 let showHeatmap = false;
 
 const canvas = document.getElementById('mainCanvas');
