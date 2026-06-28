@@ -981,6 +981,32 @@
   }
   body.light #sunGraphCanvas { background: #ffffff; }
 
+  /* Sun Graph legend – flush to the bottom-left corner, semi-transparent, no border/radius */
+  #sgLegend {
+    position: absolute; left: 0; bottom: 0;
+    z-index: 11; display: none;          /* flex, shown by JS in Sun Graph */
+    flex-direction: column; gap: 3px;
+    padding: 8px 10px;
+    background: rgba(7,9,13,0.72);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+    color: #9fb2c4;
+  }
+  body.light #sgLegend { background: rgba(245,247,249,0.82); color: #445a6e; }
+  .sg-leg-item {
+    display: flex; align-items: center; gap: 7px;
+    white-space: nowrap; cursor: default;
+    transition: color 0.12s;
+  }
+  .sg-leg-item:hover { color: var(--text); }
+  .sg-leg-toggle { cursor: pointer; }
+  .sg-leg-toggle.off { opacity: 0.4; text-decoration: line-through; }
+  .sg-leg-sw {
+    width: 11px; height: 11px; flex: 0 0 11px; box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.3);
+  }
+  .sg-leg-sep { height: 1px; margin: 3px 0; background: rgba(255,255,255,0.22); }
+  body.light .sg-leg-sep { background: rgba(0,0,0,0.25); }
+
   #btnTheaterExit {
     position: absolute; top: 10px; right: 12.5px;
     font-family: var(--mono); font-size: 12.5px;
