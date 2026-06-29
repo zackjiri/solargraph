@@ -244,14 +244,14 @@ function _sgOutText(ctx, text, x, y, out) {
   ctx.fillText(text, x, y);
 }
 
-// Vertical (90°-rotated) label just to the LEFT of a vertical line, starting at the noon line
-// and reading upward. Larger horizontal offset so the Sun marker on the line doesn't overlap it.
-function _sgVLabel(ctx, text, x, noonY, color, out) {
+// Vertical (90°-rotated) label beside a vertical line, starting at the noon line and reading upward.
+// rightSide=true places the label to the right (used when the line is near Jan 1 and the left side clips).
+function _sgVLabel(ctx, text, x, noonY, color, out, rightSide) {
   ctx.save();
-  ctx.translate(x - 10, noonY - 5);    // gap left of the line (clears the Sun marker) + above noon
+  ctx.translate(rightSide ? x + 3 : x - 10, noonY - 5);
   ctx.rotate(-Math.PI / 2);
   ctx.font = "9px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';   // reads upward; glyphs sit left of the line
+  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = color;
   _sgOutText(ctx, text, 0, 0, out);
   ctx.restore();
@@ -289,8 +289,8 @@ function drawSunGraph() {
     bg: '#07090d', plot: '#0b0f15', grid: 'rgba(255,255,255,0.10)',
     border: 'rgba(255,255,255,0.25)', text: '#9fb2c4', accent: '#e8a020'
   };
-  const RED = '#ff3b30';   // red only for the in-plot line labels (custom date, exposure start/end)
   const OUT = lt ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';   // year-diagram label outline (canvas style)
+  const OUT_LBL = 'rgba(0,0,0,0.80)';   // line labels: always dark outline so white text reads on any band
 
   ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, W, H);
@@ -472,7 +472,7 @@ function drawSunGraph() {
       ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
       ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
       ctx.stroke();
-      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, RED, OUT);
+      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, '#ffffff', OUT_LBL, doy < 10);
     });
   }
 
@@ -483,7 +483,7 @@ function drawSunGraph() {
     const x = dayToX(customDoy);
     ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, RED, OUT);
+    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, '#ffffff', OUT_LBL, customDoy < 10);
   }
   // Semi-transparent orange line at the cursor-hovered day.
   if (sgHoverDay !== null) {
