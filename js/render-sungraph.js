@@ -248,7 +248,7 @@ function _sgOutText(ctx, text, x, y, out) {
 // rightSide=true places the label to the right (used when the line is near Jan 1 and the left side clips).
 function _sgVLabel(ctx, text, x, noonY, color, out, rightSide) {
   ctx.save();
-  ctx.translate(rightSide ? x + 3 : x - 10, noonY - 10);
+  ctx.translate(rightSide ? x + 13 : x - 20, noonY - 5);
   ctx.rotate(-Math.PI / 2);
   ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
