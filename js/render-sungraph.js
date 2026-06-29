@@ -250,7 +250,7 @@ function _sgVLabel(ctx, text, x, noonY, color, out, rightSide) {
   ctx.save();
   ctx.translate(rightSide ? x + 3 : x - 10, noonY - 5);
   ctx.rotate(-Math.PI / 2);
-  ctx.font = "9px 'Share Tech Mono', monospace";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = color;
   _sgOutText(ctx, text, 0, 0, out);
@@ -451,7 +451,7 @@ function drawSunGraph() {
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(px0, yNoon); ctx.lineTo(px0 + pw, yNoon); ctx.stroke();
   if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
-    ctx.fillStyle = '#e04040'; ctx.font = "9px 'Share Tech Mono', monospace";
+    ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon - 2, OUT);
   }
@@ -538,7 +538,7 @@ function drawSunGraph() {
   // ── Hour axis under the strip (range 00–24, labels 00–22) ─────────────────────
   const axisY = laneY + recapH;
   ctx.strokeStyle = pal.grid; ctx.fillStyle = pal.text; ctx.lineWidth = 1;
-  ctx.font = "9px 'Share Tech Mono', monospace";
+  ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   for (let h = 0; h <= 22; h += 2) {
     const x = xh(h);
