@@ -453,7 +453,7 @@ function drawSunGraph() {
   if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
     ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon - 2, OUT);
+    _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon + 12, OUT);
   }
 
   // Plot border
