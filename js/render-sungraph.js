@@ -237,16 +237,23 @@ function _sgEnsureYearRuns() {
 
 function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
 
+// Outlined text (canvas-style, for readability over the bands): dark/light halo + fill.
+function _sgOutText(ctx, text, x, y, out) {
+  ctx.lineJoin = 'round'; ctx.lineWidth = 2.5; ctx.strokeStyle = out;
+  ctx.strokeText(text, x, y);
+  ctx.fillText(text, x, y);
+}
+
 // Vertical (90°-rotated) label just to the LEFT of a vertical line, starting at the noon line
-// and reading upward (small gap above noon).
-function _sgVLabel(ctx, text, x, noonY, color) {
+// and reading upward. Larger horizontal offset so the Sun marker on the line doesn't overlap it.
+function _sgVLabel(ctx, text, x, noonY, color, out) {
   ctx.save();
-  ctx.translate(x - 1, noonY - 5);     // small gap above the noon line
+  ctx.translate(x - 10, noonY - 5);    // gap left of the line (clears the Sun marker) + above noon
   ctx.rotate(-Math.PI / 2);
   ctx.font = "9px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';   // reads upward; glyphs sit left of the line
   ctx.fillStyle = color;
-  ctx.fillText(text, 0, 0);
+  _sgOutText(ctx, text, 0, 0, out);
   ctx.restore();
 }
 
@@ -283,6 +290,7 @@ function drawSunGraph() {
     border: 'rgba(255,255,255,0.25)', text: '#9fb2c4', accent: '#e8a020'
   };
   const RED = '#ff3b30';   // red only for the in-plot line labels (custom date, exposure start/end)
+  const OUT = lt ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';   // year-diagram label outline (canvas style)
 
   ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, W, H);
@@ -424,7 +432,7 @@ function drawSunGraph() {
     ctx.beginPath(); ctx.moveTo(px0, y); ctx.lineTo(px0 + pw, y); ctx.stroke();
     if (h < 24) {   // omit the "24" label (coincides with the top border)
       ctx.fillStyle = pal.text; ctx.textAlign = 'right';
-      ctx.fillText(String(h).padStart(2, '0'), px0 - 6, y);
+      _sgOutText(ctx, String(h).padStart(2, '0'), px0 - 6, y, OUT);
     }
   }
   const starts = _monthStartDoy();
@@ -435,7 +443,7 @@ function drawSunGraph() {
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
     const nextDoy = (m < 11) ? starts[m + 1] : _DAYS_IN_YEAR + 1;
     ctx.fillStyle = pal.text; ctx.textAlign = 'center';
-    ctx.fillText(MONTH_NAMES[m], dayToX((starts[m] + nextDoy) / 2), py0 + ph + 15);
+    _sgOutText(ctx, MONTH_NAMES[m], dayToX((starts[m] + nextDoy) / 2), py0 + ph + 15, OUT);
   }
 
   // Solar noon line (flat at 12:00 in solar time)
@@ -445,7 +453,7 @@ function drawSunGraph() {
   if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
     ctx.fillStyle = '#e04040'; ctx.font = "9px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('solar noon 12:00', px0 + pw - 4, yNoon - 2);
+    _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon - 2, OUT);
   }
 
   // Plot border
@@ -464,7 +472,7 @@ function drawSunGraph() {
       ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
       ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
       ctx.stroke();
-      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, RED);
+      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, RED, OUT);
     });
   }
 
@@ -475,7 +483,7 @@ function drawSunGraph() {
     const x = dayToX(customDoy);
     ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, RED);
+    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, RED, OUT);
   }
   // Semi-transparent orange line at the cursor-hovered day.
   if (sgHoverDay !== null) {
