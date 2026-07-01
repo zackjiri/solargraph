@@ -221,6 +221,21 @@
           <div class="sg-leg-item sg-leg-toggle" data-band="chmi"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
         </div>
       </div>
+      <!-- Image-mode legend – bottom-right, always (shown only in plain Analyzer/image view), collapsible -->
+      <div id="imgLegendWrap">
+        <button id="imgLegendToggle" title="Hide / show the legend">▼</button>
+        <div id="imgLegend" title="Click to hide">
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#E8A020"></span>Azimuth grid</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#20A0E8"></span>Altitude grid</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#FFFFFF"></span>Horizon</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#FFDC3C"></span>Equinox</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#3CB4FF"></span>Solstice (W)</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#FF643C"></span>Solstice (S)</div>
+          <div class="sg-leg-item"><span class="sg-leg-sw" style="background:#50DC78"></span>Custom date</div>
+          <div class="sg-leg-sep"></div>
+          <div class="sg-leg-item sg-leg-toggle" data-band="imgchmi"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
+        </div>
+      </div>
       <button id="btnTheaterExit">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
