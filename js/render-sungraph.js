@@ -16,6 +16,7 @@ let _sgLayout  = null;      // {px0,py0,pw,ph,laneY,recapH} for cursor hit-testi
 let _sgEmphBand  = null;    // legend item hovered → emphasise that band/area
 let _sgShowGreen = true;    // legend toggle: show on-paper (green) overlay
 let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overlay
+let _sgShowChmi  = true;    // legend toggle: show measured CHMI sunshine overlay
 
 // Shows / hides + sizes the 3D MODEL and SUN GRAPH sub-toggles (visible only in Analyzer),
 // matching their widths to the GALLERY / ANALYZER buttons above, and reflecting the active view.
@@ -237,6 +238,49 @@ function _sgEnsureYearRuns() {
 
 function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
 
+// ── CHMI measured sunshine overlay (SSV10M, seconds of sunshine per 10-min sample) ────────────
+// Black→yellow gradient (see project notes): dark = little/no measured sun, gold = full 10 min.
+const _SG_CHMI_STOPS = [
+  [0,   [0x11, 0x0F, 0x08]],
+  [150, [0x4F, 0x41, 0x17]],
+  [300, [0xA5, 0x83, 0x1D]],
+  [450, [0xE8, 0xA0, 0x20]],
+  [600, [0xFF, 0xD2, 0x4D]],
+];
+function _sgChmiColor(sec, alpha) {
+  const s = Math.max(0, Math.min(600, sec));
+  let i = 0;
+  while (i < _SG_CHMI_STOPS.length - 2 && s > _SG_CHMI_STOPS[i + 1][0]) i++;
+  const [s0, c0] = _SG_CHMI_STOPS[i], [s1, c1] = _SG_CHMI_STOPS[i + 1];
+  const t = (s1 === s0) ? 0 : (s - s0) / (s1 - s0);
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * t);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * t);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * t);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+
+// Buckets currentChmi (raw UTC [iso, seconds|null] pairs, from controls.js) into local
+// day-of-year → [[hourFloat, seconds], ...], applying offsetMin only here (render time) so the
+// stored data itself never bakes in a timezone/longitude assumption. Cached on object identity.
+let _sgChmiByDoy = null, _sgChmiSrc = null;
+function _sgEnsureChmiByDoy() {
+  if (typeof currentChmi === 'undefined' || !currentChmi) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
+  if (_sgChmiSrc === currentChmi) return _sgChmiByDoy;
+  _sgChmiSrc = currentChmi;
+  const byDoy = new Map();
+  const offMs = currentChmi.offsetMin * 60000;
+  for (const [iso, sec] of currentChmi.values) {
+    const local = new Date(Date.parse(iso) + offMs);
+    // Reading UTC getters off the shifted instant yields the local wall-clock date/time fields.
+    const doy  = dayOfYear(local.getUTCMonth() + 1, local.getUTCDate());
+    const hour = local.getUTCHours() + local.getUTCMinutes() / 60;
+    if (!byDoy.has(doy)) byDoy.set(doy, []);
+    byDoy.get(doy).push([hour, sec]);
+  }
+  _sgChmiByDoy = byDoy;
+  return byDoy;
+}
+
 // Outlined text (canvas-style, for readability over the bands): dark/light halo + fill.
 function _sgOutText(ctx, text, x, y, out) {
   ctx.lineJoin = 'round'; ctx.lineWidth = 2.5; ctx.strokeStyle = out;
@@ -389,6 +433,26 @@ function drawSunGraph() {
     if (_sgShowGreen) {
       ctx.fillStyle = greenCol(hi);
       for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+    }
+  }
+
+  // ── CHMI measured sunshine overlay (continuous gradient, 10-min resolution) ──
+  // Drawn on top of the theoretical green/red overlay - only exists for days covered by the
+  // loaded station extract (chmi/GEN-X_Y.json), everywhere else this simply draws nothing.
+  if (_sgShowChmi) {
+    const chmiByDoy = _sgEnsureChmiByDoy();
+    if (chmiByDoy) {
+      const alpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
+      for (const [d, samples] of chmiByDoy) {
+        if (d < 1 || d > NDAYS) continue;
+        const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
+        for (const [hour, sec] of samples) {
+          if (sec === null) continue;
+          const y0 = hourToY(Math.min(24, hour + 1 / 6)), y1 = hourToY(hour);
+          ctx.fillStyle = _sgChmiColor(sec, alpha);
+          ctx.fillRect(x0, y0, w, Math.max(1, y1 - y0));
+        }
+      }
     }
   }
 
@@ -591,8 +655,11 @@ function setSgStatusCollapsed(c) {
     el.addEventListener('mouseleave', () => { _sgEmphBand = null; if (sunGraphActive) drawSunGraph(); });
     if (el.classList.contains('sg-leg-toggle')) {
       el.addEventListener('click', () => {
-        if (band === 'green') _sgShowGreen = !_sgShowGreen; else if (band === 'red') _sgShowRed = !_sgShowRed;
-        el.classList.toggle('off', band === 'green' ? !_sgShowGreen : !_sgShowRed);
+        if (band === 'green') _sgShowGreen = !_sgShowGreen;
+        else if (band === 'red') _sgShowRed = !_sgShowRed;
+        else if (band === 'chmi') _sgShowChmi = !_sgShowChmi;
+        const isOff = band === 'green' ? !_sgShowGreen : band === 'red' ? !_sgShowRed : !_sgShowChmi;
+        el.classList.toggle('off', isOff);
         if (sunGraphActive) drawSunGraph();
       });
     }

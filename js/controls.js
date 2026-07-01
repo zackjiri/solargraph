@@ -363,6 +363,7 @@ document.getElementById('btnScanWInc').addEventListener('click', () => applyScan
 
 function loadImage(file) {
   currentExposure = null;   // uploaded image has no filelist metadata → no exposure overlay
+  currentChmi     = null;   // ditto for the CHMI sunshine overlay
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -631,6 +632,33 @@ function setCurrentExposureFromGallery() {
   }
 }
 
+// Measured sunshine data (CHMI, SSV10M) for the current GALLERY image, keyed off filelist
+// metadata; null for images with no station assigned or that fail to load. Timestamps in
+// `values` stay UTC (see chmi_10min/extract-chmi.ps1) - offsetMin is applied at render time
+// (Sun Graph), not baked in here.
+let currentChmi = null;
+async function setCurrentChmiFromGallery() {
+  currentChmi = null;
+  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
+  const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
+  const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
+  const m = img && img.metadata;
+  if (!m || !m.chmi_wsi_station || typeof m.time_offset_utc !== 'number') return;
+
+  const genId = galleryState.genId, imageIndex = galleryState.imageIndex;
+  try {
+    const res = await fetch(`chmi/GEN-${genId}_${imageIndex}.json`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    // Gallery selection may have moved on while this fetch was in flight - discard if stale.
+    if (galleryState.genId !== genId || galleryState.imageIndex !== imageIndex) return;
+    currentChmi = { offsetMin: m.time_offset_utc, values: data.values };
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  } catch (e) {
+    console.warn('CHMI data not found for GEN-' + genId + '_' + imageIndex + ':', e);
+  }
+}
+
 async function loadFilelist() {
   try {
     const [flRes, prRes] = await Promise.all([
@@ -769,6 +797,7 @@ function loadGalleryImage() {
   if (galleryState.genId === null || galleryState.imageIndex === null) return;
 
   setCurrentExposureFromGallery();   // exposure interval for the Sun Graph (from filelist metadata)
+  setCurrentChmiFromGallery();       // measured sunshine overlay for the Sun Graph (async, redraws when ready)
 
   // Aplikuj kalibraci z presets.json
   applyGalleryPreset(galleryState.genId, galleryState.imageIndex);
