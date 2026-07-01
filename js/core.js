@@ -229,6 +229,50 @@ function dayOfYear(month, day) {
   return d;
 }
 
+// ── CHMI measured sunshine (SSV10M, seconds of sunshine per 10-min sample) ────────────────────
+// Shared by the Sun Graph (render-sungraph.js) and the 2D Custom Path overlay (render-2d.js).
+// Black→yellow gradient (see project notes): dark = little/no measured sun, gold = full 10 min.
+const _SG_CHMI_STOPS = [
+  [0,   [0x11, 0x0F, 0x08]],
+  [150, [0x4F, 0x41, 0x17]],
+  [300, [0xA5, 0x83, 0x1D]],
+  [450, [0xE8, 0xA0, 0x20]],
+  [600, [0xFF, 0xD2, 0x4D]],
+];
+function _sgChmiColor(sec, alpha) {
+  const s = Math.max(0, Math.min(600, sec));
+  let i = 0;
+  while (i < _SG_CHMI_STOPS.length - 2 && s > _SG_CHMI_STOPS[i + 1][0]) i++;
+  const [s0, c0] = _SG_CHMI_STOPS[i], [s1, c1] = _SG_CHMI_STOPS[i + 1];
+  const t = (s1 === s0) ? 0 : (s - s0) / (s1 - s0);
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * t);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * t);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * t);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+
+// Buckets currentChmi (raw UTC [iso, seconds|null] pairs, from controls.js) into local
+// day-of-year → [[hourFloat, seconds], ...], applying offsetMin only here (render time) so the
+// stored data itself never bakes in a timezone/longitude assumption. Cached on object identity.
+let _sgChmiByDoy = null, _sgChmiSrc = null;
+function _sgEnsureChmiByDoy() {
+  if (typeof currentChmi === 'undefined' || !currentChmi) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
+  if (_sgChmiSrc === currentChmi) return _sgChmiByDoy;
+  _sgChmiSrc = currentChmi;
+  const byDoy = new Map();
+  const offMs = currentChmi.offsetMin * 60000;
+  for (const [iso, sec] of currentChmi.values) {
+    const local = new Date(Date.parse(iso) + offMs);
+    // Reading UTC getters off the shifted instant yields the local wall-clock date/time fields.
+    const doy  = dayOfYear(local.getUTCMonth() + 1, local.getUTCDate());
+    const hour = local.getUTCHours() + local.getUTCMinutes() / 60;
+    if (!byDoy.has(doy)) byDoy.set(doy, []);
+    byDoy.get(doy).push([hour, sec]);
+  }
+  _sgChmiByDoy = byDoy;
+  return byDoy;
+}
+
 // Azimuth and elevation of sun for hour angle H (rad), declination δ (rad), latitude φ (rad)
 // Returns { az, el } in degrees; az = world azimuth 0=N, 90=E, 180=S, 270=W
 function sunPosition(H, delta, phi) {
@@ -369,6 +413,7 @@ function drawAllSunArcs(W, H) {
 
 let showSunArc = true;   // Sun's paths on by default (Gallery + Analyzer)
 let showHeatmap = false;
+let showImgChmi = false;   // 2D-canvas CHMI halo on the Custom Path (image-mode legend toggle), off by default
 
 const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');

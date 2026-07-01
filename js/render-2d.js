@@ -35,6 +35,9 @@ function draw() {
   if (showCustomArc) {
     const op = dispOpacity;
     const { month: cm, day: cd } = customArcDate();
+    // CHMI measured-sunshine halo (legend toggle, default off) – drawn first/widest so it peeks
+    // out from behind the black outline + green line, same path, no other elements affected.
+    if (typeof showImgChmi !== 'undefined' && showImgChmi) drawChmiHalo(W, H, cm, cd, 6);
     drawSunArc(W, H, cm, cd, {
       color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
       showHourDots: false, showHourLabels: false, edgeLabel: null
@@ -89,6 +92,53 @@ function draw() {
 
   // Cursor crosshair – hide in split mode
   if (mouseX >= 0 && !splitActive) drawCrosshair(W, H);
+}
+
+// CHMI measured-sunshine halo along the Custom Path curve. Same point sequence as drawSunArc
+// (sunPosition + azElToPixel), but sampled at 2.5° steps (= 10 min, matching the data's own
+// resolution) and stroked segment-by-segment so each 10-min bucket gets its own flat colour
+// (hard edges between segments, no blending - consistent with the Sun Graph cells).
+// cm/cd = the (possibly SH-shifted) path-convention date the curve itself is plotted with;
+// the CHMI lookup uses the real, unshifted custom date since weather is tied to a real calendar day.
+function drawChmiHalo(W, H, cm, cd, lineWidth) {
+  const chmiByDoy = _sgEnsureChmiByDoy();
+  if (!chmiByDoy) return;
+  const daySamples = chmiByDoy.get(dayOfYear(customMonth, customDay));
+  if (!daySamples) return;
+
+  const bySlot = new Map();   // slot 0..143 (10-min index into the day) → seconds|null
+  for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
+
+  const delta = sunDeclination(dayOfYear(cm, cd));
+  const phi   = effectiveLat();
+  const op    = dispOpacity;
+  const alpha = Math.min(1, op * 0.9);
+
+  let prevPos = null, prevSec;
+  for (let hDeg = -180; hDeg <= 180; hDeg += 2.5) {
+    const Hrad = hDeg * Math.PI / 180;
+    const { el, beta } = sunPosition(Hrad, delta, phi);
+    let pos = null;
+    if (el >= 0) {
+      pos = azElToPixel(beta - yawDeg, el);
+      if (pos && (pos.px < -20 || pos.px > W + 20)) pos = null;
+    }
+
+    if (pos && prevPos && prevSec !== undefined && prevSec !== null) {
+      ctx.beginPath();
+      ctx.moveTo(prevPos.px, prevPos.py);
+      ctx.lineTo(pos.px, pos.py);
+      ctx.strokeStyle = _sgChmiColor(prevSec, alpha);
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+    const slot = ((Math.round(solarHour * 6) % 144) + 144) % 144;
+    prevSec = pos ? bySlot.get(slot) : undefined;
+    prevPos = pos;
+  }
 }
 
 function drawGrid(W, H) {

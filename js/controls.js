@@ -501,6 +501,28 @@ document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
 });
+
+// Image-mode legend (bottom-right, plain Analyzer view): CHMI toggle (only interactive item) + collapse.
+document.querySelector('#imgLegend [data-band="imgchmi"]').addEventListener('click', (e) => {
+  e.stopPropagation();   // don't let this bubble up to #imgLegend's collapse-on-click
+  showImgChmi = !showImgChmi;
+  e.currentTarget.classList.toggle('off', !showImgChmi);
+  draw();
+});
+let imgLegendCollapsed = false;
+function setImgLegendCollapsed(c) {
+  imgLegendCollapsed = c;
+  const w = document.getElementById('imgLegendWrap'), t = document.getElementById('imgLegendToggle');
+  if (w) w.classList.toggle('collapsed', c);
+  if (t) t.textContent = c ? '▲' : '▼';   // down = shown, up = hidden (same convention as sgLegendToggle)
+}
+(function () {
+  const tog = document.getElementById('imgLegendToggle');
+  const panel = document.getElementById('imgLegend');
+  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setImgLegendCollapsed(!imgLegendCollapsed); });
+  if (panel) panel.addEventListener('click', () => setImgLegendCollapsed(true));
+})();
+
 function updateAxisLegend() {
   const sym = document.getElementById('legAxisSym');
   const lbl = document.getElementById('legAxisLbl');
