@@ -364,6 +364,7 @@ document.getElementById('btnScanWInc').addEventListener('click', () => applyScan
 function loadImage(file) {
   currentExposure = null;   // uploaded image has no filelist metadata → no exposure overlay
   currentChmi     = null;   // ditto for the CHMI sunshine overlay
+  currentHalf     = null;   // ditto for the Sun Graph legend corner
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -632,6 +633,18 @@ function setCurrentExposureFromGallery() {
   }
 }
 
+// Which half of the year the current generation covers ('H1'|'H2'), from its label
+// (convention YYYY_Hn_GEN-ROMAN, see filelist.json). Used by the Sun Graph legend to pick a
+// corner that stays clear of the data (H1 → Jan-Jun busy on the left → legend goes right).
+let currentHalf = null;
+function setCurrentHalfFromGallery() {
+  currentHalf = null;
+  if (!FILELIST || galleryState.genId === null) return;
+  const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
+  const m = gen && gen.label && gen.label.match(/_H([12])_/);
+  if (m) currentHalf = 'H' + m[1];
+}
+
 // Measured sunshine data (CHMI, SSV10M) for the current GALLERY image, keyed off filelist
 // metadata; null for images with no station assigned or that fail to load. Timestamps in
 // `values` stay UTC (see chmi_10min/extract-chmi.ps1) - offsetMin is applied at render time
@@ -798,6 +811,7 @@ function loadGalleryImage() {
 
   setCurrentExposureFromGallery();   // exposure interval for the Sun Graph (from filelist metadata)
   setCurrentChmiFromGallery();       // measured sunshine overlay for the Sun Graph (async, redraws when ready)
+  setCurrentHalfFromGallery();       // H1/H2 → which corner the Sun Graph legend should use
 
   // Aplikuj kalibraci z presets.json
   applyGalleryPreset(galleryState.genId, galleryState.imageIndex);

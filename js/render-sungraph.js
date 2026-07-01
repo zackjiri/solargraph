@@ -344,16 +344,24 @@ function drawSunGraph() {
   const monthLblH = 20;   // month labels under the plot
   const recapGap  = 8;
   const recapH    = 30;   // selected-day strip
+  const chmiStripH = recapH * 0.25;   // CHMI measured-sunshine line, directly above the strip
   const hourAxisH = 16;   // hour ruler (00–22) under the strip
-  const mB  = monthLblH + recapGap + recapH + hourAxisH;
+  const mB  = monthLblH + recapGap + chmiStripH + recapH + hourAxisH;
   const px0 = mL, py0 = mT, pw = Math.max(10, W - mL - mR), ph = Math.max(10, H - mT - mB);
-  const laneY = py0 + ph + monthLblH + recapGap;   // top of the bottom strip
+  const chmiLaneY = py0 + ph + monthLblH + recapGap;   // top of the CHMI strip line
+  const laneY = chmiLaneY + chmiStripH;                // top of the bottom (band) strip
   _sgLayout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
 
-  // Pin the legend to the plot's bottom-left corner (axes intersection: Jan 1 / 00 h),
-  // i.e. its bottom-left sits at (px0, py0+ph) and it grows up-right into the plot.
+  // Pin the legend to the plot's bottom corner, on whichever side stays clear of the CHMI
+  // data (H1 generations cluster their exposure in Jan-Jun → legend goes bottom-right instead
+  // of the default bottom-left). Unknown / H2 generations keep the original left placement.
   const _leg = document.getElementById('sgLegend');
-  if (_leg) { _leg.style.left = px0 + 'px'; _leg.style.bottom = (H - (py0 + ph)) + 'px'; }
+  if (_leg) {
+    const legRight = (typeof currentHalf !== 'undefined' && currentHalf === 'H1');
+    _leg.style.left   = legRight ? 'auto' : (px0 + 'px');
+    _leg.style.right  = legRight ? ((W - (px0 + pw)) + 'px') : 'auto';
+    _leg.style.bottom = (H - (py0 + ph)) + 'px';
+  }
 
   ctx.fillStyle = pal.plot;
   ctx.fillRect(px0, py0, pw, ph);
@@ -442,12 +450,27 @@ function drawSunGraph() {
   if (_sgShowChmi) {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
+      // Inclusive exposure-day clip (unlike inExp above, which is a half-open [start,end)
+      // convenience for the highlight rectangles) - keeps the layer from spilling one day past
+      // exposure_end, which happens because the +time_offset_utc shift can roll a UTC sample
+      // from the last extracted day into the next local calendar day.
+      const inChmiRange = exp
+        ? (exp.startDoy <= exp.endDoy
+            ? (d) => d >= exp.startDoy && d <= exp.endDoy
+            : (d) => d >= exp.startDoy || d <= exp.endDoy)
+        : () => true;
       const alpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
       for (const [d, samples] of chmiByDoy) {
-        if (d < 1 || d > NDAYS) continue;
+        if (d < 1 || d > NDAYS || !inChmiRange(d)) continue;
+        // Only draw between the start/end of "night" (astro-twilight boundary), with the twilight
+        // band itself as a reserve margin beyond the model's own sunrise/sunset - real light can
+        // arrive slightly earlier/later than the geometric model. Deep night is skipped outright:
+        // the sensor reads ~0 there anyway, so drawing it would only add visual noise.
+        const wAstro = _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sdel[d], cdel[d]);
+        const hMin = 12 - wAstro, hMax = 12 + wAstro;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
         for (const [hour, sec] of samples) {
-          if (sec === null) continue;
+          if (sec === null || hour < hMin || hour > hMax) continue;
           const y0 = hourToY(Math.min(24, hour + 1 / 6)), y1 = hourToY(hour);
           ctx.fillStyle = _sgChmiColor(sec, alpha);
           ctx.fillRect(x0, y0, w, Math.max(1, y1 - y0));
@@ -571,6 +594,25 @@ function drawSunGraph() {
   const activeDay = (sgHoverDay !== null) ? sgHoverDay : customDoy;
   const sw = _sgDayWidths(activeDay, sphi, cphi);
   const xh = (h) => px0 + (h / 24) * pw;            // strip x-axis = hours 0..24
+
+  // ── CHMI strip line (directly above the day strip) ────────────────────────────
+  // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
+  // day outside the station's coverage window) - only the coloured cells are data-dependent.
+  if (_sgShowChmi) {
+    const chmiByDoy   = _sgEnsureChmiByDoy();
+    const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
+    if (daySamples) {
+      const calpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
+      for (const [hour, sec] of daySamples) {
+        if (sec === null) continue;
+        const xl = xh(hour), xr = xh(Math.min(24, hour + 1 / 6));
+        ctx.fillStyle = _sgChmiColor(sec, calpha);
+        ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
+      }
+    }
+    ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, chmiLaneY, pw, chmiStripH);
+  }
+
   ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
   const seg = (key, col, wh) => {
     if (wh <= 0) return;
