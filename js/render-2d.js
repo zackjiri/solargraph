@@ -38,7 +38,14 @@ function draw() {
     const op = dispOpacity;
     const { month: cm, day: cd } = customArcDate();
     if (typeof showImgChmi !== 'undefined' && showImgChmi) {
-      drawChmiArc(W, H, cm, cd, 3.5);
+      const chmiW = 9;   // matches the Sun symbol dot drawn elsewhere (radius 4.5) - canvas size, not a physical disc
+      // Thin dark-grey border above/below the band - same "wider line underneath" trick as the
+      // black outline used for the green path, just narrower peek since this one is thin.
+      drawSunArc(W, H, cm, cd, {
+        color: `rgba(60,60,60,${Math.min(1, op * 0.85)})`, lineWidth: chmiW + 2,
+        showHourDots: false, showHourLabels: false, edgeLabel: null
+      });
+      drawChmiArc(W, H, cm, cd, chmiW);
     } else {
       drawSunArc(W, H, cm, cd, {
         color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
