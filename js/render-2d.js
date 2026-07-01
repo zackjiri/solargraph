@@ -31,21 +31,24 @@ function draw() {
   // Sun arcs – full annual set
   if (showSunArc) drawAllSunArcs(W, H);
 
-  // Custom date arc – black outline + green fill, with label at south axis
+  // Custom date arc – black outline + green fill, with label at south axis. When the CHMI
+  // legend toggle is on, the gradient trace replaces both (a halo under the green line wasn't
+  // legible) - same curve, coloured by measured sunshine instead of a flat green.
   if (showCustomArc) {
     const op = dispOpacity;
     const { month: cm, day: cd } = customArcDate();
-    // CHMI measured-sunshine halo (legend toggle, default off) – drawn first/widest so it peeks
-    // out from behind the black outline + green line, same path, no other elements affected.
-    if (typeof showImgChmi !== 'undefined' && showImgChmi) drawChmiHalo(W, H, cm, cd, 6);
-    drawSunArc(W, H, cm, cd, {
-      color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
-      showHourDots: false, showHourLabels: false, edgeLabel: null
-    });
-    drawSunArc(W, H, cm, cd, {
-      color: `rgba(80, 220, 120, ${Math.min(1, op * 0.9)})`, lineWidth: 1.5,
-      showHourDots: false, showHourLabels: false, edgeLabel: null
-    });
+    if (typeof showImgChmi !== 'undefined' && showImgChmi) {
+      drawChmiArc(W, H, cm, cd, 3.5);
+    } else {
+      drawSunArc(W, H, cm, cd, {
+        color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
+        showHourDots: false, showHourLabels: false, edgeLabel: null
+      });
+      drawSunArc(W, H, cm, cd, {
+        color: `rgba(80, 220, 120, ${Math.min(1, op * 0.9)})`, lineWidth: 1.5,
+        showHourDots: false, showHourLabels: false, edgeLabel: null
+      });
+    }
 
     // Label anchored to south axis, offset 8px right, above the arc at that point
     // Find arc y-position at south axis (β=0, i.e. pixel x = cx adjusted for yawDeg)
@@ -94,27 +97,28 @@ function draw() {
   if (mouseX >= 0 && !splitActive) drawCrosshair(W, H);
 }
 
-// CHMI measured-sunshine halo along the Custom Path curve. Same point sequence as drawSunArc
-// (sunPosition + azElToPixel), but sampled at 2.5° steps (= 10 min, matching the data's own
-// resolution) and stroked segment-by-segment so each 10-min bucket gets its own flat colour
-// (hard edges between segments, no blending - consistent with the Sun Graph cells).
+// CHMI measured-sunshine trace along the Custom Path curve - replaces the black+green line
+// when the legend toggle is on. Same point sequence as drawSunArc (sunPosition + azElToPixel),
+// sampled at 2.5° steps (= 10 min, matching the data's own resolution) and stroked segment-by-
+// segment so each 10-min bucket gets its own flat colour (hard edges, no blending - consistent
+// with the Sun Graph cells). Wherever the curve exists (sun above horizon) but there is no
+// measurement (no dataset for the day, or a missing/QUALITY=4 sample), the segment defaults to
+// the gradient's darkest "not shining" colour instead of leaving a gap - same always-painted
+// default as the Sun Graph's night band, just applied along the arc instead of a rectangle.
 // cm/cd = the (possibly SH-shifted) path-convention date the curve itself is plotted with;
 // the CHMI lookup uses the real, unshifted custom date since weather is tied to a real calendar day.
-function drawChmiHalo(W, H, cm, cd, lineWidth) {
-  const chmiByDoy = _sgEnsureChmiByDoy();
-  if (!chmiByDoy) return;
-  const daySamples = chmiByDoy.get(dayOfYear(customMonth, customDay));
-  if (!daySamples) return;
-
-  const bySlot = new Map();   // slot 0..143 (10-min index into the day) → seconds|null
-  for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
+function drawChmiArc(W, H, cm, cd, lineWidth) {
+  const chmiByDoy  = _sgEnsureChmiByDoy();
+  const daySamples = chmiByDoy ? chmiByDoy.get(dayOfYear(customMonth, customDay)) : null;
+  const bySlot = new Map();   // slot 0..143 (10-min index into the day) → seconds
+  if (daySamples) for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
 
   const delta = sunDeclination(dayOfYear(cm, cd));
   const phi   = effectiveLat();
   const op    = dispOpacity;
   const alpha = Math.min(1, op * 0.9);
 
-  let prevPos = null, prevSec;
+  let prevPos = null, prevSec = 0;   // 0 = "not shining" default for the very first segment
   for (let hDeg = -180; hDeg <= 180; hDeg += 2.5) {
     const Hrad = hDeg * Math.PI / 180;
     const { el, beta } = sunPosition(Hrad, delta, phi);
@@ -124,7 +128,7 @@ function drawChmiHalo(W, H, cm, cd, lineWidth) {
       if (pos && (pos.px < -20 || pos.px > W + 20)) pos = null;
     }
 
-    if (pos && prevPos && prevSec !== undefined && prevSec !== null) {
+    if (pos && prevPos) {
       ctx.beginPath();
       ctx.moveTo(prevPos.px, prevPos.py);
       ctx.lineTo(pos.px, pos.py);
@@ -136,7 +140,8 @@ function drawChmiHalo(W, H, cm, cd, lineWidth) {
 
     const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
     const slot = ((Math.round(solarHour * 6) % 144) + 144) % 144;
-    prevSec = pos ? bySlot.get(slot) : undefined;
+    const sec = pos ? bySlot.get(slot) : undefined;
+    prevSec = (sec !== undefined && sec !== null) ? sec : 0;
     prevPos = pos;
   }
 }
