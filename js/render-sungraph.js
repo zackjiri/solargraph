@@ -51,7 +51,7 @@ function enterSunGraph() {
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
-  document.getElementById('sgLegend').style.display = 'flex';     // legend (bottom-left)
+  document.getElementById('sgLegendWrap').style.display = 'flex'; // legend (bottom corner)
   // Display off except Labels (line labels) + Custom date (green line), which control graph elements.
   setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc']);
 
@@ -63,7 +63,7 @@ function enterSunGraph() {
 function exitSunGraph() {
   document.getElementById('sunGraphCanvas').style.display = 'none';
   document.getElementById('sgStatusWrap').style.display = 'none';
-  document.getElementById('sgLegend').style.display = 'none';
+  document.getElementById('sgLegendWrap').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   sunGraphActive = false;
   if (typeof updateViewButtons === 'function') updateViewButtons();
@@ -355,12 +355,13 @@ function drawSunGraph() {
   // Pin the legend to the plot's bottom corner, on whichever side stays clear of the CHMI
   // data (H1 generations cluster their exposure in Jan-Jun → legend goes bottom-right instead
   // of the default bottom-left). Unknown / H2 generations keep the original left placement.
-  const _leg = document.getElementById('sgLegend');
+  const _leg = document.getElementById('sgLegendWrap');
   if (_leg) {
     const legRight = (typeof currentHalf !== 'undefined' && currentHalf === 'H1');
-    _leg.style.left   = legRight ? 'auto' : (px0 + 'px');
-    _leg.style.right  = legRight ? ((W - (px0 + pw)) + 'px') : 'auto';
-    _leg.style.bottom = (H - (py0 + ph)) + 'px';
+    _leg.style.left       = legRight ? 'auto' : (px0 + 'px');
+    _leg.style.right      = legRight ? ((W - (px0 + pw)) + 'px') : 'auto';
+    _leg.style.bottom     = (H - (py0 + ph)) + 'px';
+    _leg.style.alignItems = legRight ? 'flex-end' : 'flex-start';   // arrow under whichever edge is anchored
   }
 
   ctx.fillStyle = pal.plot;
@@ -450,18 +451,14 @@ function drawSunGraph() {
   if (_sgShowChmi) {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
-      // Inclusive exposure-day clip (unlike inExp above, which is a half-open [start,end)
-      // convenience for the highlight rectangles) - keeps the layer from spilling one day past
-      // exposure_end, which happens because the +time_offset_utc shift can roll a UTC sample
-      // from the last extracted day into the next local calendar day.
-      const inChmiRange = exp
-        ? (exp.startDoy <= exp.endDoy
-            ? (d) => d >= exp.startDoy && d <= exp.endDoy
-            : (d) => d >= exp.startDoy || d <= exp.endDoy)
-        : () => true;
+      // Reuse inExp's half-open [start,end) clip (not just its highlight styling) so the CHMI
+      // columns end flush with the white "exposure end" line instead of spilling one extra day
+      // past it - which happens because the +time_offset_utc shift can roll a UTC sample from
+      // the last extracted day into the next local calendar day (present in the data, but past
+      // the boundary the app already draws for the exposure interval).
       const alpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
       for (const [d, samples] of chmiByDoy) {
-        if (d < 1 || d > NDAYS || !inChmiRange(d)) continue;
+        if (d < 1 || d > NDAYS || !inExp(d)) continue;
         // Only draw between the start/end of "night" (astro-twilight boundary), with the twilight
         // band itself as a reserve margin beyond the model's own sunrise/sunset - real light can
         // arrive slightly earlier/later than the geometric model. Deep night is skipped outright:
@@ -696,7 +693,8 @@ function setSgStatusCollapsed(c) {
     el.addEventListener('mouseenter', () => { _sgEmphBand = band; if (sunGraphActive) drawSunGraph(); });
     el.addEventListener('mouseleave', () => { _sgEmphBand = null; if (sunGraphActive) drawSunGraph(); });
     if (el.classList.contains('sg-leg-toggle')) {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();   // don't let this bubble up to #sgLegend's collapse-on-click
         if (band === 'green') _sgShowGreen = !_sgShowGreen;
         else if (band === 'red') _sgShowRed = !_sgShowRed;
         else if (band === 'chmi') _sgShowChmi = !_sgShowChmi;
@@ -706,6 +704,21 @@ function setSgStatusCollapsed(c) {
       });
     }
   });
+})();
+
+// Legend collapse (click the legend or the ▼/▲ arrow) — mirrors the sgStatus behaviour.
+let sgLegendCollapsed = false;
+function setSgLegendCollapsed(c) {
+  sgLegendCollapsed = c;
+  const w = document.getElementById('sgLegendWrap'), t = document.getElementById('sgLegendToggle');
+  if (w) w.classList.toggle('collapsed', c);
+  if (t) t.textContent = c ? '▲' : '▼';   // down = shown, up = hidden (button sits above the legend)
+}
+(function () {
+  const tog = document.getElementById('sgLegendToggle');
+  const panel = document.getElementById('sgLegend');
+  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setSgLegendCollapsed(!sgLegendCollapsed); });
+  if (panel) panel.addEventListener('click', () => setSgLegendCollapsed(true));
 })();
 
 // Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.
