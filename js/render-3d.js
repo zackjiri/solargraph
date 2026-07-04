@@ -526,7 +526,7 @@ function draw3D() {
   if (show3DCulmination) {
     // ── Animated sun ray: position for the current solar time (sunTimeHours) ──
     // Hour angle in the path convention (SH solar hour is mirrored: solarHour = 12 − hDeg/15).
-    const hitH = (sunTimeHours - 12) * 15 * hemisphere;
+    const hitH = (sunTimeHours - noonHour()) * 15 * hemisphere;
     const hit  = surfMap(hitH);                                  // {pt,a,z} or null (miss)
     const sInf = sunPosition(hitH * Math.PI / 180, _cDelta, _cPhi);
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
@@ -545,7 +545,7 @@ function draw3D() {
       // where the ray actually goes (cap / back wall), as before 24_1. Exact ray-trace,
       // signed-latitude convention so the world azimuth is correct in both hemispheres.
       noonHitsPaper = false; noonIncidenceDeg = null; pa = null;
-      const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
+      const Hs   = (sunTimeHours - noonHour()) * 15 * Math.PI / 180;
       const phiS = effectiveLat() * hemisphere;
       const dS   = sunDeclination(dayOfYear(customMonth, customDay));
       const sp   = sunPosition(Hs, dS, phiS);
@@ -653,7 +653,7 @@ function draw3D() {
     const tsAzAlt    = document.getElementById('tsAzAlt');
     if (tsAzAltRow && tsAzAlt) {
       if (show3DCulmination) {
-        const Hs = (sunTimeHours - 12) * 15 * Math.PI / 180;
+        const Hs = (sunTimeHours - noonHour()) * 15 * Math.PI / 180;
         const sp = sunPosition(Hs, sunDeclination(dayOfYear(customMonth, customDay)), effectiveLat() * hemisphere);
         tsAzAltRow.style.display = '';
         tsAzAlt.textContent = sp.el >= 0
@@ -897,7 +897,7 @@ function sunDayRange() {
   if (cosH0 <= -1)      H0h = 12;           // polar day (sun always up)
   else if (cosH0 >= 1)  H0h = 0;            // polar night (sun never rises)
   else                  H0h = Math.acos(cosH0) * 12 / Math.PI;
-  return { tRise: 12 - H0h, tSet: 12 + H0h };
+  return { tRise: noonHour() - H0h, tSet: noonHour() + H0h };
 }
 // Advance the animation clock: SUN_RATE_HPS hours of solar time per real second, +2 s pause.
 // The loop sweeps only the interval where the ray enters the can (green + red on the slider).
@@ -982,7 +982,7 @@ function _rotCanInvWorld(x, y, z) {
 //   0 = ray does not enter the can (sun below horizon / behind the pinhole wall) (grey)
 function sunRayState(t, ctx) {
   // On paper? (path convention – matches the green curve / surfMap)
-  const hDeg = (t - 12) * 15 * hemisphere;
+  const hDeg = (t - noonHour()) * 15 * hemisphere;
   const s = sunPosition(hDeg * Math.PI / 180, ctx.delta, ctx.phi);
   if (s.el > 0) {
     const pos = azElToPixel(s.beta - yawDeg, s.el);
@@ -993,7 +993,7 @@ function sunRayState(t, ctx) {
     }
   }
   // Enters the can but misses paper? (signed-φ world; sun above horizon AND faces pinhole)
-  const sp = sunPosition((t - 12) * 15 * Math.PI / 180, ctx.deltaS, ctx.phiS);
+  const sp = sunPosition((t - noonHour()) * 15 * Math.PI / 180, ctx.deltaS, ctx.phiS);
   if (sp.el > 0) {
     const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
     const sunDirW = [-Math.cos(azR) * Math.cos(elR), -Math.sin(azR) * Math.cos(elR), Math.sin(elR)];
@@ -1034,7 +1034,7 @@ function updateSunFill() {
     }
   }
   parts.push(COL[prev] + ' 100%');
-  if (t0 === null) { t0 = t1 = 12; }              // ray never enters – degenerate
+  if (t0 === null) { t0 = t1 = noonHour(); }      // ray never enters – degenerate
   _sunEnterT0 = t0; _sunEnterT1 = t1;             // cache for the loop / clamp / boundary lines
 
   // White vertical boundary lines at the entering interval (the clickable / animated part)

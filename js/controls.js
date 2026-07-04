@@ -114,6 +114,7 @@ function doCalibReset() {
   if (canvasLW > 0) scale = canvasLW / scanWmm;
   LAT = 50.0;
   hemisphere = 1;
+  solarNoonOffsetMin = 0;
 
   // 2. Update ALL UI elements in one pass (sliders, labels, lat input, N/S buttons)
   document.getElementById('inpScanW').value = 178;
@@ -132,11 +133,13 @@ function doCalibReset() {
   document.getElementById('btnS').disabled = false;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
+  document.getElementById('inpNoonOffset').value = 0;
 
   // 3. Single draw with ALL values in their final state
   updateScanH();
   refreshCalibLimits();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
 document.getElementById('btnCalibReset').addEventListener('click', doCalibReset);
 
@@ -285,6 +288,30 @@ document.getElementById('btnS').addEventListener('click', () => {
   draw(); draw3D();
 });
 
+// ─── Solar noon offset control (minutes; see solarNoonOffsetMin in core.js) ─────────────────
+function applySolarNoonOffset(val) {
+  solarNoonOffsetMin = Math.round(Math.max(-300, Math.min(300, val)));
+  document.getElementById('inpNoonOffset').value = solarNoonOffsetMin;
+  draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+}
+
+document.getElementById('inpNoonOffset').addEventListener('change', (e) => {
+  applySolarNoonOffset(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpNoonOffset').addEventListener('blur', (e) => {
+  applySolarNoonOffset(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpNoonOffset').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applySolarNoonOffset(parseFloat(e.target.value) || 0);
+});
+document.getElementById('btnNoonOffsetDec').addEventListener('click', () => {
+  applySolarNoonOffset(solarNoonOffsetMin - 1);
+});
+document.getElementById('btnNoonOffsetInc').addEventListener('click', () => {
+  applySolarNoonOffset(solarNoonOffsetMin + 1);
+});
+
 // ─── Dimension limits (validation: scan width ⇄ radius ⇄ horizon) ───────────
 const TWO_PI = 2 * Math.PI;
 
@@ -366,6 +393,7 @@ function loadImage(file) {
   currentChmi     = null;   // ditto for the CHMI sunshine overlay
   currentHalf     = null;   // ditto for the Sun Graph legend corner
   updateChmiLegendAvailability();
+  applySolarNoonOffset(0);  // ditto for the "Solar noon offset" calibration control
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -548,7 +576,7 @@ function updateAxisLegend() {
 // Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
 document.getElementById('btnNoon').addEventListener('click', () => {
   show3DCulmination = !show3DCulmination;
-  if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+  if (show3DCulmination) sunTimeHours = noonHour();   // fresh start at (calibrated) noon when turning Sun path on
   updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // show/hide sun marker in the graph
 });
@@ -657,6 +685,20 @@ function setCurrentExposureFromGallery() {
   }
 }
 
+// Populates the "Solar noon offset" calibration control from the current gallery image's
+// filelist metadata (`time_offset`, minutes - the station's longitude residual beyond its
+// whole time_zone, see core.js). Defaults to 0 (same as Analyzer / "load new image").
+function setSolarNoonOffsetFromGallery() {
+  let offsetMin = 0;
+  if (FILELIST && galleryState.genId !== null && galleryState.imageIndex !== null) {
+    const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
+    const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
+    const m = img && img.metadata;
+    if (m && typeof m.time_offset === 'number') offsetMin = m.time_offset;
+  }
+  applySolarNoonOffset(offsetMin);
+}
+
 // Which half of the year the current generation covers ('H1'|'H2'), from its label
 // (convention YYYY_Hn_GEN-ROMAN, see filelist.json). Used by the Sun Graph legend to pick a
 // corner that stays clear of the data (H1 → Jan-Jun busy on the left → legend goes right).
@@ -697,7 +739,7 @@ async function setCurrentChmiFromGallery() {
   const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
   const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
   const m = img && img.metadata;
-  if (!m || !m.chmi_wsi_station || typeof m.time_offset_utc !== 'number') { finish(); return; }
+  if (!m || !m.chmi_wsi_station || typeof m.time_zone !== 'number' || typeof m.time_offset !== 'number') { finish(); return; }
 
   const genId = galleryState.genId, imageIndex = galleryState.imageIndex;
   try {
@@ -706,7 +748,10 @@ async function setCurrentChmiFromGallery() {
     const data = await res.json();
     // Gallery selection may have moved on while this fetch was in flight - discard if stale.
     if (galleryState.genId !== genId || galleryState.imageIndex !== imageIndex) return;
-    currentChmi = { offsetMin: m.time_offset_utc, values: data.values };
+    // UTC → local clock shift for the CHMI timestamps: whole time zone (hours) + the station's
+    // longitude residual (time_offset, minutes) - see solarNoonOffsetMin in core.js for the
+    // matching shift applied to the astronomical model's own "noon" pivot.
+    currentChmi = { offsetMin: m.time_zone * 60 + m.time_offset, values: data.values };
     finish();
   } catch (e) {
     console.warn('CHMI data not found for GEN-' + genId + '_' + imageIndex + ':', e);
@@ -854,6 +899,7 @@ function loadGalleryImage() {
   setCurrentExposureFromGallery();   // exposure interval for the Sun Graph (from filelist metadata)
   setCurrentChmiFromGallery();       // measured sunshine overlay for the Sun Graph (async, redraws when ready)
   setCurrentHalfFromGallery();       // H1/H2 → which corner the Sun Graph legend should use
+  setSolarNoonOffsetFromGallery();   // "Solar noon offset" calibration control ← filelist time_offset
 
   // Aplikuj kalibraci z presets.json
   applyGalleryPreset(galleryState.genId, galleryState.imageIndex);
