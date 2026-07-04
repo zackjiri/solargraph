@@ -661,6 +661,7 @@ function setSgStatusCollapsed(c) {
     if (el.classList.contains('sg-leg-toggle')) {
       el.addEventListener('click', (e) => {
         e.stopPropagation();   // don't let this bubble up to #sgLegend's collapse-on-click
+        if (el.classList.contains('unavailable')) return;   // nothing to toggle - no CHMI data for this image
         if (band === 'green') _sgShowGreen = !_sgShowGreen;
         else if (band === 'red') _sgShowRed = !_sgShowRed;
         else if (band === 'chmi') _sgShowChmi = !_sgShowChmi;

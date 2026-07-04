@@ -506,6 +506,7 @@ document.getElementById('chkCustomArc').addEventListener('change', (e) => {
 // Image-mode legend (bottom-right, plain Analyzer view): CHMI toggle (only interactive item) + collapse.
 document.querySelector('#imgLegend [data-band="imgchmi"]').addEventListener('click', (e) => {
   e.stopPropagation();   // don't let this bubble up to #imgLegend's collapse-on-click
+  if (e.currentTarget.classList.contains('unavailable')) return;   // nothing to toggle - no data for this image
   showImgChmi = !showImgChmi;
   e.currentTarget.classList.toggle('off', !showImgChmi);
   draw();

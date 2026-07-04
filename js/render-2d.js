@@ -39,13 +39,25 @@ function draw() {
     const { month: cm, day: cd } = customArcDate();
     if (typeof showImgChmi !== 'undefined' && showImgChmi) {
       const chmiW = 9;   // matches the Sun symbol dot drawn elsewhere (radius 4.5) - canvas size, not a physical disc
-      // Thin dark-grey border above/below the band - same "wider line underneath" trick as the
-      // black outline used for the green path, just narrower peek since this one is thin.
-      drawSunArc(W, H, cm, cd, {
-        color: `rgba(60,60,60,${Math.min(1, op * 0.85)})`, lineWidth: chmiW + 2,
-        showHourDots: false, showHourLabels: false, edgeLabel: null
-      });
-      drawChmiArc(W, H, cm, cd, chmiW);
+      const chmiByDoy  = _sgEnsureChmiByDoy();
+      const dayCovered = !!(chmiByDoy && chmiByDoy.get(dayOfYear(customMonth, customDay)));
+      if (dayCovered) {
+        // Thin dark-grey border above/below the band - same "wider line underneath" trick as
+        // the black outline used for the green path, just narrower peek since this one is thin.
+        drawSunArc(W, H, cm, cd, {
+          color: `rgba(60,60,60,${Math.min(1, op * 0.85)})`, lineWidth: chmiW + 2,
+          showHourDots: false, showHourLabels: false, edgeLabel: null
+        });
+        drawChmiArc(W, H, cm, cd, chmiW);
+      } else {
+        // This image has CHMI data, but not for the currently selected Custom Path day - a
+        // flat, translucent grey (no gradient, no border): we genuinely have no information for
+        // this day, distinct from the gradient's own dark "confirmed no sun" colour.
+        drawSunArc(W, H, cm, cd, {
+          color: `rgba(160,160,160,${Math.min(1, op * 0.5)})`, lineWidth: chmiW,
+          showHourDots: false, showHourLabels: false, edgeLabel: null
+        });
+      }
     } else {
       drawSunArc(W, H, cm, cd, {
         color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
