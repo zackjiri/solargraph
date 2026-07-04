@@ -366,6 +366,17 @@
           <button class="ns-btn" id="btnS">S</button>
         </div>
       </div>
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--accent-red)">Solar noon offset</span>
+        </div>
+      </div>
+      <div class="lat-row" style="margin-top:2px">
+        <button class="lat-btn" id="btnNoonOffsetDec">◀</button>
+        <input type="number" class="lat-input" id="inpNoonOffset" min="-300" max="300" step="1" value="0">
+        <button class="lat-btn" id="btnNoonOffsetInc">▶</button>
+        <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">min</span>
+      </div>
       <button class="sidebar-btn" id="btnCalibReset">Reset calibration</button>
     </div>
 
@@ -409,7 +420,7 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.7.1
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.7.4
 </div>
 
 <script src="js/core.js"></script>

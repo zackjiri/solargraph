@@ -12,7 +12,8 @@
           "metadata": {
             "exposure_start": "2014-01-28",
             "exposure_end": "2014-06-05",
-            "location": "Bystrice nad Pernstejnem, Czechia"
+            "location": "Bystrice nad Pernstejnem, Czechia",
+            "time_zone": 1
           }
         }
       ]
@@ -32,8 +33,9 @@
             "exposure_start": "2025-06-27",
             "exposure_end": "2025-12-04",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66
+            "time_offset": 6
           }
         },
         {
@@ -47,8 +49,9 @@
             "exposure_start": "2025-06-28",
             "exposure_end": "2025-12-01",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66            
+            "time_offset": 6
           }
         },
         {
@@ -62,8 +65,9 @@
             "exposure_start": "2025-06-28",
             "exposure_end": "2025-12-20",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66               
+            "time_offset": 6
           }
         },
         {
@@ -75,7 +79,8 @@
           "metadata": {
             "exposure_start": "2025-07-03",
             "exposure_end": "2025-11-30",
-            "location": "Brno, Czechia"
+            "location": "Brno, Czechia",
+            "time_zone": 1
           }
         },
         {
@@ -89,8 +94,9 @@
             "exposure_start": "2025-07-05",
             "exposure_end": "2025-12-23",
             "location": "Bystrice nad Pernstejnem, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11686",
-            "time_offset_utc": 65
+            "time_offset": 5
           }
         }
       ]
@@ -110,8 +116,9 @@
             "exposure_start": "2026-01-06",
             "exposure_end": "2026-02-17",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66
+            "time_offset": 6
           }
         },
         {
@@ -125,8 +132,9 @@
             "exposure_start": "2026-01-10",
             "exposure_end": "2026-05-11",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66            
+            "time_offset": 6
           }
         },
         {
@@ -140,8 +148,9 @@
             "exposure_start": "2026-01-14",
             "exposure_end": "2026-04-14",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-20000-0-11723",
-            "time_offset_utc": 66            
+            "time_offset": 6
           }
         },
         {
@@ -155,8 +164,9 @@
             "exposure_start": "2026-01-14",
             "exposure_end": "2026-05-05",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-20000-0-11723",
-            "time_offset_utc": 66            
+            "time_offset": 6
           }
         },
         {
@@ -170,8 +180,9 @@
             "exposure_start": "2026-01-17",
             "exposure_end": "2026-06-13",
             "location": "Bystrice nad Pernstejnem, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11686",
-            "time_offset_utc": 65            
+            "time_offset": 5
           }
         },
         {
@@ -185,10 +196,11 @@
             "exposure_start": "2026-01-17",
             "exposure_end": "2026-06-13",
             "location": "Bystrice nad Pernstejnem, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11686",
-            "time_offset_utc": 65            
+            "time_offset": 5
           }
-        },                
+        },
         {
           "index": 8,
           "layers": [
@@ -200,8 +212,9 @@
             "exposure_start": "2026-01-19",
             "exposure_end": "2026-04-19",
             "location": "Brno, Czechia",
+            "time_zone": 1,
             "chmi_wsi_station": "0-203-0-11721",
-            "time_offset_utc": 66        
+            "time_offset": 6
           }
         }
       ]
