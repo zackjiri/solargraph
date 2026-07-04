@@ -184,7 +184,7 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   }
 
   // Solar time: H=0 → noon
-  const solarHour = noonHour() - H * 180 / Math.PI / 15;
+  const solarHour = 12 - H * 180 / Math.PI / 15;
   if (solarHour < 0 || solarHour > 24) return null;
 
   const hh = Math.floor(solarHour);
@@ -209,14 +209,6 @@ function azimutToDir(az) {
 let LAT = 50.0;        // latitude °N, precision 0.5°
 let hemisphere = 1;    // +1 = northern, -1 = southern
 const LON = 15.0;      // longitude °E (unused in solar time mode)
-
-// Solar noon offset [minutes], calibration control ("Solar noon offset", next to Location).
-// Shifts WHERE solar noon (hour angle H=0) is treated as falling on the app's time axis
-// (sunTimeHours, Custom Path hour labels, Sun Graph noon line, CHMI clock-time lookups, ...) -
-// e.g. +6 → solar noon is 12:06, not 12:00. Physically this is the station's longitude
-// residual beyond its whole-hour time zone (see time_offset in filelist.json); default 0.
-let solarNoonOffsetMin = 0;
-function noonHour() { return 12 + solarNoonOffsetMin / 60; }
 
 // Effective latitude: clamp poles and equator to avoid singularities
 function effectiveLat() {
@@ -363,9 +355,8 @@ function drawSunArc(W, H, month, day, style) {
       if (pos.px < 0 || pos.px > W || pos.py < 0 || pos.py > H) continue;
 
       // Solar hour label: mirror for southern hemisphere
-      const solarHour = noonHour() + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
-      const hh = Math.floor(solarHour), mm = Math.round((solarHour - hh) * 60);
-      const label = hh + ':' + String(mm).padStart(2, '0');
+      const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+      const label = Math.floor(solarHour) + ':00';
 
       ctx.beginPath();
       ctx.arc(pos.px, pos.py, 3.5, 0, Math.PI * 2);

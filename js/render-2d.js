@@ -95,7 +95,7 @@ function draw() {
     if (show3DCulmination) {
       maybeUpdateSunFill();                          // keep slider regions in sync (analyzer)
       const dDelta = sunDeclination(dayOfYear(cm, cd));
-      const hDeg = (sunTimeHours - noonHour()) * 15 * hemisphere;
+      const hDeg = (sunTimeHours - 12) * 15 * hemisphere;
       const s = sunPosition(hDeg * Math.PI / 180, dDelta, phi);
       if (s.el >= 0) {
         const sp = azElToPixel(s.beta - yawDeg, s.el);
@@ -157,7 +157,7 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
       ctx.stroke();
     }
 
-    const solarHour = noonHour() + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+    const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
     const slot = ((Math.round(solarHour * 6) % 144) + 144) % 144;
     const sec = pos ? bySlot.get(slot) : undefined;
     prevSec = (sec !== undefined && sec !== null) ? sec : 0;

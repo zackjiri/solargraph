@@ -169,7 +169,7 @@ function updateSunGraphStatus() {
   const rs = document.getElementById('sgRiseSet'), dl = document.getElementById('sgDayLen');
   if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; }   // polar night
   else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; }   // polar day
-  else { rs.textContent = _sgHM(noonHour() - w) + ' / ' + _sgHM(noonHour() + w); dl.textContent = _sgHM(2 * w); }
+  else { rs.textContent = _sgHM(12 - w) + ' / ' + _sgHM(12 + w); dl.textContent = _sgHM(2 * w); }
   const op = document.getElementById('sgOnPaper');   // interval the image is on the paper (set by drawSunGraph)
   if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper);
 }
@@ -220,7 +220,7 @@ function _sgDayRuns(doy, N) {
                             Math.sin(ctx.deltaS), Math.cos(ctx.deltaS));
   const green = [], red = [];
   if (wDay <= 0) return { green, red, onPaper: null };      // polar night – nothing enters
-  const tA = Math.max(0, noonHour() - wDay - 0.5), tB = Math.min(24, noonHour() + wDay + 0.5);
+  const tA = Math.max(0, 12 - wDay - 0.5), tB = Math.min(24, 12 + wDay + 0.5);
   const push = (st, a, b) => { if (st === 2) green.push([a, b]); else if (st === 1) red.push([a, b]); };
   let prev = sunRayState(tA, ctx), start = tA;
   for (let i = 1; i <= N; i++) {
@@ -366,8 +366,8 @@ function drawSunGraph() {
     const up = new Array(NDAYS + 1), lo = new Array(NDAYS + 1);
     for (let d = 1; d <= NDAYS; d++) {
       const wh = _sgHalfWidth(lv.h, sphi, cphi, sdel[d], cdel[d]);
-      up[d] = hourToY(Math.min(24, noonHour() + wh));   // upper boundary (toward later hours / top)
-      lo[d] = hourToY(Math.max(0,  noonHour() - wh));   // lower boundary (toward earlier hours / bottom)
+      up[d] = hourToY(Math.min(24, 12 + wh));   // upper boundary (toward later hours / top)
+      lo[d] = hourToY(Math.max(0,  12 - wh));   // lower boundary (toward earlier hours / bottom)
     }
     lensByKey[lv.key] = { up, lo };
     const e = _sgEmphBand === lv.key;
@@ -430,7 +430,7 @@ function drawSunGraph() {
         // arrive slightly earlier/later than the geometric model. Deep night is skipped outright:
         // the sensor reads ~0 there anyway, so drawing it would only add visual noise.
         const wAstro = _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sdel[d], cdel[d]);
-        const hMin = noonHour() - wAstro, hMax = noonHour() + wAstro;
+        const hMin = 12 - wAstro, hMax = 12 + wAstro;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
         for (const [hour, sec] of samples) {
           if (sec === null || hour < hMin || hour > hMax) continue;
@@ -496,14 +496,14 @@ function drawSunGraph() {
     _sgOutText(ctx, MONTH_NAMES[m], dayToX((starts[m] + nextDoy) / 2), py0 + ph + 15, OUT);
   }
 
-  // Solar noon line (flat at the calibrated noon hour - see solarNoonOffsetMin)
-  const yNoon = hourToY(noonHour());
+  // Solar noon line (flat at 12:00 in solar time)
+  const yNoon = hourToY(12);
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(px0, yNoon); ctx.lineTo(px0 + pw, yNoon); ctx.stroke();
-  if (showLabels) {   // the "solar noon HH:MM" caption is a label → controlled by Display "Labels"
+  if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
     ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    _sgOutText(ctx, 'solar noon ' + _sgHM(noonHour()), px0 + pw - 4, yNoon + 12, OUT);
+    _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon + 12, OUT);
   }
 
   // Plot border
@@ -519,8 +519,8 @@ function drawSunGraph() {
       if (wd <= 0) return;
       const x = dayToX(doy);
       ctx.beginPath();
-      ctx.moveTo(x, hourToY(Math.min(24, noonHour() + wd)));
-      ctx.lineTo(x, hourToY(Math.max(0, noonHour() - wd)));
+      ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
+      ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
       ctx.stroke();
       if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, '#ffffff', OUT_LBL, doy < 10);
     });
@@ -579,7 +579,7 @@ function drawSunGraph() {
   ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
   const seg = (key, col, wh) => {
     if (wh <= 0) return;
-    const xl = xh(Math.max(0, noonHour() - wh)), xr = xh(Math.min(24, noonHour() + wh));
+    const xl = xh(Math.max(0, 12 - wh)), xr = xh(Math.min(24, 12 + wh));
     ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
   };
   seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
