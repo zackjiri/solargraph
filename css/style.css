@@ -1063,6 +1063,28 @@
   .sg-leg-sep { height: 1px; margin: 3px 0; background: rgba(255,255,255,0.22); }
   body.light .sg-leg-sep { background: rgba(0,0,0,0.25); }
 
+  /* CHMI legend entry (both #sgLegend and #imgLegend): bold, always coloured - on/off differs
+     ONLY by the strikethrough, never by dimming (unlike the generic .off rule above). */
+  .sg-leg-toggle[data-band="chmi"], .sg-leg-toggle[data-band="imgchmi"] {
+    font-weight: bold;
+    color: #f0d040;
+  }
+  body.light .sg-leg-toggle[data-band="chmi"], body.light .sg-leg-toggle[data-band="imgchmi"] {
+    color: #000000;
+  }
+  .sg-leg-toggle.off[data-band="chmi"], .sg-leg-toggle.off[data-band="imgchmi"] {
+    opacity: 1;
+    text-decoration: line-through;
+  }
+  /* Current image has no CHMI data at all (per filelist metadata) - back to the plain
+     disabled look, regardless of the on/off toggle state underneath. */
+  .sg-leg-toggle.unavailable[data-band="chmi"], .sg-leg-toggle.unavailable[data-band="imgchmi"] {
+    font-weight: normal;
+    color: inherit;
+    opacity: 0.4;
+    text-decoration: line-through;
+  }
+
   #btnTheaterExit {
     position: absolute; top: 10px; right: 12.5px;
     font-family: var(--mono); font-size: 12.5px;
@@ -1116,8 +1138,9 @@
     font-family: var(--mono);
     font-size: 9px;
     letter-spacing: 0.06em;
-    color: var(--dim);
+    color: #9fb2c4;   /* same tone as the Sun Graph legend (#sgLegend) */
   }
+  body.light .leg-row { color: #445a6e; }
   .leg-sym {
     flex: 0 0 22px;
     text-align: center;
@@ -1374,9 +1397,10 @@
     font-family: var(--mono);
     font-size: 9px;
     letter-spacing: 0.1em;
-    color: var(--dim);
+    color: #9fb2c4;   /* same tone as the Sun Graph legend (#sgLegend) */
     user-select: none;
   }
+  body.light #claddingRow { color: #445a6e; }
   #claddingRow:hover { color: var(--text); }
   #claddingRow input[type=checkbox] {
     width: 13px; height: 13px;
