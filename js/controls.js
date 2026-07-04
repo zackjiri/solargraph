@@ -365,6 +365,7 @@ function loadImage(file) {
   currentExposure = null;   // uploaded image has no filelist metadata → no exposure overlay
   currentChmi     = null;   // ditto for the CHMI sunshine overlay
   currentHalf     = null;   // ditto for the Sun Graph legend corner
+  updateChmiLegendAvailability();
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -672,13 +673,30 @@ function setCurrentHalfFromGallery() {
 // `values` stay UTC (see chmi_10min/extract-chmi.ps1) - offsetMin is applied at render time
 // (Sun Graph), not baked in here.
 let currentChmi = null;
+
+// Reflects data availability on both CHMI legend entries (Sun Graph + image-mode): greys out
+// and disables the bold/colour styling when the current image has no CHMI data at all, leaving
+// the normal on/off (strikethrough-only) look untouched whenever data IS available.
+function updateChmiLegendAvailability() {
+  const unavailable = currentChmi === null;
+  document.querySelectorAll('[data-band="chmi"], [data-band="imgchmi"]').forEach(el => {
+    el.classList.toggle('unavailable', unavailable);
+  });
+}
+
 async function setCurrentChmiFromGallery() {
   currentChmi = null;
-  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
+  const finish = () => {
+    updateChmiLegendAvailability();
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+    draw();
+  };
+
+  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) { finish(); return; }
   const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
   const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
   const m = img && img.metadata;
-  if (!m || !m.chmi_wsi_station || typeof m.time_offset_utc !== 'number') return;
+  if (!m || !m.chmi_wsi_station || typeof m.time_offset_utc !== 'number') { finish(); return; }
 
   const genId = galleryState.genId, imageIndex = galleryState.imageIndex;
   try {
@@ -688,9 +706,10 @@ async function setCurrentChmiFromGallery() {
     // Gallery selection may have moved on while this fetch was in flight - discard if stale.
     if (galleryState.genId !== genId || galleryState.imageIndex !== imageIndex) return;
     currentChmi = { offsetMin: m.time_offset_utc, values: data.values };
-    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+    finish();
   } catch (e) {
     console.warn('CHMI data not found for GEN-' + genId + '_' + imageIndex + ':', e);
+    finish();
   }
 }
 
