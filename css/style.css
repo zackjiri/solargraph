@@ -1083,6 +1083,7 @@
     color: inherit;
     opacity: 0.4;
     text-decoration: line-through;
+    pointer-events: none;   /* nothing to toggle - same pattern as .calibration-locked */
   }
 
   #btnTheaterExit {
