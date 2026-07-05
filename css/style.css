@@ -104,8 +104,8 @@
     background: #fff8e8;
   }
 
-  /* ── Theme toggle button ── */
-  #btnTheme {
+  /* ── Theme toggle button (+ time-mode toggle, same round style) ── */
+  #btnTheme, #btnTimeMode {
     background: rgb(218 236 255 / 90%);  /* dark mode: sun icon on light bg */
     border: 1px solid var(--border);
     color: var(--dim);
@@ -120,11 +120,36 @@
     margin-left: 8px;
     line-height: 1;
   }
-  #btnTheme:hover {
+  #btnTheme:hover, #btnTimeMode:hover {
     border-color: var(--accent);
     color: var(--accent);
     background: rgba(128,128,128,0.08);
   }
+
+  /* ── Time display mode (True/Mean/Standard solar time) ── */
+  .time-mode-wrap { position: relative; }
+  .time-mode-menu {
+    display: none;
+    position: absolute; top: calc(100% + 6px); right: 0;
+    z-index: 50;
+    flex-direction: column;
+    min-width: 165px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .time-mode-menu.open { display: flex; }
+  .time-mode-item {
+    background: none; border: none; text-align: left;
+    padding: 8px 12px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    color: var(--dim); cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .time-mode-item:hover { background: rgba(128,128,128,0.12); color: var(--text); }
+  .time-mode-item.active { color: var(--accent); font-weight: bold; }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
