@@ -37,7 +37,7 @@ function draw() {
   if (showCustomArc) {
     const op = dispOpacity;
     const { month: cm, day: cd } = customArcDate();
-    if (typeof showImgChmi !== 'undefined' && showImgChmi) {
+    if (typeof showImgChmi !== 'undefined' && showImgChmi && timeDisplayMode !== 'true') {
       const chmiW = 9;   // matches the Sun symbol dot drawn elsewhere (radius 4.5) - canvas size, not a physical disc
       const chmiByDoy  = _sgEnsureChmiByDoy();
       const dayCovered = !!(chmiByDoy && chmiByDoy.get(dayOfYear(customMonth, customDay)));
@@ -127,9 +127,10 @@ function draw() {
 // cm/cd = the (possibly SH-shifted) path-convention date the curve itself is plotted with;
 // the CHMI lookup uses the real, unshifted custom date since weather is tied to a real calendar day.
 function drawChmiArc(W, H, cm, cd, lineWidth) {
+  const realDoy    = dayOfYear(customMonth, customDay);
   const chmiByDoy  = _sgEnsureChmiByDoy();
-  const daySamples = chmiByDoy ? chmiByDoy.get(dayOfYear(customMonth, customDay)) : null;
-  const bySlot = new Map();   // slot 0..143 (10-min index into the day) → seconds
+  const daySamples = chmiByDoy ? chmiByDoy.get(realDoy) : null;
+  const bySlot = new Map();   // slot 0..143 (10-min index into the day, standard time) → seconds
   if (daySamples) for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
 
   const delta = sunDeclination(dayOfYear(cm, cd));
@@ -157,8 +158,11 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
       ctx.stroke();
     }
 
-    const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
-    const slot = ((Math.round(solarHour * 6) % 144) + 144) % 144;
+    // The curve is walked in true solar hour angle; CHMI buckets are keyed in standard time
+    // (see _sgEnsureChmiByDoy in core.js), so the lookup hour must go through that conversion.
+    const trueHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+    const standardHour = standardFromTrue(trueHour, realDoy);
+    const slot = ((Math.round(standardHour * 6) % 144) + 144) % 144;
     const sec = pos ? bySlot.get(slot) : undefined;
     prevSec = (sec !== undefined && sec !== null) ? sec : 0;
     prevPos = pos;

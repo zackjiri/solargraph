@@ -530,7 +530,7 @@ function draw3D() {
     const hit  = surfMap(hitH);                                  // {pt,a,z} or null (miss)
     const sInf = sunPosition(hitH * Math.PI / 180, _cDelta, _cPhi);
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
-              + ' · ' + fmtSolarTime(sunTimeHours)
+              + ' · ' + fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay)))
               + ' · Alt ' + Math.round(Math.max(0, sInf.el)) + '°';
     if (hit) {
       pa = hit.pt;
@@ -624,7 +624,7 @@ function draw3D() {
     // Date + current solar time; the time is styled like a value (paper-filling style)
     const noonLbl = '<span style="color:var(--text);font-weight:bold">'
       + MONTH_NAMES[customMonth - 1] + ' ' + customDay + '</span>'
-      + ' <span class="ts-val" style="display:inline">(' + fmtSolarTime(sunTimeHours) + ')</span>';
+      + ' <span class="ts-val" style="display:inline">(' + fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay))) + ')</span>';
 
     const tsCirc         = document.getElementById('tsCirc');
     const tsFill         = document.getElementById('tsFill');
@@ -912,12 +912,13 @@ function advanceSunAnim(ts) {
   sunTimeHours  = local <= motion ? tEnter + local * SUN_RATE_HPS : tExit;  // hold at end during pause
   syncSunTimeUI();
 }
-// Reflect sunTimeHours in the slider + label
+// Reflect sunTimeHours in the slider + label. The slider's VALUE always stays true solar time
+// (drives the actual geometry); only the printed label is converted to the selected display mode.
 function syncSunTimeUI() {
   const rng = document.getElementById('rngSunTime');
   const lbl = document.getElementById('lblSunTime');
   if (rng && parseFloat(rng.value) !== sunTimeHours) rng.value = sunTimeHours;
-  if (lbl) lbl.textContent = fmtSolarTime(sunTimeHours);
+  if (lbl) lbl.textContent = fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay)));
 }
 // Slider spans the full day (sunrise..sunset) visually, but only the entering interval
 // (green + red) is clickable → clamp the value there.

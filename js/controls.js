@@ -114,6 +114,9 @@ function doCalibReset() {
   if (canvasLW > 0) scale = canvasLW / scanWmm;
   LAT = 50.0;
   hemisphere = 1;
+  LONG = 15.0;
+  lonHemisphere = 1;
+  timeZoneHours = 1;
 
   // 2. Update ALL UI elements in one pass (sliders, labels, lat input, N/S buttons)
   document.getElementById('inpScanW').value = 178;
@@ -132,11 +135,17 @@ function doCalibReset() {
   document.getElementById('btnS').disabled = false;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
+  document.getElementById('inpLong').value = '15.0';
+  document.getElementById('btnE').className = 'ns-btn active';
+  document.getElementById('btnW').className = 'ns-btn';
+  document.getElementById('inpTimeZone').value = 1;
+  document.getElementById('lblTimeZone').textContent = _fmtTimeZone(1);
 
   // 3. Single draw with ALL values in their final state
   updateScanH();
   refreshCalibLimits();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
 document.getElementById('btnCalibReset').addEventListener('click', doCalibReset);
 
@@ -159,7 +168,9 @@ function exportPreset() {
     radius_mm:  radius,
     scan_w_mm:  scanWmm,
     latitude:   LAT,
-    hemisphere: hemisphere >= 0 ? 'N' : 'S'
+    hemisphere: hemisphere >= 0 ? 'N' : 'S',
+    longitude:  lonHemisphere * LONG,
+    time_zone:  timeZoneHours
   };
   const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -189,7 +200,10 @@ function importPreset(file) {
       typeof preset.horizon_mm === 'number' && preset.horizon_mm >= -50  && preset.horizon_mm <= 50,
       typeof preset.radius_mm  === 'number' && preset.radius_mm  >= 10  && preset.radius_mm  <= 80,
       typeof preset.latitude   === 'number' && preset.latitude   >= 0   && preset.latitude   <= 90,
-      preset.hemisphere === 'N' || preset.hemisphere === 'S'
+      preset.hemisphere === 'N' || preset.hemisphere === 'S',
+      // longitude / time_zone are optional (older presets predate them) - only range-checked if present
+      preset.longitude  === undefined || (typeof preset.longitude === 'number' && preset.longitude >= -180 && preset.longitude <= 180),
+      preset.time_zone  === undefined || (typeof preset.time_zone === 'number' && preset.time_zone >= -12  && preset.time_zone <= 14)
     ];
     if (checks.some(c => !c)) {
       alert('Invalid preset file – values out of range or missing fields.');
@@ -220,6 +234,13 @@ function importPreset(file) {
     hemisphere = preset.hemisphere === 'S' ? -1 : 1;
     document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
     document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+
+    const lon = preset.longitude ?? 15;
+    lonHemisphere = lon < 0 ? -1 : 1;
+    applyLong(Math.abs(lon));
+    document.getElementById('btnE').className = lonHemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnW').className = lonHemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+    applyTimeZone(preset.time_zone ?? 1);
 
     refreshCalibLimits();
     draw(); draw3D();
@@ -283,6 +304,77 @@ document.getElementById('btnS').addEventListener('click', () => {
   document.getElementById('btnN').className = 'ns-btn';
   document.getElementById('btnS').className = 'ns-btn active-s';
   draw(); draw3D();
+});
+
+// ─── Longitude control ──────────────────────────────────────────────────────
+// Mirrors latitude exactly: UI edits a 0-180 magnitude + E/W state (lonHemisphere); only the
+// signed combination (lonHemisphere * LONG) ever gets serialized to presets.json.
+function applyLong(val) {
+  LONG = Math.round(Math.max(0, Math.min(180, val)) * 10) / 10;
+  document.getElementById('inpLong').value = LONG.toFixed(1);
+  draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+}
+
+document.getElementById('inpLong').addEventListener('change', (e) => {
+  applyLong(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpLong').addEventListener('blur', (e) => {
+  applyLong(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpLong').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyLong(parseFloat(e.target.value) || 0);
+});
+document.getElementById('btnLongDec').addEventListener('click', () => {
+  applyLong(LONG - 0.1);
+});
+document.getElementById('btnLongInc').addEventListener('click', () => {
+  applyLong(LONG + 0.1);
+});
+document.getElementById('btnE').addEventListener('click', () => {
+  lonHemisphere = 1;
+  document.getElementById('btnE').className = 'ns-btn active';
+  document.getElementById('btnW').className = 'ns-btn';
+  draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+});
+document.getElementById('btnW').addEventListener('click', () => {
+  lonHemisphere = -1;
+  document.getElementById('btnE').className = 'ns-btn';
+  document.getElementById('btnW').className = 'ns-btn active-s';
+  draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+});
+
+// ─── Time zone offset control ───────────────────────────────────────────────
+function _fmtTimeZone(h) {
+  const sign = h < 0 ? '−' : '+';
+  const abs = Math.abs(h);
+  const hh = Math.floor(abs), mm = Math.round((abs - hh) * 60);
+  return sign + hh + ':' + String(mm).padStart(2, '0');
+}
+function applyTimeZone(val) {
+  timeZoneHours = Math.round(Math.max(-12, Math.min(14, val)) * 4) / 4;   // snap to 15-min steps
+  document.getElementById('inpTimeZone').value = timeZoneHours;
+  document.getElementById('lblTimeZone').textContent = _fmtTimeZone(timeZoneHours);
+  draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+}
+
+document.getElementById('inpTimeZone').addEventListener('change', (e) => {
+  applyTimeZone(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpTimeZone').addEventListener('blur', (e) => {
+  applyTimeZone(parseFloat(e.target.value) || 0);
+});
+document.getElementById('inpTimeZone').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyTimeZone(parseFloat(e.target.value) || 0);
+});
+document.getElementById('btnTimeZoneDec').addEventListener('click', () => {
+  applyTimeZone(timeZoneHours - 0.25);
+});
+document.getElementById('btnTimeZoneInc').addEventListener('click', () => {
+  applyTimeZone(timeZoneHours + 0.25);
 });
 
 // ─── Dimension limits (validation: scan width ⇄ radius ⇄ horizon) ───────────
@@ -670,16 +762,19 @@ function setCurrentHalfFromGallery() {
 }
 
 // Measured sunshine data (CHMI, SSV10M) for the current GALLERY image, keyed off filelist
-// metadata; null for images with no station assigned or that fail to load. Timestamps in
-// `values` stay UTC (see chmi_10min/extract-chmi.ps1) - offsetMin is applied at render time
-// (Sun Graph), not baked in here.
+// metadata (chmi_wsi_station only - no offset field, see core.js's Time zone offset control);
+// null for images with no station assigned or that fail to load. Timestamps in `values` stay
+// UTC (see chmi_10min/extract-chmi.ps1) - the UTC → standard time shift is applied at render
+// time (_sgEnsureChmiByDoy in core.js), not baked in here.
 let currentChmi = null;
 
 // Reflects data availability on both CHMI legend entries (Sun Graph + image-mode): greys out
-// and disables the bold/colour styling when the current image has no CHMI data at all, leaving
-// the normal on/off (strikethrough-only) look untouched whenever data IS available.
+// and disables the bold/colour styling when the current image has no CHMI data at all, or when
+// the active time mode is True solar time (CHMI is standard-time-native and hidden in that mode -
+// see core.js's displayHour/trueFromStandard), leaving the normal on/off (strikethrough-only)
+// look untouched whenever data IS available and the mode supports it.
 function updateChmiLegendAvailability() {
-  const unavailable = currentChmi === null;
+  const unavailable = currentChmi === null || timeDisplayMode === 'true';
   document.querySelectorAll('[data-band="chmi"], [data-band="imgchmi"]').forEach(el => {
     el.classList.toggle('unavailable', unavailable);
   });
@@ -697,7 +792,7 @@ async function setCurrentChmiFromGallery() {
   const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
   const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
   const m = img && img.metadata;
-  if (!m || !m.chmi_wsi_station || typeof m.time_offset_utc !== 'number') { finish(); return; }
+  if (!m || !m.chmi_wsi_station) { finish(); return; }
 
   const genId = galleryState.genId, imageIndex = galleryState.imageIndex;
   try {
@@ -706,7 +801,9 @@ async function setCurrentChmiFromGallery() {
     const data = await res.json();
     // Gallery selection may have moved on while this fetch was in flight - discard if stale.
     if (galleryState.genId !== genId || galleryState.imageIndex !== imageIndex) return;
-    currentChmi = { offsetMin: m.time_offset_utc, values: data.values };
+    // No offset stored here - UTC → standard time uses timeZoneHours (calibration, presets.json),
+    // read live by _sgEnsureChmiByDoy() so tweaking the Time zone offset control updates it.
+    currentChmi = { values: data.values };
     finish();
   } catch (e) {
     console.warn('CHMI data not found for GEN-' + genId + '_' + imageIndex + ':', e);
@@ -758,6 +855,15 @@ function applyGalleryPreset(genId, imageIndex) {
     document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
     document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
   }
+  // Longitude is stored as one signed field (no separate hemisphere key) - decompose into the
+  // magnitude (LONG) + E/W state the UI actually edits, mirroring latitude's own split.
+  if (typeof preset.longitude === 'number') {
+    lonHemisphere = preset.longitude < 0 ? -1 : 1;
+    applyLong(Math.abs(preset.longitude));
+    document.getElementById('btnE').className = lonHemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnW').className = lonHemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+  }
+  if (typeof preset.time_zone === 'number') applyTimeZone(preset.time_zone);
   refreshCalibLimits();
 }
 
@@ -983,6 +1089,47 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
     // Redraw 3D vis with new palette + refresh axis legend swatch colours
     if (typeof draw3D === 'function') { updateAxisLegend(); draw3D(); }
   });
+})();
+
+// ─── Time display mode (True / Mean / Standard solar time) ───────────────────
+// Label-only switch - never touches geometry (hDeg/pixel positions stay true-solar-native
+// everywhere except the Sun Graph's yearly view, which reprojects its own geometry instead).
+(function() {
+  const btn = document.getElementById('btnTimeMode');
+  const menu = document.getElementById('timeModeMenu');
+  const MODE_KEY = 'solargraphyTimeMode';
+
+  function applyTimeMode(mode) {
+    timeDisplayMode = mode;
+    menu.querySelectorAll('.time-mode-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.mode === mode);
+    });
+    try { localStorage.setItem(MODE_KEY, mode); } catch(e) {}
+    updateChmiLegendAvailability();
+    draw();
+    if (typeof draw3D === 'function') draw3D();
+    if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  }
+
+  let saved = 'standard';
+  try { saved = localStorage.getItem(MODE_KEY) || 'standard'; } catch(e) {}
+  timeDisplayMode = saved;
+  menu.querySelectorAll('.time-mode-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.mode === saved);
+  });
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.classList.toggle('open');
+  });
+  menu.querySelectorAll('.time-mode-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.remove('open');
+      applyTimeMode(el.dataset.mode);
+    });
+  });
+  document.addEventListener('click', () => menu.classList.remove('open'));
 })();
 
 // ─── Metadata popup ──────────────────────────────────────────────────────────

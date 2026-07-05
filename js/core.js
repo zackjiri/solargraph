@@ -208,12 +208,66 @@ function azimutToDir(az) {
 // ─── Solar position calculations ──────────────────────────────────────────
 let LAT = 50.0;        // latitude °N, precision 0.5°
 let hemisphere = 1;    // +1 = northern, -1 = southern
-const LON = 15.0;      // longitude °E (unused in solar time mode)
+let LONG = 15.0;         // longitude magnitude 0-180°, precision 0.1° (mirrors LAT/hemisphere)
+let lonHemisphere = 1;   // +1 = East, -1 = West
+let timeZoneHours = 1;   // UTC offset [h], decimal (step 0.25 = 15 min), range -12..+14
 
 // Effective latitude: clamp poles and equator to avoid singularities
 function effectiveLat() {
   const lat = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
   return lat * Math.PI / 180;
+}
+
+// ─── True / Mean / Standard solar time ─────────────────────────────────────
+// Three time conventions, display-only (never fed back into geometry - hDeg/pixel positions
+// always stay driven by TRUE solar hour angle, per the project's own photographic-fidelity rule):
+//   true solar time    - H=0 is noon, by definition; what the app has always computed natively.
+//   mean solar time    - true solar time corrected by the equation of time (day-of-year only).
+//   standard time       - mean solar time corrected by longitude vs. the timezone's own reference
+//                         meridian (chosenZone × 15°) plus the chosen whole/quarter-hour zone.
+let timeDisplayMode = 'standard';   // 'true' | 'mean' | 'standard' - default per product decision
+
+// Equation of time [minutes]: true solar time minus mean solar time. Low-order approximation,
+// reuses the same "day − 81" phase reference as sunDeclination() for consistency. Day-of-year
+// only (no time-of-day dependence - valid to treat as constant across one calendar day, the
+// actual drift is on the order of seconds, far below the app's 10-min data resolution).
+function equationOfTimeMin(doy) {
+  const B = 2 * Math.PI / 365 * (doy - 81);
+  return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+}
+
+function meanFromTrue(trueHour, doy) { return trueHour - equationOfTimeMin(doy) / 60; }
+function trueFromMean(meanHour, doy) { return meanHour + equationOfTimeMin(doy) / 60; }
+
+function standardFromMean(meanHour) {
+  const longSigned = lonHemisphere * LONG;
+  return meanHour - (longSigned - timeZoneHours * 15) / 15;
+}
+function meanFromStandard(standardHour) {
+  const longSigned = lonHemisphere * LONG;
+  return standardHour + (longSigned - timeZoneHours * 15) / 15;
+}
+
+function standardFromTrue(trueHour, doy) { return standardFromMean(meanFromTrue(trueHour, doy)); }
+function trueFromStandard(standardHour, doy) { return trueFromMean(meanFromStandard(standardHour), doy); }
+
+// Dispatcher for anything that DISPLAYS a time number (labels, readouts, axis ticks) - picks the
+// conversion per the current mode. Never call this to compute a pixel position or hour angle;
+// geometry stays in true solar time always (the Sun Graph's yearly view is the one exception -
+// see render-sungraph.js, which reprojects its own geometry rather than just relabeling).
+function displayHour(trueHour, doy) {
+  if (timeDisplayMode === 'mean') return meanFromTrue(trueHour, doy);
+  if (timeDisplayMode === 'standard') return standardFromTrue(trueHour, doy);
+  return trueHour;
+}
+
+// Same dispatcher, but for values natively in STANDARD time (e.g. CHMI's own hour field, see
+// _sgEnsureChmiByDoy) - used only in Mean/Standard display mode, since CHMI is hidden entirely
+// in True solar time mode (see render-sungraph.js / render-2d.js CHMI gating).
+function displayHourFromStandard(standardHour, doy) {
+  if (timeDisplayMode === 'true') return trueFromStandard(standardHour, doy);
+  if (timeDisplayMode === 'mean') return meanFromStandard(standardHour);
+  return standardHour;
 }
 
 // Solar declination for day-of-year d (1 = Jan 1)
@@ -251,16 +305,20 @@ function _sgChmiColor(sec, alpha) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
-// Buckets currentChmi (raw UTC [iso, seconds|null] pairs, from controls.js) into local
-// day-of-year → [[hourFloat, seconds], ...], applying offsetMin only here (render time) so the
-// stored data itself never bakes in a timezone/longitude assumption. Cached on object identity.
-let _sgChmiByDoy = null, _sgChmiSrc = null;
+// Buckets currentChmi (raw UTC [iso, seconds|null] pairs, from controls.js) into STANDARD-TIME
+// day-of-year → [[hourFloat, seconds], ...] (UTC → standard time is a pure whole/quarter-hour
+// shift via timeZoneHours - no longitude involved; that only enters later, converting standard
+// time to true/mean solar time for alignment against the model - see standardFromTrue() etc.).
+// Cached on (currentChmi identity, timeZoneHours) - the zone control can change live without the
+// data itself changing, so both must invalidate the cache.
+let _sgChmiByDoy = null, _sgChmiSrc = null, _sgChmiZone = null;
 function _sgEnsureChmiByDoy() {
   if (typeof currentChmi === 'undefined' || !currentChmi) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
-  if (_sgChmiSrc === currentChmi) return _sgChmiByDoy;
+  if (_sgChmiSrc === currentChmi && _sgChmiZone === timeZoneHours) return _sgChmiByDoy;
   _sgChmiSrc = currentChmi;
+  _sgChmiZone = timeZoneHours;
   const byDoy = new Map();
-  const offMs = currentChmi.offsetMin * 60000;
+  const offMs = timeZoneHours * 3600000;
   for (const [iso, sec] of currentChmi.values) {
     const local = new Date(Date.parse(iso) + offMs);
     // Reading UTC getters off the shifted instant yields the local wall-clock date/time fields.
@@ -354,9 +412,11 @@ function drawSunArc(W, H, month, day, style) {
       if (!pos) continue;
       if (pos.px < 0 || pos.px > W || pos.py < 0 || pos.py > H) continue;
 
-      // Solar hour label: mirror for southern hemisphere
-      const solarHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
-      const label = Math.floor(solarHour) + ':00';
+      // Solar hour label: mirror for southern hemisphere, then convert to the selected display mode
+      const trueHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+      const shownHour = displayHour(trueHour, doy);
+      const hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
+      const label = hh + ':' + String(mm).padStart(2, '0');
 
       ctx.beginPath();
       ctx.arc(pos.px, pos.py, 3.5, 0, Math.PI * 2);

@@ -169,7 +169,7 @@ function updateSunGraphStatus() {
   const rs = document.getElementById('sgRiseSet'), dl = document.getElementById('sgDayLen');
   if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; }   // polar night
   else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; }   // polar day
-  else { rs.textContent = _sgHM(12 - w) + ' / ' + _sgHM(12 + w); dl.textContent = _sgHM(2 * w); }
+  else { rs.textContent = _sgHM(displayHour(12 - w, activeDay)) + ' / ' + _sgHM(displayHour(12 + w, activeDay)); dl.textContent = _sgHM(2 * w); }
   const op = document.getElementById('sgOnPaper');   // interval the image is on the paper (set by drawSunGraph)
   if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper);
 }
@@ -366,8 +366,10 @@ function drawSunGraph() {
     const up = new Array(NDAYS + 1), lo = new Array(NDAYS + 1);
     for (let d = 1; d <= NDAYS; d++) {
       const wh = _sgHalfWidth(lv.h, sphi, cphi, sdel[d], cdel[d]);
-      up[d] = hourToY(Math.min(24, 12 + wh));   // upper boundary (toward later hours / top)
-      lo[d] = hourToY(Math.max(0,  12 - wh));   // lower boundary (toward earlier hours / bottom)
+      // displayHour() reprojects the true-solar boundary onto the selected time convention -
+      // identity in True mode (unwaved, as today), a per-day wave in Mean/Standard mode.
+      up[d] = hourToY(Math.min(24, displayHour(12 + wh, d)));   // upper boundary (toward later hours / top)
+      lo[d] = hourToY(Math.max(0,  displayHour(12 - wh, d)));   // lower boundary (toward earlier hours / bottom)
     }
     lensByKey[lv.key] = { up, lo };
     const e = _sgEmphBand === lv.key;
@@ -401,20 +403,24 @@ function drawSunGraph() {
     const r = yearRuns[d]; if (!r) continue;
     const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
     const hi = inExp(d);
+    const dt0 = (h) => hourToY(Math.min(24, displayHour(h, d)));   // true-solar boundary → display axis
     if (_sgShowRed) {
       ctx.fillStyle = redCol(hi);
-      for (const iv of r.red)   ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+      for (const iv of r.red)   ctx.fillRect(x0, dt0(iv[1]), w, dt0(iv[0]) - dt0(iv[1]));
     }
     if (_sgShowGreen) {
       ctx.fillStyle = greenCol(hi);
-      for (const iv of r.green) ctx.fillRect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+      for (const iv of r.green) ctx.fillRect(x0, dt0(iv[1]), w, dt0(iv[0]) - dt0(iv[1]));
     }
   }
 
   // ── CHMI measured sunshine overlay (continuous gradient, 10-min resolution) ──
   // Drawn on top of the theoretical green/red overlay - only exists for days covered by the
   // loaded station extract (chmi/GEN-X_Y.json), everywhere else this simply draws nothing.
-  if (_sgShowChmi) {
+  // Hidden entirely in True solar time mode: CHMI's own hour field is standard time, and
+  // comparing it against reality only makes sense once the axis is in a real-clock convention
+  // (Mean/Standard) - see the product decision in the project notes.
+  if (_sgShowChmi && timeDisplayMode !== 'true') {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
       // Reuse inExp's half-open [start,end) clip (not just its highlight styling) so the CHMI
@@ -433,8 +439,13 @@ function drawSunGraph() {
         const hMin = 12 - wAstro, hMax = 12 + wAstro;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
         for (const [hour, sec] of samples) {
-          if (sec === null || hour < hMin || hour > hMax) continue;
-          const y0 = hourToY(Math.min(24, hour + 1 / 6)), y1 = hourToY(hour);
+          if (sec === null) continue;
+          // hour is standard time (native to the CHMI data); convert to the true-solar
+          // equivalent for this day to test the astro-twilight window and to position it
+          // correctly on the (possibly reprojected) display axis.
+          const trueHour = trueFromStandard(hour, d);
+          if (trueHour < hMin || trueHour > hMax) continue;
+          const y0 = hourToY(Math.min(24, displayHour(trueHour + 1 / 6, d))), y1 = hourToY(displayHour(trueHour, d));
           ctx.fillStyle = _sgChmiColor(sec, alpha);
           ctx.fillRect(x0, y0, w, Math.max(1, y1 - y0));
         }
@@ -458,8 +469,9 @@ function drawSunGraph() {
       for (let d = 1; d <= NDAYS; d++) {
         const r = yearRuns[d]; if (!r) continue;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
+        const dt0 = (h) => hourToY(Math.min(24, displayHour(h, d)));
         for (const iv of (key === 'green' ? r.green : r.red))
-          ctx.rect(x0, hourToY(Math.min(24, iv[1])), w, hourToY(iv[0]) - hourToY(Math.min(24, iv[1])));
+          ctx.rect(x0, dt0(iv[1]), w, dt0(iv[0]) - dt0(iv[1]));
       }
     } else ok = false;
     if (ok) {
@@ -496,14 +508,27 @@ function drawSunGraph() {
     _sgOutText(ctx, MONTH_NAMES[m], dayToX((starts[m] + nextDoy) / 2), py0 + ph + 15, OUT);
   }
 
-  // Solar noon line (flat at 12:00 in solar time)
-  const yNoon = hourToY(12);
+  // Solar noon line - flat at true solar noon (True mode, matches the axis exactly). In
+  // Mean/Standard mode the axis is reprojected, so true noon's OWN value on that axis drifts
+  // with the equation of time across the year → the line waves instead of staying flat.
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(px0, yNoon); ctx.lineTo(px0 + pw, yNoon); ctx.stroke();
-  if (showLabels) {   // the "solar noon 12:00" caption is a label → controlled by Display "Labels"
+  ctx.beginPath();
+  if (timeDisplayMode === 'true') {
+    const yFlat = hourToY(12);
+    ctx.moveTo(px0, yFlat); ctx.lineTo(px0 + pw, yFlat);
+  } else {
+    for (let d = 1; d <= NDAYS; d++) {
+      const y = hourToY(displayHour(12, d));
+      if (d === 1) ctx.moveTo(dayToX(d), y); else ctx.lineTo(dayToX(d), y);
+    }
+  }
+  ctx.stroke();
+  if (showLabels) {   // the caption is a label → controlled by Display "Labels"
+    const noonLabel = timeDisplayMode === 'true' ? 'solar noon 12:00' : 'true solar noon';
+    const yEdge = hourToY(displayHour(12, _DAYS_IN_YEAR));
     ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    _sgOutText(ctx, 'solar noon 12:00', px0 + pw - 4, yNoon + 12, OUT);
+    _sgOutText(ctx, noonLabel, px0 + pw - 4, yEdge + 12, OUT);
   }
 
   // Plot border
@@ -519,10 +544,10 @@ function drawSunGraph() {
       if (wd <= 0) return;
       const x = dayToX(doy);
       ctx.beginPath();
-      ctx.moveTo(x, hourToY(Math.min(24, 12 + wd)));
-      ctx.lineTo(x, hourToY(Math.max(0, 12 - wd)));
+      ctx.moveTo(x, hourToY(Math.min(24, displayHour(12 + wd, doy))));
+      ctx.lineTo(x, hourToY(Math.max(0,  displayHour(12 - wd, doy))));
       ctx.stroke();
-      if (showLabels) _sgVLabel(ctx, expLbl[i], x, yNoon, '#ffffff', OUT_LBL, doy < 10);
+      if (showLabels) _sgVLabel(ctx, expLbl[i], x, hourToY(displayHour(12, doy)), '#ffffff', OUT_LBL, doy < 10);
     });
   }
 
@@ -533,7 +558,7 @@ function drawSunGraph() {
     const x = dayToX(customDoy);
     ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    if (showLabels) _sgVLabel(ctx, 'custom date', x, yNoon, '#ffffff', OUT_LBL, customDoy < 10);
+    if (showLabels) _sgVLabel(ctx, 'custom date', x, hourToY(displayHour(12, customDoy)), '#ffffff', OUT_LBL, customDoy < 10);
   }
   // Semi-transparent orange line at the cursor-hovered day.
   if (sgHoverDay !== null) {
@@ -543,7 +568,7 @@ function drawSunGraph() {
   }
   // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
   if (typeof show3DCulmination !== 'undefined' && show3DCulmination) {
-    const sx = dayToX(customDoy), sy = hourToY(sunTimeHours);
+    const sx = dayToX(customDoy), sy = hourToY(displayHour(sunTimeHours, customDoy));
     const glR = 11;
     const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glR);
     glow.addColorStop(0, 'rgba(232,160,32,0.65)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
@@ -561,14 +586,15 @@ function drawSunGraph() {
   // ── CHMI strip line (directly above the day strip) ────────────────────────────
   // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
   // day outside the station's coverage window) - only the coloured cells are data-dependent.
-  if (_sgShowChmi) {
+  if (_sgShowChmi && timeDisplayMode !== 'true') {
     const chmiByDoy   = _sgEnsureChmiByDoy();
     const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
     if (daySamples) {
       const calpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
       for (const [hour, sec] of daySamples) {
         if (sec === null) continue;
-        const xl = xh(hour), xr = xh(Math.min(24, hour + 1 / 6));
+        const trueHour = trueFromStandard(hour, activeDay);
+        const xl = xh(trueHour), xr = xh(Math.min(24, trueFromStandard(hour + 1 / 6, activeDay)));
         ctx.fillStyle = _sgChmiColor(sec, calpha);
         ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
       }
@@ -612,7 +638,9 @@ function drawSunGraph() {
   for (let h = 0; h <= 22; h += 2) {
     const x = xh(h);
     ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 3); ctx.stroke();
-    ctx.fillText(String(h).padStart(2, '0'), x, axisY + 5);
+    const shown = displayHour(h, activeDay);
+    const sh = Math.round(((shown % 24) + 24) % 24);
+    ctx.fillText(String(sh).padStart(2, '0'), x, axisY + 5);
   }
 
   // Title (uses current calibration latitude / hemisphere)
