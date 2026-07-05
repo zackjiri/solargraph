@@ -542,7 +542,7 @@
   }
 
   .lat-input {
-    width: 32px;
+    width: 44px;
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--text);
