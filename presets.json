@@ -7,7 +7,9 @@
     "radius_mm":   36.5,
     "scan_w_mm":  130,
     "latitude":    49.5,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-1_1": {
     "yaw_deg":    -15.0,
@@ -17,7 +19,9 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-1_2": {
     "yaw_deg":    -20.5,
@@ -27,7 +31,9 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-1_3": {
     "yaw_deg":     -0.5,
@@ -37,7 +43,9 @@
     "radius_mm":   36.5,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-1_4": {
     "yaw_deg":     19.0,
@@ -47,7 +55,9 @@
     "radius_mm":   36.5,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-1_5": {
     "yaw_deg":     26.0,
@@ -57,7 +67,9 @@
     "radius_mm":   32.0,
     "scan_w_mm":  178,
     "latitude":    49.5,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-2_2": {
     "yaw_deg":     25.0,
@@ -67,7 +79,9 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.0,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
     "GEN-2_3": {
     "yaw_deg":    -36.0,
@@ -77,7 +91,9 @@
     "radius_mm":   32.5,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
   "GEN-2_4": {
     "yaw_deg":    -28.0,
@@ -87,7 +103,9 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.0,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
     "GEN-2_5": {
     "yaw_deg":     30.5,
@@ -97,7 +115,9 @@
     "radius_mm":   32.0,
     "scan_w_mm":  178,
     "latitude":    49.3,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },
     "GEN-2_6": {
     "yaw_deg":     116.5,
@@ -107,7 +127,9 @@
     "radius_mm":   29.5,
     "scan_w_mm":  178,
     "latitude":    49.5,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },  
     "GEN-2_7": {
     "yaw_deg":     -10.0,
@@ -117,7 +139,9 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.6,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   },   
     "GEN-2_8": {
     "yaw_deg":    -53.5,
@@ -127,6 +151,8 @@
     "radius_mm":   33.0,
     "scan_w_mm":  178,
     "latitude":    49.2,
-    "hemisphere":  "N"
+    "hemisphere":  "N",
+    "longitude":   15,
+    "time_zone":   1
   }
 }
