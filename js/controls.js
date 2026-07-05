@@ -1106,6 +1106,7 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
     });
     try { localStorage.setItem(MODE_KEY, mode); } catch(e) {}
     updateChmiLegendAvailability();
+    if (typeof syncSunTimeUI === 'function') syncSunTimeUI();
     draw();
     if (typeof draw3D === 'function') draw3D();
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();

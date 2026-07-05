@@ -912,13 +912,21 @@ function advanceSunAnim(ts) {
   sunTimeHours  = local <= motion ? tEnter + local * SUN_RATE_HPS : tExit;  // hold at end during pause
   syncSunTimeUI();
 }
-// Reflect sunTimeHours in the slider + label. The slider's VALUE always stays true solar time
-// (drives the actual geometry); only the printed label is converted to the selected display mode.
+// Reflect sunTimeHours in the slider + label. The slider's VALUE and its min/max (rise/set,
+// set by refreshSunTimeRange) always stay true solar time (drive the actual geometry / axis
+// range); only the printed labels - current time and the rise/set boundary labels below the
+// slider - are converted to the selected display mode.
 function syncSunTimeUI() {
   const rng = document.getElementById('rngSunTime');
   const lbl = document.getElementById('lblSunTime');
+  const doy = dayOfYear(customMonth, customDay);
   if (rng && parseFloat(rng.value) !== sunTimeHours) rng.value = sunTimeHours;
-  if (lbl) lbl.textContent = fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay)));
+  if (lbl) lbl.textContent = fmtSolarTime(displayHour(sunTimeHours, doy));
+  const { tRise, tSet } = sunDayRange();
+  const riseLbl = document.getElementById('lblSunRise');
+  const setLbl  = document.getElementById('lblSunSet');
+  if (riseLbl) riseLbl.textContent = fmtSolarTime(displayHour(tRise, doy));
+  if (setLbl)  setLbl.textContent  = fmtSolarTime(displayHour(tSet, doy));
 }
 // Slider spans the full day (sunrise..sunset) visually, but only the entering interval
 // (green + red) is clickable → clamp the value there.
