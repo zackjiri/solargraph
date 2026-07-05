@@ -8,7 +8,7 @@
     "scan_w_mm":  130,
     "latitude":    49.5,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.2,
     "time_zone":   1
   },
   "GEN-1_1": {
@@ -20,7 +20,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
   "GEN-1_2": {
@@ -32,7 +32,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
   "GEN-1_3": {
@@ -44,7 +44,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
   "GEN-1_4": {
@@ -56,7 +56,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
   "GEN-1_5": {
@@ -68,7 +68,7 @@
     "scan_w_mm":  178,
     "latitude":    49.5,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.2,
     "time_zone":   1
   },
   "GEN-2_2": {
@@ -80,7 +80,7 @@
     "scan_w_mm":  178,
     "latitude":    49.0,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
     "GEN-2_3": {
@@ -92,7 +92,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
   "GEN-2_4": {
@@ -104,7 +104,7 @@
     "scan_w_mm":  178,
     "latitude":    49.0,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
     "GEN-2_5": {
@@ -116,7 +116,7 @@
     "scan_w_mm":  178,
     "latitude":    49.3,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   },
     "GEN-2_6": {
@@ -128,7 +128,7 @@
     "scan_w_mm":  178,
     "latitude":    49.5,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.2,
     "time_zone":   1
   },  
     "GEN-2_7": {
@@ -140,7 +140,7 @@
     "scan_w_mm":  178,
     "latitude":    49.6,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.3,
     "time_zone":   1
   },   
     "GEN-2_8": {
@@ -152,7 +152,7 @@
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
-    "longitude":   15,
+    "longitude":   16.6,
     "time_zone":   1
   }
 }
