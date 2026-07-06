@@ -4,11 +4,32 @@ container.addEventListener('mousemove', (e) => {
   if (theaterMode3D) return;  // theater mode: no readout, no crosshair
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) return;  // sun graph: same as theater
 
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvasLW / rect.width;   // map to logical px (not the super-res backing store)
-  const scaleY = canvasLH / rect.height;
-  mouseX = (e.clientX - rect.left) * scaleX;
-  mouseY = (e.clientY - rect.top) * scaleY;
+  // Canvas is CSS 100% × 100% with object-fit: contain, so the bitmap is
+  // letterboxed inside the element – map through the real image bounds.
+  const rect = container.getBoundingClientRect();
+  const b = getImageBounds();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+
+  if (px < b.ox || px > b.ox + b.iw || py < b.oy || py > b.oy + b.ih) {
+    // Over the letterbox bars – no image here: restore the OS cursor and
+    // clear the crosshair + readout (crosshair would otherwise be displaced)
+    container.style.cursor = 'default';
+    if (mouseX >= 0) {
+      mouseX = -1; mouseY = -1;
+      document.getElementById('valAz').textContent  = '—';
+      document.getElementById('valAlt').textContent  = '—';
+      document.getElementById('valDay').textContent  = '—';
+      document.getElementById('valTime').textContent = '—';
+      document.getElementById('valDir').textContent  = '—';
+      draw();
+    }
+    return;
+  }
+  container.style.cursor = 'none';
+
+  mouseX = (px - b.ox) * canvasLW / b.iw;   // map to logical px (not the super-res backing store)
+  mouseY = (py - b.oy) * canvasLH / b.ih;
 
   const { beta_deg, theta_deg, azimut_world } = pixelToAzEl(mouseX, mouseY);
 
@@ -194,9 +215,9 @@ function importPreset(file) {
 
     // Validate required fields and value ranges
     const checks = [
-      typeof preset.yaw_deg    === 'number' && preset.yaw_deg    >= -120 && preset.yaw_deg    <= 120,
-      typeof preset.pitch_deg  === 'number' && preset.pitch_deg  >= -45  && preset.pitch_deg  <= 45,
-      typeof preset.roll_deg   === 'number' && preset.roll_deg   >= -10  && preset.roll_deg   <= 10,
+      typeof preset.yaw_deg    === 'number' && preset.yaw_deg    >= -180 && preset.yaw_deg    <= 180,
+      typeof preset.pitch_deg  === 'number' && preset.pitch_deg  >= -90  && preset.pitch_deg  <= 90,
+      typeof preset.roll_deg   === 'number' && preset.roll_deg   >= -90  && preset.roll_deg   <= 90,
       typeof preset.horizon_mm === 'number' && preset.horizon_mm >= -50  && preset.horizon_mm <= 50,
       typeof preset.radius_mm  === 'number' && preset.radius_mm  >= 10  && preset.radius_mm  <= 80,
       typeof preset.latitude   === 'number' && preset.latitude   >= 0   && preset.latitude   <= 90,

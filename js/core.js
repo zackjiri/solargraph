@@ -484,7 +484,7 @@ let showGrid = true, showLabels = true, showHorizon = true;
 let dispOpacity = 0.75;  // master opacity for all display overlays
 let yawDeg   = 0;   // degrees, rotation from south (positive = west)
 let pitchDeg   = 0;   // degrees, pitch – bends horizon via Ry rotation
-let rollDeg = 0;   // degrees, roll around optical axis (±5°, step 0.1°)
+let rollDeg = 0;   // degrees, roll around optical axis (±90°, step 0.1°)
 let hScale     = 1.0; // derived: radius / R (updated when radius changes)
 let radius     = 33;  // effective cylinder radius [mm]
 let horizonMm = 0;   // mm, vertical offset of pinhole from paper centre (positive = above centre)
