@@ -15,21 +15,21 @@
     <span>pinhole projection definition: x = 2 r α &nbsp;•&nbsp; y = 2 r cos α tan ϕ</span>
     <div class="mode-toggle-wrap">
       <div class="mode-toggle">
-        <button class="mode-btn active-gallery" id="btnModeGallery">Gallery</button>
-        <button class="mode-btn" id="btnModeAnalyzer">Analyzer</button>
+        <button class="mode-btn active-gallery" id="btnModeGallery" title="Browse and compare captured solargraphs">Gallery</button>
+        <button class="mode-btn" id="btnModeAnalyzer" title="Simulate and calibrate the pinhole projection">Analyzer</button>
       </div>
       <!-- Sub-toggles, shown only in Analyzer; sit flush under the toggle (widths matched in JS) -->
       <div class="mode-subrow">
-        <button class="submode-btn" id="btnModeTheater">3D Model</button>
-        <button class="submode-btn" id="btnModeSunGraph">Sun Graph</button>
+        <button class="submode-btn" id="btnModeTheater" title="Show the 3D can / cylinder model">3D Model</button>
+        <button class="submode-btn" id="btnModeSunGraph" title="Show the sun-path day chart">Sun Graph</button>
       </div>
     </div>
     <div class="time-mode-wrap">
       <button id="btnTimeMode" title="Time display mode">🕐</button>
       <div id="timeModeMenu" class="time-mode-menu">
-        <button class="time-mode-item" data-mode="true">True solar time</button>
-        <button class="time-mode-item" data-mode="mean">Mean solar time</button>
-        <button class="time-mode-item active" data-mode="standard">Standard time</button>
+        <button class="time-mode-item" data-mode="true" title="Time based on the sun's actual position (transit = solar noon)">True solar time</button>
+        <button class="time-mode-item" data-mode="mean" title="Solar time averaged over the year (removes the equation of time)">Mean solar time</button>
+        <button class="time-mode-item active" data-mode="standard" title="Civil clock time for the selected time zone">Standard time</button>
       </div>
     </div>
     <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
@@ -84,13 +84,13 @@
     <div class="sidebar-section">
       <div class="sidebar-title">View</div>
       <div class="radio-group" id="viewGroup">
-        <label class="radio-row view-raw">
+        <label class="radio-row view-raw" title="Unprocessed scanner output">
           <input type="radio" name="view" value="0"> RAW SCAN
         </label>
-        <label class="radio-row view-enh active">
+        <label class="radio-row view-enh active" title="Enhanced contrast and colors">
           <input type="radio" name="view" value="1" checked> ENHANCED
         </label>
-        <label class="radio-row view-split disabled">
+        <label class="radio-row view-split disabled" title="Compare raw and enhanced side by side">
           <input type="radio" name="view" value="2" disabled> SPLIT SCREEN
         </label>
       </div>
@@ -100,7 +100,7 @@
             <span class="slider-label" style="color:var(--dim)">Opacity</span>
             <span class="slider-val" style="color:var(--dim)" id="lblL2Opacity">100%</span>
           </div>
-          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)">
+          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)" title="Blend between raw and enhanced scan">
         </div>
         <button id="btnL2Play" title="Crossfade loop (10 s / cycle)">
           <span id="l2PlayIcon"></span>
@@ -147,7 +147,7 @@
       </label>
       <button id="btnNoon" title="Show the sun path for the custom date">
         <span id="noonChkIcon">☐</span>
-        <span>Sun path (custom date)</span>
+        <span>SUN PATH (CUSTOM DATE)</span>
         <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
       </button>
       <div id="sunAnimCtl" style="display:none">
@@ -160,7 +160,7 @@
             <span class="slider-label" style="color:#f0d040">Time</span>
             <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
           </div>
-          <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%">
+          <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%" title="Scrub the sun's position across the selected day">
           <div class="sun-rise-set">
             <span>RISE <span id="lblSunRise">—</span></span>
             <span>SET <span id="lblSunSet">—</span></span>
@@ -171,11 +171,11 @@
     <div id="can3dButtons">
       <div class="panel-title" style="align-self:flex-start;margin-bottom:3px">Preset</div>
       <div class="can3d-btn-row">
-        <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35">Import</button>
-        <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35">Export</button>
+        <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35" title="Load a saved calibration file">Import</button>
+        <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35" title="Save the current calibration to a file">Export</button>
       </div>
       <div class="can3d-sep"></div>
-      <button class="sidebar-btn" id="btnReset">↩ Load new image</button>
+      <button class="sidebar-btn" id="btnReset" title="Clear the current image and calibration">↩ Load new image</button>
     </div>
     <input type="file" id="presetFileInput" accept=".json" style="display:none">
   </div>
@@ -226,7 +226,7 @@
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
           <div class="sg-leg-sep"></div>
-          <div class="sg-leg-item sg-leg-toggle unavailable" data-band="chmi"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
+          <div class="sg-leg-item sg-leg-toggle unavailable" data-band="chmi" title="Show sunshine data from the nearest Czech Hydrometeorological Institute (CHMI) weather station"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
         </div>
       </div>
       <!-- Image-mode legend – bottom-right, always (shown only in plain Analyzer/image view), collapsible -->
@@ -241,10 +241,10 @@
           <div class="leg-row"><span class="leg-line" style="border-color:#FF643C"></span><span>Solstice (S)</span></div>
           <div class="leg-row"><span class="leg-line" style="border-color:#50DC78"></span><span>Custom date</span></div>
           <div class="sg-leg-sep"></div>
-          <div class="sg-leg-item sg-leg-toggle off unavailable" data-band="imgchmi"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
+          <div class="sg-leg-item sg-leg-toggle off unavailable" data-band="imgchmi" title="Show sunshine data from the nearest Czech Hydrometeorological Institute (CHMI) weather station"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
         </div>
       </div>
-      <button id="btnTheaterExit">✕ exit</button>
+      <button id="btnTheaterExit" title="Exit theater mode">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
         <div id="theaterStatus" title="Click to hide">
@@ -280,10 +280,10 @@
         <button id="statusToggle" title="Hide / show the info panel">▲</button>
       </div>
       <div id="theaterZoomCtl">
-        <input type="range" id="theaterZoom" min="0.5" max="2" step="0.1" value="1">
+        <input type="range" id="theaterZoom" min="0.5" max="2" step="0.1" value="1" title="Zoom the 3D model">
         <span id="theaterZoomVal">1.0×</span>
       </div>
-      <div id="splitHandle"></div>
+      <div id="splitHandle" title="Drag to resize the raw/enhanced comparison"></div>
       <button id="btnSplitInvert" title="Swap sides">↺</button>
     </div>
   </div>
@@ -293,18 +293,18 @@
 
     <div class="sidebar-section" id="displaySection">
       <div class="sidebar-title">Display</div>
-      <label class="chk-row"><input type="checkbox" id="chkGrid" checked> Az/Alt Grid</label>
-      <label class="chk-row"><input type="checkbox" id="chkLabels" checked> Labels</label>
-      <label class="chk-row"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
-      <label class="chk-row"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
-      <label class="chk-row"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
-      <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.45)">Show Isolines</button>
+      <label class="chk-row" title="Overlay the azimuth / altitude coordinate grid"><input type="checkbox" id="chkGrid" checked> Az/Alt grid</label>
+      <label class="chk-row" title="Show azimuth, altitude and date labels on the grid"><input type="checkbox" id="chkLabels" checked> Labels</label>
+      <label class="chk-row" title="Overlay the calculated horizon line"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
+      <label class="chk-row" title="Overlay solstice and equinox sun paths"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
+      <label class="chk-row" title="Overlay the sun path for the custom date below"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
+      <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.45)" title="Show exposure / incidence-angle isolines">Show Isolines</button>
       <div class="slider-row" style="margin-top:4px">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--dim)">Opacity</span>
           <span class="slider-val" style="color:var(--dim)" id="lblOpacity">75%</span>
         </div>
-        <input type="range" id="rngOpacity" min="10" max="100" value="75" style="accent-color:var(--dim)">
+        <input type="range" id="rngOpacity" min="10" max="100" value="75" style="accent-color:var(--dim)" title="Overlay line opacity">
       </div>
     </div>
 
@@ -312,10 +312,10 @@
       <div class="sidebar-title">Calibration</div>
       <div class="slider-row">
         <div class="slider-header">
-          <span class="slider-label" style="color:#a0c8e0">Scan width / height</span>
+          <span class="slider-label" style="color:#a0c8e0" title="Physical size of the photo paper (height follows from width)">Scan width / height</span>
         </div>
       </div>
-      <div class="lat-row" style="margin-top:2px;margin-bottom:6px">
+      <div class="lat-row" style="margin-top:2px;margin-bottom:6px" title="Physical size of the photo paper (height follows from width)">
         <button class="lat-btn" id="btnScanWDec">◀</button>
         <input type="number" class="lat-input" id="inpScanW" min="80" max="300" step="1" value="178">
         <button class="lat-btn" id="btnScanWInc">▶</button>
@@ -329,59 +329,59 @@
           <span class="slider-label" style="color:var(--accent)">Yaw</span>
           <span class="slider-val" style="color:var(--accent)" id="lblYaw">0.0°</span>
         </div>
-        <input type="range" id="rngYaw" min="-120" max="120" step="0.5" value="0" style="accent-color:var(--accent)">
+        <input type="range" id="rngYaw" min="-180" max="180" step="0.5" value="0" style="accent-color:var(--accent)" title="Rotate the projection around the vertical axis (compass heading correction)">
       </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--accent2)">Pitch</span>
           <span class="slider-val" style="color:var(--accent2)" id="lblPitch">0.0°</span>
         </div>
-        <input type="range" id="rngPitch" min="-45" max="45" step="0.5" value="0" style="accent-color:var(--accent2)">
+        <input type="range" id="rngPitch" min="-90" max="90" step="0.5" value="0" style="accent-color:var(--accent2)" title="Tilt the pinhole up/down from level (front-back lean of the can)">
       </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:#c8a040">Roll</span>
           <span class="slider-val" style="color:#c8a040" id="lblRoll">0.0°</span>
         </div>
-        <input type="range" id="rngRoll" min="-10" max="10" step="0.1" value="0" style="accent-color:#c8a040">
+        <input type="range" id="rngRoll" min="-90" max="90" step="0.1" value="0" style="accent-color:#c8a040" title="Tilt the pinhole sideways (left-right lean of the can)">
       </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:#88ccaa">Horizon</span>
           <span class="slider-val" style="color:#88ccaa" id="lblHorizon">0.0 mm</span>
         </div>
-        <input type="range" id="rngHorizon" min="-50" max="50" step="0.5" value="0" style="accent-color:#88ccaa">
+        <input type="range" id="rngHorizon" min="-50" max="50" step="0.5" value="0" style="accent-color:#88ccaa" title="Vertical offset of the pinhole from the paper's centre line">
       </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:#cc88cc">Radius</span>
           <span class="slider-val" style="color:#cc88cc" id="lblHScale">33.0 mm</span>
         </div>
-        <input type="range" id="rngHScale" min="15" max="80" step="0.5" value="33" style="accent-color:#cc88cc">
+        <input type="range" id="rngHScale" min="15" max="80" step="0.5" value="33" style="accent-color:#cc88cc" title="Effective radius of the film can / cylinder">
       </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--accent-red)">Location</span>
         </div>
       </div>
-      <div class="lat-row" style="margin-top:2px">
+      <div class="lat-row" style="margin-top:2px" title="Observation latitude">
         <button class="lat-btn" id="btnLatDec">◀</button>
         <input type="number" class="lat-input" id="inpLat" min="0" max="90" step="0.1" value="50.0">
         <button class="lat-btn" id="btnLatInc">▶</button>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">°</span>
         <div class="ns-toggle">
-          <button class="ns-btn active" id="btnN">N</button>
-          <button class="ns-btn" id="btnS">S</button>
+          <button class="ns-btn active" id="btnN" title="Northern hemisphere">N</button>
+          <button class="ns-btn" id="btnS" title="Southern hemisphere">S</button>
         </div>
       </div>
-      <div class="lat-row" style="margin-top:5px">
+      <div class="lat-row" style="margin-top:5px" title="Observation longitude">
         <button class="lat-btn" id="btnLongDec">◀</button>
         <input type="number" class="lat-input" id="inpLong" min="0" max="180" step="0.1" value="15.0">
         <button class="lat-btn" id="btnLongInc">▶</button>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">°</span>
         <div class="ns-toggle">
-          <button class="ns-btn active" id="btnE">E</button>
-          <button class="ns-btn" id="btnW">W</button>
+          <button class="ns-btn active" id="btnE" title="East of Greenwich">E</button>
+          <button class="ns-btn" id="btnW" title="West of Greenwich">W</button>
         </div>
       </div>
       <div class="slider-row">
@@ -390,23 +390,23 @@
           <span class="slider-val" style="color:var(--accent-red)" id="lblTimeZone">+1:00</span>
         </div>
       </div>
-      <div class="lat-row" style="margin-top:2px">
+      <div class="lat-row" style="margin-top:2px" title="UTC offset used for standard time">
         <button class="lat-btn" id="btnTimeZoneDec">◀</button>
         <input type="number" class="lat-input" id="inpTimeZone" min="-12" max="14" step="0.25" value="1">
         <button class="lat-btn" id="btnTimeZoneInc">▶</button>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">h</span>
       </div>
-      <button class="sidebar-btn" id="btnCalibReset">Reset calibration</button>
+      <button class="sidebar-btn" id="btnCalibReset" title="Reset yaw, pitch, roll, horizon, radius and location to defaults">Reset calibration</button>
     </div>
 
     <div class="sidebar-section">
       <div class="sidebar-title">Custom Path</div>
-      <div class="date-row">
+      <div class="date-row" title="Month for the custom sun-path overlay">
         <button class="date-btn" id="btnMonDec">◀</button>
         <span class="date-val" id="lblMonth">Jul</span>
         <button class="date-btn" id="btnMonInc">▶</button>
       </div>
-      <div class="date-row">
+      <div class="date-row" title="Day for the custom sun-path overlay">
         <button class="date-btn" id="btnDayDec">◀</button>
         <span class="date-val" id="lblDay">20</span>
         <button class="date-btn" id="btnDayInc">▶</button>
