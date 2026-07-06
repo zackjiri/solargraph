@@ -524,7 +524,11 @@ function drawSunGraph() {
   }
   ctx.stroke();
   if (showLabels) {   // the caption is a label → controlled by Display "Labels"
-    const noonLabel = timeDisplayMode === 'true' ? 'solar noon 12:00' : 'true solar noon';
+    // The line is the sun's meridian transit in every mode (flat on the apparent
+    // axis, waving by the equation of time (+ longitude offset) on the others),
+    // so it carries the same name everywhere. "Midday" (12:00 civil) would be a
+    // different, flat reference line - not this one.
+    const noonLabel = 'solar noon';
     const yEdge = hourToY(displayHour(12, _DAYS_IN_YEAR));
     ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
