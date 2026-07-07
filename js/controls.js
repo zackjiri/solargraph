@@ -577,40 +577,121 @@ let _sunEnterT1       = 12;    // solar time when the ray stops entering the can
 const SUN_RATE_HPS    = 0.5;   // animation speed: hours of solar time per real second
 
 function updateDateLabels() {
-  document.getElementById('lblMonth').textContent = MONTHS[customMonth - 1];
-  document.getElementById('lblDay').textContent = customDay;
+  renderDateWheels();
 }
 
-document.getElementById('btnMonDec').addEventListener('click', () => {
-  customMonth = customMonth > 1 ? customMonth - 1 : 12;
+// Step helpers – same wrapping behaviour as the old ◀/▶ buttons
+function stepCustomMonth(dir) {
+  customMonth = dir > 0 ? (customMonth < 12 ? customMonth + 1 : 1)
+                        : (customMonth > 1  ? customMonth - 1 : 12);
   customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-});
-document.getElementById('btnMonInc').addEventListener('click', () => {
-  customMonth = customMonth < 12 ? customMonth + 1 : 1;
-  customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-});
-document.getElementById('btnDayDec').addEventListener('click', () => {
-  if (customDay > 1) {
-    customDay--;
+}
+function stepCustomDay(dir) {
+  if (dir > 0) {
+    if (customDay < DAYS_IN_MONTH[customMonth - 1]) customDay++;
+    else { customMonth = customMonth < 12 ? customMonth + 1 : 1; customDay = 1; }
   } else {
-    // move to the previous month (wrapping)
-    customMonth = customMonth > 1 ? customMonth - 1 : 12;
-    customDay   = DAYS_IN_MONTH[customMonth - 1];
+    if (customDay > 1) customDay--;
+    else { customMonth = customMonth > 1 ? customMonth - 1 : 12; customDay = DAYS_IN_MONTH[customMonth - 1]; }
   }
+}
+function commitCustomDate() {
   updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-});
-document.getElementById('btnDayInc').addEventListener('click', () => {
-  if (customDay < DAYS_IN_MONTH[customMonth - 1]) {
-    customDay++;
-  } else {
-    // move to the next month (wrapping)
-    customMonth = customMonth < 12 ? customMonth + 1 : 1;
-    customDay   = 1;
+}
+
+// Day value `off` steps away from the current date, without mutating state
+// (month-boundary wrapping matches stepCustomDay)
+function customDayAt(off) {
+  let m = customMonth, d = customDay;
+  while (off > 0) { if (d < DAYS_IN_MONTH[m - 1]) d++; else { m = m < 12 ? m + 1 : 1; d = 1; } off--; }
+  while (off < 0) { if (d > 1) d--; else { m = m > 1 ? m - 1 : 12; d = DAYS_IN_MONTH[m - 1]; } off++; }
+  return d;
+}
+
+// iOS-style horizontal picker: current value centred, grey neighbours on both
+// sides. Drag (touch or mouse) scrolls with live snapping; tapping a side
+// value jumps to it; mouse wheel steps by one.
+function makeDateWheel(el, { labelAt, step, itemW }) {
+  let frac = 0;   // fractional item offset while dragging → strip shift
+
+  function render() {
+    const cx = (el.clientWidth || 200) / 2;
+    let html = '';
+    for (let off = -3; off <= 3; off++) {
+      const x = cx + (off - frac) * itemW - itemW / 2;
+      const isCenter = off === 0 && Math.abs(frac) < 0.25;
+      html += `<span class="dw-item${isCenter ? ' center' : ''}" style="left:${x.toFixed(1)}px;width:${itemW}px">${labelAt(off)}</span>`;
+    }
+    el.innerHTML = html;
   }
-  updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+
+  let pid = null, x0 = 0, applied = 0, movedPx = 0;
+
+  el.addEventListener('pointerdown', (e) => {
+    pid = e.pointerId; x0 = e.clientX; applied = 0; movedPx = 0;
+    el.setPointerCapture(pid);
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (pid === null || e.pointerId !== pid) return;
+    const dx = e.clientX - x0;
+    movedPx = Math.max(movedPx, Math.abs(dx));
+    const t = -dx / itemW;             // drag left → next values arrive from the right
+    const target = Math.round(t);
+    if (target !== applied) {
+      const d = target > applied ? 1 : -1;
+      while (applied !== target) { step(d); applied += d; }
+      commitCustomDate();              // live redraw at each snap point
+    }
+    frac = t - applied;
+    render();
+  });
+  const endDrag = (e) => {
+    if (pid === null || e.pointerId !== pid) return;
+    pid = null; frac = 0;
+    el.classList.remove('dragging');
+    render();
+  };
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+
+  el.addEventListener('click', (e) => {
+    if (movedPx > 5) return;           // it was a drag, not a tap
+    const r = el.getBoundingClientRect();
+    let off = Math.round((e.clientX - r.left - r.width / 2) / itemW);
+    if (off === 0) return;
+    const d = off > 0 ? 1 : -1;
+    while (off !== 0) { step(d); off -= d; }
+    commitCustomDate();
+  });
+  el.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    step(e.deltaY > 0 ? 1 : -1);
+    commitCustomDate();
+  }, { passive: false });
+
+  return { render };
+}
+
+const _monthWheel = makeDateWheel(document.getElementById('wheelMonth'), {
+  labelAt: (off) => MONTHS[((customMonth - 1 + off) % 12 + 12) % 12],
+  step: stepCustomMonth,
+  itemW: 38,
 });
+const _dayWheel = makeDateWheel(document.getElementById('wheelDay'), {
+  labelAt: customDayAt,
+  step: stepCustomDay,
+  itemW: 30,
+});
+
+function renderDateWheels() { _monthWheel.render(); _dayWheel.render(); }
+renderDateWheels();
+window.addEventListener('resize', renderDateWheels);
+
+document.getElementById('btnMonDec').addEventListener('click', () => { stepCustomMonth(-1); commitCustomDate(); });
+document.getElementById('btnMonInc').addEventListener('click', () => { stepCustomMonth(1);  commitCustomDate(); });
+document.getElementById('btnDayDec').addEventListener('click', () => { stepCustomDay(-1);  commitCustomDate(); });
+document.getElementById('btnDayInc').addEventListener('click', () => { stepCustomDay(1);   commitCustomDate(); });
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
