@@ -501,7 +501,9 @@
     cursor: pointer;
   }
 
-  /* Date picker */
+  /* Date picker – ◀ ▶ steppers around an iOS-style horizontal wheel:
+     centred value with grey neighbours, draggable (touch + mouse) with
+     snap – see makeDateWheel() */
   .date-row {
     display: flex;
     align-items: center;
@@ -524,13 +526,29 @@
   }
   .date-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  .date-val {
+  .date-wheel {
+    position: relative;
     flex: 1;
-    text-align: center;
-    color: var(--text);
-    font-size: 11px;
     min-width: 0;
+    height: 20px;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: pan-y;   /* horizontal drags belong to the wheel, page keeps vertical scroll */
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
   }
+  .date-wheel.dragging { cursor: grabbing; }
+
+  .dw-item {
+    position: absolute;
+    top: 0; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--dim);
+    pointer-events: none;   /* clicks/drags are handled on the wheel itself */
+  }
+  .dw-item.center { color: var(--text); }
 
   /* Latitude in sidebar */
   .lat-row {
