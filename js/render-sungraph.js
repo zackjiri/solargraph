@@ -647,14 +647,23 @@ function drawSunGraph() {
     ctx.fillText(String(sh).padStart(2, '0'), x, axisY + 5);
   }
 
-  // Title (uses current calibration latitude / hemisphere)
+  // Title (uses current calibration latitude / hemisphere + the active time mode;
+  // standard time additionally shows the longitude / UTC offset it depends on)
   const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
+  let caption = timeDisplayMode === 'true' ? 'apparent solar time'
+              : timeDisplayMode === 'mean' ? 'mean solar time'
+              : 'standard time';
+  caption += ' · Lat ' + latStr;
+  if (timeDisplayMode === 'standard') {
+    caption += ' · Long ' + LONG.toFixed(1) + '° ' + (lonHemisphere >= 0 ? 'E' : 'W')
+             + ' · UTC' + _fmtTimeZone(timeZoneHours);
+  }
   ctx.fillStyle = pal.accent;
   ctx.font = "bold 14px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('Sun Graph', mL, 26);
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
-  ctx.fillText('solar time · Lat ' + latStr, mL + 96, 26);
+  ctx.fillText(caption, mL + 96, 26);
 
   updateSunGraphStatus();   // keep the top-right info panel in sync with the active day
 }
