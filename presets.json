@@ -72,11 +72,11 @@
     "time_zone":   1
   },
     "GEN-2_1": {
-    "yaw_deg":     7.5,
+    "yaw_deg":     6.5,
     "pitch_deg":    34.0,
-    "roll_deg":     1.7,
-    "horizon_mm":  2.0,
-    "radius_mm":   36.5,
+    "roll_deg":     0.7,
+    "horizon_mm":  2.5,
+    "radius_mm":   36.0,
     "scan_w_mm":  178,
     "latitude":    49.2,
     "hemisphere":  "N",
