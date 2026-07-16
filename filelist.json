@@ -96,6 +96,20 @@
       "label": "2026_H1_GEN-II",
       "images": [
         {
+          "index": 1,
+          "layers": [
+            0,
+            1,
+            2
+          ],
+          "metadata": {
+            "exposure_start": "2026-01-03",
+            "exposure_end": "2026-06-19",
+            "location": "Brno, Czechia",
+            "chmi_wsi_station": "0-203-0-11721"
+          }
+        },        
+        {
           "index": 2,
           "layers": [
             0,
