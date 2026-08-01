@@ -193,7 +193,7 @@
       <canvas id="sunGraphCanvas"></canvas>
       <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
       <div id="sgStatusWrap">
-        <div id="sgStatus" title="Click to hide">
+        <div id="sgStatus">
           <div class="ts-row">
             <span class="ts-lbl">date</span>
             <span class="ts-val" id="sgDate">—</span>
@@ -207,6 +207,10 @@
             <span class="ts-val" id="sgRiseSet">—</span>
           </div>
           <div class="ts-row">
+            <span class="ts-lbl"></span>
+            <span class="ts-val" id="sgRiseSetAz">—</span>
+          </div>
+          <div class="ts-row">
             <span class="ts-lbl">on paper</span>
             <span class="ts-val" id="sgOnPaper">—</span>
           </div>
@@ -216,12 +220,13 @@
       <!-- Sun Graph legend – bottom corner, flush to the plot (shown only in Sun Graph), collapsible -->
       <div id="sgLegendWrap">
         <button id="sgLegendToggle" title="Hide / show the legend">▼</button>
-        <div id="sgLegend" title="Click to hide">
+        <div id="sgLegend">
           <div class="sg-leg-item" data-band="night"><span class="sg-leg-sw" style="background:#1c2a35"></span>Night</div>
           <div class="sg-leg-item" data-band="astro"><span class="sg-leg-sw" style="background:#39505f"></span>Astronomical Twilight</div>
           <div class="sg-leg-item" data-band="naut"><span class="sg-leg-sw" style="background:#5a7588"></span>Nautical Twilight</div>
           <div class="sg-leg-item" data-band="civil"><span class="sg-leg-sw" style="background:#9cbdd2"></span>Civil Twilight</div>
           <div class="sg-leg-item" data-band="day"><span class="sg-leg-sw" style="background:#cfe8f6"></span>Daylight</div>
+          <div class="sg-leg-item" data-band="transit"><span class="sg-leg-sw" style="background:#e04040"></span>Transit<span class="sg-leg-val" id="sgLegendTransit">—</span></div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
@@ -232,7 +237,7 @@
       <!-- Image-mode legend – bottom-right, always (shown only in plain Analyzer/image view), collapsible -->
       <div id="imgLegendWrap">
         <button id="imgLegendToggle" title="Hide / show the legend">▼</button>
-        <div id="imgLegend" title="Click to hide">
+        <div id="imgLegend">
           <div class="leg-row"><span class="leg-line dashed" style="border-color:#E8A020"></span><span>Azimuth grid</span></div>
           <div class="leg-row"><span class="leg-line dashed" style="border-color:#20A0E8"></span><span>Altitude grid</span></div>
           <div class="leg-row"><span class="leg-line dashed" style="border-color:#FFFFFF"></span><span>Horizon</span></div>
@@ -247,7 +252,7 @@
       <button id="btnTheaterExit" title="Exit theater mode">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
-        <div id="theaterStatus" title="Click to hide">
+        <div id="theaterStatus">
           <div class="ts-row">
             <span class="ts-lbl">circumference</span>
             <span class="ts-val"><span id="tsCirc">—</span> mm</span>
