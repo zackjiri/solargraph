@@ -1081,7 +1081,7 @@ function updateSunAnimCtl() {
   } else stopSunAnim();
 }
 
-// ─── Status panel collapse (click the panel or the ▲/▼ arrow) ────────────────
+// ─── Status panel collapse (▲/▼ arrow only) ──────────────────────────────────
 let statusCollapsed = false;
 function setStatusCollapsed(c) {
   statusCollapsed = c;
@@ -1094,7 +1094,6 @@ document.getElementById('statusToggle').addEventListener('click', (e) => {
   e.stopPropagation();
   setStatusCollapsed(!statusCollapsed);
 });
-document.getElementById('theaterStatus').addEventListener('click', () => setStatusCollapsed(true));
 
 // ─── Theater mode ────────────────────────────────────────────────────────────
 const SVG_EXPAND  = `<polyline points="1,4 1,1 4,1"/><line x1="1" y1="1" x2="4.5" y2="4.5"/><polyline points="11,8 11,11 8,11"/><line x1="11" y1="11" x2="7.5" y2="7.5"/>`;

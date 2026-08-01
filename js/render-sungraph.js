@@ -157,6 +157,11 @@ function _sgHM(t) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
+// Format a world azimuth (0=N standard convention, same as sunPosition().az) as "123 SE",
+// matching the app's own Az/Alt readouts elsewhere (e.g. the 3D panel's tsAzAlt) - no
+// hemisphere-relative flip (that flip only applies to the 2D image's pixel-crosshair readout).
+function _sgFmtAz(az) { return Math.round(((az % 360) + 360) % 360) + ' ' + azimutToDir(az); }
+
 // Fills the top-right info panel (DATE / SUNRISE-SUNSET / DAYLENGTH) for the active day.
 // Solar time, signed-φ with real dates → matches the graph's daylight band exactly.
 function updateSunGraphStatus() {
@@ -164,14 +169,32 @@ function updateSunGraphStatus() {
   if (!dEl) return;
   const phi = effectiveLat() * hemisphere;
   const activeDay = (sgHoverDay !== null) ? sgHoverDay : dayOfYear(customMonth, customDay);
+  const delta = sunDeclination(activeDay);
   const w = _sgDayWidths(activeDay, Math.sin(phi), Math.cos(phi)).day;   // daylight half-width [h]
   dEl.textContent = _sgDoyMD(activeDay);
   const rs = document.getElementById('sgRiseSet'), dl = document.getElementById('sgDayLen');
-  if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; }   // polar night
-  else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; }   // polar day
-  else { rs.textContent = _sgHM(displayHour(12 - w, activeDay)) + ' / ' + _sgHM(displayHour(12 + w, activeDay)); dl.textContent = _sgHM(2 * w); }
+  const rsAz = document.getElementById('sgRiseSetAz');
+  if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; if (rsAz) rsAz.textContent = '—'; }   // polar night
+  else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; if (rsAz) rsAz.textContent = '—'; }   // polar day
+  else {
+    rs.textContent = _sgHM(displayHour(12 - w, activeDay)) + ' / ' + _sgHM(displayHour(12 + w, activeDay));
+    dl.textContent = _sgHM(2 * w);
+    if (rsAz) {
+      const riseAz = sunPosition(-w * Math.PI / 12, delta, phi).az;
+      const setAz  = sunPosition( w * Math.PI / 12, delta, phi).az;
+      rsAz.textContent = _sgFmtAz(riseAz) + ' / ' + _sgFmtAz(setAz);
+    }
+  }
   const op = document.getElementById('sgOnPaper');   // interval the image is on the paper (set by drawSunGraph)
   if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper);
+
+  // Legend "Transit" row: culmination time (solar noon, in the active time convention) and the
+  // sun's elevation at that moment - same active day as the rest of this panel.
+  const trEl = document.getElementById('sgLegendTransit');
+  if (trEl) {
+    const transitEl = sunPosition(0, delta, phi).el;
+    trEl.textContent = _sgHM(displayHour(12, activeDay)) + ' / ' + transitEl.toFixed(1) + '°';
+  }
 }
 
 // ── Sun-on-paper overlay (green = image on paper, red = ray enters but misses) ──
@@ -677,7 +700,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sunGraphActive) exitSunGraph();
 });
 
-// Info-panel collapse (click panel or the ▲/▼ arrow) — mirrors the theaterStatus behaviour.
+// Info-panel collapse (▲/▼ arrow only).
 let sgStatusCollapsed = false;
 function setSgStatusCollapsed(c) {
   sgStatusCollapsed = c;
@@ -687,9 +710,7 @@ function setSgStatusCollapsed(c) {
 }
 (function () {
   const tog = document.getElementById('sgStatusToggle');
-  const panel = document.getElementById('sgStatus');
-  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setSgStatusCollapsed(!sgStatusCollapsed); });
-  if (panel) panel.addEventListener('click', () => setSgStatusCollapsed(true));
+  if (tog) tog.addEventListener('click', (e) => { e.stopPropagation(); setSgStatusCollapsed(!sgStatusCollapsed); });
 })();
 
 // Legend interaction: hover any item → emphasise that band; click a "Sunlight…" item → toggle it.
@@ -701,7 +722,6 @@ function setSgStatusCollapsed(c) {
     el.addEventListener('mouseleave', () => { _sgEmphBand = null; if (sunGraphActive) drawSunGraph(); });
     if (el.classList.contains('sg-leg-toggle')) {
       el.addEventListener('click', (e) => {
-        e.stopPropagation();   // don't let this bubble up to #sgLegend's collapse-on-click
         if (el.classList.contains('unavailable')) return;   // nothing to toggle - no CHMI data for this image
         if (band === 'green') _sgShowGreen = !_sgShowGreen;
         else if (band === 'red') _sgShowRed = !_sgShowRed;
@@ -714,7 +734,7 @@ function setSgStatusCollapsed(c) {
   });
 })();
 
-// Legend collapse (click the legend or the ▼/▲ arrow) — mirrors the sgStatus behaviour.
+// Legend collapse (▼/▲ arrow only).
 let sgLegendCollapsed = false;
 function setSgLegendCollapsed(c) {
   sgLegendCollapsed = c;
@@ -724,9 +744,7 @@ function setSgLegendCollapsed(c) {
 }
 (function () {
   const tog = document.getElementById('sgLegendToggle');
-  const panel = document.getElementById('sgLegend');
-  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setSgLegendCollapsed(!sgLegendCollapsed); });
-  if (panel) panel.addEventListener('click', () => setSgLegendCollapsed(true));
+  if (tog) tog.addEventListener('click', (e) => { e.stopPropagation(); setSgLegendCollapsed(!sgLegendCollapsed); });
 })();
 
 // Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.

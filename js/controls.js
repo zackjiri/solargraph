@@ -699,7 +699,6 @@ document.getElementById('chkCustomArc').addEventListener('change', (e) => {
 
 // Image-mode legend (bottom-right, plain Analyzer view): CHMI toggle (only interactive item) + collapse.
 document.querySelector('#imgLegend [data-band="imgchmi"]').addEventListener('click', (e) => {
-  e.stopPropagation();   // don't let this bubble up to #imgLegend's collapse-on-click
   if (e.currentTarget.classList.contains('unavailable')) return;   // nothing to toggle - no data for this image
   showImgChmi = !showImgChmi;
   e.currentTarget.classList.toggle('off', !showImgChmi);
@@ -714,9 +713,7 @@ function setImgLegendCollapsed(c) {
 }
 (function () {
   const tog = document.getElementById('imgLegendToggle');
-  const panel = document.getElementById('imgLegend');
-  if (tog)   tog.addEventListener('click', (e) => { e.stopPropagation(); setImgLegendCollapsed(!imgLegendCollapsed); });
-  if (panel) panel.addEventListener('click', () => setImgLegendCollapsed(true));
+  if (tog) tog.addEventListener('click', (e) => { e.stopPropagation(); setImgLegendCollapsed(!imgLegendCollapsed); });
 })();
 
 function updateAxisLegend() {
