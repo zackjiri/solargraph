@@ -1026,7 +1026,7 @@
 
   /* Sun Graph legend – flush to the bottom corner (side picked by JS, see currentHalf),
      semi-transparent, no border/radius. Wrapper is positioned/shown by JS; #sgLegend itself
-     is the collapsible content (click it, or the ▼/▲ arrow below, to hide/show). */
+     is the collapsible content (collapsed only via the ▼/▲ arrow below). */
   #sgLegendWrap {
     position: absolute;
     z-index: 11; display: none;          /* flex, shown by JS in Sun Graph */
@@ -1038,7 +1038,6 @@
     background: rgba(7,9,13,0.72);
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
     color: #9fb2c4;
-    cursor: pointer;                      /* click legend to collapse */
     overflow: hidden;
     max-height: 260px;
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
@@ -1071,7 +1070,6 @@
     background: rgba(7,9,13,0.72);
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
     color: #9fb2c4;
-    cursor: pointer;
     overflow: hidden;
     max-height: 260px;
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
@@ -1103,6 +1101,7 @@
     width: 11px; height: 11px; flex: 0 0 11px; box-sizing: border-box;
     border: 1px solid rgba(255,255,255,0.3);
   }
+  .sg-leg-val { margin-left: auto; color: var(--text); }
   .sg-leg-sep { height: 1px; margin: 3px 0; background: rgba(255,255,255,0.22); }
   body.light .sg-leg-sep { background: rgba(0,0,0,0.25); }
 
@@ -1354,7 +1353,6 @@
     font-family: var(--mono); font-size: 15px;
     color: var(--text); letter-spacing: 0.05em;
     width: 312.5px; box-sizing: border-box; /* fixed width – panel never resizes with content */
-    cursor: pointer;                      /* click panel to collapse */
     overflow: hidden;
     max-height: 450px;
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
