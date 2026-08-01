@@ -406,21 +406,38 @@ function drawCrosshair(W, H) {
     }
 
     // ── Azimuth isoline (vertical part) – constant β, varying θ ──
-    const azPoints = [];
+    // Segment handling like the elevation isoline: with pitch/roll the sweep can
+    // fold past the camera pole (local elevation → ±90°), where the local azimuth
+    // flips by ~180°. Such points land far away horizontally yet may pass a
+    // py-only filter – a single unbroken polyline then connects the fold to the
+    // real branch as a spurious near-horizontal streak across the image.
+    const azSegs = [];
+    let azSeg = [], azPrev = null;
     for (let el = -85; el <= 85; el += 0.5) {
       const pos = azElToPixel(beta_deg, el);
-      if (!pos) continue;
-      if (pos.py < -20 || pos.py > H + 20) continue;
-      azPoints.push(pos);
+      if (pos && pos.px >= -20 && pos.px <= W + 20 && pos.py >= -20 && pos.py <= H + 20) {
+        // fold can also jump directly between two on-canvas points – break on big px gaps
+        if (azPrev && Math.abs(pos.px - azPrev.px) > 60) {
+          if (azSeg.length >= 2) azSegs.push(azSeg);
+          azSeg = [];
+        }
+        azSeg.push(pos); azPrev = pos;
+      } else {
+        if (azSeg.length >= 2) azSegs.push(azSeg);
+        azSeg = []; azPrev = null;
+      }
     }
-    if (azPoints.length >= 2) {
-      ctx.beginPath();
-      ctx.moveTo(azPoints[0].px, azPoints[0].py);
-      for (let i = 1; i < azPoints.length; i++) ctx.lineTo(azPoints[i].px, azPoints[i].py);
+    if (azSeg.length >= 2) azSegs.push(azSeg);
+    if (azSegs.length > 0) {
       ctx.strokeStyle = 'rgba(80,80,80,0.85)';
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
-      ctx.stroke();
+      for (const s of azSegs) {
+        ctx.beginPath();
+        ctx.moveTo(s[0].px, s[0].py);
+        for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].px, s[i].py);
+        ctx.stroke();
+      }
     }
   } else {
     // Out of range – plain straight lines as fallback
