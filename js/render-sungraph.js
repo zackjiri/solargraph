@@ -157,10 +157,10 @@ function _sgHM(t) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
-// Format a world azimuth (0=N standard convention, same as sunPosition().az) as "123 SE",
+// Format a world azimuth (0=N standard convention, same as sunPosition().az) as "123° SE",
 // matching the app's own Az/Alt readouts elsewhere (e.g. the 3D panel's tsAzAlt) - no
 // hemisphere-relative flip (that flip only applies to the 2D image's pixel-crosshair readout).
-function _sgFmtAz(az) { return Math.round(((az % 360) + 360) % 360) + ' ' + azimutToDir(az); }
+function _sgFmtAz(az) { return Math.round(((az % 360) + 360) % 360) + '° ' + azimutToDir(az); }
 
 // Fills the top-right info panel (DATE / SUNRISE-SUNSET / DAYLENGTH) for the active day.
 // Solar time, signed-φ with real dates → matches the graph's daylight band exactly.
