@@ -474,7 +474,7 @@ function drawAllSunArcs(W, H) {
 let showSunArc = true;   // Sun's paths on by default (Gallery + Analyzer)
 let showHeatmap = false;
 let showImgChmi = false;   // 2D-canvas CHMI overlay master switch (Display section), off by default
-let chmiDisplayMode = 'custom';   // 'custom' = single-day halo on the Custom Path (legacy behaviour)
+let chmiDisplayMode = 'whole';   // 'custom' = single-day halo on the Custom Path (legacy behaviour)
                                    // 'whole'  = mosaic across the whole exposure/data range (see drawChmiMosaic)
 
 const canvas = document.getElementById('mainCanvas');

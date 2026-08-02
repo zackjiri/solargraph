@@ -697,21 +697,24 @@ document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
 });
 
+// Forces "Custom date" on (checkbox + state) if it isn't already - shared by both places whose
+// effect otherwise depends on it being on: turning the CHMI master switch on, and picking the
+// custom-date CHMI submode (its single-day gradient is drawn entirely inside the showCustomArc
+// block in draw() and would otherwise silently show nothing if the user had unchecked it earlier).
+function forceCustomArcOn() {
+  if (showCustomArc) return;
+  showCustomArc = true;
+  document.getElementById('chkCustomArc').checked = true;
+  updateSunAnimCtl();
+  updateSunWave();
+}
+
 // CHMI data (Display section): master switch + Custom date / Whole period sub-mode. Replaces the
 // old image-mode legend toggle - control lives entirely in Display now, works in Gallery too
 // (Display is unlocked there, unlike the legend which only ever showed in plain Analyzer view).
 document.getElementById('chkImgChmi').addEventListener('change', (e) => {
   showImgChmi = e.target.checked;
-  // Turning CHMI data on always forces "Custom date" on too, so the effect is guaranteed to be
-  // visible immediately - in whole-period mode the mosaic itself doesn't need it, but the single-
-  // day gradient (custom-date submode) is drawn entirely inside the showCustomArc block and would
-  // otherwise silently show nothing if the user had unchecked it earlier.
-  if (showImgChmi && !showCustomArc) {
-    showCustomArc = true;
-    document.getElementById('chkCustomArc').checked = true;
-    updateSunAnimCtl();
-    updateSunWave();
-  }
+  if (showImgChmi) forceCustomArcOn();
   syncChmiModeGroupState();
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
@@ -720,6 +723,7 @@ document.querySelectorAll('.chmi-mode-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
     chmiDisplayMode = e.currentTarget.dataset.mode;
     document.querySelectorAll('.chmi-mode-btn').forEach(b => b.classList.toggle('active', b === e.currentTarget));
+    if (chmiDisplayMode === 'custom') forceCustomArcOn();
     draw();
   });
 });
