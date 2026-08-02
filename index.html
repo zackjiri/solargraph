@@ -245,8 +245,6 @@
           <div class="leg-row"><span class="leg-line" style="border-color:#3CB4FF"></span><span>Solstice (W)</span></div>
           <div class="leg-row"><span class="leg-line" style="border-color:#FF643C"></span><span>Solstice (S)</span></div>
           <div class="leg-row"><span class="leg-line" style="border-color:#50DC78"></span><span>Custom date</span></div>
-          <div class="sg-leg-sep"></div>
-          <div class="sg-leg-item sg-leg-toggle off unavailable" data-band="imgchmi" title="Show sunshine data from the nearest Czech Hydrometeorological Institute (CHMI) weather station"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine</div>
         </div>
       </div>
       <button id="btnTheaterExit" title="Exit theater mode">✕ exit</button>
@@ -303,6 +301,11 @@
       <label class="chk-row" title="Overlay the calculated horizon line"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
       <label class="chk-row" title="Overlay solstice and equinox sun paths"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
       <label class="chk-row" title="Overlay the sun path for the custom date below"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
+      <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine data from the nearest CHMI weather station instead of the plain Custom Path"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
+      <div class="chmi-mode-row" id="chmiModeGroup">
+        <button class="chmi-mode-btn active" id="btnChmiCustom" data-mode="custom" title="Show measured sunshine only for the selected Custom Path day">custom date</button>
+        <button class="chmi-mode-btn" id="btnChmiWhole" data-mode="whole" title="Show measured sunshine as a mosaic across the whole exposure interval">whole period</button>
+      </div>
       <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.45)" title="Show exposure / incidence-angle isolines">Show Isolines</button>
       <div class="slider-row" style="margin-top:4px">
         <div class="slider-header">
