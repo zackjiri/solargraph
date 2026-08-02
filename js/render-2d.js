@@ -31,13 +31,24 @@ function draw() {
   // Sun arcs – full annual set
   if (showSunArc) drawAllSunArcs(W, H);
 
-  // Custom date arc – black outline + green fill, with label at south axis. When the CHMI
-  // legend toggle is on, the gradient trace replaces both (a halo under the green line wasn't
-  // legible) - same curve, coloured by measured sunshine instead of a flat green.
+  // Whole-period CHMI mosaic tiles the entire exposure interval - unlike the single-day gradient
+  // below, it isn't really "about" the Custom Path date, so it stays visible even with "Custom
+  // date" unchecked. Only its thin highlight outline around the selected day is tied to that
+  // checkbox (drawChmiMosaic checks showCustomArc itself before drawing it).
+  const chmiOn = typeof showImgChmi !== 'undefined' && showImgChmi && timeDisplayMode !== 'true';
+  if (chmiOn && chmiDisplayMode === 'whole') drawChmiMosaic(W, H);
+
+  // Custom date arc – black outline + green fill, with label at south axis. When CHMI data is on
+  // (Display section) and not in Apparent solar time, the gradient replaces it: either the single
+  // Custom Path day (a halo under the green line wasn't legible - same curve, coloured by measured
+  // sunshine) or the whole-exposure mosaic (drawn above already, so there's nothing further to do
+  // here for it besides the label/sun marker below).
   if (showCustomArc) {
     const op = dispOpacity;
     const { month: cm, day: cd } = customArcDate();
-    if (typeof showImgChmi !== 'undefined' && showImgChmi && timeDisplayMode !== 'true') {
+    if (chmiOn && chmiDisplayMode === 'whole') {
+      // Mosaic (+ its own highlight) already drawn above - nothing more needed for the arc itself.
+    } else if (chmiOn) {
       const chmiW = 9;   // matches the Sun symbol dot drawn elsewhere (radius 4.5) - canvas size, not a physical disc
       const chmiByDoy  = _sgEnsureChmiByDoy();
       const dayCovered = !!(chmiByDoy && chmiByDoy.get(dayOfYear(customMonth, customDay)));
@@ -167,6 +178,210 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
     prevSec = (sec !== undefined && sec !== null) ? sec : 0;
     prevPos = pos;
   }
+}
+
+// ─── CHMI mosaic ("whole period") ───────────────────────────────────────────
+// Alternative to drawChmiArc(): instead of one gradient trace for the Custom Path day, tiles
+// the entire exposure interval. Built as a day-of-year × hour-angle quad mesh, each quad's cross
+// (day-axis) edge sitting at the midpoint between its own day's arc and the neighbouring day's arc
+// at the same true hour angle - so a tile's thickness is exactly half the geometric gap to each
+// neighbour. That gap is what physically varies across the year (declination barely changes
+// day-to-day near a solstice, changes fastest near an equinox, see §6.5 in the project notes) - so
+// this reproduces the dense/loose banding seen on real scans for free, without any special-casing.
+// A day at the true start/end of the exposure range has no neighbour on the missing side, so its
+// tile is only half as thick there ("thinner edges") - again just a consequence of the same rule,
+// not a separate branch. Declination (hence tile shape) is evaluated for every calendar day in
+// range regardless of whether that specific day has a CHMI sample, so the mesh stays geometrically
+// continuous across data gaps; only the fill colour drops to flat grey for a day with no sample at
+// all (same convention as the single-day "no data for this day" case in drawChmiArc's caller).
+const _CHMI_MOSAIC_NDAYS = 365;
+const _CHMI_MOSAIC_HSTEP = 2.5;   // degrees of true hour angle - matches drawChmiArc's cadence
+
+// Ordered list of real calendar days covered by the current exposure interval, half-open
+// [start,end) same as everywhere else in the app; handles the interval wrapping over year-end.
+function _imgChmiDayList() {
+  const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  if (!exp) return [];
+  const days = [];
+  if (exp.startDoy <= exp.endDoy) {
+    for (let d = exp.startDoy; d < exp.endDoy; d++) days.push(d);
+  } else {
+    for (let d = exp.startDoy; d <= _CHMI_MOSAIC_NDAYS; d++) days.push(d);
+    for (let d = 1; d < exp.endDoy; d++) days.push(d);
+  }
+  return days;
+}
+
+// Projected pixel position of the sun for a given declination at true hour angle Hdeg, or null
+// below the horizon / off-canvas - same filter drawSunArc/drawChmiArc use.
+function _imgChmiPoint(Hdeg, delta, phi, W) {
+  const { el, beta } = sunPosition(Hdeg * Math.PI / 180, delta, phi);
+  if (el < 0) return null;
+  const pos = azElToPixel(beta - yawDeg, el);
+  if (!pos || pos.px < -20 || pos.px > W + 20) return null;
+  return pos;
+}
+
+function _imgChmiSlotsFor(chmiByDoy, d) {
+  const samples = chmiByDoy ? chmiByDoy.get(d) : null;
+  if (!samples) return null;
+  const m = new Map();
+  for (const [hour, sec] of samples) m.set(Math.round(hour * 6), sec);
+  return m;
+}
+
+// Cached offscreen bitmap - rebuilt only when calibration, the exposure range, the CHMI dataset,
+// the time zone or the display-time mode change, never on a plain redraw (mousemove/crosshair
+// would otherwise recompute several thousand quads every frame).
+let _imgChmiBitmap = null, _imgChmiKeyStr = null, _imgChmiSrcRef = null;
+function _imgChmiEnsureMosaic(W, H) {
+  const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  const srcRef = (typeof currentChmi !== 'undefined') ? currentChmi : null;
+  const keyStr = [yawDeg, pitchDeg, rollDeg, horizonMm, radius, scanWmm, LAT, hemisphere,
+                  exp ? exp.startDoy : 'x', exp ? exp.endDoy : 'x',
+                  timeZoneHours, timeDisplayMode, W, H, canvasRES].join(',');
+  if (keyStr === _imgChmiKeyStr && srcRef === _imgChmiSrcRef) return _imgChmiBitmap;
+  _imgChmiKeyStr = keyStr;
+  _imgChmiSrcRef = srcRef;
+
+  const days = _imgChmiDayList();
+  const chmiByDoy = _sgEnsureChmiByDoy();
+  if (!days.length || !chmiByDoy) { _imgChmiBitmap = null; return null; }
+
+  const phi = effectiveLat();
+  const Hsteps = [];
+  for (let Hdeg = -180; Hdeg <= 180; Hdeg += _CHMI_MOSAIC_HSTEP) Hsteps.push(Hdeg);
+  const nH = Hsteps.length;
+
+  // Project every (day, hour-step) pair exactly once; neighbouring days/quads reuse these
+  // instead of recomputing (each day's own row also serves as its neighbours' pPrev/pNext).
+  const posGrid = new Array(days.length);
+  for (let i = 0; i < days.length; i++) {
+    const delta = sunDeclination(days[i]);
+    const row = new Array(nH);
+    for (let j = 0; j < nH; j++) row[j] = _imgChmiPoint(Hsteps[j], delta, phi, W);
+    posGrid[i] = row;
+  }
+
+  const off = document.createElement('canvas');
+  off.width  = Math.max(1, Math.round(W * canvasRES));
+  off.height = Math.max(1, Math.round(H * canvasRES));
+  const octx = off.getContext('2d');
+  octx.setTransform(canvasRES, 0, 0, canvasRES, 0, 0);
+
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    const bySlot = _imgChmiSlotsFor(chmiByDoy, d);
+    const hasDay = bySlot !== null;
+    const rowMid  = posGrid[i];
+    const rowPrev = i > 0 ? posGrid[i - 1] : null;
+    const rowNext = i < days.length - 1 ? posGrid[i + 1] : null;
+
+    let prevTop = null, prevBot = null, prevSec = 0;
+    for (let j = 0; j < nH; j++) {
+      const pMid = rowMid[j];
+      let top = null, bot = null;
+      if (pMid) {
+        const pPrev = rowPrev ? rowPrev[j] : null;
+        const pNext = rowNext ? rowNext[j] : null;
+        top = pPrev ? { px: (pMid.px + pPrev.px) / 2, py: (pMid.py + pPrev.py) / 2 } : pMid;
+        bot = pNext ? { px: (pMid.px + pNext.px) / 2, py: (pMid.py + pNext.py) / 2 } : pMid;
+      }
+
+      if (top && prevTop) {
+        const col = hasDay ? _sgChmiColor(prevSec, 1) : 'rgba(160,160,160,0.55)';
+        octx.beginPath();
+        octx.moveTo(prevTop.px, prevTop.py);
+        octx.lineTo(top.px, top.py);
+        octx.lineTo(bot.px, bot.py);
+        octx.lineTo(prevBot.px, prevBot.py);
+        octx.closePath();
+        octx.fillStyle = col;
+        octx.fill();
+        // Matching-colour hairline stroke over the fill's own edge - papers over the antialiasing
+        // seam canvas otherwise leaves between two separately-filled, exactly-adjacent polygons.
+        octx.strokeStyle = col;
+        octx.lineWidth = 1;
+        octx.stroke();
+      }
+
+      const trueHour = 12 + (hemisphere >= 0 ? Hsteps[j] : -Hsteps[j]) / 15;
+      const standardHour = standardFromTrue(trueHour, d);
+      const slot = ((Math.round(standardHour * 6) % 144) + 144) % 144;
+      const sec = (hasDay && top) ? bySlot.get(slot) : undefined;
+      prevSec = (sec !== undefined && sec !== null) ? sec : 0;
+      prevTop = top; prevBot = bot;
+    }
+  }
+
+  _imgChmiBitmap = off;
+  return off;
+}
+
+// Thin outline around the currently-selected Custom Path day's own tile, so it stays findable
+// inside the mosaic - reuses the Custom Path's own green. Computed live (not cached): unlike the
+// mosaic itself this depends on customMonth/customDay, which can be scrubbed without touching any
+// of the mosaic's own cache keys. Cost is the same order as drawChmiArc (one day, ~145 samples).
+function _imgChmiHighlightCustomDay(W, H) {
+  const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  if (!exp) return;
+  const realDoy = dayOfYear(customMonth, customDay);
+  const inRange = exp.startDoy <= exp.endDoy
+    ? (realDoy >= exp.startDoy && realDoy < exp.endDoy)
+    : (realDoy >= exp.startDoy || realDoy < exp.endDoy);
+  if (!inRange) return;
+
+  const N = _CHMI_MOSAIC_NDAYS;
+  const lastDay = ((exp.endDoy - 2 + N) % N) + 1;   // endDoy is exclusive → last included day
+  const atStart = realDoy === exp.startDoy;
+  const atEnd   = realDoy === lastDay;
+  const dPrev = atStart ? null : ((realDoy - 2 + N) % N) + 1;
+  const dNext = atEnd   ? null : (realDoy % N) + 1;
+
+  const phi = effectiveLat();
+  const delta     = sunDeclination(realDoy);
+  const deltaPrev = dPrev !== null ? sunDeclination(dPrev) : null;
+  const deltaNext = dNext !== null ? sunDeclination(dNext) : null;
+
+  const top = [], bot = [];
+  for (let Hdeg = -180; Hdeg <= 180; Hdeg += _CHMI_MOSAIC_HSTEP) {
+    const pMid  = _imgChmiPoint(Hdeg, delta, phi, W);
+    if (!pMid) continue;
+    const pPrev = deltaPrev !== null ? _imgChmiPoint(Hdeg, deltaPrev, phi, W) : null;
+    const pNext = deltaNext !== null ? _imgChmiPoint(Hdeg, deltaNext, phi, W) : null;
+    top.push(pPrev ? { px: (pMid.px + pPrev.px) / 2, py: (pMid.py + pPrev.py) / 2 } : pMid);
+    bot.push(pNext ? { px: (pMid.px + pNext.px) / 2, py: (pMid.py + pNext.py) / 2 } : pMid);
+  }
+  if (top.length < 2) return;
+
+  const alpha = Math.min(1, dispOpacity * 1.1);
+  ctx.strokeStyle = `rgba(80,220,120,${alpha})`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(top[0].px, top[0].py);
+  for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].px, top[i].py);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(bot[0].px, bot[0].py);
+  for (let i = 1; i < bot.length; i++) ctx.lineTo(bot[i].px, bot[i].py);
+  ctx.stroke();
+}
+
+// Entry point called from draw() for chmiDisplayMode === 'whole'. Blits the cached bitmap 1:1 in
+// physical pixels (no extra resample on top of it - the bitmap is already at canvasRES) then
+// restores draw()'s own logical-pixel transform for whatever comes after.
+function drawChmiMosaic(W, H) {
+  const bmp = _imgChmiEnsureMosaic(W, H);
+  if (bmp) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = Math.min(1, dispOpacity * 0.9);
+    ctx.drawImage(bmp, 0, 0);
+    ctx.restore();
+    ctx.setTransform(canvasRES, 0, 0, canvasRES, 0, 0);
+  }
+  if (showCustomArc) _imgChmiHighlightCustomDay(W, H);
 }
 
 function drawGrid(W, H) {

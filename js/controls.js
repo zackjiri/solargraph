@@ -697,12 +697,31 @@ document.getElementById('chkCustomArc').addEventListener('change', (e) => {
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
 });
 
-// Image-mode legend (bottom-right, plain Analyzer view): CHMI toggle (only interactive item) + collapse.
-document.querySelector('#imgLegend [data-band="imgchmi"]').addEventListener('click', (e) => {
-  if (e.currentTarget.classList.contains('unavailable')) return;   // nothing to toggle - no data for this image
-  showImgChmi = !showImgChmi;
-  e.currentTarget.classList.toggle('off', !showImgChmi);
+// CHMI data (Display section): master switch + Custom date / Whole period sub-mode. Replaces the
+// old image-mode legend toggle - control lives entirely in Display now, works in Gallery too
+// (Display is unlocked there, unlike the legend which only ever showed in plain Analyzer view).
+document.getElementById('chkImgChmi').addEventListener('change', (e) => {
+  showImgChmi = e.target.checked;
+  // Turning CHMI data on always forces "Custom date" on too, so the effect is guaranteed to be
+  // visible immediately - in whole-period mode the mosaic itself doesn't need it, but the single-
+  // day gradient (custom-date submode) is drawn entirely inside the showCustomArc block and would
+  // otherwise silently show nothing if the user had unchecked it earlier.
+  if (showImgChmi && !showCustomArc) {
+    showCustomArc = true;
+    document.getElementById('chkCustomArc').checked = true;
+    updateSunAnimCtl();
+    updateSunWave();
+  }
+  syncChmiModeGroupState();
   draw();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+});
+document.querySelectorAll('.chmi-mode-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    chmiDisplayMode = e.currentTarget.dataset.mode;
+    document.querySelectorAll('.chmi-mode-btn').forEach(b => b.classList.toggle('active', b === e.currentTarget));
+    draw();
+  });
 });
 let imgLegendCollapsed = false;
 function setImgLegendCollapsed(c) {
@@ -867,16 +886,40 @@ function setCurrentHalfFromGallery() {
 // time (_sgEnsureChmiByDoy in core.js), not baked in here.
 let currentChmi = null;
 
-// Reflects data availability on both CHMI legend entries (Sun Graph + image-mode): greys out
-// and disables the bold/colour styling when the current image has no CHMI data at all, or when
-// the active time mode is True solar time (CHMI is standard-time-native and hidden in that mode -
-// see core.js's displayHour/trueFromStandard), leaving the normal on/off (strikethrough-only)
-// look untouched whenever data IS available and the mode supports it.
+// Reflects data availability on the Sun Graph CHMI legend entry and the Display-section CHMI
+// controls: greys out and disables when the current image has no CHMI data at all, or when the
+// active time mode is True solar time (CHMI is standard-time-native and hidden in that mode - see
+// core.js's displayHour/trueFromStandard), leaving the normal on/off look untouched whenever data
+// IS available and the mode supports it. The image-mode overlay itself used to have its own
+// legend entry (data-band="imgchmi"); it's now driven entirely from here, since Display's "CHMI
+// data" checkbox replaced that legend row.
 function updateChmiLegendAvailability() {
   const unavailable = currentChmi === null || timeDisplayMode === 'true';
-  document.querySelectorAll('[data-band="chmi"], [data-band="imgchmi"]').forEach(el => {
+  document.querySelectorAll('[data-band="chmi"]').forEach(el => {
     el.classList.toggle('unavailable', unavailable);
   });
+
+  const chk = document.getElementById('chkImgChmi');
+  const row = document.getElementById('chkImgChmiRow');
+  if (chk) chk.disabled = unavailable;
+  if (row) { row.style.opacity = unavailable ? '0.35' : ''; row.style.pointerEvents = unavailable ? 'none' : ''; }
+  syncChmiModeGroupState();
+}
+
+// Custom date / Whole period sub-toggle: hidden entirely while the master switch above is off
+// (nothing to choose between yet), shown but dimmed/inert if the master is on and checked but the
+// data has since become unavailable (image switch, time-mode change) - independent of whatever
+// setDisplaySectionEnabled() is doing to the rest of the Display section (theater/Sun Graph
+// already disable that separately).
+function syncChmiModeGroupState() {
+  const group = document.getElementById('chmiModeGroup');
+  if (!group) return;
+  group.style.display = showImgChmi ? 'flex' : 'none';
+  const unavailable = currentChmi === null || timeDisplayMode === 'true';
+  const active = showImgChmi && !unavailable;
+  group.style.opacity = active ? '' : '0.35';
+  group.style.pointerEvents = active ? '' : 'none';
+  group.querySelectorAll('.chmi-mode-btn').forEach(el => { el.disabled = !active; });
 }
 
 async function setCurrentChmiFromGallery() {
