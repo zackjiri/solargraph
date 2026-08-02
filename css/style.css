@@ -470,6 +470,36 @@
     flex-shrink: 0;
   }
 
+  /* CHMI custom date / whole period - compact single-row segmented toggle, hidden entirely
+     while "CHMI data" above is unchecked (shown/hidden by JS, not just dimmed). No horizontal
+     margin - stretches full-width within the section (align-items:stretch), same as #btnHeatmap
+     right below it, so the two blocks line up edge-to-edge. */
+  .chmi-mode-row {
+    display: none;
+    margin: 2px 0 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .chmi-mode-btn {
+    flex: 1 1 50%;
+    min-width: 0;   /* without this, flex-basis:50% loses to the longer label's nowrap min-content */
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.03em;
+    padding: 4px 2px;
+    border: none;
+    background: rgba(255,255,255,0.02);
+    color: var(--dim);
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    transition: background 0.12s, color 0.12s;
+  }
+  .chmi-mode-btn:first-child { border-right: 1px solid var(--border); }
+  .chmi-mode-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,0.05); }
+  .chmi-mode-btn.active { color: var(--accent2); background: rgba(32,160,232,0.12); }
+
   /* Sliders */
   .slider-row {
     display: flex;
