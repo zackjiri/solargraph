@@ -86,7 +86,8 @@
             "exposure_start": "2025-07-05",
             "exposure_end": "2025-12-23",
             "location": "Bystrice nad Pernstejnem, Czechia",
-            "chmi_wsi_station": "0-203-0-11686"
+            "chmi_wsi_station": "0-203-0-11686",
+            "chmi_extra": ["T"]
           }
         }
       ]
