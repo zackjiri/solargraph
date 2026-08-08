@@ -305,30 +305,77 @@ function _sgChmiColor(sec, alpha) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
-// Buckets currentChmi (raw UTC [iso, seconds|null] pairs, from controls.js) into STANDARD-TIME
-// day-of-year → [[hourFloat, seconds], ...] (UTC → standard time is a pure whole/quarter-hour
-// shift via timeZoneHours - no longitude involved; that only enters later, converting standard
-// time to true/mean solar time for alignment against the model - see standardFromTrue() etc.).
-// Cached on (currentChmi identity, timeZoneHours) - the zone control can change live without the
-// data itself changing, so both must invalidate the cache.
+// ── CHMI element switch (2D canvas only, see render-2d.js) ────────────────────────────────────
+// null/'' = base SSV10M (sunshine) is active - the only state the Sun Graph ever uses, since its
+// own CHMI overlay always calls _sgEnsureChmiByDoy()/_sgChmiColor() directly and is untouched by
+// this switch. Any other value names the extra per-image dataset (chmi/GEN-X_Y_<code>.json,
+// declared via the image's filelist.json "chmi_extra") currently shown on the main canvas instead.
+let chmiActiveElement = null;
+
+// Official ČHMÚ "Aktuální teplota" map legend (namerena-data/data-z-mericich-stanic/aktualni-
+// teplota) - 45 discrete 2 °C bands (wider at both ends), NOT interpolated, reproduced verbatim
+// rather than smoothed into a gradient like _sgChmiColor's 5 stops. Ascending by upper bound;
+// a value picks the first band whose upper bound it doesn't exceed, clamped to [-50, 60].
+const _CHMI_TEMP_BANDS = [
+  [-40, '#FFFFFF'], [-38, '#F4F7F7'], [-36, '#DAE5E5'], [-34, '#C1D3D3'], [-32, '#A7C1C1'],
+  [-30, '#8EAEAE'], [-28, '#A69AAE'], [-26, '#8E8094'], [-24, '#76657A'], [-22, '#5D4A5F'],
+  [-20, '#453045'], [-18, '#320057'], [-16, '#3F0B81'], [-14, '#4C16AB'], [-12, '#5A22D5'],
+  [-10, '#672DFF'], [-8,  '#0051FF'], [-6,  '#007CFF'], [-4,  '#00A7FF'], [-2,  '#00D1FF'],
+  [0,   '#00FCFF'], [2,   '#66BF20'], [4,   '#86CD20'], [6,   '#A5DA20'], [8,   '#C4E820'],
+  [10,  '#E4F520'], [12,  '#FFFF80'], [14,  '#FFE660'], [16,  '#FFCD40'], [18,  '#FFB320'],
+  [20,  '#FF9A00'], [22,  '#FF6E00'], [24,  '#EE5200'], [26,  '#DD3700'], [28,  '#CD1C00'],
+  [30,  '#BC0000'], [32,  '#950021'], [34,  '#AF004A'], [36,  '#CA0074'], [38,  '#E4009D'],
+  [40,  '#FF00C7'], [42,  '#FF6AE2'], [44,  '#FF8BE2'], [46,  '#FFABE2'], [60,  '#FFCCE2'],
+];
+function _hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+function _chmiTempColor(tempC, alpha) {
+  const t = Math.max(-50, Math.min(60, tempC));
+  for (const [upper, hex] of _CHMI_TEMP_BANDS) {
+    if (t <= upper) return _hexToRgba(hex, alpha);
+  }
+  return _hexToRgba(_CHMI_TEMP_BANDS[_CHMI_TEMP_BANDS.length - 1][1], alpha);
+}
+
+// Dispatches to the right gradient for whichever element the canvas switch has active. Only the
+// 2D canvas (render-2d.js) ever calls this - the Sun Graph always uses _sgChmiColor() directly.
+function _chmiActiveColor(value, alpha) {
+  if (chmiActiveElement === 'T') return _chmiTempColor(value, alpha);
+  return _sgChmiColor(value, alpha);
+}
+
+// Shared bucketing core: raw UTC [iso, value|null] pairs -> STANDARD-TIME day-of-year ->
+// [[hourFloat, value], ...] (UTC -> standard time is a pure whole/quarter-hour shift via
+// timeZoneHours - no longitude involved; that only enters later, converting standard time to
+// true/mean solar time for alignment against the model - see standardFromTrue() etc.). Used by
+// both _sgEnsureChmiByDoy() below (always the base SSV10M dataset) and render-2d.js's own
+// image-switch-aware equivalent - same shift logic works for any measured quantity.
+function _chmiBucketByDoy(values, tzHours) {
+  const byDoy = new Map();
+  const offMs = tzHours * 3600000;
+  for (const [iso, val] of values) {
+    const local = new Date(Date.parse(iso) + offMs);
+    // Reading UTC getters off the shifted instant yields the local wall-clock date/time fields.
+    const doy  = dayOfYear(local.getUTCMonth() + 1, local.getUTCDate());
+    const hour = local.getUTCHours() + local.getUTCMinutes() / 60;
+    if (!byDoy.has(doy)) byDoy.set(doy, []);
+    byDoy.get(doy).push([hour, val]);
+  }
+  return byDoy;
+}
+
+// Buckets currentChmi (base SSV10M dataset) for the Sun Graph - cached on (currentChmi identity,
+// timeZoneHours), since the zone control can change live without the data itself changing.
 let _sgChmiByDoy = null, _sgChmiSrc = null, _sgChmiZone = null;
 function _sgEnsureChmiByDoy() {
   if (typeof currentChmi === 'undefined' || !currentChmi) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
   if (_sgChmiSrc === currentChmi && _sgChmiZone === timeZoneHours) return _sgChmiByDoy;
   _sgChmiSrc = currentChmi;
   _sgChmiZone = timeZoneHours;
-  const byDoy = new Map();
-  const offMs = timeZoneHours * 3600000;
-  for (const [iso, sec] of currentChmi.values) {
-    const local = new Date(Date.parse(iso) + offMs);
-    // Reading UTC getters off the shifted instant yields the local wall-clock date/time fields.
-    const doy  = dayOfYear(local.getUTCMonth() + 1, local.getUTCDate());
-    const hour = local.getUTCHours() + local.getUTCMinutes() / 60;
-    if (!byDoy.has(doy)) byDoy.set(doy, []);
-    byDoy.get(doy).push([hour, sec]);
-  }
-  _sgChmiByDoy = byDoy;
-  return byDoy;
+  _sgChmiByDoy = _chmiBucketByDoy(currentChmi.values, timeZoneHours);
+  return _sgChmiByDoy;
 }
 
 // Azimuth and elevation of sun for hour angle H (rad), declination δ (rad), latitude φ (rad)

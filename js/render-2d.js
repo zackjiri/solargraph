@@ -50,7 +50,7 @@ function draw() {
       // Mosaic (+ its own highlight) already drawn above - nothing more needed for the arc itself.
     } else if (chmiOn) {
       const chmiW = 9;   // matches the Sun symbol dot drawn elsewhere (radius 4.5) - canvas size, not a physical disc
-      const chmiByDoy  = _sgEnsureChmiByDoy();
+      const chmiByDoy  = _imgChmiEnsureByDoy();
       const dayCovered = !!(chmiByDoy && chmiByDoy.get(dayOfYear(customMonth, customDay)));
       if (dayCovered) {
         // Thin dark-grey border above/below the band - same "wider line underneath" trick as
@@ -139,17 +139,18 @@ function draw() {
 // the CHMI lookup uses the real, unshifted custom date since weather is tied to a real calendar day.
 function drawChmiArc(W, H, cm, cd, lineWidth) {
   const realDoy    = dayOfYear(customMonth, customDay);
-  const chmiByDoy  = _sgEnsureChmiByDoy();
+  const chmiByDoy  = _imgChmiEnsureByDoy();
   const daySamples = chmiByDoy ? chmiByDoy.get(realDoy) : null;
-  const bySlot = new Map();   // slot 0..143 (10-min index into the day, standard time) → seconds
+  const bySlot = new Map();   // slot 0..143 (10-min index into the day, standard time) → value
   if (daySamples) for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
 
   const delta = sunDeclination(dayOfYear(cm, cd));
   const phi   = effectiveLat();
   const op    = dispOpacity;
   const alpha = Math.min(1, op * 0.9);
+  const missingIsZero = _imgChmiMissingIsZeroSafe();
 
-  let prevPos = null, prevSec = 0;   // 0 = "not shining" default for the very first segment
+  let prevPos = null, prevSec = 0, prevHasVal = true;   // 0 = "not shining" default for the very first segment (SSV10M only)
   for (let hDeg = -180; hDeg <= 180; hDeg += 2.5) {
     const Hrad = hDeg * Math.PI / 180;
     const { el, beta } = sunPosition(Hrad, delta, phi);
@@ -163,7 +164,7 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
       ctx.beginPath();
       ctx.moveTo(prevPos.px, prevPos.py);
       ctx.lineTo(pos.px, pos.py);
-      ctx.strokeStyle = _sgChmiColor(prevSec, alpha);
+      ctx.strokeStyle = prevHasVal ? _chmiActiveColor(prevSec, alpha) : `rgba(160,160,160,${alpha * 0.6})`;
       ctx.lineWidth = lineWidth;
       ctx.lineCap = 'round';
       ctx.stroke();
@@ -175,7 +176,9 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
     const standardHour = standardFromTrue(trueHour, realDoy);
     const slot = ((Math.round(standardHour * 6) % 144) + 144) % 144;
     const sec = pos ? bySlot.get(slot) : undefined;
-    prevSec = (sec !== undefined && sec !== null) ? sec : 0;
+    if (sec !== undefined && sec !== null) { prevSec = sec; prevHasVal = true; }
+    else if (missingIsZero) { prevSec = 0; prevHasVal = true; }
+    else { prevHasVal = false; }
     prevPos = pos;
   }
 }
@@ -230,22 +233,55 @@ function _imgChmiSlotsFor(chmiByDoy, d) {
   return m;
 }
 
+// Whichever dataset the Display element switch (controls.js) has active for THIS image - the
+// extra one (e.g. temperature) if chmiActiveElement names it and it loaded successfully, else
+// always the base SSV10M dataset. Only the 2D canvas uses this; the Sun Graph always stays on
+// currentChmi directly via _sgEnsureChmiByDoy().
+function _imgChmiActiveDataset() {
+  if (chmiActiveElement && typeof currentChmiExtra !== 'undefined' && currentChmiExtra
+      && currentChmiExtra.element === chmiActiveElement) {
+    return currentChmiExtra;
+  }
+  return (typeof currentChmi !== 'undefined') ? currentChmi : null;
+}
+
+// Missing samples inside an otherwise-covered day default to 0 only for the base SSV10M dataset,
+// where 0 is itself a real, meaningful value ("confirmed no sunshine this 10 min", same colour as
+// genuinely-measured 0 - see drawChmiArc's own comment). For anything else (e.g. temperature) 0 is
+// just another plausible reading, so a missing sample there must fall back to the neutral "no data"
+// grey instead of silently fabricating a value.
+function _imgChmiMissingIsZeroSafe() { return !chmiActiveElement; }
+
+// Bucket-by-day-of-year cache for whichever dataset is active, mirroring _sgEnsureChmiByDoy()'s
+// own caching (calibration-independent, just data identity + time zone) but scoped to the canvas
+// element switch instead of always the base dataset.
+let _imgChmiByDoy = null, _imgChmiByDoySrc = null, _imgChmiByDoyZone = null;
+function _imgChmiEnsureByDoy() {
+  const src = _imgChmiActiveDataset();
+  if (!src) { _imgChmiByDoySrc = null; _imgChmiByDoy = null; return null; }
+  if (_imgChmiByDoySrc === src && _imgChmiByDoyZone === timeZoneHours) return _imgChmiByDoy;
+  _imgChmiByDoySrc = src;
+  _imgChmiByDoyZone = timeZoneHours;
+  _imgChmiByDoy = _chmiBucketByDoy(src.values, timeZoneHours);
+  return _imgChmiByDoy;
+}
+
 // Cached offscreen bitmap - rebuilt only when calibration, the exposure range, the CHMI dataset,
 // the time zone or the display-time mode change, never on a plain redraw (mousemove/crosshair
 // would otherwise recompute several thousand quads every frame).
 let _imgChmiBitmap = null, _imgChmiKeyStr = null, _imgChmiSrcRef = null;
 function _imgChmiEnsureMosaic(W, H) {
   const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
-  const srcRef = (typeof currentChmi !== 'undefined') ? currentChmi : null;
+  const srcRef = _imgChmiActiveDataset();
   const keyStr = [yawDeg, pitchDeg, rollDeg, horizonMm, radius, scanWmm, LAT, hemisphere,
                   exp ? exp.startDoy : 'x', exp ? exp.endDoy : 'x',
-                  timeZoneHours, timeDisplayMode, W, H, canvasRES].join(',');
+                  timeZoneHours, timeDisplayMode, W, H, canvasRES, chmiActiveElement].join(',');
   if (keyStr === _imgChmiKeyStr && srcRef === _imgChmiSrcRef) return _imgChmiBitmap;
   _imgChmiKeyStr = keyStr;
   _imgChmiSrcRef = srcRef;
 
   const days = _imgChmiDayList();
-  const chmiByDoy = _sgEnsureChmiByDoy();
+  const chmiByDoy = _imgChmiEnsureByDoy();
   if (!days.length || !chmiByDoy) { _imgChmiBitmap = null; return null; }
 
   const phi = effectiveLat();
@@ -269,6 +305,7 @@ function _imgChmiEnsureMosaic(W, H) {
   const octx = off.getContext('2d');
   octx.setTransform(canvasRES, 0, 0, canvasRES, 0, 0);
 
+  const missingIsZero = _imgChmiMissingIsZeroSafe();
   for (let i = 0; i < days.length; i++) {
     const d = days[i];
     const bySlot = _imgChmiSlotsFor(chmiByDoy, d);
@@ -277,7 +314,7 @@ function _imgChmiEnsureMosaic(W, H) {
     const rowPrev = i > 0 ? posGrid[i - 1] : null;
     const rowNext = i < days.length - 1 ? posGrid[i + 1] : null;
 
-    let prevTop = null, prevBot = null, prevSec = 0;
+    let prevTop = null, prevBot = null, prevSec = 0, prevHasVal = true;
     for (let j = 0; j < nH; j++) {
       const pMid = rowMid[j];
       let top = null, bot = null;
@@ -289,7 +326,7 @@ function _imgChmiEnsureMosaic(W, H) {
       }
 
       if (top && prevTop) {
-        const col = hasDay ? _sgChmiColor(prevSec, 1) : 'rgba(160,160,160,0.55)';
+        const col = (hasDay && prevHasVal) ? _chmiActiveColor(prevSec, 1) : 'rgba(160,160,160,0.55)';
         octx.beginPath();
         octx.moveTo(prevTop.px, prevTop.py);
         octx.lineTo(top.px, top.py);
@@ -309,7 +346,9 @@ function _imgChmiEnsureMosaic(W, H) {
       const standardHour = standardFromTrue(trueHour, d);
       const slot = ((Math.round(standardHour * 6) % 144) + 144) % 144;
       const sec = (hasDay && top) ? bySlot.get(slot) : undefined;
-      prevSec = (sec !== undefined && sec !== null) ? sec : 0;
+      if (sec !== undefined && sec !== null) { prevSec = sec; prevHasVal = true; }
+      else if (missingIsZero) { prevSec = 0; prevHasVal = true; }
+      else { prevHasVal = false; }
       prevTop = top; prevBot = bot;
     }
   }

@@ -475,9 +475,11 @@ document.getElementById('btnScanWDec').addEventListener('click', () => applyScan
 document.getElementById('btnScanWInc').addEventListener('click', () => applyScanW(scanWmm + 1));
 
 function loadImage(file) {
-  currentExposure = null;   // uploaded image has no filelist metadata → no exposure overlay
-  currentChmi     = null;   // ditto for the CHMI sunshine overlay
-  currentHalf     = null;   // ditto for the Sun Graph legend corner
+  currentExposure    = null;   // uploaded image has no filelist metadata → no exposure overlay
+  currentChmi        = null;   // ditto for the CHMI sunshine overlay
+  currentChmiExtra   = null;   // ditto for any per-image extra dataset (chmi_extra)
+  chmiActiveElement  = null;   // back to SSV10M - the extra-element switch has nothing to show now
+  currentHalf        = null;   // ditto for the Sun Graph legend corner
   updateChmiLegendAvailability();
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -716,6 +718,7 @@ document.getElementById('chkImgChmi').addEventListener('change', (e) => {
   showImgChmi = e.target.checked;
   if (showImgChmi) forceCustomArcOn();
   syncChmiModeGroupState();
+  updateChmiElemSwitch();
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
@@ -890,6 +893,12 @@ function setCurrentHalfFromGallery() {
 // time (_sgEnsureChmiByDoy in core.js), not baked in here.
 let currentChmi = null;
 
+// Extra per-image dataset (e.g. temperature), declared via filelist.json metadata's "chmi_extra"
+// array (chmi/GEN-X_Y_<code>.json alongside the base chmi/GEN-X_Y.json) - null if the image
+// doesn't declare one or it failed to load. Only ever consumed by the 2D canvas element switch
+// (render-2d.js) - the Sun Graph's own CHMI overlay always stays on the base SSV10M dataset.
+let currentChmiExtra = null;
+
 // Reflects data availability on the Sun Graph CHMI legend entry and the Display-section CHMI
 // controls: greys out and disables when the current image has no CHMI data at all, or when the
 // active time mode is True solar time (CHMI is standard-time-native and hidden in that mode - see
@@ -908,7 +917,37 @@ function updateChmiLegendAvailability() {
   if (chk) chk.disabled = unavailable;
   if (row) { row.style.opacity = unavailable ? '0.35' : ''; row.style.pointerEvents = unavailable ? 'none' : ''; }
   syncChmiModeGroupState();
+  updateChmiElemSwitch();
 }
+
+// CHMI element switch (Display, between the "CHMI data" checkbox and the custom date / whole
+// period toggle): only offered when the current image's filelist metadata declares an extra
+// dataset (chmi_extra) AND it loaded successfully - independent of chmiDisplayMode, which the
+// switch doesn't touch, it only decides which dataset/gradient that mode renders with.
+// iOS-style switch, single label that always sits on the side opposite the thumb: "SSV10M" to the
+// left while ON (thumb right, yellow fill - base dataset active), the extra dataset's element code
+// to the right once clicked OFF (thumb left).
+function updateChmiElemSwitch() {
+  const row = document.getElementById('chmiElemRow');
+  if (!row) return;
+  const unavailable = currentChmi === null || timeDisplayMode === 'true';
+  const visible = showImgChmi && !unavailable && !!currentChmiExtra;
+  row.style.display = visible ? 'flex' : 'none';
+  if (!visible) return;
+
+  const isExtra = chmiActiveElement === currentChmiExtra.element;
+  const btn = document.getElementById('btnChmiElemSwitch');
+  document.getElementById('chmiElemLabelLeft').textContent  = isExtra ? '' : 'SSV10M';
+  document.getElementById('chmiElemLabelRight').textContent = isExtra ? currentChmiExtra.element : '';
+  btn.classList.toggle('on', !isExtra);
+  btn.setAttribute('aria-checked', String(!isExtra));
+}
+document.getElementById('btnChmiElemSwitch').addEventListener('click', () => {
+  if (!currentChmiExtra) return;
+  chmiActiveElement = (chmiActiveElement === currentChmiExtra.element) ? null : currentChmiExtra.element;
+  updateChmiElemSwitch();
+  draw();
+});
 
 // Custom date / Whole period sub-toggle: hidden entirely while the master switch above is off
 // (nothing to choose between yet), shown but dimmed/inert if the master is on and checked but the
@@ -928,6 +967,8 @@ function syncChmiModeGroupState() {
 
 async function setCurrentChmiFromGallery() {
   currentChmi = null;
+  currentChmiExtra = null;
+  chmiActiveElement = null;   // always default back to SSV10M on any image switch
   const finish = () => {
     updateChmiLegendAvailability();
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
@@ -941,20 +982,40 @@ async function setCurrentChmiFromGallery() {
   if (!m || !m.chmi_wsi_station) { finish(); return; }
 
   const genId = galleryState.genId, imageIndex = galleryState.imageIndex;
+  const isStale = () => galleryState.genId !== genId || galleryState.imageIndex !== imageIndex;
+  const baseName = `GEN-${genId}_${imageIndex}`;
+
   try {
-    const res = await fetch(`chmi/GEN-${genId}_${imageIndex}.json`);
+    const res = await fetch(`chmi/${baseName}.json`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    // Gallery selection may have moved on while this fetch was in flight - discard if stale.
-    if (galleryState.genId !== genId || galleryState.imageIndex !== imageIndex) return;
+    if (isStale()) return;   // gallery selection moved on while this fetch was in flight
     // No offset stored here - UTC → standard time uses timeZoneHours (calibration, presets.json),
     // read live by _sgEnsureChmiByDoy() so tweaking the Time zone offset control updates it.
     currentChmi = { values: data.values };
-    finish();
   } catch (e) {
-    console.warn('CHMI data not found for GEN-' + genId + '_' + imageIndex + ':', e);
-    finish();
+    if (isStale()) return;
+    console.warn('CHMI data not found for ' + baseName + ':', e);
   }
+
+  // Extra per-image dataset (e.g. temperature), only if this image's filelist metadata declares
+  // one - only the first code is used for now, since the Display switch is a plain binary
+  // SSV10M/other toggle (see project notes; more than one extra element is a later step).
+  const extraCode = Array.isArray(m.chmi_extra) && m.chmi_extra.length ? m.chmi_extra[0] : null;
+  if (extraCode) {
+    try {
+      const res = await fetch(`chmi/${baseName}_${extraCode}.json`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (isStale()) return;
+      currentChmiExtra = { element: extraCode, values: data.values };
+    } catch (e) {
+      if (isStale()) return;
+      console.warn('CHMI extra (' + extraCode + ') not found for ' + baseName + ':', e);
+    }
+  }
+
+  finish();
 }
 
 async function loadFilelist() {
