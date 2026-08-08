@@ -470,6 +470,59 @@
     flex-shrink: 0;
   }
 
+  /* CHMI element switch (SSV10M vs. an image's extra dataset, e.g. temperature) - iOS-style
+     pill switch, hidden entirely unless the current image actually has an extra dataset loaded
+     (shown/hidden by JS). The switch itself always sits dead-centre in the panel - both label
+     slots use flex-basis 0 (not auto), so they claim equal width regardless of which one actually
+     has text, and text-align pulls each label's content flush against the switch, wherever that
+     lands. Single label that always sits on the side opposite the thumb: "SSV10M" to the left
+     while ON (thumb right, yellow fill), the extra element's code to the right once switched OFF
+     (thumb left, red fill for T - see .chmi-elem-switch:not(.on) below) - both label slots always
+     exist, only one has text at a time. */
+  .chmi-elem-row {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+  }
+  .chmi-elem-label {
+    flex: 1 1 0%;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  #chmiElemLabelLeft  { text-align: right; }
+  #chmiElemLabelRight { text-align: left; }
+  .chmi-elem-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 21px;
+    border-radius: 11px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: #e04040;   /* OFF = extra element active; T's red (see project notes) */
+    transition: background 0.18s;
+  }
+  .chmi-elem-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 17px; height: 17px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  /* "on" = SSV10M (base dataset) active - thumb right, yellow fill (semantic gold, same literal
+     colour in both themes as the header/pinhole/noon-HIT accents - not the theme-shifting
+     --accent token, see project notes on semantic colours). */
+  .chmi-elem-switch.on { background: #e8a020; }
+  .chmi-elem-switch.on::after { left: 19px; }
+
   /* CHMI custom date / whole period - compact single-row segmented toggle, hidden entirely
      while "CHMI data" above is unchecked (shown/hidden by JS, not just dimmed). No horizontal
      margin - stretches full-width within the section (align-items:stretch), same as #btnHeatmap
