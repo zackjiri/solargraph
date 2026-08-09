@@ -114,8 +114,14 @@ function _monthStartDoy() {
 }
 const _DAYS_IN_YEAR = 365;
 
-// Twilight altitude thresholds [deg]. Daylight edge includes refraction + semidiameter (−0.833°).
-const _SG_THRESH = { day: -0.833, civil: -6, naut: -12, astro: -18 };
+// Twilight altitude thresholds [deg]. Daylight edge is the pure geometric horizon (0°), matching
+// every other horizon test in the app (core.js/render-2d.js all use el >= 0, no refraction). Real
+// sunrise/sunset could optionally include atmospheric refraction + solar semidiameter (≈ −0.833°),
+// but that's deliberately NOT applied here - the rest of the model doesn't account for refraction
+// either (see project notes §6.5), and mixing the two thresholds broke the polar-day/polar-night
+// symmetry: with −0.833° the polar-night cutoff latitude (~67.4°N) no longer matched the polar-day
+// cutoff (~65.7°N) the way both do at exactly the geometric Arctic Circle (66.57°N) with 0°.
+const _SG_THRESH = { day: 0, civil: -6, naut: -12, astro: -18 };
 // Band colours (meaning-bearing → same in both themes; approx. timeanddate palette).
 const _SG_BANDS = { night: '#1c2a35', astro: '#39505f', naut: '#5a7588', civil: '#9cbdd2', day: '#cfe8f6' };
 
