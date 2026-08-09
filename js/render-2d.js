@@ -81,8 +81,13 @@ function draw() {
     }
 
     // Label anchored to south axis, offset 8px right, above the arc at that point
-    // Find arc y-position at south axis (β=0, i.e. pixel x = cx adjusted for yawDeg)
-    const doy   = dayOfYear(customMonth, customDay);
+    // Find arc y-position at south axis (β=0, i.e. pixel x = cx adjusted for yawDeg).
+    // Must use the same (possibly SH-shifted) path-convention date the arc itself is drawn with
+    // (cm/cd, from customArcDate() above) - using the raw, unshifted customMonth/Day here would
+    // find the transit point of a DIFFERENT day than the one actually plotted, so on the southern
+    // hemisphere the label would anchor to where the NH-equivalent date's arc crosses the meridian
+    // instead of following the real (shifted) arc.
+    const doy   = dayOfYear(cm, cd);
     const delta = sunDeclination(doy);
     const phi   = effectiveLat();
     // Hour angle at exactly south transit (H=0)
@@ -440,19 +445,47 @@ function drawGrid(W, H) {
     const isNorthAz   = (az === (hemisphere >= 0 ? 0 : 180));  // pole-facing direction
     const is30        = (az % 30 === 0);
 
-    const points = [];
+    // Segment handling like the elevation isolines below (and the crosshair's own azimuth
+    // isoline, §7.6): with pitch/roll the sweep can fold past the camera pole (local elevation
+    // → ±90°), where the local azimuth flips by ~180°. Such a folded point can land far away
+    // horizontally yet still pass a per-point px/py filter - a single unbroken polyline through
+    // all surviving points then draws a spurious streak connecting the fold to the real branch.
+    // Breaking on out-of-bounds AND on a big px jump between consecutive valid points (same 60 px
+    // threshold as the crosshair) keeps each visible branch on its own path.
+    //
+    // Separately - not a fold at all - at extreme pitch/roll the meridian can legitimately (and
+    // continuously) swing from far above the frame to far past its side/bottom edge, clipping
+    // through a corner for a couple of samples before leaving again (confirmed by walking the
+    // el sweep for GEN-1_5: el −70° lands at px −27 (just outside), −69.5°..−68.5° land inside by
+    // a few px, −68° is back outside - three genuine, continuous, non-folded points). Mathematically
+    // correct, but a 2-4-point sliver is meaningless as a coordinate reference and reads as a
+    // stray mark - MIN_SEG_LEN drops any segment too short to be a real, followable line.
+    const MIN_SEG_LEN = 10;   // 10 samples @ 0.5° = 5° of continuous arc
+    const segments = [];
+    let seg = [], prev = null;
     for (let el = -85; el <= 85; el += 0.5) {
       const pos = azElToPixel(beta, el);
-      if (!pos) continue;
-      if (pos.py < -20 || pos.py > H + 20) continue;
-      if (pos.px < -20 || pos.px > W + 20) continue;
-      points.push(pos);
+      const valid = pos && pos.py >= -20 && pos.py <= H + 20 && pos.px >= -20 && pos.px <= W + 20;
+      if (valid) {
+        if (prev && Math.abs(pos.px - prev.px) > 60) {
+          if (seg.length >= MIN_SEG_LEN) segments.push(seg);
+          seg = [];
+        }
+        seg.push(pos); prev = pos;
+      } else {
+        if (seg.length >= MIN_SEG_LEN) segments.push(seg);
+        seg = []; prev = null;
+      }
     }
-    if (points.length < 2) continue;
+    if (seg.length >= MIN_SEG_LEN) segments.push(seg);
+    if (segments.length === 0) continue;
+    const points = segments.flat();   // only used below to anchor the N/S edge labels
 
     ctx.beginPath();
-    ctx.moveTo(points[0].px, points[0].py);
-    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].px, points[i].py);
+    for (const s of segments) {
+      ctx.moveTo(s[0].px, s[0].py);
+      for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].px, s[i].py);
+    }
 
     if (isImportant) {
       ctx.strokeStyle = `rgba(232,160,32,${Math.min(1, op * 1.1)})`;
@@ -489,7 +522,11 @@ function drawGrid(W, H) {
     }
   }
 
-  // Elevation isolines every 10° – full 360° with segment handling
+  // Elevation isolines every 10° – full 360° with segment handling. Same MIN_SEG_LEN reasoning
+  // as the azimuth isolines above: at extreme pitch/roll a couple of samples can clip a corner of
+  // the frame on an otherwise off-canvas stretch of the curve - mathematically real, but a 2-point
+  // sliver reads as a stray mark rather than a followable reference line.
+  const MIN_EL_SEG_LEN = 10;   // 10 samples @ 1° = 10° of continuous arc
   for (let el = -80; el <= 80; el += 10) {
     if (el === 0) continue; // horizon drawn separately
 
@@ -502,11 +539,11 @@ function drawGrid(W, H) {
               && pos.py >= -20 && pos.py <= H + 20) {
         seg.push(pos);
       } else {
-        if (seg.length >= 2) segments.push(seg);
+        if (seg.length >= MIN_EL_SEG_LEN) segments.push(seg);
         seg = [];
       }
     }
-    if (seg.length >= 2) segments.push(seg);
+    if (seg.length >= MIN_EL_SEG_LEN) segments.push(seg);
     if (segments.length === 0) continue;
 
     ctx.strokeStyle = `rgba(32,160,232,${Math.min(1, op * 0.65)})`;
@@ -636,17 +673,20 @@ function drawCrosshair(W, H) {
     // Full 360°, with segment handling; note: yawDeg applied (fixes prior bug)
     const elSegs = [];
     let elSeg = [];
+    // MIN_SEG_LEN (see drawGrid): drops degenerate 2-4-point corner clips that are mathematically
+    // real but read as a stray mark rather than a followable isoline.
+    const MIN_SEG_LEN = 10;
     for (let az = 0; az < 360; az += 0.5) {
       const b   = az - 180 - yawDeg;
       const pos = azElToPixel(b, theta_deg);
       if (pos && pos.px >= -20 && pos.px <= W + 20 && pos.py >= -20 && pos.py <= H + 20) {
         elSeg.push(pos);
       } else {
-        if (elSeg.length >= 2) elSegs.push(elSeg);
+        if (elSeg.length >= MIN_SEG_LEN) elSegs.push(elSeg);
         elSeg = [];
       }
     }
-    if (elSeg.length >= 2) elSegs.push(elSeg);
+    if (elSeg.length >= MIN_SEG_LEN) elSegs.push(elSeg);
     if (elSegs.length > 0) {
       ctx.strokeStyle = 'rgba(80,80,80,0.85)';
       ctx.lineWidth = 1;
@@ -672,16 +712,16 @@ function drawCrosshair(W, H) {
       if (pos && pos.px >= -20 && pos.px <= W + 20 && pos.py >= -20 && pos.py <= H + 20) {
         // fold can also jump directly between two on-canvas points – break on big px gaps
         if (azPrev && Math.abs(pos.px - azPrev.px) > 60) {
-          if (azSeg.length >= 2) azSegs.push(azSeg);
+          if (azSeg.length >= MIN_SEG_LEN) azSegs.push(azSeg);
           azSeg = [];
         }
         azSeg.push(pos); azPrev = pos;
       } else {
-        if (azSeg.length >= 2) azSegs.push(azSeg);
+        if (azSeg.length >= MIN_SEG_LEN) azSegs.push(azSeg);
         azSeg = []; azPrev = null;
       }
     }
-    if (azSeg.length >= 2) azSegs.push(azSeg);
+    if (azSeg.length >= MIN_SEG_LEN) azSegs.push(azSeg);
     if (azSegs.length > 0) {
       ctx.strokeStyle = 'rgba(80,80,80,0.85)';
       ctx.lineWidth = 1;
