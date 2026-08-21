@@ -19,9 +19,10 @@
         <button class="mode-btn" id="btnModeAnalyzer" title="Simulate and calibrate the pinhole projection">Analyzer</button>
       </div>
       <!-- Sub-toggles, shown only in Analyzer; sit flush under the toggle (widths matched in JS) -->
-      <div class="mode-subrow">
-        <button class="submode-btn" id="btnModeTheater" title="Show the 3D can / cylinder model">3D Model</button>
-        <button class="submode-btn" id="btnModeSunGraph" title="Show the sun-path day chart">Sun Graph</button>
+      <div class="mode-subrow wheel-row" title="Analyzer sub-view – drag, tap a side value, or use the arrows">
+        <button class="wheel-btn" id="btnModeDec" title="Previous view">◀</button>
+        <div class="wheel-track" id="modeWheelTrack"></div>
+        <button class="wheel-btn" id="btnModeInc" title="Next view">▶</button>
       </div>
     </div>
     <div class="time-mode-wrap">
@@ -191,6 +192,7 @@
       <canvas id="mainCanvas"></canvas>
       <canvas id="can3dTheater"></canvas>
       <canvas id="sunGraphCanvas"></canvas>
+      <canvas id="skyDomeCanvas"></canvas>
       <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
       <div id="sgStatusWrap">
         <div id="sgStatus">
@@ -414,15 +416,15 @@
 
     <div class="sidebar-section">
       <div class="sidebar-title">Custom Path</div>
-      <div class="date-row" title="Month for the custom sun-path overlay – drag or tap a side value">
-        <button class="date-btn" id="btnMonDec">◀</button>
-        <div class="date-wheel" id="wheelMonth"></div>
-        <button class="date-btn" id="btnMonInc">▶</button>
+      <div class="wheel-row" title="Month for the custom sun-path overlay – drag or tap a side value">
+        <button class="wheel-btn" id="btnMonDec">◀</button>
+        <div class="wheel-track" id="wheelMonth"></div>
+        <button class="wheel-btn" id="btnMonInc">▶</button>
       </div>
-      <div class="date-row" title="Day for the custom sun-path overlay – drag or tap a side value">
-        <button class="date-btn" id="btnDayDec">◀</button>
-        <div class="date-wheel" id="wheelDay"></div>
-        <button class="date-btn" id="btnDayInc">▶</button>
+      <div class="wheel-row" title="Day for the custom sun-path overlay – drag or tap a side value">
+        <button class="wheel-btn" id="btnDayDec">◀</button>
+        <div class="wheel-track" id="wheelDay"></div>
+        <button class="wheel-btn" id="btnDayInc">▶</button>
       </div>
     </div>
 
@@ -460,5 +462,6 @@
 <script src="js/controls.js"></script>
 <script src="js/render-sungraph.js"></script>
 <script src="js/render-3d.js"></script>
+<script src="js/render-skydome.js"></script>
 </body>
 </html>
