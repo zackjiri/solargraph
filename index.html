@@ -193,6 +193,13 @@
       <canvas id="can3dTheater"></canvas>
       <canvas id="sunGraphCanvas"></canvas>
       <canvas id="skyDomeCanvas"></canvas>
+      <!-- Sky Dome projection switch – top-right, shown only in Sky Dome. Same iOS-switch pattern
+           as the CHMI element switch (Display section): single dynamic label opposite the thumb. -->
+      <div class="skydome-proj-row" id="skyDomeProjRow" title="Switch between the polar dome and the flat azimuth/elevation chart">
+        <span class="skydome-proj-label" id="skyDomeProjLabelLeft">DOME</span>
+        <button class="skydome-proj-switch on" id="btnSkyDomeProj" role="switch" aria-checked="true"></button>
+        <span class="skydome-proj-label" id="skyDomeProjLabelRight"></span>
+      </div>
       <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
       <div id="sgStatusWrap">
         <div id="sgStatus">
