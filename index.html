@@ -303,7 +303,10 @@
       <label class="chk-row" title="Overlay the calculated horizon line"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
       <label class="chk-row" title="Overlay solstice and equinox sun paths"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
       <label class="chk-row" title="Overlay the sun path for the custom date below"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
-      <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine data from the nearest CHMI weather station instead of the plain Custom Path"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
+      <div class="chk-row-wrap">
+        <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine data from the nearest CHMI weather station instead of the plain Custom Path"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
+        <button class="info-icon-btn" id="btnChmiInfo" type="button" title="About this data (license)">ⓘ</button>
+      </div>
       <div class="chmi-elem-row" id="chmiElemRow">
         <span class="chmi-elem-label" id="chmiElemLabelLeft">SSV10M</span>
         <button class="chmi-elem-switch on" id="btnChmiElemSwitch" role="switch" aria-checked="true" title="Switch between measured sunshine and the other dataset available for this image"></button>
@@ -432,7 +435,7 @@
 </div>
 
 <!-- Metadata popup -->
-<div id="metaPopup">
+<div id="metaPopup" class="info-popup">
   <div id="metaTitle" style="color:var(--accent2);font-size:13px;letter-spacing:0.18em;margin-bottom:9px"></div>
   <div style="border-top:1px solid var(--border);margin-bottom:7px"></div>
   <div class="meta-row">
@@ -450,6 +453,29 @@
   <div class="meta-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:7px">
     <span class="meta-label">Duration</span>
     <span class="meta-val" id="metaDuration" style="color:var(--accent)"></span>
+  </div>
+</div>
+
+<!-- CHMI data license popup -->
+<div id="chmiInfoPopup" class="info-popup" style="max-width:250px">
+  <div style="color:var(--accent2);font-size:13px;letter-spacing:0.18em;margin-bottom:9px">CHMI DATA LICENSE</div>
+  <div style="border-top:1px solid var(--border);margin-bottom:7px"></div>
+  <div style="font-size:11.5px;line-height:1.5;color:var(--text);margin-bottom:9px">
+    Measured weather data (sunshine and other elements) shown here are Open Data published by the
+    Czech Hydrometeorological Institute (ČHMÚ), used under a Creative Commons Attribution 4.0
+    International license.
+  </div>
+  <div class="meta-row">
+    <span class="meta-label">Source</span>
+    <span class="meta-val">ČHMÚ Open Data</span>
+  </div>
+  <div class="meta-row">
+    <span class="meta-label">License</span>
+    <span class="meta-val">CC BY 4.0</span>
+  </div>
+  <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:7px;text-align:right">
+    <a href="https://creativecommons.org/licenses/by/4.0/deed.cs" target="_blank" rel="noopener noreferrer"
+       style="color:var(--accent);font-size:11px;text-decoration:none">License terms →</a>
   </div>
 </div>
 
