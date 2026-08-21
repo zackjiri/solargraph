@@ -4,11 +4,20 @@
 //   Dome   - polar: zenith (elevation 90°) at the centre, horizon (elevation 0°) at the rim,
 //            azimuth as the compass angle around it.
 //   Matrix - flat: azimuth 0°-360° left-to-right, elevation 0°-90° bottom-to-top (a plain XY chart).
-// Both are a fixed geographic compass view - north is always "up"/at az=0, independent of the
-// calibration's YAW/PITCH/ROLL (those describe how the physical pinhole can was oriented, not a
-// property of the sky itself). Switched via the top-right "DOME/MATRIX" pill (see
-// updateSkyDomeProjSwitch()); everything below (sun-path data, cursor readout) is projection-
-// agnostic and goes through _skyDomeProject()/_skyDomePixelToAzEl() to reach either one.
+// Both are a fixed geographic compass view - true north is always at az=0 (Dome: fixed at the
+// top; Matrix: see the shift note on _skyDomeMatrixPoint), independent of the calibration's
+// YAW/PITCH/ROLL (those describe how the physical pinhole can was oriented, not a property of the
+// sky itself). Switched via the top-right "DOME/MATRIX" pill (see updateSkyDomeProjSwitch());
+// everything below (sun-path data, cursor readout) is projection-agnostic and goes through
+// _skyDomeProject()/_skyDomePixelToAzEl() to reach either one.
+//
+// Because this is a *true*-compass view (not the flat scan's own hemisphere-agnostic pixel
+// convention - see core.js's drawSunArc), all sun-position math here uses signed latitude
+// (effectiveLat() * hemisphere) and unsigned hour angle, so the culmination side and the day's
+// rotation sense come out on the correct side of the compass for either hemisphere automatically
+// - see _skyDomeArcPoints/_skyDomeHourDots. inverseSolar() is the one exception: it has its own
+// bespoke "culmination is always 180°" + unsigned-latitude convention, so its azimuth argument is
+// converted first - see handleSkyDomeMouseMove().
 //
 // Sub-mode of Analyzer, sibling to 3D Model / Sun Graph (mutually exclusive canvas takeovers -
 // see enterSkyDome()/exitSkyDome() and their counterparts in render-3d.js/render-sungraph.js).
@@ -85,8 +94,19 @@ function _skyDomePoint(cx0, cy0, R, az, el) {
 }
 
 // Matrix: plain XY chart - azimuth 0..360° left-to-right, elevation 0..90° bottom-to-top.
+// The chart is deliberately kept "culmination-centred" regardless of hemisphere: true north sits
+// at az=0/360 (the two edges) for the northern hemisphere, but at az=180 (the true south) for the
+// southern hemisphere the sun's culmination is at *true* az=0 (north) - plotting raw true azimuth
+// straight across a 0-360 axis would then put the daily arc's peak at the edges and split it into
+// two pieces there. Instead we shift by 180° for the southern hemisphere so the culmination side
+// always lands at the centre and the chart keeps the same one-piece "hump" shape either way - see
+// drawSkyDomeMatrixAxes(), which relabels the axis (numbers + E/S/W) to match this shift instead
+// of moving the gridlines.
+function _skyDomeMatrixAzShift() { return hemisphere >= 0 ? 0 : 180; }
+
 function _skyDomeMatrixPoint(x0, y0, plotW, plotH, az, el) {
-  return { x: x0 + (az / 360) * plotW, y: y0 + plotH * (1 - el / 90) };
+  const azS = (az + _skyDomeMatrixAzShift() + 360) % 360;
+  return { x: x0 + (azS / 360) * plotW, y: y0 + plotH * (1 - el / 90) };
 }
 
 function _skyDomeProject(layout, az, el) {
@@ -111,7 +131,8 @@ function _skyDomePixelToAzEl(px, py) {
   const L = _skyDomeLayout;
   if (L.mode === 'matrix') {
     if (px < L.x0 || px > L.x0 + L.plotW || py < L.y0 || py > L.y0 + L.plotH) return null;
-    const az = ((px - L.x0) / L.plotW) * 360;
+    const azS = ((px - L.x0) / L.plotW) * 360;
+    const az = (azS - _skyDomeMatrixAzShift() + 360) % 360;   // undo the culmination-centring shift
     const el = (1 - (py - L.y0) / L.plotH) * 90;
     return { az, el };
   }
@@ -149,7 +170,13 @@ function handleSkyDomeMouseMove(e) {
   container.style.cursor = 'none';
   _skyDomeHoverAz = hit.az; _skyDomeHoverEl = hit.el;
 
-  const sol = hit.az !== null ? inverseSolar(hit.az, hit.el, effectiveLat()) : null;
+  // inverseSolar() expects its azimuth in the app-wide "culmination-relative" convention (south
+  // is always 180°, regardless of hemisphere - see core.js) paired with unsigned latitude; it
+  // applies its own internal hemisphere corrections (H sign, day-of-year shift) from there. Our
+  // az is a *true* compass bearing (0=true north always), so convert before calling it - true
+  // culmination is at true-az 0 for the southern hemisphere, which must map to 180 in that frame.
+  const azForSolar = hit.az !== null ? (hemisphere >= 0 ? hit.az : (hit.az + 180) % 360) : null;
+  const sol = azForSolar !== null ? inverseSolar(azForSolar, hit.el, effectiveLat()) : null;
   document.getElementById('valAz').textContent   = hit.az !== null ? hit.az.toFixed(1) + '°' : '—';
   document.getElementById('valAlt').textContent  = '+' + hit.el.toFixed(1) + '°';
   document.getElementById('valDay').textContent  = sol ? sol.day1 + ' / ' + sol.day2 : '—';
@@ -175,7 +202,13 @@ function handleSkyDomeMouseLeave() {
 // sun marker - identical in both projections, just re-projected.
 function _skyDomeArcPoints(layout, month, day) {
   const delta = sunDeclination(dayOfYear(month, day));
-  const phi   = effectiveLat();
+  // Signed latitude - this is a true-compass calculation (see file header), unlike the flat
+  // scan's own sun-arc drawing (core.js's drawSunArc), which stays hemisphere-agnostic by using
+  // unsigned latitude paired with a "culmination is always at the image centre" pixel convention.
+  // Here there's no such convention to lean on: true south is always down and true north is
+  // always up, so the sign has to come from the real latitude for the culmination side (and the
+  // whole day's rotation sense) to land on the correct side of the compass.
+  const phi = effectiveLat() * hemisphere;
   const pts = [];
   let prevAz = null;
   for (let hDeg = -180; hDeg <= 180; hDeg += 0.5) {
@@ -212,7 +245,7 @@ function _skyDomeStrokeArc(ctx, pts, color, lineWidth) {
 function _skyDomeHourDots(ctx, layout, month, day, color, withLabels) {
   const doy   = dayOfYear(month, day);
   const delta = sunDeclination(doy);
-  const phi   = effectiveLat();
+  const phi   = effectiveLat() * hemisphere;   // true-compass calculation - see _skyDomeArcPoints
   for (let hDeg = -180; hDeg <= 180; hDeg += 15) {
     const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
     if (s.el < 0) continue;
@@ -221,7 +254,11 @@ function _skyDomeHourDots(ctx, layout, month, day, color, withLabels) {
     ctx.fillStyle = color; ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
     if (withLabels) {
-      const trueHour  = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
+      // Hour angle → clock hour is a universal relationship (H=0 is always noon, H grows linearly
+      // with elapsed time) - no hemisphere mirroring needed here, unlike the flat scan's equinox
+      // curve (core.js's drawAllSunArcs), which mirrors hDeg to compensate for its own southern-
+      // hemisphere image convention (not applicable to this true-compass view).
+      const trueHour  = 12 + hDeg / 15;
       const shownHour = displayHour(trueHour, doy);
       const hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
       const label = hh + ':' + String(mm).padStart(2, '0');
@@ -261,18 +298,23 @@ function drawSkyDomeSunPaths(ctx, layout) {
   }
 
   if (typeof showCustomArc === 'undefined' || showCustomArc) {
-    const { month: cm, day: cd } = customArcDate();
+    // The *real* calendar date, unlike the flat scan's customArcDate() (which shifts the date by
+    // 182 days for the southern hemisphere specifically to compensate for that view's unsigned-
+    // latitude convention - see core.js). Paired with signed latitude below, the real date already
+    // gives the correct true-compass path with no shifting needed.
+    const cm = customMonth, cd = customDay;
     const pts = _skyDomeArcPoints(layout, cm, cd);
     _skyDomeStrokeArc(ctx, pts, `rgba(0,0,0,${Math.min(1, op * 0.85)})`, 3.5);
     _skyDomeStrokeArc(ctx, pts, `rgba(80, 220, 120, ${Math.min(1, op * 0.9)})`, 1.5);
 
     const delta = sunDeclination(dayOfYear(cm, cd));
-    const phi   = effectiveLat();
+    const phi   = effectiveLat() * hemisphere;   // true-compass calculation - see _skyDomeArcPoints
 
-    // Label at the south-transit point (H=0), same anchoring as the main canvas's custom arc.
-    const south = sunPosition(0, delta, phi);
-    if (south.el > 0 && (typeof showLabels === 'undefined' || showLabels)) {
-      const sp = _skyDomeProject(layout, south.az, south.el);
+    // Label at the culmination point (H=0 is always solar noon/transit, wherever that compass
+    // direction actually is - true south for the northern hemisphere, true north for the southern).
+    const culmination = sunPosition(0, delta, phi);
+    if (culmination.el > 0 && (typeof showLabels === 'undefined' || showLabels)) {
+      const sp = _skyDomeProject(layout, culmination.az, culmination.el);
       const dateLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay;
       ctx.font = "10px 'Share Tech Mono'";
       ctx.fillStyle = 'rgba(80, 220, 120, 1)';
@@ -282,9 +324,12 @@ function drawSkyDomeSunPaths(ctx, layout) {
       ctx.fillText(dateLabel, sp.x + 8, sp.y - 6);
     }
 
-    // Animated sun marker at the current solar time, matching the theater/2D styling.
+    // Animated sun marker at the current solar time, matching the theater/2D styling. hDeg is
+    // unsigned - hour angle → clock hour is universal (see _skyDomeHourDots), unlike the flat
+    // scan/theater's own sunTimeHours→hDeg conversion, which mirrors by hemisphere for its own
+    // pixel convention (render-3d.js's surfMap/hitH).
     if (typeof show3DCulmination === 'undefined' || show3DCulmination) {
-      const hDeg = (sunTimeHours - 12) * 15 * hemisphere;
+      const hDeg = (sunTimeHours - 12) * 15;
       const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
       if (s.el >= 0) {
         const sp = _skyDomeProject(layout, s.az, s.el);
@@ -370,25 +415,31 @@ function drawSkyDomePolarAxes(ctx, W, H, pal) {
 }
 
 // ── Matrix axes (flat azimuth/elevation chart, à la SunEarthTools.com) ───────────────────────────
+// Gridline *positions* are always the same 0/20/…/360 evenly-spaced columns regardless of
+// hemisphere (see _skyDomeMatrixPoint for why) - only the printed numbers and the E/S/W letters
+// move, via trueAzAt(), to keep telling the truth about which compass direction is where.
 function drawSkyDomeMatrixAxes(ctx, W, H, pal) {
   const mLeft = 42, mRight = 16, mTop = 40, mBottom = 40;
   const plotW = Math.max(10, W - mLeft - mRight);
   const plotH = Math.max(10, H - mTop - mBottom);
   const x0 = mLeft, y0 = mTop;
   const layout = { mode: 'matrix', x0, y0, plotW, plotH };
-  const px = (az) => x0 + (az / 360) * plotW;
+  const azShift = _skyDomeMatrixAzShift();
+  const px = (azShifted) => x0 + (azShifted / 360) * plotW;   // azShifted: gridline-space position
+  const trueAzAt = (azShifted) => (azShifted - azShift + 360) % 360;   // → real compass bearing
   const py = (el) => y0 + plotH * (1 - el / 90);
 
   // Plot background.
   ctx.fillStyle = pal.plot;
   ctx.fillRect(x0, y0, plotW, plotH);
 
-  // ── Vertical gridlines every 20° azimuth (cardinals bold) ─────────────────────────────────────
-  for (let az = 0; az <= 360; az += 20) {
-    const isCardinal = (az % 90 === 0);
-    const x = px(az);
+  // ── Vertical gridlines every 20° (cardinals bold, true north gets its own colour) ──────────────
+  for (let a = 0; a <= 360; a += 20) {
+    const trueAz = trueAzAt(a);
+    const isCardinal = (trueAz % 90 === 0);
+    const x = px(a);
     ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + plotH);
-    if (isCardinal) { ctx.strokeStyle = (az === 0 || az === 360) ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
+    if (isCardinal) { ctx.strokeStyle = (trueAz === 0) ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
     else            { ctx.strokeStyle = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
     ctx.stroke();
   }
@@ -408,18 +459,24 @@ function drawSkyDomeMatrixAxes(ctx, W, H, pal) {
   ctx.strokeStyle = pal.rim; ctx.lineWidth = 1; ctx.setLineDash([]);
   ctx.strokeRect(x0, y0, plotW, plotH);
 
-  // ── Azimuth ticks (numeric, every 20°) + E/S/W compass letters below them ─────────────────────
+  // ── Azimuth ticks: true compass bearing at each gridline (numeric, every 20°) ──────────────────
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.fillStyle = pal.text;
-  for (let az = 0; az <= 360; az += 20) {
-    ctx.fillText(String(az), px(az), y0 + plotH + 4);
+  for (let a = 0; a <= 360; a += 20) {
+    ctx.fillText(String(Math.round(trueAzAt(a))), px(a), y0 + plotH + 4);
   }
-  const CARD = { 90: 'E', 180: 'S', 270: 'W' };
+  // E/S/W compass letters - skip whichever cardinal falls on the split edges (north for the
+  // northern hemisphere, south for the southern - see _skyDomeMatrixPoint), same as the reference
+  // chart never labelling "N" either.
+  const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+  const edgeCardinal = azShift;   // 0 or 180 - the true bearing split across both edges
   ctx.font = "bold 12px 'Share Tech Mono', monospace";
   ctx.fillStyle = pal.north;
-  for (const az of [90, 180, 270]) {
-    ctx.fillText(CARD[az], px(az), y0 + plotH + 16);
+  for (const trueAzCard of [0, 90, 180, 270]) {
+    if (trueAzCard === edgeCardinal) continue;
+    const a = (trueAzCard + azShift) % 360;
+    ctx.fillText(CARD[trueAzCard], px(a), y0 + plotH + 16);
   }
   ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.fillStyle = pal.text;
@@ -482,20 +539,22 @@ function drawSkyDome() {
   // segmentation needed in either case.
   if (_skyDomeHoverEl !== null) {
     if (layout.mode === 'matrix') {
-      const y = layout.y0 + layout.plotH * (1 - _skyDomeHoverEl / 90);
+      // Go through _skyDomeProject (az=0 is arbitrary here - it doesn't affect y) so the line
+      // lands exactly where the curves/grid do, including the culmination-centring shift.
+      const y = _skyDomeProject(layout, 0, _skyDomeHoverEl).y;
       ctx.beginPath(); ctx.moveTo(layout.x0, y); ctx.lineTo(layout.x0 + layout.plotW, y);
       ctx.strokeStyle = pal.cross; ctx.lineWidth = 1; ctx.setLineDash([]);
       ctx.stroke();
 
       if (_skyDomeHoverAz !== null) {
-        const x = layout.x0 + (_skyDomeHoverAz / 360) * layout.plotW;
-        ctx.beginPath(); ctx.moveTo(x, layout.y0); ctx.lineTo(x, layout.y0 + layout.plotH);
+        const hp = _skyDomeProject(layout, _skyDomeHoverAz, _skyDomeHoverEl);
+        ctx.beginPath(); ctx.moveTo(hp.x, layout.y0); ctx.lineTo(hp.x, layout.y0 + layout.plotH);
         ctx.strokeStyle = pal.cross; ctx.lineWidth = 1; ctx.setLineDash([]);
         ctx.stroke();
 
-        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
         ctx.strokeStyle = pal.cross; ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(hp.x, hp.y, 1.5, 0, Math.PI * 2);
         ctx.fillStyle = pal.cross; ctx.fill();
       }
     } else {
