@@ -1464,3 +1464,42 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// ─── CHMI data license popup (Display → "CHMI data" ⓘ) ────────────────────────
+// Same anchored-popup mechanic as the metadata "i" above (openMetaPopup/closeMetaPopup) - reused
+// rather than a full-screen modal, since the app has no other modal chrome and the license text
+// is short enough to sit in the same lightweight popover.
+function openChmiInfoPopup() {
+  const btn   = document.getElementById('btnChmiInfo');
+  const popup = document.getElementById('chmiInfoPopup');
+  const rect  = btn.getBoundingClientRect();
+  let top  = rect.bottom + 6;
+  let left = rect.right  + 6;
+  const pw = 250; // approx popup width
+  if (left + pw > window.innerWidth - 8) left = rect.left - pw - 6;
+  popup.style.top  = top  + 'px';
+  popup.style.left = left + 'px';
+  popup.classList.add('visible');
+  btn.classList.add('active');
+}
+
+function closeChmiInfoPopup() {
+  document.getElementById('chmiInfoPopup').classList.remove('visible');
+  document.getElementById('btnChmiInfo').classList.remove('active');
+}
+
+document.getElementById('btnChmiInfo').addEventListener('click', (e) => {
+  e.preventDefault();       // the button sits inside .chk-row-wrap next to the checkbox's <label> -
+  e.stopPropagation();      // stop the click from also toggling "CHMI data"
+  const popup = document.getElementById('chmiInfoPopup');
+  popup.classList.contains('visible') ? closeChmiInfoPopup() : openChmiInfoPopup();
+});
+
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('chmiInfoPopup');
+  if (popup.classList.contains('visible') &&
+      !popup.contains(e.target) &&
+      e.target.id !== 'btnChmiInfo') {
+    closeChmiInfoPopup();
+  }
+});
+
