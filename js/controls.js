@@ -3,6 +3,9 @@ container.addEventListener('mousemove', (e) => {
   if (splitActive) return;
   if (theaterMode3D) return;  // theater mode: no readout, no crosshair
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) return;  // sun graph: same as theater
+  // Sky Dome: same shared readout, recalibrated for the dome's own polar geometry (see
+  // handleSkyDomeMouseMove in render-skydome.js) instead of the flat scan's pixelToAzEl.
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseMove(e); return; }
 
   // Canvas is CSS 100% × 100% with object-fit: contain, so the bitmap is
   // letterboxed inside the element – map through the real image bounds.
@@ -57,6 +60,7 @@ container.addEventListener('mousemove', (e) => {
 
 container.addEventListener('mouseleave', () => {
   if (splitActive) return;
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseLeave(); return; }
   mouseX = -1; mouseY = -1;
   document.getElementById('valAz').textContent  = '—';
   document.getElementById('valAlt').textContent  = '—';

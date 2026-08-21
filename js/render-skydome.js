@@ -40,6 +40,7 @@ function exitSkyDome() {
   document.getElementById('skyDomeCanvas').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   skyDomeActive = false;
+  _skyDomeHoverAz = null; _skyDomeHoverEl = null;   // don't leave a stale readout for the next view
   if (typeof updateViewButtons === 'function') updateViewButtons();
 
   if (currentMode === 'analyzer') {
@@ -73,6 +74,69 @@ function _skyDomePoint(cx0, cy0, R, az, el) {
   const r = R * (90 - el) / 90;
   const a = az * Math.PI / 180;
   return { x: cx0 + r * Math.sin(a), y: cy0 - r * Math.cos(a) };
+}
+
+// ── Cursor readout (shared Az/Alt/Day/Time/Dir bar, #readout in index.html) ──────────────────
+// Recalibrated for the dome's own polar geometry: unlike the flat scan's pixelToAzEl (which
+// inverts the pinhole/cylinder projection and depends on yaw/pitch/roll/scale), a dome pixel
+// maps to az/el with plain trigonometry and no calibration at all - and, being a real compass
+// view (see file header), no southern-hemisphere display shift either: the dome's own N/S/E/W
+// letters aren't shifted, so the readout shouldn't be either.
+let _skyDomeHoverAz = null, _skyDomeHoverEl = null;   // world az/el under the cursor, or null
+
+// Inverse of _skyDomePoint: canvas pixel → {az, el}, or null outside the dome disc (below horizon).
+// az is null exactly at the centre (zenith), where azimuth is undefined.
+function _skyDomePixelToAzEl(px, py) {
+  if (!_skyDomeLayout) return null;
+  const { cx, cy, R } = _skyDomeLayout;
+  const dx = px - cx, dy = py - cy;
+  const r = Math.hypot(dx, dy);
+  if (r > R) return null;
+  const el = 90 - 90 * r / R;
+  const az = r < 0.5 ? null : ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+  return { az, el };
+}
+
+function _skyDomeClearReadout() {
+  document.getElementById('valAz').textContent   = '—';
+  document.getElementById('valAlt').textContent  = '—';
+  document.getElementById('valDay').textContent  = '—';
+  document.getElementById('valTime').textContent = '—';
+  document.getElementById('valDir').textContent  = '—';
+}
+
+function handleSkyDomeMouseMove(e) {
+  const container = document.getElementById('canvasContainer');
+  const rect = container.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const hit = _skyDomePixelToAzEl(px, py);
+
+  if (!hit) {
+    container.style.cursor = 'default';
+    if (_skyDomeHoverEl !== null) {
+      _skyDomeHoverAz = null; _skyDomeHoverEl = null;
+      _skyDomeClearReadout();
+      drawSkyDome();
+    }
+    return;
+  }
+  container.style.cursor = 'none';
+  _skyDomeHoverAz = hit.az; _skyDomeHoverEl = hit.el;
+
+  const sol = hit.az !== null ? inverseSolar(hit.az, hit.el, effectiveLat()) : null;
+  document.getElementById('valAz').textContent   = hit.az !== null ? hit.az.toFixed(1) + '°' : '—';
+  document.getElementById('valAlt').textContent  = '+' + hit.el.toFixed(1) + '°';
+  document.getElementById('valDay').textContent  = sol ? sol.day1 + ' / ' + sol.day2 : '—';
+  document.getElementById('valTime').textContent = sol ? sol.time : '—';
+  document.getElementById('valDir').textContent  = hit.az !== null ? azimutToDir(hit.az) : '—';
+
+  drawSkyDome();
+}
+
+function handleSkyDomeMouseLeave() {
+  _skyDomeHoverAz = null; _skyDomeHoverEl = null;
+  _skyDomeClearReadout();
+  if (skyDomeActive) drawSkyDome();
 }
 
 // ── Sun-path curves ────────────────────────────────────────────────────────────
@@ -211,11 +275,11 @@ function drawSkyDome() {
   const pal = lt ? {
     bg: '#ffffff', plot: '#eef2f6', ring: 'rgba(0,0,0,0.16)', az10: 'rgba(0,0,0,0.10)',
     az30: 'rgba(0,0,0,0.22)', rim: 'rgba(0,0,0,0.55)', text: '#445a6e', north: '#0a4e8c',
-    accent: '#8a4400'
+    accent: '#8a4400', cross: 'rgba(20,40,60,0.60)'
   } : {
     bg: '#07090d', plot: '#0b0f15', ring: 'rgba(255,255,255,0.20)', az10: 'rgba(255,255,255,0.12)',
     az30: 'rgba(255,255,255,0.30)', rim: 'rgba(255,255,255,0.6)', text: '#9fb2c4', north: '#20a0e8',
-    accent: '#e8a020'
+    accent: '#e8a020', cross: 'rgba(210,222,235,0.70)'
   };
 
   ctx.fillStyle = pal.bg;
@@ -290,6 +354,31 @@ function drawSkyDome() {
   // ── Sun-path curves, drawn on top of the grid (same layering as the main canvas: grid, then
   //    the sun arcs) ─────────────────────────────────────────────────────────────────────────────
   drawSkyDomeSunPaths(ctx, cx0, cy0, R);
+
+  // ── Cursor crosshair: full elevation ring + azimuth radial through the hovered point ────────────
+  // Trivial in this projection - unlike the flat scan's isoline crosshair (drawCrosshair in
+  // render-2d.js), which must inverse-project through the pinhole/cylinder math and handle folding,
+  // a dome elevation isoline already IS a concentric ring and an azimuth isoline already IS a
+  // straight radial, so no segmentation is needed.
+  if (_skyDomeHoverEl !== null) {
+    const rHover = R * (90 - _skyDomeHoverEl) / 90;
+    ctx.beginPath(); ctx.arc(cx0, cy0, rHover, 0, Math.PI * 2);
+    ctx.strokeStyle = pal.cross; ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.stroke();
+
+    if (_skyDomeHoverAz !== null) {
+      const rim = pt(_skyDomeHoverAz, 0);
+      ctx.beginPath(); ctx.moveTo(cx0, cy0); ctx.lineTo(rim.x, rim.y);
+      ctx.strokeStyle = pal.cross; ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.stroke();
+
+      const hp = pt(_skyDomeHoverAz, _skyDomeHoverEl);
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = pal.cross; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = pal.cross; ctx.fill();
+    }
+  }
 
   // ── Title (mirrors Sun Graph's, §17.9) ────────────────────────────────────────────────────────
   const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
