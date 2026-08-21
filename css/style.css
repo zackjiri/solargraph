@@ -470,6 +470,26 @@
     flex-shrink: 0;
   }
 
+  /* Wraps a .chk-row together with a trailing info "i" button (e.g. CHMI data license) - the
+     button sits outside the <label> itself so clicking it doesn't also toggle the checkbox. */
+  .chk-row-wrap { display: flex; align-items: center; justify-content: space-between; }
+
+  .info-icon-btn {
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0;
+    line-height: 1;
+    font-family: var(--sans);
+    transition: color 0.15s, transform 0.1s;
+    flex-shrink: 0;
+    opacity: 0.6;
+  }
+  .info-icon-btn:hover { opacity: 1; transform: scale(1.15); }
+  .info-icon-btn.active { opacity: 1; color: var(--accent); }
+
   /* CHMI element switch (SSV10M vs. an image's extra dataset, e.g. temperature) - iOS-style
      pill switch, hidden entirely unless the current image actually has an extra dataset loaded
      (shown/hidden by JS). The switch itself always sits dead-centre in the panel - both label
@@ -945,8 +965,8 @@
   #btnMeta:hover { opacity: 1; transform: scale(1.15); }
   #btnMeta.active { opacity: 1; color: var(--accent); }
 
-  /* ── Metadata popup ── */
-  #metaPopup {
+  /* ── Anchored info popup (metadata "i", CHMI license "i") ── */
+  .info-popup {
     position: fixed;
     background: var(--panel);
     border: 1px solid var(--border);
@@ -961,7 +981,7 @@
     display: none;
     letter-spacing: 0.05em;
   }
-  #metaPopup.visible { display: block; }
+  .info-popup.visible { display: block; }
 
   .meta-row {
     display: flex;
