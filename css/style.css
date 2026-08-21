@@ -1439,12 +1439,18 @@
   /* Sky Dome projection switch (Dome / Matrix) – top-right corner of the canvas, shown only in
      Sky Dome. Same corner + z-index as #sgStatusWrap above (never visible at the same time, since
      the two views are mutually exclusive), and the same iOS-switch pattern as the CHMI element
-     switch in the Display section (single dynamic label opposite the thumb, both label slots
-     flex-basis 0 so the switch itself stays fixed regardless of which label has text). Gold =
-     Dome (matches the dome's own title/sun-marker accent), blue = Matrix (matches the dome's own
-     "north" radial colour) - a thematic tie-in rather than a semantic one (unlike CHMI's red=T). */
+     switch in the Display section (single dynamic label opposite the thumb). Gold = Dome (matches
+     the dome's own title/sun-marker accent), blue = Matrix (matches the dome's own "north" radial
+     colour) - a thematic tie-in rather than a semantic one (unlike CHMI's red=T).
+     Fixed width (unlike the CHMI switch, which just inherits the sidebar's full width from normal
+     block flow): this row is absolutely positioned with no parent to stretch to, so without an
+     explicit width it shrinks to fit whichever label currently has text - and since "MATRIX" is
+     wider than "DOME", the two label slots would end up different sizes and the switch itself
+     would visibly shift sideways between states. A fixed width - comfortably wider than either
+     label needs - keeps both flex-basis:0 slots the same size always, so the switch never moves. */
   .skydome-proj-row {
     position: absolute; top: 10px; right: 12.5px;
+    width: 150px;
     z-index: 12; display: none;          /* shown by JS only in the Sky Dome view */
     align-items: center; gap: 8px;
   }
