@@ -130,6 +130,12 @@ function draw() {
 
   // Cursor crosshair – hide in split mode
   if (mouseX >= 0 && !splitActive) drawCrosshair(W, H);
+
+  // Sky Dome shares almost all of this state (custom date, sun time, Display toggles, opacity,
+  // lat/lon) - piggyback its redraw on every main-canvas redraw rather than duplicating a redraw
+  // call at every one of the many triggers that already call draw() (calibration-only sliders just
+  // harmlessly redraw a hidden dome when Sky Dome isn't the active view).
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof drawSkyDome === 'function') drawSkyDome();
 }
 
 // CHMI measured-sunshine trace along the Custom Path curve - replaces the black+green line

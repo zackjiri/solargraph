@@ -18,37 +18,35 @@ let _sgShowGreen = true;    // legend toggle: show on-paper (green) overlay
 let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overlay
 let _sgShowChmi  = true;    // legend toggle: show measured CHMI sunshine overlay
 
-// Shows / hides + sizes the 3D MODEL and SUN GRAPH sub-toggles (visible only in Analyzer),
-// matching their widths to the GALLERY / ANALYZER buttons above, and reflecting the active view.
+// Shows/hides the Analyzer sub-view wheel (visible only in Analyzer) and keeps it centred on
+// whichever of the four is actually active - covers entry paths that don't go through the wheel
+// itself (clicking the 3D preview thumbnail, Escape, a stray direct call, etc.). If none of the
+// three takeovers (3D Model / Sun Graph / Sky Dome) is active, that IS the Image state - always
+// resolves there, never left ambiguous.
 function updateViewButtons() {
   const sub = document.querySelector('.mode-subrow');
-  const bT  = document.getElementById('btnModeTheater');
-  const bS  = document.getElementById('btnModeSunGraph');
-  if (!sub || !bT || !bS) return;
-  if (currentMode === 'analyzer') {
-    sub.style.display = 'flex';
-    const bG = document.getElementById('btnModeGallery');
-    const bA = document.getElementById('btnModeAnalyzer');
-    if (bG) bT.style.width = bG.offsetWidth + 'px';   // 3D MODEL ↔ GALLERY width
-    if (bA) bS.style.width = bA.offsetWidth + 'px';   // SUN GRAPH ↔ ANALYZER width
-  } else {
-    sub.style.display = 'none';
-  }
-  bT.classList.toggle('active', typeof theaterMode3D !== 'undefined' && theaterMode3D);
-  bS.classList.toggle('active', sunGraphActive);
+  if (sub) sub.style.display = (currentMode === 'analyzer') ? 'flex' : 'none';
 
-  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D, not Sun Graph).
+  if (typeof theaterMode3D !== 'undefined' && theaterMode3D) _modeWheelIndex = 0;
+  else if (typeof sunGraphActive !== 'undefined' && sunGraphActive) _modeWheelIndex = 2;
+  else if (typeof skyDomeActive !== 'undefined' && skyDomeActive) _modeWheelIndex = 3;
+  else _modeWheelIndex = 1;   // Image – the neutral base view, and the default on entering Analyzer
+  if (typeof _modeWheel !== 'undefined' && _modeWheel) _modeWheel.render();
+
+  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome).
   const imgLeg = document.getElementById('imgLegendWrap');
   if (imgLeg) {
     const showImgLeg = currentMode === 'analyzer'
       && !(typeof theaterMode3D !== 'undefined' && theaterMode3D)
-      && !(typeof sunGraphActive !== 'undefined' && sunGraphActive);
+      && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
+      && !(typeof skyDomeActive !== 'undefined' && skyDomeActive);
     imgLeg.style.display = showImgLeg ? 'flex' : 'none';
   }
 }
 
 function enterSunGraph() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) exitTheater3D();  // mutually exclusive takeovers
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
 
   const container  = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');
@@ -698,10 +696,7 @@ function drawSunGraph() {
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
-document.getElementById('btnModeSunGraph').addEventListener('click', () => {
-  if (sunGraphActive) exitSunGraph(); else enterSunGraph();
-});
-
+// (Top sub-view switcher is now the wheel in .mode-subrow, wired in controls.js.)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sunGraphActive) exitSunGraph();
 });

@@ -612,8 +612,9 @@ function customDayAt(off) {
 
 // iOS-style horizontal picker: current value centred, grey neighbours on both
 // sides. Drag (touch or mouse) scrolls with live snapping; tapping a side
-// value jumps to it; mouse wheel steps by one.
-function makeDateWheel(el, { labelAt, step, itemW }) {
+// value jumps to it; mouse wheel steps by one. Generic (not date-specific) -
+// also drives the Analyzer sub-view switcher (3D Model / Image / Sun Graph / Sky Dome) below.
+function makeWheelPicker(el, { labelAt, step, itemW, onCommit }) {
   let frac = 0;   // fractional item offset while dragging → strip shift
 
   function render() {
@@ -622,7 +623,7 @@ function makeDateWheel(el, { labelAt, step, itemW }) {
     for (let off = -3; off <= 3; off++) {
       const x = cx + (off - frac) * itemW - itemW / 2;
       const isCenter = off === 0 && Math.abs(frac) < 0.25;
-      html += `<span class="dw-item${isCenter ? ' center' : ''}" style="left:${x.toFixed(1)}px;width:${itemW}px">${labelAt(off)}</span>`;
+      html += `<span class="wheel-item${isCenter ? ' center' : ''}" style="left:${x.toFixed(1)}px;width:${itemW}px">${labelAt(off)}</span>`;
     }
     el.innerHTML = html;
   }
@@ -643,7 +644,7 @@ function makeDateWheel(el, { labelAt, step, itemW }) {
     if (target !== applied) {
       const d = target > applied ? 1 : -1;
       while (applied !== target) { step(d); applied += d; }
-      commitCustomDate();              // live redraw at each snap point
+      onCommit();                      // live redraw at each snap point
     }
     frac = t - applied;
     render();
@@ -664,31 +665,70 @@ function makeDateWheel(el, { labelAt, step, itemW }) {
     if (off === 0) return;
     const d = off > 0 ? 1 : -1;
     while (off !== 0) { step(d); off -= d; }
-    commitCustomDate();
+    onCommit();
   });
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
     step(e.deltaY > 0 ? 1 : -1);
-    commitCustomDate();
+    onCommit();
   }, { passive: false });
 
   return { render };
 }
 
-const _monthWheel = makeDateWheel(document.getElementById('wheelMonth'), {
+const _monthWheel = makeWheelPicker(document.getElementById('wheelMonth'), {
   labelAt: (off) => MONTHS[((customMonth - 1 + off) % 12 + 12) % 12],
   step: stepCustomMonth,
   itemW: 38,
+  onCommit: commitCustomDate,
 });
-const _dayWheel = makeDateWheel(document.getElementById('wheelDay'), {
+const _dayWheel = makeWheelPicker(document.getElementById('wheelDay'), {
   labelAt: customDayAt,
   step: stepCustomDay,
   itemW: 30,
+  onCommit: commitCustomDate,
 });
 
 function renderDateWheels() { _monthWheel.render(); _dayWheel.render(); }
 renderDateWheels();
 window.addEventListener('resize', renderDateWheels);
+
+// ─── Analyzer sub-view switcher (3D Model / Image / Sun Graph / Sky Dome) ────────────────────
+// Same wheel widget as Custom Path above, styled identically (.wheel-row/.wheel-btn/.wheel-track) -
+// side arrows or drag/tap/mouse-wheel step through the four mutually exclusive canvas views,
+// wrapping infinitely in both directions. Position stays where the old button row sat, flush
+// under the Gallery/Analyzer toggle (.mode-subrow, unchanged).
+// "Image" (index 1) is the neutral base view - the flat 2D scan with its usual overlays, i.e.
+// whatever is on screen when none of the other three takeovers is active. It's the default on
+// entering Analyzer; see enterImageView() below and updateViewButtons() in render-sungraph.js,
+// which is what actually keeps _modeWheelIndex in sync with reality (this file only drives the
+// wheel widget itself).
+const MODE_VIEW_LABELS = ['3D Model', 'Image', 'Sun Graph', 'Sky Dome'];
+let _modeWheelIndex = 1;   // which of the 4 the wheel is currently centred on - starts on Image
+
+function stepModeWheel(dir) {
+  _modeWheelIndex = ((_modeWheelIndex + dir) % 4 + 4) % 4;
+}
+// Actually switches the canvas to the wheel's current selection - the enter* functions
+// (render-3d.js / render-sungraph.js / render-skydome.js) already exit whichever of the other
+// takeovers was active, so this only ever needs to enter the newly selected one.
+function commitModeWheel() {
+  if (_modeWheelIndex === 0 && typeof enterTheater3D === 'function') enterTheater3D();
+  else if (_modeWheelIndex === 1 && typeof enterImageView === 'function') enterImageView();
+  else if (_modeWheelIndex === 2 && typeof enterSunGraph === 'function') enterSunGraph();
+  else if (_modeWheelIndex === 3 && typeof enterSkyDome === 'function') enterSkyDome();
+}
+
+const _modeWheel = makeWheelPicker(document.getElementById('modeWheelTrack'), {
+  labelAt: (off) => MODE_VIEW_LABELS[((_modeWheelIndex + off) % 4 + 4) % 4],
+  step: stepModeWheel,
+  itemW: 76,
+  onCommit: commitModeWheel,
+});
+document.getElementById('btnModeDec').addEventListener('click', () => { stepModeWheel(-1); commitModeWheel(); });
+document.getElementById('btnModeInc').addEventListener('click', () => { stepModeWheel(1);  commitModeWheel(); });
+_modeWheel.render();
+window.addEventListener('resize', () => _modeWheel.render());
 
 document.getElementById('btnMonDec').addEventListener('click', () => { stepCustomMonth(-1); commitCustomDate(); });
 document.getElementById('btnMonInc').addEventListener('click', () => { stepCustomMonth(1);  commitCustomDate(); });
@@ -1242,11 +1282,12 @@ function setMode(mode) {
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
     draw3D();
-    if (typeof updateViewButtons === 'function') updateViewButtons();  // reveal 3D MODEL / SUN GRAPH sub-toggles
+    if (typeof updateViewButtons === 'function') updateViewButtons();  // reveal the sub-view wheel, defaulting to Image
     if (typeof updateSunAnimCtl === 'function') updateSunAnimCtl();     // reflect default Sun-path state
   } else {
     if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();  // leaving Analyzer closes 3D model
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();   // ...and Sun Graph
+    if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();   // ...and Sky Dome
     if (typeof updateViewButtons === 'function') updateViewButtons();              // hide the sub-toggles
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
@@ -1265,6 +1306,19 @@ function setMode(mode) {
       loadGalleryImage(); // loads correct bitmap, applies preset, redraws
     }
   }
+}
+
+// ─── Image sub-view (the default/base Analyzer view) ──────────────────────────
+// Not a canvas takeover of its own - it's just the state where none of the other three
+// (3D Model theater / Sun Graph / Sky Dome) is active, i.e. the flat 2D scan with its usual
+// Display overlays. Exposed as its own enter function so the mode wheel can name and select it
+// like the other three, and so updateViewButtons() (render-sungraph.js) always has a real state
+// to point the wheel at instead of an implicit "none of the above".
+function enterImageView() {
+  if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof updateViewButtons === 'function') updateViewButtons();
 }
 
 // Already in Analyzer (incl. Sun Graph / 3D Model sub-views) → no-op; the graph is part of Analyzer.
@@ -1295,6 +1349,10 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
     applyTheme(!document.body.classList.contains('light'));
     // Redraw 3D vis with new palette + refresh axis legend swatch colours
     if (typeof draw3D === 'function') { updateAxisLegend(); draw3D(); }
+    // Sky Dome picks its palette at draw time too - force a repaint if it's the active view
+    // (other views happen to get redrawn via other interactions; this one otherwise wouldn't
+    // until something else - e.g. a calibration slider - triggered its own redraw).
+    if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof drawSkyDome === 'function') drawSkyDome();
   });
 })();
 

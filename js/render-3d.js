@@ -1123,8 +1123,9 @@ function setDisplaySectionEnabled(enabled, keepIds) {
 }
 
 function enterTheater3D() {
-  // Sun Graph and 3D theater are mutually exclusive canvas takeovers.
+  // Sun Graph, Sky Dome and 3D theater are mutually exclusive canvas takeovers.
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
   const container = document.getElementById('canvasContainer');
   // The 3D model needs no scan → ensure the canvas area is visible (mirrors enterSunGraph).
   container.classList.remove('hidden');
@@ -1174,7 +1175,9 @@ function exitTheater3D() {
   updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
   draw3D();
   // Restore the empty-state upload zone if no scan and not switching to another canvas view.
-  if (currentMode === 'analyzer' && !imgBitmap && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)) {
+  if (currentMode === 'analyzer' && !imgBitmap
+      && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
+      && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)) {
     document.getElementById('uploadZone').classList.remove('hidden');
     document.getElementById('canvasContainer').classList.add('hidden');
   }
@@ -1184,11 +1187,8 @@ function exitTheater3D() {
 document.getElementById('btn3DTheater').addEventListener('click', () => {
   if (!theaterMode3D) enterTheater3D(); else exitTheater3D();
 });
-// Top "3D MODEL" sub-toggle — same behaviour as the 3D-panel theater button.
-(function () {
-  const b = document.getElementById('btnModeTheater');
-  if (b) b.addEventListener('click', () => { if (!theaterMode3D) enterTheater3D(); else exitTheater3D(); });
-})();
+// (Top sub-view switcher is now the wheel in .mode-subrow, wired in controls.js - it calls
+// enterTheater3D()/enterSunGraph()/enterSkyDome() directly, no per-button listener needed here.)
 // Click on the 3D preview canvas: enter theater
 document.getElementById('can3d').addEventListener('click', () => {
   if (!theaterMode3D) enterTheater3D();
