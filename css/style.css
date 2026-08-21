@@ -1435,6 +1435,53 @@
     z-index: 12; display: none;          /* shown by JS only in the Sun Graph view */
     flex-direction: column; align-items: flex-end;
   }
+
+  /* Sky Dome projection switch (Dome / Matrix) – top-right corner of the canvas, shown only in
+     Sky Dome. Same corner + z-index as #sgStatusWrap above (never visible at the same time, since
+     the two views are mutually exclusive), and the same iOS-switch pattern as the CHMI element
+     switch in the Display section (single dynamic label opposite the thumb, both label slots
+     flex-basis 0 so the switch itself stays fixed regardless of which label has text). Gold =
+     Dome (matches the dome's own title/sun-marker accent), blue = Matrix (matches the dome's own
+     "north" radial colour) - a thematic tie-in rather than a semantic one (unlike CHMI's red=T). */
+  .skydome-proj-row {
+    position: absolute; top: 10px; right: 12.5px;
+    z-index: 12; display: none;          /* shown by JS only in the Sky Dome view */
+    align-items: center; gap: 8px;
+  }
+  .skydome-proj-label {
+    flex: 1 1 0%;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  #skyDomeProjLabelLeft  { text-align: right; }
+  #skyDomeProjLabelRight { text-align: left; }
+  .skydome-proj-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 21px;
+    border-radius: 11px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: #3ca0e0;   /* OFF = Matrix (flat azimuth/elevation chart) */
+    transition: background 0.18s;
+  }
+  .skydome-proj-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 17px; height: 17px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  .skydome-proj-switch.on { background: #e8a020; }   /* ON = Dome (polar) */
+  .skydome-proj-switch.on::after { left: 19px; }
   #theaterStatus, #sgStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 16.25px 20px 18.75px;
