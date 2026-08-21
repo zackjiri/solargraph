@@ -584,10 +584,10 @@
     cursor: pointer;
   }
 
-  /* Date picker – ◀ ▶ steppers around an iOS-style horizontal wheel:
-     centred value with grey neighbours, draggable (touch + mouse) with
-     snap – see makeDateWheel() */
-  .date-row {
+  /* Generic ◀ ▶ + iOS-style horizontal wheel picker - centred value with grey neighbours,
+     draggable (touch + mouse) with snap - see makeWheelPicker(). Used by Custom Path (month/day)
+     and by the Analyzer sub-view switcher (.mode-subrow, 3D Model/Image/Sun Graph/Sky Dome) below. */
+  .wheel-row {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -595,7 +595,7 @@
     font-size: 11px;
   }
 
-  .date-btn {
+  .wheel-btn {
     background: none;
     border: 1px solid var(--border);
     color: var(--text);
@@ -607,9 +607,9 @@
     flex-shrink: 0;
     transition: border-color 0.15s, color 0.15s;
   }
-  .date-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .wheel-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  .date-wheel {
+  .wheel-track {
     position: relative;
     flex: 1;
     min-width: 0;
@@ -622,16 +622,16 @@
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
     mask-image: linear-gradient(90deg, transparent, #000 24%, #000 76%, transparent);
   }
-  .date-wheel.dragging { cursor: grabbing; }
+  .wheel-track.dragging { cursor: grabbing; }
 
-  .dw-item {
+  .wheel-item {
     position: absolute;
     top: 0; height: 100%;
     display: flex; align-items: center; justify-content: center;
     color: var(--dim);
     pointer-events: none;   /* clicks/drags are handled on the wheel itself */
   }
-  .dw-item.center { color: var(--text); }
+  .wheel-item.center { color: var(--text); }
 
   /* Latitude in sidebar */
   .lat-row {
@@ -805,44 +805,23 @@
     flex-shrink: 0;
   }
 
-  /* 3D MODEL + SUN GRAPH sub-toggles – shown only in Analyzer (display set by JS); the two
-     buttons' widths are matched in JS to the GALLERY / ANALYZER buttons so they sit flush. */
+  /* Analyzer sub-view switcher (3D Model / Image / Sun Graph / Sky Dome) – shown only in Analyzer
+     (display set by JS). Position/alignment unchanged from the old 3-button row (flush under the
+     GALLERY/ANALYZER toggle, left:0;right:0 pins its width to that toggle above, same positioning
+     context via .mode-toggle-wrap) - only the look changed, to the same subtle wheel-picker style
+     as Custom Path (.wheel-row/.wheel-btn/.wheel-track) instead of the old bold black-bordered
+     gradient-fill buttons. */
   .mode-subrow {
     position: absolute;
     top: 100%; left: 0; right: 0;
-    margin-top: -1px;                 /* overlap the toggle border → seamless join */
+    margin-top: -1px;
     display: none;                    /* flex, set by JS in Analyzer */
-    border: 5px solid #202020;
+    padding: 4px 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
     border-top: none;
     border-radius: 0 0 4px 4px;
-    overflow: hidden;
     z-index: 6;
-  }
-  .submode-btn {
-    box-sizing: border-box;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    padding: 4px 0;
-    border: none;
-    background: none;
-    color: var(--dim);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s, color 0.15s;
-  }
-  .submode-btn:not(.active):hover {
-    color: var(--text);
-    background: rgba(255,255,255,0.05);
-  }
-  .submode-btn.active {
-    background: repeating-linear-gradient(
-      45deg, #b06010, #b06010 5px, #f0b030 5px, #f0b030 10px);
-    color: #fff;
-    font-weight: bold;
-    text-shadow:
-      -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
   }
 
   /* Gallery panel (left of canvas) */
@@ -1106,6 +1085,16 @@
     cursor: default;   /* container is cursor:none (custom crosshair); restore OS cursor here */
   }
   body.light #sunGraphCanvas { background: #ffffff; }
+
+  /* Sky Dome view – full-canvas polar azimuth/elevation chart, same takeover pattern as Sun Graph */
+  #skyDomeCanvas {
+    position: absolute; inset: 0;
+    display: none;
+    background: #07090d;
+    z-index: 10;
+    cursor: default;
+  }
+  body.light #skyDomeCanvas { background: #ffffff; }
 
   /* Sun Graph legend – flush to the bottom corner (side picked by JS, see currentHalf),
      semi-transparent, no border/radius. Wrapper is positioned/shown by JS; #sgLegend itself
