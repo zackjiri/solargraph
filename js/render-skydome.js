@@ -19,6 +19,15 @@
 // bespoke "culmination is always 180°" + unsigned-latitude convention, so its azimuth argument is
 // converted first - see handleSkyDomeMouseMove().
 //
+// Handedness: Dome is deliberately mirrored left-right from a bird's-eye ground map (see
+// _skyDomePoint) to match what an observer lying on the ground looking up at the zenith actually
+// sees - the standard star-chart/planisphere convention. Matrix is NOT mirrored - it already
+// reads left-to-right in increasing azimuth to match the SunEarthTools-style reference chart it
+// was built from (which happens to put east on the left for the northern hemisphere too, just via
+// a plain left-to-right numeric axis rather than a deliberate "view from inside the sphere" flip).
+// The two projections' east/west placement is therefore not driven by the same reasoning even
+// where it happens to agree - don't "fix" one by copying the other's formula.
+//
 // Sub-mode of Analyzer, sibling to 3D Model / Sun Graph (mutually exclusive canvas takeovers -
 // see enterSkyDome()/exitSkyDome() and their counterparts in render-3d.js/render-sungraph.js).
 
@@ -85,12 +94,19 @@ function resizeSkyDome() {
 
 // ── Projection dispatch (Dome = polar, Matrix = flat azimuth/elevation chart) ─────────────────
 // Elevation → radius (linear: 90° at centre, 0° at rim) and (az, el) → canvas point, sharing one
-// origin/scale for the whole draw pass. az is world-standard (0=N, 90=E, 180=S, 270=W, clockwise);
-// screen angle follows the same clockwise-from-up convention (compass, not math angle).
+// origin/scale for the whole draw pass. az is world-standard (0=N, 90=E, 180=S, 270=W); N is
+// fixed at the top, but the x-axis is mirrored (x = cx0 - r·sin(az), not +) so the dome reads as
+// an observer lying on the ground looking straight up at the zenith would actually see it, not as
+// a cartographer's bird's-eye view of the ground looking down. For the classic example: lying
+// down with feet to the south (head to the north) under a northern-hemisphere sky, east is over
+// your LEFT shoulder and west over your right - the standard star-chart/planisphere convention,
+// mirrored left-right from an ordinary ground map for the same reason a planisphere is always
+// mirrored relative to a terrestrial map (you're viewing the same fixed compass rose from the
+// inside of the sphere looking out, instead of from outside looking in).
 function _skyDomePoint(cx0, cy0, R, az, el) {
   const r = R * (90 - el) / 90;
   const a = az * Math.PI / 180;
-  return { x: cx0 + r * Math.sin(a), y: cy0 - r * Math.cos(a) };
+  return { x: cx0 - r * Math.sin(a), y: cy0 - r * Math.cos(a) };
 }
 
 // Matrix: plain XY chart - azimuth 0..360° left-to-right, elevation 0..90° bottom-to-top.
@@ -140,7 +156,9 @@ function _skyDomePixelToAzEl(px, py) {
   const r = Math.hypot(dx, dy);
   if (r > L.R) return null;
   const el = 90 - 90 * r / L.R;
-  const az = r < 0.5 ? null : ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+  // Inverse of _skyDomePoint's mirrored x (dx = -r·sin(az)) - atan2(-dx, -dy), not atan2(dx, -dy),
+  // so the readout reports the true azimuth of wherever the mirrored dome is actually drawing it.
+  const az = r < 0.5 ? null : ((Math.atan2(-dx, -dy) * 180 / Math.PI) + 360) % 360;
   return { az, el };
 }
 
