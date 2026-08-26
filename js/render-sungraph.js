@@ -418,10 +418,13 @@ function drawSunGraph() {
   // Within the current gallery image's exposure interval the areas are drawn more prominently.
   // (No exposure for "load new image" uploads → uniform normal opacity, no boundaries.)
   const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  // Inclusive of endDoy - that's the day the paper was retrieved, still genuinely exposed (and
+  // still real CHMI data, not a timezone-rollover artifact); see the exposure-end boundary line
+  // below, which is drawn one day further out to match.
   const inExp = exp
     ? (exp.startDoy <= exp.endDoy
-        ? (d) => d >= exp.startDoy && d < exp.endDoy        // [start, end) → right edge meets the end line
-        : (d) => d >= exp.startDoy || d < exp.endDoy)       // exposure wrapping across year-end
+        ? (d) => d >= exp.startDoy && d <= exp.endDoy
+        : (d) => d >= exp.startDoy || d <= exp.endDoy)      // exposure wrapping across year-end
     : () => false;
   const yearRuns = _sgEnsureYearRuns();
   const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
@@ -450,11 +453,11 @@ function drawSunGraph() {
   if (_sgShowChmi && timeDisplayMode !== 'true') {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
-      // Reuse inExp's half-open [start,end) clip (not just its highlight styling) so the CHMI
-      // columns end flush with the white "exposure end" line instead of spilling one extra day
-      // past it - which happens because the +time_offset_utc shift can roll a UTC sample from
-      // the last extracted day into the next local calendar day (present in the data, but past
-      // the boundary the app already draws for the exposure interval).
+      // Reuse inExp's [start,end] clip (not just its highlight styling) so the CHMI columns end
+      // flush with the white "exposure end" line instead of spilling past it - which can happen
+      // because the +time_offset_utc shift rolls some UTC samples from the day after the last
+      // extracted day into the local calendar day right after endDoy (present in the data, but
+      // genuinely past the exposure interval, unlike endDoy itself - see _imgChmiDayList).
       const alpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
       for (const [d, samples] of chmiByDoy) {
         if (d < 1 || d > NDAYS || !inExp(d)) continue;
@@ -573,7 +576,11 @@ function drawSunGraph() {
     [exp.startDoy, exp.endDoy].forEach((doy, i) => {
       const wd = _sgDayWidths(doy, sphi, cphi).day;   // daylight half-width [h]
       if (wd <= 0) return;
-      const x = dayToX(doy);
+      // endDoy is inclusive (see _imgChmiDayList/inExp above) - its own column is still "inside"
+      // the exposure, so the "exposure end" line sits at that day's right edge (= the next day's
+      // left edge) rather than its left edge, same as the start line sits at the start day's own
+      // (left) edge.
+      const x = i === 0 ? dayToX(doy) : dayToX((doy % NDAYS) + 1);
       ctx.beginPath();
       ctx.moveTo(x, hourToY(Math.min(24, displayHour(12 + wd, doy))));
       ctx.lineTo(x, hourToY(Math.max(0,  displayHour(12 - wd, doy))));

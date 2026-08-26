@@ -211,17 +211,20 @@ function drawChmiArc(W, H, cm, cd, lineWidth) {
 const _CHMI_MOSAIC_NDAYS = 365;
 const _CHMI_MOSAIC_HSTEP = 2.5;   // degrees of true hour angle - matches drawChmiArc's cadence
 
-// Ordered list of real calendar days covered by the current exposure interval, half-open
-// [start,end) same as everywhere else in the app; handles the interval wrapping over year-end.
+// Ordered list of real calendar days covered by the current exposure interval - INCLUSIVE of both
+// exposure_start and exposure_end (endDoy is the last day the paper was actually exposed, i.e.
+// the day it was retrieved, not the day after - the CHMI extract for that day is real, full data,
+// not a timezone-rollover artifact; see project notes on this boundary). Handles the interval
+// wrapping over year-end.
 function _imgChmiDayList() {
   const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
   if (!exp) return [];
   const days = [];
   if (exp.startDoy <= exp.endDoy) {
-    for (let d = exp.startDoy; d < exp.endDoy; d++) days.push(d);
+    for (let d = exp.startDoy; d <= exp.endDoy; d++) days.push(d);
   } else {
     for (let d = exp.startDoy; d <= _CHMI_MOSAIC_NDAYS; d++) days.push(d);
-    for (let d = 1; d < exp.endDoy; d++) days.push(d);
+    for (let d = 1; d <= exp.endDoy; d++) days.push(d);
   }
   return days;
 }
@@ -377,12 +380,12 @@ function _imgChmiHighlightCustomDay(W, H) {
   if (!exp) return;
   const realDoy = dayOfYear(customMonth, customDay);
   const inRange = exp.startDoy <= exp.endDoy
-    ? (realDoy >= exp.startDoy && realDoy < exp.endDoy)
-    : (realDoy >= exp.startDoy || realDoy < exp.endDoy);
+    ? (realDoy >= exp.startDoy && realDoy <= exp.endDoy)
+    : (realDoy >= exp.startDoy || realDoy <= exp.endDoy);
   if (!inRange) return;
 
   const N = _CHMI_MOSAIC_NDAYS;
-  const lastDay = ((exp.endDoy - 2 + N) % N) + 1;   // endDoy is exclusive → last included day
+  const lastDay = exp.endDoy;   // endDoy is inclusive - see _imgChmiDayList
   const atStart = realDoy === exp.startDoy;
   const atEnd   = realDoy === lastDay;
   const dPrev = atStart ? null : ((realDoy - 2 + N) % N) + 1;
