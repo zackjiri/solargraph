@@ -493,12 +493,13 @@
   /* CHMI element switch (SSV10M vs. an image's extra dataset, e.g. temperature) - iOS-style
      pill switch, hidden entirely unless the current image actually has an extra dataset loaded
      (shown/hidden by JS). The switch itself always sits dead-centre in the panel - both label
-     slots use flex-basis 0 (not auto), so they claim equal width regardless of which one actually
-     has text, and text-align pulls each label's content flush against the switch, wherever that
-     lands. Single label that always sits on the side opposite the thumb: "SSV10M" to the left
-     while ON (thumb right, yellow fill), the extra element's code to the right once switched OFF
-     (thumb left, red fill for T - see .chmi-elem-switch:not(.on) below) - both label slots always
-     exist, only one has text at a time. */
+     slots use flex-basis 0 (not auto), so they claim equal width regardless of label length, and
+     text-align pulls each label's content flush against the switch. Both labels are always shown
+     (unlike a classic single-dynamic-label switch) - the active one at full contrast, the other
+     dimmed via .dim (see updateChmiElemSwitch()) - and the thumb sits on whichever side is
+     currently active, right next to that label, rather than on the opposite/empty side: "SSV10M"
+     left / thumb left / yellow fill when ON, the extra element's code right / thumb right / red
+     fill for T when OFF (see .chmi-elem-switch:not(.on) below). */
   .chmi-elem-row {
     display: none;
     align-items: center;
@@ -512,7 +513,9 @@
     letter-spacing: 0.05em;
     color: var(--text);
     white-space: nowrap;
+    transition: color 0.18s;
   }
+  .chmi-elem-label.dim { color: var(--dim); }
   #chmiElemLabelLeft  { text-align: right; }
   #chmiElemLabelRight { text-align: left; }
   .chmi-elem-switch {
@@ -530,18 +533,18 @@
   .chmi-elem-switch::after {
     content: '';
     position: absolute;
-    top: 2px; left: 2px;
+    top: 2px; left: 19px;   /* OFF (default) - thumb right, next to the extra-element label */
     width: 17px; height: 17px;
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  /* "on" = SSV10M (base dataset) active - thumb right, yellow fill (semantic gold, same literal
-     colour in both themes as the header/pinhole/noon-HIT accents - not the theme-shifting
-     --accent token, see project notes on semantic colours). */
+  /* "on" = SSV10M (base dataset) active - thumb left (next to "SSV10M"), yellow fill (semantic
+     gold, same literal colour in both themes as the header/pinhole/noon-HIT accents - not the
+     theme-shifting --accent token, see project notes on semantic colours). */
   .chmi-elem-switch.on { background: #e8a020; }
-  .chmi-elem-switch.on::after { left: 19px; }
+  .chmi-elem-switch.on::after { left: 2px; }
 
   /* CHMI custom date / whole period - compact single-row segmented toggle, hidden entirely
      while "CHMI data" above is unchecked (shown/hidden by JS, not just dimmed). No horizontal
@@ -1439,15 +1442,17 @@
   /* Sky Dome projection switch (Dome / Matrix) – top-right corner of the canvas, shown only in
      Sky Dome. Same corner + z-index as #sgStatusWrap above (never visible at the same time, since
      the two views are mutually exclusive), and the same iOS-switch pattern as the CHMI element
-     switch in the Display section (single dynamic label opposite the thumb). Gold = Dome (matches
-     the dome's own title/sun-marker accent), blue = Matrix (matches the dome's own "north" radial
-     colour) - a thematic tie-in rather than a semantic one (unlike CHMI's red=T).
+     switch in the Display section: both labels always shown (active at full contrast, the other
+     dimmed via .dim - see updateSkyDomeProjSwitch()), thumb next to whichever side is active
+     rather than the opposite/empty side. Gold = Dome (matches the dome's own title/sun-marker
+     accent), blue = Matrix (matches the dome's own "north" radial colour) - a thematic tie-in
+     rather than a semantic one (unlike CHMI's red=T).
      Fixed width (unlike the CHMI switch, which just inherits the sidebar's full width from normal
      block flow): this row is absolutely positioned with no parent to stretch to, so without an
-     explicit width it shrinks to fit whichever label currently has text - and since "MATRIX" is
-     wider than "DOME", the two label slots would end up different sizes and the switch itself
-     would visibly shift sideways between states. A fixed width - comfortably wider than either
-     label needs - keeps both flex-basis:0 slots the same size always, so the switch never moves. */
+     explicit width it shrinks to fit its content, and since "MATRIX" is wider than "DOME" the two
+     label slots would end up different sizes and the switch itself would visibly shift sideways
+     between states. A fixed width - comfortably wider than either label needs - keeps both
+     flex-basis:0 slots the same size always, so the switch never moves. */
   .skydome-proj-row {
     position: absolute; top: 10px; right: 12.5px;
     width: 150px;
@@ -1461,7 +1466,9 @@
     letter-spacing: 0.05em;
     color: var(--text);
     white-space: nowrap;
+    transition: color 0.18s;
   }
+  .skydome-proj-label.dim { color: var(--dim); }
   #skyDomeProjLabelLeft  { text-align: right; }
   #skyDomeProjLabelRight { text-align: left; }
   .skydome-proj-switch {
@@ -1479,15 +1486,15 @@
   .skydome-proj-switch::after {
     content: '';
     position: absolute;
-    top: 2px; left: 2px;
+    top: 2px; left: 19px;   /* OFF (default) - thumb right, next to "MATRIX" */
     width: 17px; height: 17px;
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  .skydome-proj-switch.on { background: #e8a020; }   /* ON = Dome (polar) */
-  .skydome-proj-switch.on::after { left: 19px; }
+  .skydome-proj-switch.on { background: #e8a020; }   /* ON = Dome - thumb left, next to "DOME" */
+  .skydome-proj-switch.on::after { left: 2px; }
   #theaterStatus, #sgStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 16.25px 20px 18.75px;
