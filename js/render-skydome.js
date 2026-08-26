@@ -620,8 +620,12 @@ function updateSkyDomeProjSwitch() {
   const btn = document.getElementById('btnSkyDomeProj');
   btn.classList.toggle('on', isDome);
   btn.setAttribute('aria-checked', String(isDome));
-  document.getElementById('skyDomeProjLabelLeft').textContent  = isDome ? 'DOME' : '';
-  document.getElementById('skyDomeProjLabelRight').textContent = isDome ? '' : 'MATRIX';
+  const lblLeft  = document.getElementById('skyDomeProjLabelLeft');
+  const lblRight = document.getElementById('skyDomeProjLabelRight');
+  lblLeft.textContent  = 'DOME';
+  lblRight.textContent = 'MATRIX';
+  lblLeft.classList.toggle('dim', !isDome);
+  lblRight.classList.toggle('dim', isDome);
 }
 document.getElementById('btnSkyDomeProj').addEventListener('click', () => {
   skyDomeProjection = (skyDomeProjection === 'dome') ? 'matrix' : 'dome';

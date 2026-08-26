@@ -968,9 +968,9 @@ function updateChmiLegendAvailability() {
 // period toggle): only offered when the current image's filelist metadata declares an extra
 // dataset (chmi_extra) AND it loaded successfully - independent of chmiDisplayMode, which the
 // switch doesn't touch, it only decides which dataset/gradient that mode renders with.
-// iOS-style switch, single label that always sits on the side opposite the thumb: "SSV10M" to the
-// left while ON (thumb right, yellow fill - base dataset active), the extra dataset's element code
-// to the right once clicked OFF (thumb left).
+// iOS-style switch: both labels always shown ("SSV10M" left, the extra element's code right), the
+// active one at full contrast and the other dimmed (.dim), thumb next to whichever is active -
+// left/yellow fill for SSV10M (ON), right/red fill for the extra element (OFF).
 function updateChmiElemSwitch() {
   const row = document.getElementById('chmiElemRow');
   if (!row) return;
@@ -981,8 +981,12 @@ function updateChmiElemSwitch() {
 
   const isExtra = chmiActiveElement === currentChmiExtra.element;
   const btn = document.getElementById('btnChmiElemSwitch');
-  document.getElementById('chmiElemLabelLeft').textContent  = isExtra ? '' : 'SSV10M';
-  document.getElementById('chmiElemLabelRight').textContent = isExtra ? currentChmiExtra.element : '';
+  const lblLeft  = document.getElementById('chmiElemLabelLeft');
+  const lblRight = document.getElementById('chmiElemLabelRight');
+  lblLeft.textContent  = 'SSV10M';
+  lblRight.textContent = currentChmiExtra.element;
+  lblLeft.classList.toggle('dim', isExtra);
+  lblRight.classList.toggle('dim', !isExtra);
   btn.classList.toggle('on', !isExtra);
   btn.setAttribute('aria-checked', String(!isExtra));
 }
