@@ -16,7 +16,8 @@ let _sgLayout  = null;      // {px0,py0,pw,ph,laneY,recapH} for cursor hit-testi
 let _sgEmphBand  = null;    // legend item hovered → emphasise that band/area
 let _sgShowGreen = true;    // legend toggle: show on-paper (green) overlay
 let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overlay
-let _sgShowChmi  = true;    // legend toggle: show measured CHMI sunshine overlay
+// CHMI on/off is showImgChmi (core.js/controls.js) - the same Display "CHMI data" checkbox that
+// gates the 2D canvas, not a separate Sun Graph-only flag; see setShowImgChmi() in controls.js.
 
 // Shows/hides the Analyzer sub-view wheel (visible only in Analyzer) and keeps it centred on
 // whichever of the four is actually active - covers entry paths that don't go through the wheel
@@ -459,7 +460,7 @@ function drawSunGraph() {
   // Hidden entirely in True solar time mode: CHMI's own hour field is standard time, and
   // comparing it against reality only makes sense once the axis is in a real-clock convention
   // (Mean/Standard) - see the product decision in the project notes.
-  if (_sgShowChmi && timeDisplayMode !== 'true') {
+  if (showImgChmi && timeDisplayMode !== 'true') {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
       // Reuse inExp's [start,end] clip (not just its highlight styling) so the CHMI columns end
@@ -657,7 +658,7 @@ function drawSunGraph() {
   // ── CHMI strip line (directly above the day strip) ────────────────────────────
   // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
   // day outside the station's coverage window) - only the coloured cells are data-dependent.
-  if (_sgShowChmi && timeDisplayMode !== 'true') {
+  if (showImgChmi && timeDisplayMode !== 'true') {
     const chmiByDoy   = _sgEnsureChmiByDoy();
     const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
     if (daySamples) {
@@ -764,12 +765,21 @@ function setSgStatusCollapsed(c) {
     if (el.classList.contains('sg-leg-toggle')) {
       el.addEventListener('click', (e) => {
         if (el.classList.contains('unavailable')) return;   // nothing to toggle - no CHMI data for this image
-        if (band === 'green') _sgShowGreen = !_sgShowGreen;
-        else if (band === 'red') _sgShowRed = !_sgShowRed;
-        else if (band === 'chmi') _sgShowChmi = !_sgShowChmi;
-        const isOff = band === 'green' ? !_sgShowGreen : band === 'red' ? !_sgShowRed : !_sgShowChmi;
-        el.classList.toggle('off', isOff);
-        if (sunGraphActive) drawSunGraph();
+        if (band === 'green') {
+          _sgShowGreen = !_sgShowGreen;
+          el.classList.toggle('off', !_sgShowGreen);
+          if (sunGraphActive) drawSunGraph();
+        } else if (band === 'red') {
+          _sgShowRed = !_sgShowRed;
+          el.classList.toggle('off', !_sgShowRed);
+          if (sunGraphActive) drawSunGraph();
+        } else if (band === 'chmi') {
+          // Quick on/off shortcut for the same Display "CHMI data" checkbox - setShowImgChmi()
+          // (controls.js) keeps this legend item, the checkbox, and the element switch all in
+          // sync regardless of which one the user actually clicked. Display stays the only place
+          // to change SSV vs. the extra element, though - this is on/off only.
+          setShowImgChmi(!showImgChmi);
+        }
       });
     }
   });

@@ -755,16 +755,24 @@ function forceCustomArcOn() {
   updateSunWave();
 }
 
-// CHMI data (Display section): master switch + Custom date / Whole period sub-mode. Replaces the
-// old image-mode legend toggle - control lives entirely in Display now, works in Gallery too
-// (Display is unlocked there, unlike the legend which only ever showed in plain Analyzer view).
-document.getElementById('chkImgChmi').addEventListener('change', (e) => {
-  showImgChmi = e.target.checked;
+// CHMI data (Display section): master switch + Custom date / Whole period sub-mode. Display is
+// the primary control everywhere, since it's the only place to pick SSV vs. the extra element -
+// works in Gallery too (Display is unlocked there). The Sun Graph's own legend entry offers a
+// quick on/off shortcut (render-sungraph.js's legend click handler) but always goes through this
+// same function, so the checkbox and the legend item never drift out of sync with each other.
+function setShowImgChmi(val) {
+  showImgChmi = val;
+  document.getElementById('chkImgChmi').checked = val;
+  const legendItem = document.querySelector('[data-band="chmi"]');
+  if (legendItem) legendItem.classList.toggle('off', !val);
   if (showImgChmi) forceCustomArcOn();
   syncChmiModeGroupState();
   updateChmiElemSwitch();
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+}
+document.getElementById('chkImgChmi').addEventListener('change', (e) => {
+  setShowImgChmi(e.target.checked);
 });
 document.querySelectorAll('.chmi-mode-btn').forEach(btn => {
   btn.addEventListener('click', (e) => {
@@ -968,6 +976,7 @@ function updateChmiLegendAvailability() {
   const unavailable = currentChmi === null || timeDisplayMode === 'true';
   document.querySelectorAll('[data-band="chmi"]').forEach(el => {
     el.classList.toggle('unavailable', unavailable);
+    el.classList.toggle('off', !showImgChmi);   // keep the legend's own on/off look in sync too
   });
 
   const relevant = _chmiControlsRelevantHere();
