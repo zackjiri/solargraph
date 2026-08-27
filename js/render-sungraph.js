@@ -641,7 +641,18 @@ function drawSunGraph() {
   // ── Selected-day strip (100% opacity) + centered date label ───────────────────
   const activeDay = (sgHoverDay !== null) ? sgHoverDay : customDoy;
   const sw = _sgDayWidths(activeDay, sphi, cphi);
-  const xh = (h) => px0 + (h / 24) * pw;            // strip x-axis = hours 0..24
+  const xh = (h) => px0 + (h / 24) * pw;   // raw true-solar-hour axis - fixed ruler, unconverted
+                                            // (matches the main diagram's own hour gridlines: see
+                                            // the "axis stays fixed, data reprojects" note by the
+                                            // solar-noon line above). Used for the hour axis ticks
+                                            // below only - every data layer uses xhData() instead.
+  // Data-layer x-position: reprojects a TRUE-solar-hour value through the current display mode
+  // first (mirrors the main diagram's hourToY(displayHour(...))), then clamps to the strip's
+  // fixed 0-24h axis. Used for the day/night bounds, the sun-on-paper overlay, and the CHMI
+  // overlay so all three move together as the equation of time varies through the year, instead
+  // of the CHMI overlay (which itself starts from real standard time via trueFromStandard())
+  // wobbling against a backdrop that stayed fixed in raw true solar time.
+  const xhData = (trueH) => xh(Math.max(0, Math.min(24, displayHour(trueH, activeDay))));
 
   // ── CHMI strip line (directly above the day strip) ────────────────────────────
   // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
@@ -654,7 +665,7 @@ function drawSunGraph() {
       for (const [hour, sec] of daySamples) {
         if (sec === null) continue;
         const trueHour = trueFromStandard(hour, activeDay);
-        const xl = xh(trueHour), xr = xh(Math.min(24, trueFromStandard(hour + 1 / 6, activeDay)));
+        const xl = xhData(trueHour), xr = xhData(trueFromStandard(hour + 1 / 6, activeDay));
         ctx.fillStyle = _chmiActiveColor(sec, calpha);
         ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
       }
@@ -665,7 +676,7 @@ function drawSunGraph() {
   ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
   const seg = (key, col, wh) => {
     if (wh <= 0) return;
-    const xl = xh(Math.max(0, 12 - wh)), xr = xh(Math.min(24, 12 + wh));
+    const xl = xhData(12 - wh), xr = xhData(12 + wh);
     ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
   };
   seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
@@ -675,7 +686,7 @@ function drawSunGraph() {
   _sgActiveOnPaper = activeRuns.onPaper;
   const segGR = (col, ivs) => {
     ctx.fillStyle = col;
-    for (const iv of ivs) { const xl = xh(Math.max(0, iv[0])), xr = xh(Math.min(24, iv[1])); ctx.fillRect(xl, laneY, xr - xl, recapH); }
+    for (const iv of ivs) { const xl = xhData(iv[0]), xr = xhData(iv[1]); ctx.fillRect(xl, laneY, xr - xl, recapH); }
   };
   if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
   if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
