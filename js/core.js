@@ -305,12 +305,24 @@ function _sgChmiColor(sec, alpha) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
-// ── CHMI element switch (2D canvas only, see render-2d.js) ────────────────────────────────────
-// null/'' = base SSV10M (sunshine) is active - the only state the Sun Graph ever uses, since its
-// own CHMI overlay always calls _sgEnsureChmiByDoy()/_sgChmiColor() directly and is untouched by
-// this switch. Any other value names the extra per-image dataset (chmi/GEN-X_Y_<code>.json,
-// declared via the image's filelist.json "chmi_extra") currently shown on the main canvas instead.
+// ── CHMI element switch (Display section - controls.js) ───────────────────────────────────────
+// null/'' = base SSV10M (sunshine) is active. Any other value names the extra per-image dataset
+// (chmi/GEN-X_Y_<code>.json, declared via the image's filelist.json "chmi_extra") shown instead -
+// on the 2D canvas AND the Sun Graph (both main diagram and custom-date strip), which both resolve
+// the actual data through _chmiActiveDataset() below and the colour through _chmiActiveColor().
 let chmiActiveElement = null;
+
+// Whichever dataset the Display element switch has active right now - the extra one (e.g.
+// temperature) if chmiActiveElement names it and it loaded successfully for the current image,
+// else always the base SSV10M dataset. Shared by the 2D canvas (render-2d.js) and the Sun Graph
+// (_sgEnsureChmiByDoy() below) - same switch, same resolved dataset, wherever it's rendered.
+function _chmiActiveDataset() {
+  if (chmiActiveElement && typeof currentChmiExtra !== 'undefined' && currentChmiExtra
+      && currentChmiExtra.element === chmiActiveElement) {
+    return currentChmiExtra;
+  }
+  return (typeof currentChmi !== 'undefined') ? currentChmi : null;
+}
 
 // Official ČHMÚ "Aktuální teplota" map legend (namerena-data/data-z-mericich-stanic/aktualni-
 // teplota) - 45 discrete 2 °C bands (wider at both ends), NOT interpolated, reproduced verbatim
@@ -339,8 +351,9 @@ function _chmiTempColor(tempC, alpha) {
   return _hexToRgba(_CHMI_TEMP_BANDS[_CHMI_TEMP_BANDS.length - 1][1], alpha);
 }
 
-// Dispatches to the right gradient for whichever element the canvas switch has active. Only the
-// 2D canvas (render-2d.js) ever calls this - the Sun Graph always uses _sgChmiColor() directly.
+// Dispatches to the right gradient for whichever element the Display switch has active - shared
+// by the 2D canvas (render-2d.js) and the Sun Graph (render-sungraph.js); _sgChmiColor() itself
+// is still called directly wherever a drawing is hardcoded to the base sunshine gradient only.
 function _chmiActiveColor(value, alpha) {
   if (chmiActiveElement === 'T') return _chmiTempColor(value, alpha);
   return _sgChmiColor(value, alpha);
@@ -366,15 +379,18 @@ function _chmiBucketByDoy(values, tzHours) {
   return byDoy;
 }
 
-// Buckets currentChmi (base SSV10M dataset) for the Sun Graph - cached on (currentChmi identity,
-// timeZoneHours), since the zone control can change live without the data itself changing.
+// Buckets whichever dataset the Display element switch has active (_chmiActiveDataset() - base
+// SSV10M, or the extra per-image dataset once switched to it) for the Sun Graph - cached on
+// (dataset identity, timeZoneHours), since the zone control can change live without the data
+// itself changing, and the identity check alone already invalidates on an element-switch flip.
 let _sgChmiByDoy = null, _sgChmiSrc = null, _sgChmiZone = null;
 function _sgEnsureChmiByDoy() {
-  if (typeof currentChmi === 'undefined' || !currentChmi) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
-  if (_sgChmiSrc === currentChmi && _sgChmiZone === timeZoneHours) return _sgChmiByDoy;
-  _sgChmiSrc = currentChmi;
+  const src = _chmiActiveDataset();
+  if (!src) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
+  if (_sgChmiSrc === src && _sgChmiZone === timeZoneHours) return _sgChmiByDoy;
+  _sgChmiSrc = src;
   _sgChmiZone = timeZoneHours;
-  _sgChmiByDoy = _chmiBucketByDoy(currentChmi.values, timeZoneHours);
+  _sgChmiByDoy = _chmiBucketByDoy(src.values, timeZoneHours);
   return _sgChmiByDoy;
 }
 

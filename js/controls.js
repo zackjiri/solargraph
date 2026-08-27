@@ -943,23 +943,39 @@ let currentChmi = null;
 // (render-2d.js) - the Sun Graph's own CHMI overlay always stays on the base SSV10M dataset.
 let currentChmiExtra = null;
 
+// True in any view where CHMI data actually renders something - Gallery/Image (the plain 2D scan,
+// mosaic or single-day gradient) and now Sun Graph (main diagram + custom-date strip). False in
+// the 3D Model theater and Sky Dome, which never draw CHMI at all regardless of the Display
+// checkbox. Used to grey the whole CHMI Display block out in those views instead of leaving it
+// looking active just because the checkbox happens to be checked and the data available - see
+// updateChmiLegendAvailability()/updateChmiElemSwitch()/syncChmiModeGroupState() below.
+function _chmiControlsRelevantHere() {
+  if (typeof theaterMode3D !== 'undefined' && theaterMode3D) return false;
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) return false;
+  return true;
+}
+
 // Reflects data availability on the Sun Graph CHMI legend entry and the Display-section CHMI
-// controls: greys out and disables when the current image has no CHMI data at all, or when the
+// controls: greys out and disables when the current image has no CHMI data at all, when the
 // active time mode is True solar time (CHMI is standard-time-native and hidden in that mode - see
-// core.js's displayHour/trueFromStandard), leaving the normal on/off look untouched whenever data
-// IS available and the mode supports it. The image-mode overlay itself used to have its own
-// legend entry (data-band="imgchmi"); it's now driven entirely from here, since Display's "CHMI
-// data" checkbox replaced that legend row.
+// core.js's displayHour/trueFromStandard), or when the active view doesn't render CHMI at all
+// (3D Model / Sky Dome - see _chmiControlsRelevantHere()) - leaving the normal on/off look
+// untouched only when data IS available AND the view supports it. The image-mode overlay itself
+// used to have its own legend entry (data-band="imgchmi"); it's now driven entirely from here,
+// since Display's "CHMI data" checkbox replaced that legend row. Called both on data/mode changes
+// and, via setDisplaySectionEnabled(), on every view switch.
 function updateChmiLegendAvailability() {
   const unavailable = currentChmi === null || timeDisplayMode === 'true';
   document.querySelectorAll('[data-band="chmi"]').forEach(el => {
     el.classList.toggle('unavailable', unavailable);
   });
 
+  const relevant = _chmiControlsRelevantHere();
+  const active = !unavailable && relevant;
   const chk = document.getElementById('chkImgChmi');
   const row = document.getElementById('chkImgChmiRow');
-  if (chk) chk.disabled = unavailable;
-  if (row) { row.style.opacity = unavailable ? '0.35' : ''; row.style.pointerEvents = unavailable ? 'none' : ''; }
+  if (chk) chk.disabled = !active;
+  if (row) { row.style.opacity = active ? '' : '0.35'; row.style.pointerEvents = active ? '' : 'none'; }
   syncChmiModeGroupState();
   updateChmiElemSwitch();
 }
@@ -967,20 +983,29 @@ function updateChmiLegendAvailability() {
 // CHMI element switch (Display, between the "CHMI data" checkbox and the custom date / whole
 // period toggle): only offered when the current image's filelist metadata declares an extra
 // dataset (chmi_extra) AND it loaded successfully - independent of chmiDisplayMode, which the
-// switch doesn't touch, it only decides which dataset/gradient that mode renders with.
-// iOS-style switch: both labels always shown ("SSV10M" left, the extra element's code right), the
-// active one at full contrast and the other dimmed (.dim), thumb next to whichever is active -
-// left/yellow fill for SSV10M (ON), right/red fill for the extra element (OFF).
+// switch doesn't touch, it only decides which dataset/gradient that mode/the Sun Graph renders
+// with. iOS-style switch: both labels always shown ("SSV10M" left, the extra element's code
+// right), the active one at full contrast and the other dimmed (.dim), thumb next to whichever is
+// active - left/yellow fill for SSV10M (ON), right/red fill for the extra element (OFF).
+// Hidden entirely (display:none) when there's nothing to switch between (master off, no extra
+// dataset for this image); once it WOULD show, it's greyed out instead - not hidden - in a view
+// that doesn't render CHMI at all (_chmiControlsRelevantHere()), so a choice made in Image/Sun
+// Graph stays visible but inert there rather than disappearing or misleadingly looking live.
 function updateChmiElemSwitch() {
   const row = document.getElementById('chmiElemRow');
   if (!row) return;
   const unavailable = currentChmi === null || timeDisplayMode === 'true';
-  const visible = showImgChmi && !unavailable && !!currentChmiExtra;
-  row.style.display = visible ? 'flex' : 'none';
-  if (!visible) return;
+  const wouldShow = showImgChmi && !unavailable && !!currentChmiExtra;
+  row.style.display = wouldShow ? 'flex' : 'none';
+  if (!wouldShow) return;
+
+  const relevant = _chmiControlsRelevantHere();
+  const btn = document.getElementById('btnChmiElemSwitch');
+  btn.disabled = !relevant;
+  row.style.opacity = relevant ? '' : '0.35';
+  row.style.pointerEvents = relevant ? '' : 'none';
 
   const isExtra = chmiActiveElement === currentChmiExtra.element;
-  const btn = document.getElementById('btnChmiElemSwitch');
   const lblLeft  = document.getElementById('chmiElemLabelLeft');
   const lblRight = document.getElementById('chmiElemLabelRight');
   lblLeft.textContent  = 'SSV10M';
@@ -995,19 +1020,23 @@ document.getElementById('btnChmiElemSwitch').addEventListener('click', () => {
   chmiActiveElement = (chmiActiveElement === currentChmiExtra.element) ? null : currentChmiExtra.element;
   updateChmiElemSwitch();
   draw();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 // Custom date / Whole period sub-toggle: hidden entirely while the master switch above is off
 // (nothing to choose between yet), shown but dimmed/inert if the master is on and checked but the
-// data has since become unavailable (image switch, time-mode change) - independent of whatever
-// setDisplaySectionEnabled() is doing to the rest of the Display section (theater/Sun Graph
-// already disable that separately).
+// data has since become unavailable (image switch, time-mode change), the active view doesn't
+// render CHMI at all (3D Model / Sky Dome), OR the Sun Graph is active - it only ever shows the
+// whole-year overlay there, no custom-date/whole-period choice to make (unlike Image, which has
+// both a single-day gradient and a whole-exposure mosaic) - see enterSunGraph()'s own keepIds,
+// which deliberately leaves the master switch + element switch active but not this group.
 function syncChmiModeGroupState() {
   const group = document.getElementById('chmiModeGroup');
   if (!group) return;
   group.style.display = showImgChmi ? 'flex' : 'none';
   const unavailable = currentChmi === null || timeDisplayMode === 'true';
-  const active = showImgChmi && !unavailable;
+  const inSunGraph = typeof sunGraphActive !== 'undefined' && sunGraphActive;
+  const active = showImgChmi && !unavailable && _chmiControlsRelevantHere() && !inSunGraph;
   group.style.opacity = active ? '' : '0.35';
   group.style.pointerEvents = active ? '' : 'none';
   group.querySelectorAll('.chmi-mode-btn').forEach(el => { el.disabled = !active; });

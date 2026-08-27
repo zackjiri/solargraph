@@ -1120,6 +1120,12 @@ function setDisplaySectionEnabled(enabled, keepIds) {
     row.style.opacity = active ? '' : '0.35';
     row.style.pointerEvents = active ? '' : 'none';
   });
+  // The CHMI element switch (#chmiElemRow) and custom-date/whole-period group (#chmiModeGroup)
+  // aren't plain .chk-row/.slider-row elements, so the generic dimming above never touches them -
+  // they need their own refresh every time the section's enabled state changes (i.e. every view
+  // switch), or they're left looking fully active (bright, not dimmed) in a view that doesn't
+  // render CHMI at all, even though their buttons are individually disabled underneath.
+  if (typeof updateChmiLegendAvailability === 'function') updateChmiLegendAvailability();
 }
 
 function enterTheater3D() {
@@ -1143,12 +1149,16 @@ function enterTheater3D() {
   ph.style.display = 'flex';
   setTheaterIcon(true);
   document.getElementById('btn3DTheater').classList.add('theater-active');
+  // Set before setDisplaySectionEnabled() below, which refreshes the CHMI Display controls' grey
+  // state via updateChmiLegendAvailability() → _chmiControlsRelevantHere() - that reads
+  // theaterMode3D to decide whether CHMI is relevant here (it isn't), so it needs to already be
+  // current.
+  theaterMode3D = true;
   setDisplaySectionEnabled(false);
   // Hide split-screen divider + swap button — they would overlay the 3D view
   splitHandle.style.display    = 'none';
   btnSplitInvert.style.display = 'none';
   document.getElementById('theaterZoomCtl').style.display = 'flex';
-  theaterMode3D = true;
   updateSunAnimCtl();   // reveal the day-animation controls (theater + noon)
   draw3D();
   updateSunWave();   // start the arrow wave if noon mode is on
@@ -1163,6 +1173,8 @@ function exitTheater3D() {
   document.getElementById('theaterPlaceholder').style.display = 'none';
   setTheaterIcon(false);
   document.getElementById('btn3DTheater').classList.remove('theater-active');
+  // Set before setDisplaySectionEnabled() below - see the matching note in enterTheater3D().
+  theaterMode3D = false;
   setDisplaySectionEnabled(true);
   document.getElementById('theaterZoomCtl').style.display = 'none';
   // Restore split-screen divider + swap button if split is still active
@@ -1170,7 +1182,6 @@ function exitTheater3D() {
     splitHandle.style.display    = 'block';
     btnSplitInvert.style.display = 'flex';
   }
-  theaterMode3D = false;
   updateSunAnimCtl();   // controls follow Analyzer rules; animation keeps running across theater
   updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
   draw3D();

@@ -247,18 +247,6 @@ function _imgChmiSlotsFor(chmiByDoy, d) {
   return m;
 }
 
-// Whichever dataset the Display element switch (controls.js) has active for THIS image - the
-// extra one (e.g. temperature) if chmiActiveElement names it and it loaded successfully, else
-// always the base SSV10M dataset. Only the 2D canvas uses this; the Sun Graph always stays on
-// currentChmi directly via _sgEnsureChmiByDoy().
-function _imgChmiActiveDataset() {
-  if (chmiActiveElement && typeof currentChmiExtra !== 'undefined' && currentChmiExtra
-      && currentChmiExtra.element === chmiActiveElement) {
-    return currentChmiExtra;
-  }
-  return (typeof currentChmi !== 'undefined') ? currentChmi : null;
-}
-
 // Missing samples inside an otherwise-covered day default to 0 only for the base SSV10M dataset,
 // where 0 is itself a real, meaningful value ("confirmed no sunshine this 10 min", same colour as
 // genuinely-measured 0 - see drawChmiArc's own comment). For anything else (e.g. temperature) 0 is
@@ -271,7 +259,7 @@ function _imgChmiMissingIsZeroSafe() { return !chmiActiveElement; }
 // element switch instead of always the base dataset.
 let _imgChmiByDoy = null, _imgChmiByDoySrc = null, _imgChmiByDoyZone = null;
 function _imgChmiEnsureByDoy() {
-  const src = _imgChmiActiveDataset();
+  const src = _chmiActiveDataset();
   if (!src) { _imgChmiByDoySrc = null; _imgChmiByDoy = null; return null; }
   if (_imgChmiByDoySrc === src && _imgChmiByDoyZone === timeZoneHours) return _imgChmiByDoy;
   _imgChmiByDoySrc = src;
@@ -286,7 +274,7 @@ function _imgChmiEnsureByDoy() {
 let _imgChmiBitmap = null, _imgChmiKeyStr = null, _imgChmiSrcRef = null;
 function _imgChmiEnsureMosaic(W, H) {
   const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
-  const srcRef = _imgChmiActiveDataset();
+  const srcRef = _chmiActiveDataset();
   const keyStr = [yawDeg, pitchDeg, rollDeg, horizonMm, radius, scanWmm, LAT, hemisphere,
                   exp ? exp.startDoy : 'x', exp ? exp.endDoy : 'x',
                   timeZoneHours, timeDisplayMode, W, H, canvasRES, chmiActiveElement].join(',');

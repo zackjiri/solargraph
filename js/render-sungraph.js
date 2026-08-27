@@ -59,10 +59,19 @@ function enterSunGraph() {
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
   document.getElementById('sgLegendWrap').style.display = 'flex'; // legend (bottom corner)
-  // Display off except Labels (line labels) + Custom date (green line), which control graph elements.
-  setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc']);
 
+  // Set before setDisplaySectionEnabled() below, which refreshes the CHMI controls' grey state
+  // via updateChmiLegendAvailability() → syncChmiModeGroupState() - that reads sunGraphActive to
+  // decide whether the custom-date/whole-period group should stay dimmed, so it needs to already
+  // be current.
   sunGraphActive = true;
+  // Display off except Labels, Custom date, and now CHMI data + its element switch (SSV10M/T) -
+  // the Sun Graph's own diagram and custom-date strip both render CHMI (core.js's
+  // _sgEnsureChmiByDoy/_chmiActiveColor), so those two stay live here too. The custom-date/whole-
+  // period sub-toggle stays disabled regardless (see syncChmiModeGroupState()): Sun Graph only
+  // ever shows the whole-year overlay, there's no single-day-vs-whole-exposure choice to make.
+  setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc', 'chkImgChmi', 'btnChmiElemSwitch']);
+
   if (typeof updateViewButtons === 'function') updateViewButtons();   // sync sub-toggle active states
   resizeSunGraph();
 }
@@ -476,7 +485,7 @@ function drawSunGraph() {
           const trueHour = trueFromStandard(hour, d);
           if (trueHour < hMin || trueHour > hMax) continue;
           const y0 = hourToY(Math.min(24, displayHour(trueHour + 1 / 6, d))), y1 = hourToY(displayHour(trueHour, d));
-          ctx.fillStyle = _sgChmiColor(sec, alpha);
+          ctx.fillStyle = _chmiActiveColor(sec, alpha);
           ctx.fillRect(x0, y0, w, Math.max(1, y1 - y0));
         }
       }
@@ -640,7 +649,7 @@ function drawSunGraph() {
         if (sec === null) continue;
         const trueHour = trueFromStandard(hour, activeDay);
         const xl = xh(trueHour), xr = xh(Math.min(24, trueFromStandard(hour + 1 / 6, activeDay)));
-        ctx.fillStyle = _sgChmiColor(sec, calpha);
+        ctx.fillStyle = _chmiActiveColor(sec, calpha);
         ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
       }
     }

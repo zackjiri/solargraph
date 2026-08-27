@@ -51,11 +51,15 @@ function enterSkyDome() {
   document.getElementById('skyDomeProjRow').style.display = 'flex';
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';
+
+  // Set before setDisplaySectionEnabled() below, which refreshes the CHMI Display controls' grey
+  // state via updateChmiLegendAvailability() → _chmiControlsRelevantHere() - that reads
+  // skyDomeActive to decide whether CHMI is relevant here (it isn't), so it needs to already be
+  // current.
+  skyDomeActive = true;
   // Display off except Labels + Custom date - same two the Sun Graph keeps live, since the sun
   // paths layered on here later will use the same custom-date state.
   setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc']);
-
-  skyDomeActive = true;
   if (typeof updateViewButtons === 'function') updateViewButtons();
   resizeSkyDome();
 }
