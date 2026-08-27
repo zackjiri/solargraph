@@ -980,13 +980,22 @@ function updateChmiLegendAvailability() {
   updateChmiElemSwitch();
 }
 
+// Hint text for an extra CHMI element's label, shown as its title attribute (updateChmiElemSwitch
+// below). Falls back to the raw code itself for any future element this doesn't know a plain-
+// language description for yet.
+function _chmiElementHint(code) {
+  if (code === 'T') return 'Air temperature';
+  return code;
+}
+
 // CHMI element switch (Display, between the "CHMI data" checkbox and the custom date / whole
 // period toggle): only offered when the current image's filelist metadata declares an extra
 // dataset (chmi_extra) AND it loaded successfully - independent of chmiDisplayMode, which the
 // switch doesn't touch, it only decides which dataset/gradient that mode/the Sun Graph renders
-// with. iOS-style switch: both labels always shown ("SSV10M" left, the extra element's code
-// right), the active one at full contrast and the other dimmed (.dim), thumb next to whichever is
-// active - left/yellow fill for SSV10M (ON), right/red fill for the extra element (OFF).
+// with. iOS-style switch: both labels always shown ("SSV" left, the extra element's code right),
+// the active one at full contrast and the other dimmed (.dim), thumb next to whichever is active -
+// left/yellow fill for SSV (ON), right/red fill for the extra element (OFF). Each label carries a
+// plain-language hint as its title attribute (e.g. "Sunshine duration" / "Air temperature").
 // Hidden entirely (display:none) when there's nothing to switch between (master off, no extra
 // dataset for this image); once it WOULD show, it's greyed out instead - not hidden - in a view
 // that doesn't render CHMI at all (_chmiControlsRelevantHere()), so a choice made in Image/Sun
@@ -1008,8 +1017,10 @@ function updateChmiElemSwitch() {
   const isExtra = chmiActiveElement === currentChmiExtra.element;
   const lblLeft  = document.getElementById('chmiElemLabelLeft');
   const lblRight = document.getElementById('chmiElemLabelRight');
-  lblLeft.textContent  = 'SSV10M';
+  lblLeft.textContent  = 'SSV';
+  lblLeft.title        = 'Sunshine duration';
   lblRight.textContent = currentChmiExtra.element;
+  lblRight.title       = _chmiElementHint(currentChmiExtra.element);
   lblLeft.classList.toggle('dim', isExtra);
   lblRight.classList.toggle('dim', !isExtra);
   btn.classList.toggle('on', !isExtra);
@@ -1043,9 +1054,14 @@ function syncChmiModeGroupState() {
 }
 
 async function setCurrentChmiFromGallery() {
+  // Remembered so the element switch's choice can carry over to the next image below - reset to
+  // null (back to SSV) up front since that's the correct outcome for every early-return case
+  // (no image, no station, fetch failure); restored only if the new image turns out to declare
+  // the same extra element too.
+  const prevActiveElement = chmiActiveElement;
   currentChmi = null;
   currentChmiExtra = null;
-  chmiActiveElement = null;   // always default back to SSV10M on any image switch
+  chmiActiveElement = null;
   const finish = () => {
     updateChmiLegendAvailability();
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
@@ -1086,6 +1102,10 @@ async function setCurrentChmiFromGallery() {
       const data = await res.json();
       if (isStale()) return;
       currentChmiExtra = { element: extraCode, values: data.values };
+      // Carry the element switch's choice over to this image if it declares the same extra
+      // element (e.g. stays on T when browsing between images that all have temperature data) -
+      // still defaults back to SSV whenever the new image's extra element differs or is missing.
+      if (prevActiveElement === extraCode) chmiActiveElement = extraCode;
     } catch (e) {
       if (isStale()) return;
       console.warn('CHMI extra (' + extraCode + ') not found for ' + baseName + ':', e);

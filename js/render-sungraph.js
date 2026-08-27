@@ -468,13 +468,19 @@ function drawSunGraph() {
       // extracted day into the local calendar day right after endDoy (present in the data, but
       // genuinely past the exposure interval, unlike endDoy itself - see _imgChmiDayList).
       const alpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
+      // Sunshine duration only ever exists during daylight by definition, so it's worth clipping
+      // to the astro-twilight window (below) to skip meaningless all-zero night data. Temperature
+      // is measured around the clock, though - unlike sunshine, its overlay draws the full day
+      // unclipped.
+      const clipToDaylight = chmiActiveElement !== 'T';
       for (const [d, samples] of chmiByDoy) {
         if (d < 1 || d > NDAYS || !inExp(d)) continue;
         // Only draw between the start/end of "night" (astro-twilight boundary), with the twilight
         // band itself as a reserve margin beyond the model's own sunrise/sunset - real light can
         // arrive slightly earlier/later than the geometric model. Deep night is skipped outright:
-        // the sensor reads ~0 there anyway, so drawing it would only add visual noise.
-        const wAstro = _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sdel[d], cdel[d]);
+        // the sensor reads ~0 there anyway, so drawing it would only add visual noise. Skipped
+        // entirely for temperature - see clipToDaylight above.
+        const wAstro = clipToDaylight ? _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sdel[d], cdel[d]) : 0;
         const hMin = 12 - wAstro, hMax = 12 + wAstro;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
         for (const [hour, sec] of samples) {
@@ -483,7 +489,7 @@ function drawSunGraph() {
           // equivalent for this day to test the astro-twilight window and to position it
           // correctly on the (possibly reprojected) display axis.
           const trueHour = trueFromStandard(hour, d);
-          if (trueHour < hMin || trueHour > hMax) continue;
+          if (clipToDaylight && (trueHour < hMin || trueHour > hMax)) continue;
           const y0 = hourToY(Math.min(24, displayHour(trueHour + 1 / 6, d))), y1 = hourToY(displayHour(trueHour, d));
           ctx.fillStyle = _chmiActiveColor(sec, alpha);
           ctx.fillRect(x0, y0, w, Math.max(1, y1 - y0));
