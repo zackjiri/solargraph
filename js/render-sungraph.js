@@ -573,6 +573,13 @@ function drawSunGraph() {
   if (exp) {
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
     const expLbl = ['exposure start', 'exposure end'];
+    // Nudged outward past the matrix's own edge column, not sitting flush on it: the sun-on-paper
+    // and CHMI cells both render 1px wider than their day's true right edge (dayToX(d+1)+1 - see
+    // their own "+1" padding, added to avoid an antialiasing seam between adjacent day columns),
+    // and a stroked line is centred on its path, so half of *this* line's own width bleeds inward
+    // too - left uncorrected, both boundaries end up overlapping the outermost data column instead
+    // of framing it from outside. 2px clears both effects at once with a bit to spare.
+    const LINE_MARGIN = 2;
     [exp.startDoy, exp.endDoy].forEach((doy, i) => {
       const wd = _sgDayWidths(doy, sphi, cphi).day;   // daylight half-width [h]
       if (wd <= 0) return;
@@ -580,7 +587,7 @@ function drawSunGraph() {
       // the exposure, so the "exposure end" line sits at that day's right edge (= the next day's
       // left edge) rather than its left edge, same as the start line sits at the start day's own
       // (left) edge.
-      const x = i === 0 ? dayToX(doy) : dayToX((doy % NDAYS) + 1);
+      const x = i === 0 ? dayToX(doy) - LINE_MARGIN : dayToX((doy % NDAYS) + 1) + LINE_MARGIN;
       ctx.beginPath();
       ctx.moveTo(x, hourToY(Math.min(24, displayHour(12 + wd, doy))));
       ctx.lineTo(x, hourToY(Math.max(0,  displayHour(12 - wd, doy))));

@@ -292,7 +292,12 @@ function _skyDomeHourDots(ctx, layout, month, day, color, withLabels) {
 }
 
 function drawSkyDomeSunPaths(ctx, layout) {
-  const op = dispOpacity;
+  // The Opacity slider is disabled while Sky Dome is active (see setDisplaySectionEnabled() in
+  // enterSkyDome() - it's greyed out and inert, not just hidden), but dispOpacity itself is a
+  // shared global that keeps whatever value Image/Sun Graph last left it at. Without pinning this
+  // to 1, the curves and hour dots would silently inherit that stale, inaccessible-here setting -
+  // e.g. rendering nearly invisible if the user had turned opacity down in Image mode earlier.
+  const op = 1;
 
   if (typeof showSunArc === 'undefined' || showSunArc) {
     const thinCol = `rgba(255, 220, 60, ${Math.min(1, op * 0.40)})`;
