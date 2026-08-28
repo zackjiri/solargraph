@@ -1344,6 +1344,20 @@ function setMode(mode) {
     sidebar.style.display = '';
     calibSection.classList.remove('calibration-locked');
     if (typeof setDisplaySectionEnabled === 'function') setDisplaySectionEnabled(true);  // normal Analyzer: Display active
+    // Analyzer is for calibration work on the Enhanced image - Raw/Split are Gallery-only
+    // comparison views. Force back to Enhanced every time Analyzer is entered, even if Raw or
+    // Split was left active in Gallery, rather than carrying it over.
+    if (galleryState.layer !== 1 || splitActive) {
+      if (splitActive) setSplitMode(false);
+      splitBitmap = null;
+      splitInverted = false;
+      btnSplitInvert.classList.remove('active');
+      galleryState.layer = 1;
+      document.querySelector('.radio-row.view-enh input').checked = true;
+      document.querySelectorAll('#viewGroup .radio-row').forEach(r => r.classList.remove('active'));
+      document.querySelector('.radio-row.view-enh').classList.add('active');
+      if (galleryState.genId !== null && galleryState.imageIndex !== null) loadGalleryImage();
+    }
     if (!imgBitmap) uploadZoneEl.classList.remove('hidden');
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
