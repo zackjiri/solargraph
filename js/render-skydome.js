@@ -231,18 +231,28 @@ function _skyDomeArcPoints(layout, month, day) {
   // always up, so the sign has to come from the real latitude for the culmination side (and the
   // whole day's rotation sense) to land on the correct side of the compass.
   const phi = effectiveLat() * hemisphere;
+  // The break-heuristic below has to look for a jump in whichever azimuth value actually
+  // determines the drawn seam - for Matrix that's the *shifted* (culmination-centred) azimuth
+  // (_skyDomeMatrixAzShift), not the raw compass one. For the northern hemisphere the shift is
+  // 0, so this is a no-op and matches the original behaviour exactly. For the southern
+  // hemisphere the shift is 180, which moves the seam to true south - away from true north,
+  // where the SH sun actually culminates. Checking the raw azimuth instead (as this used to)
+  // put the "never fires for an ordinary day" assumption exactly at the SH culmination: every
+  // southern-hemisphere day legitimately sweeps through true north at solar noon, and at
+  // subtropical latitudes (roughly 5-30°, where the sun passes close to the zenith at some
+  // point in the year) that sweep is fast enough per 0.5°-hour-angle sample to look like a
+  // >180° wraparound - inserting a spurious break, and hence a visible gap in the Matrix chart,
+  // right at culmination on an otherwise perfectly continuous arc. Dome is unaffected either
+  // way (no seam - see _skyDomePoint), so reusing one shift-aware check for both is safe.
+  const shift = layout.mode === 'matrix' ? _skyDomeMatrixAzShift() : 0;
   const pts = [];
-  let prevAz = null;
+  let prevAzS = null;
   for (let hDeg = -180; hDeg <= 180; hDeg += 0.5) {
     const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
-    if (s.el < 0) { prevAz = null; continue; }
-    // Azimuth can in principle wrap through 0°/360° (e.g. a midnight-sun latitude, where the path
-    // crosses due north while still above the horizon) - break the polyline there instead of
-    // drawing a spurious line straight across the Matrix chart (harmless in Dome, which has no
-    // seam). Never fires for an ordinary sunrise-to-sunset day (azimuth only crosses due north, if
-    // at all, exactly at the ±180h array boundary - see project notes).
-    if (prevAz !== null && Math.abs(s.az - prevAz) > 180) pts.push(null);
-    prevAz = s.az;
+    if (s.el < 0) { prevAzS = null; continue; }
+    const azS = (s.az + shift + 360) % 360;
+    if (prevAzS !== null && Math.abs(azS - prevAzS) > 180) pts.push(null);
+    prevAzS = azS;
     pts.push(_skyDomeProject(layout, s.az, s.el));
   }
   return pts;
