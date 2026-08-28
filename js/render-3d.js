@@ -1110,7 +1110,14 @@ function setTheaterIcon(theater) {
 function setDisplaySectionEnabled(enabled, keepIds) {
   const section = document.getElementById('displaySection');
   if (!section) return;
-  const keep = keepIds || [];
+  // "About this data" is a pure info popup (license/source text), not a CHMI data control - it
+  // stays reachable in every view regardless of whether CHMI actually renders there, same as the
+  // checkbox/switch rows callers already list in keepIds. Baked in here (not per call site) since
+  // it's a property of the button itself, not a per-view judgment call - otherwise every view that
+  // disables the section (3D Model, Sun Graph, Sky Dome) has to remember to list it individually,
+  // which is exactly how it ended up silently unclickable in all three (disabled buttons in this
+  // app show no visual difference - see .info-icon-btn in style.css - so nothing hinted at why).
+  const keep = (keepIds || []).concat('btnChmiInfo');
   section.style.opacity = ''; section.style.pointerEvents = '';   // control per-row now
   section.querySelectorAll('input, button').forEach(el => {
     el.disabled = !(enabled || keep.includes(el.id));
