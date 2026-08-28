@@ -39,6 +39,11 @@
     --accent-green: #0e6030;
     --text: #0c1820;        /* almost black */
     --dim: #445a6e;         /* dark enough for small text */
+    /* De-bordered controls need a bigger jump than the dark theme's - the panel here is already
+       very light (#f5f7f9), so the same alpha used on a near-black dark panel reads as almost no
+       contrast at all against it. */
+    --control-fill: rgba(80,95,110,0.20);
+    --control-fill-hover: rgba(80,95,110,0.34);
   }
 
   /* Light: canvas-container bg */
@@ -188,11 +193,13 @@
   }
 
   /* Light: almost black – moon icon stands out on dark background */
-  body.light #btnTheme {
+  body.light #btnTheme,
+  body.light #btnTimeMode {
     background: rgba(18,22,28,0.82);
   }
   /* Light hover: blends with the top-strip bg */
-  body.light #btnTheme:hover {
+  body.light #btnTheme:hover,
+  body.light #btnTimeMode:hover {
     background: #e2e7ec !important;
     color: var(--dim);
   }
@@ -1004,16 +1011,21 @@
   }
   /* CSS box pinned to 164×200; backing store is 205×250 (×1.25) so under the panel's zoom the
      bitmap renders 1:1 with device pixels – the model stays crisp instead of being upscaled. */
-  #can3d { display: block; width: 164px; height: 200px; }
+  #can3d { display: block; width: 164px; height: 200px; border-radius: var(--radius-sm); }
 
   /* Dashed border on the wrap element – not clipped by overflow like an outline on #can3d */
   #can3dWrap {
     position: relative; align-self: flex-start;
     border: 1px dashed rgba(90,120,150,0.55);
     border-radius: var(--radius-sm);
-    overflow: hidden;   /* clip the square canvas to the frame's rounded corners */
+    /* Rounding is on #can3d itself (a canvas clips to its own border-radius) - NOT overflow:hidden
+       here. Chromium mis-computes an auto-height flex item's height under overflow:hidden + an
+       ancestor's zoom transform (#can3dPanel is zoom:1.25) - the wrap would randomly collapse to
+       well under the canvas's real 200px height until an unrelated reflow (e.g. toggling Sun
+       path) forced a recompute. Confirmed by toggling overflow off in devtools: height snapped
+       from ~60px back to the correct ~202px immediately. */
   }
-  body.light #can3dWrap { border-color: rgba(60,90,120,0.65); }
+  body.light #can3dWrap { border-color: rgba(40,60,85,0.85); }
 
   /* Theater canvas – no border (dashed border only in the preview panel) */
 
