@@ -578,7 +578,11 @@ function drawSunGraph() {
     const yEdge = hourToY(displayHour(12, _DAYS_IN_YEAR));
     ctx.fillStyle = '#ffffff'; ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    _sgOutText(ctx, noonLabel, px0 + pw - 4, yEdge + 12, OUT);
+    // OUT_LBL (always black), not OUT (flips to white in light mode) - this label's fill is
+    // always white regardless of theme (like "custom date"/exposure labels below), so it needs
+    // the always-dark outline to stay readable; OUT is only correct paired with pal.text (the
+    // hour-axis/month labels above, whose fill itself flips with the theme).
+    _sgOutText(ctx, noonLabel, px0 + pw - 4, yEdge + 12, OUT_LBL);
   }
 
   // Plot border
