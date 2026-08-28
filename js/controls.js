@@ -1490,19 +1490,33 @@ function updateMetaPopup() {
     ? exposureDays(m.exposure_start, m.exposure_end) : '—';
 }
 
+// Position an anchored popup (metadata "i", CHMI license "i") below-right of its trigger button,
+// clamped to both viewport axes. The page runs with `overflow:hidden` on html/body (no scrolling
+// to chase an off-screen element), so without a vertical clamp a popup opened near the bottom of
+// the sidebar can render with its lower portion (e.g. the license link) past the visible area -
+// visible per its CSS class, but physically unreachable/unclickable. Called after the popup is
+// already `.visible` so offsetWidth/offsetHeight reflect its real rendered size.
+function positionAnchoredPopup(btn, popup) {
+  const rect = btn.getBoundingClientRect();
+  const margin = 8;
+  const pw = popup.offsetWidth;
+  const ph = popup.offsetHeight;
+  let left = rect.right + 6;
+  if (left + pw > window.innerWidth - margin) left = rect.left - pw - 6;
+  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
+  let top = rect.bottom + 6;
+  if (top + ph > window.innerHeight - margin) top = rect.top - ph - 6;
+  top = Math.max(margin, Math.min(top, window.innerHeight - ph - margin));
+  popup.style.left = left + 'px';
+  popup.style.top  = top  + 'px';
+}
+
 function openMetaPopup() {
   updateMetaPopup();
   const btn  = document.getElementById('btnMeta');
   const popup = document.getElementById('metaPopup');
-  const rect  = btn.getBoundingClientRect();
-  // Position below-right of the button, nudge inside viewport
-  let top  = rect.bottom + 6;
-  let left = rect.right  + 6;
-  const pw = 214; // approx popup width
-  if (left + pw > window.innerWidth - 8) left = rect.left - pw - 6;
-  popup.style.top  = top  + 'px';
-  popup.style.left = left + 'px';
   popup.classList.add('visible');
+  positionAnchoredPopup(btn, popup);
   btn.classList.add('active');
 }
 
@@ -1533,14 +1547,8 @@ document.addEventListener('click', (e) => {
 function openChmiInfoPopup() {
   const btn   = document.getElementById('btnChmiInfo');
   const popup = document.getElementById('chmiInfoPopup');
-  const rect  = btn.getBoundingClientRect();
-  let top  = rect.bottom + 6;
-  let left = rect.right  + 6;
-  const pw = 250; // approx popup width
-  if (left + pw > window.innerWidth - 8) left = rect.left - pw - 6;
-  popup.style.top  = top  + 'px';
-  popup.style.left = left + 'px';
   popup.classList.add('visible');
+  positionAnchoredPopup(btn, popup);
   btn.classList.add('active');
 }
 
