@@ -1165,7 +1165,7 @@ function enterTheater3D() {
   // button/panel is actually driven by, so being able to pick the date without leaving 3D Model
   // is directly useful, unlike the rest of Display (grid/horizon/CHMI/etc.), which genuinely
   // doesn't apply to this view.
-  setDisplaySectionEnabled(false, ['chkCustomArc', 'btnMonDec', 'btnMonInc', 'btnDayDec', 'btnDayInc']);
+  setDisplaySectionEnabled(false, [...CUSTOM_DATE_KEEP_IDS]);
   // Hide split-screen divider + swap button — they would overlay the 3D view
   splitHandle.style.display    = 'none';
   btnSplitInvert.style.display = 'none';

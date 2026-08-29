@@ -59,7 +59,7 @@ function enterSkyDome() {
   skyDomeActive = true;
   // Display off except Labels + Custom date - same two the Sun Graph keeps live, since the sun
   // paths layered on here later will use the same custom-date state.
-  setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc']);
+  setDisplaySectionEnabled(false, ['chkLabels', ...CUSTOM_DATE_KEEP_IDS]);
   if (typeof updateViewButtons === 'function') updateViewButtons();
   resizeSkyDome();
 }

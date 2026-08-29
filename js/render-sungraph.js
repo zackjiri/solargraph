@@ -71,7 +71,7 @@ function enterSunGraph() {
   // _sgEnsureChmiByDoy/_chmiActiveColor), so those two stay live here too. The custom-date/whole-
   // period sub-toggle stays disabled regardless (see syncChmiModeGroupState()): Sun Graph only
   // ever shows the whole-year overlay, there's no single-day-vs-whole-exposure choice to make.
-  setDisplaySectionEnabled(false, ['chkLabels', 'chkCustomArc', 'chkImgChmi', 'btnChmiElemSwitch']);
+  setDisplaySectionEnabled(false, ['chkLabels', 'chkImgChmi', 'btnChmiElemSwitch', ...CUSTOM_DATE_KEEP_IDS]);
 
   if (typeof updateViewButtons === 'function') updateViewButtons();   // sync sub-toggle active states
   resizeSunGraph();

@@ -697,6 +697,16 @@ function renderDateWheels() { _monthWheel.render(); _dayWheel.render(); }
 renderDateWheels();
 window.addEventListener('resize', renderDateWheels);
 
+// Every id that goes together with 'chkCustomArc' in a setDisplaySectionEnabled() keepIds list -
+// the checkbox is pointless to keep reachable if its own date picker isn't, and vice versa.
+// Shared here instead of spelled out at each of the three call sites (enterTheater3D(),
+// enterSunGraph(), enterSkyDome()) - which is exactly how it went missing at two of them: the
+// checkbox was kept but the wheel's own ◀/▶ buttons weren't listed alongside it, so the buttons
+// stayed disabled while the checkbox looked (and was) fully usable. Spread this array in rather
+// than repeating the four ids so a future addition to Custom date's controls only needs updating
+// once.
+const CUSTOM_DATE_KEEP_IDS = ['chkCustomArc', 'btnMonDec', 'btnMonInc', 'btnDayDec', 'btnDayInc'];
+
 // Custom date's month/day wheels are sub-controls of the "Custom date" checkbox (Display) - same
 // show/hide-with-master pattern as the CHMI sub-rows (updateChmiElemSwitch/syncChmiModeGroupState
 // below): no space taken and not interactive while the overlay itself is off.
