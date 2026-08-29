@@ -594,9 +594,21 @@
     cursor: pointer;
   }
 
+  /* Custom date's month/day wheel pickers - sub-controls of the "Custom date" checkbox above
+     (Display section), same show/hide-by-parent-state pattern as the CHMI sub-rows just below.
+     No margin/space of its own when hidden - toggled by JS (updateCustomDateSubrow() in
+     controls.js) alongside chkCustomArc's checked state, not by CSS alone, since the wheels also
+     need to stop being interactive while the overlay itself is off. */
+  .custom-date-subrow {
+    display: none;   /* flex, set by JS */
+    flex-direction: column;
+    gap: 6px;
+  }
+
   /* Generic ◀ ▶ + iOS-style horizontal wheel picker - centred value with grey neighbours,
-     draggable (touch + mouse) with snap - see makeWheelPicker(). Used by Custom Path (month/day)
-     and by the Analyzer sub-view switcher (.mode-subrow, 3D Model/Image/Sun Graph/Sky Dome) below. */
+     draggable (touch + mouse) with snap - see makeWheelPicker(). Used by the Custom date
+     sub-controls above and by the Analyzer sub-view switcher (.mode-subrow, 3D Model/Image/Sun
+     Graph/Sky Dome) below. */
   .wheel-row {
     display: flex;
     align-items: center;
