@@ -104,11 +104,16 @@ document.getElementById('chkHorizon').addEventListener('change', (e) => {
 // the Custom date handler already makes. Without it, draw3D() still redraws the white boundary
 // lines to the new geometry, but the slider thumb and sunTimeHours stay at their old, now
 // possibly out-of-range value until the next manual drag - visibly desyncing thumb from markers.
+// Sun Graph's own "enters the can" year-wide bands (_sgEnsureYearRuns) are cached on a key that
+// includes yawDeg/pitchDeg/rollDeg/horizonMm/radius/scanWmm/LAT/hemisphere too - so any of these
+// calibration changes needs to also nudge drawSunGraph() when that view is open, or its bands
+// silently keep showing the pre-change geometry.
 document.getElementById('rngYaw').addEventListener('input', (e) => {
   yawDeg = parseFloat(e.target.value);
   document.getElementById('lblYaw').textContent = (yawDeg >= 0 ? '+' : '') + yawDeg.toFixed(1) + '°';
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 document.getElementById('rngPitch').addEventListener('input', (e) => {
@@ -116,6 +121,7 @@ document.getElementById('rngPitch').addEventListener('input', (e) => {
   document.getElementById('lblPitch').textContent = (pitchDeg >= 0 ? '+' : '') + pitchDeg.toFixed(1) + '°';
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 document.getElementById('rngRoll').addEventListener('input', (e) => {
@@ -123,6 +129,7 @@ document.getElementById('rngRoll').addEventListener('input', (e) => {
   document.getElementById('lblRoll').textContent = (rollDeg >= 0 ? '+' : '') + rollDeg.toFixed(1) + '°';
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 document.getElementById('rngHScale').addEventListener('input', (e) => {
@@ -132,6 +139,7 @@ document.getElementById('rngHScale').addEventListener('input', (e) => {
   refreshCalibLimits();   // radius must not drop below scanWmm/(2π); also syncs horizon
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 document.getElementById('rngHorizon').addEventListener('input', (e) => {
@@ -141,6 +149,7 @@ document.getElementById('rngHorizon').addEventListener('input', (e) => {
   document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 function doCalibReset() {
@@ -309,7 +318,9 @@ function applyLat(val) {
     document.getElementById('btnN').className = 'ns-btn active';
     document.getElementById('btnS').className = 'ns-btn';
   }
+  if (show3DCulmination) refreshSunTimeRange();   // LAT/hemisphere shifts the "enters the can" interval too
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
 
 document.getElementById('inpLat').addEventListener('change', (e) => {
@@ -332,14 +343,18 @@ document.getElementById('btnN').addEventListener('click', () => {
   hemisphere = 1;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
   hemisphere = -1;
   document.getElementById('btnN').className = 'ns-btn';
   document.getElementById('btnS').className = 'ns-btn active-s';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
 
 // ─── Longitude control ──────────────────────────────────────────────────────
@@ -348,6 +363,10 @@ document.getElementById('btnS').addEventListener('click', () => {
 function applyLong(val) {
   LONG = Math.round(Math.max(0, Math.min(180, val)) * 10) / 10;
   document.getElementById('inpLong').value = LONG.toFixed(1);
+  // LONG doesn't move the "enters the can" interval (sunRayState/sunDayRange are longitude-
+  // independent), only the displayed time-of-day text (standard/mean mode) - so just resync the
+  // slider's own labels, no need to re-clamp sunTimeHours or rebuild its track fill.
+  if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
@@ -371,6 +390,7 @@ document.getElementById('btnE').addEventListener('click', () => {
   lonHemisphere = 1;
   document.getElementById('btnE').className = 'ns-btn active';
   document.getElementById('btnW').className = 'ns-btn';
+  if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
@@ -378,6 +398,7 @@ document.getElementById('btnW').addEventListener('click', () => {
   lonHemisphere = -1;
   document.getElementById('btnE').className = 'ns-btn';
   document.getElementById('btnW').className = 'ns-btn active-s';
+  if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 });
@@ -393,6 +414,8 @@ function applyTimeZone(val) {
   timeZoneHours = Math.round(Math.max(-12, Math.min(14, val)) * 4) / 4;   // snap to 15-min steps
   document.getElementById('inpTimeZone').value = timeZoneHours;
   document.getElementById('lblTimeZone').textContent = _fmtTimeZone(timeZoneHours);
+  // Same reasoning as applyLong(): affects only the displayed standard-time text, not geometry.
+  if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
@@ -477,6 +500,7 @@ function applyScanW(val) {
     scale = canvasLW / scanWmm;
     draw(); draw3D();
   }
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
 document.getElementById('inpScanW').addEventListener('change', (e) => {
   applyScanW(parseInt(e.target.value) || 178);
