@@ -45,7 +45,6 @@ function draw() {
   // here for it besides the label/sun marker below).
   if (showCustomArc) {
     const op = dispOpacity;
-    const { month: cm, day: cd } = customArcDate();
     if (chmiOn && chmiDisplayMode === 'whole') {
       // Mosaic (+ its own highlight) already drawn above - nothing more needed for the arc itself.
     } else if (chmiOn) {
@@ -55,26 +54,26 @@ function draw() {
       if (dayCovered) {
         // Thin dark-grey border above/below the band - same "wider line underneath" trick as
         // the black outline used for the green path, just narrower peek since this one is thin.
-        drawSunArc(W, H, cm, cd, {
+        drawSunArc(W, H, customMonth, customDay, {
           color: `rgba(60,60,60,${Math.min(1, op * 0.85)})`, lineWidth: chmiW + 2,
           showHourDots: false, showHourLabels: false, edgeLabel: null
         });
-        drawChmiArc(W, H, cm, cd, chmiW);
+        drawChmiArc(W, H, chmiW);
       } else {
         // This image has CHMI data, but not for the currently selected Custom Path day - a
         // flat, translucent grey (no gradient, no border): we genuinely have no information for
         // this day, distinct from the gradient's own dark "confirmed no sun" colour.
-        drawSunArc(W, H, cm, cd, {
+        drawSunArc(W, H, customMonth, customDay, {
           color: `rgba(160,160,160,${Math.min(1, op * 0.5)})`, lineWidth: chmiW,
           showHourDots: false, showHourLabels: false, edgeLabel: null
         });
       }
     } else {
-      drawSunArc(W, H, cm, cd, {
+      drawSunArc(W, H, customMonth, customDay, {
         color: `rgba(0,0,0,${Math.min(1, op * 0.85)})`, lineWidth: 3.5,
         showHourDots: false, showHourLabels: false, edgeLabel: null
       });
-      drawSunArc(W, H, cm, cd, {
+      drawSunArc(W, H, customMonth, customDay, {
         color: `rgba(80, 220, 120, ${Math.min(1, op * 0.9)})`, lineWidth: 1.5,
         showHourDots: false, showHourLabels: false, edgeLabel: null
       });
@@ -82,13 +81,10 @@ function draw() {
 
     // Label anchored to south axis, offset 8px right, above the arc at that point
     // Find arc y-position at south axis (β=0, i.e. pixel x = cx adjusted for yawDeg).
-    // Must use the same (possibly SH-shifted) path-convention date the arc itself is drawn with
-    // (cm/cd, from customArcDate() above) - using the raw, unshifted customMonth/Day here would
-    // find the transit point of a DIFFERENT day than the one actually plotted, so on the southern
-    // hemisphere the label would anchor to where the NH-equivalent date's arc crosses the meridian
-    // instead of following the real (shifted) arc.
-    const doy   = dayOfYear(cm, cd);
-    const delta = sunDeclination(doy);
+    // pathDeclination() applies the same hemisphere sign the arc itself was drawn with
+    // (drawSunArc()), so this always finds the transit point of the actual plotted curve.
+    const doy   = dayOfYear(customMonth, customDay);
+    const delta = pathDeclination(doy);
     const phi   = effectiveLat();
     // Hour angle at exactly south transit (H=0)
     const { el: elSouth, beta: betaSouth } = sunPosition(0, delta, phi);
@@ -110,7 +106,7 @@ function draw() {
     // Animated Sun marker on the path (Analyzer): yellow dot in the theater pinhole style
     if (show3DCulmination) {
       maybeUpdateSunFill();                          // keep slider regions in sync (analyzer)
-      const dDelta = sunDeclination(dayOfYear(cm, cd));
+      const dDelta = delta;   // same path-convention declination the arc/label above already used
       const hDeg = (sunTimeHours - 12) * 15 * hemisphere;
       const s = sunPosition(hDeg * Math.PI / 180, dDelta, phi);
       if (s.el >= 0) {
@@ -146,16 +142,14 @@ function draw() {
 // measurement (no dataset for the day, or a missing/QUALITY=4 sample), the segment defaults to
 // the gradient's darkest "not shining" colour instead of leaving a gap - same always-painted
 // default as the Sun Graph's night band, just applied along the arc instead of a rectangle.
-// cm/cd = the (possibly SH-shifted) path-convention date the curve itself is plotted with;
-// the CHMI lookup uses the real, unshifted custom date since weather is tied to a real calendar day.
-function drawChmiArc(W, H, cm, cd, lineWidth) {
+function drawChmiArc(W, H, lineWidth) {
   const realDoy    = dayOfYear(customMonth, customDay);
   const chmiByDoy  = _imgChmiEnsureByDoy();
   const daySamples = chmiByDoy ? chmiByDoy.get(realDoy) : null;
   const bySlot = new Map();   // slot 0..143 (10-min index into the day, standard time) → value
   if (daySamples) for (const [hour, sec] of daySamples) bySlot.set(Math.round(hour * 6), sec);
 
-  const delta = sunDeclination(dayOfYear(cm, cd));
+  const delta = pathDeclination(realDoy);   // weather is tied to the real calendar day either way
   const phi   = effectiveLat();
   const op    = dispOpacity;
   const alpha = Math.min(1, op * 0.9);
@@ -295,7 +289,7 @@ function _imgChmiEnsureMosaic(W, H) {
   // instead of recomputing (each day's own row also serves as its neighbours' pPrev/pNext).
   const posGrid = new Array(days.length);
   for (let i = 0; i < days.length; i++) {
-    const delta = sunDeclination(days[i]);
+    const delta = pathDeclination(days[i]);
     const row = new Array(nH);
     for (let j = 0; j < nH; j++) row[j] = _imgChmiPoint(Hsteps[j], delta, phi, W);
     posGrid[i] = row;
@@ -380,9 +374,9 @@ function _imgChmiHighlightCustomDay(W, H) {
   const dNext = atEnd   ? null : (realDoy % N) + 1;
 
   const phi = effectiveLat();
-  const delta     = sunDeclination(realDoy);
-  const deltaPrev = dPrev !== null ? sunDeclination(dPrev) : null;
-  const deltaNext = dNext !== null ? sunDeclination(dNext) : null;
+  const delta     = pathDeclination(realDoy);
+  const deltaPrev = dPrev !== null ? pathDeclination(dPrev) : null;
+  const deltaNext = dNext !== null ? pathDeclination(dNext) : null;
 
   const top = [], bot = [];
   for (let Hdeg = -180; Hdeg <= 180; Hdeg += _CHMI_MOSAIC_HSTEP) {

@@ -233,12 +233,12 @@ function _sgShade(hex, emph) {
 }
 let _sgActiveOnPaper = null;                  // on-paper interval [t0,t1] for the active day (panel)
 
-// sunRayState ctx for a real calendar day (signed-φ + real date; path branch uses the ±182-day
-// SH shift, mirroring customArcDate). halfHmm / halfGap are calibration-only.
+// sunRayState ctx for a real calendar day (signed-φ + real date; path branch uses pathDeclination()
+// for the southern-hemisphere sign flip, same as core.js's drawSunArc). halfHmm / halfGap are
+// calibration-only.
 function _sgRayCtx(doy) {
-  const pathDoy = (hemisphere >= 0) ? doy : (((doy - 1 + 182) % 365) + 1);
   return {
-    delta:   sunDeclination(pathDoy),
+    delta:   pathDeclination(doy),
     phi:     effectiveLat(),
     deltaS:  sunDeclination(doy),
     phiS:    effectiveLat() * hemisphere,

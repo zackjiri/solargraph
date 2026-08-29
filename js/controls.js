@@ -537,16 +537,6 @@ document.getElementById('btnReset').addEventListener('click', () => {
   doCalibReset();
 });
 
-// Custom arc date – shift by 182 days for southern hemisphere
-function customArcDate() {
-  if (hemisphere >= 0) return { month: customMonth, day: customDay };
-  const doy = dayOfYear(customMonth, customDay);
-  const shifted = ((doy - 1 + 182) % 365) + 1;
-  const months = [31,28,31,30,31,30,31,31,30,31,30,31];
-  let m = 0, d = shifted;
-  while (d > months[m]) { d -= months[m]; m++; }
-  return { month: m + 1, day: d };
-}
 function resizeCanvas() {
   if (!imgBitmap) return;
   const container = document.getElementById('canvasContainer');

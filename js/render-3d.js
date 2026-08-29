@@ -214,8 +214,7 @@ function draw3D() {
   //      a = π + (px − cx)/(scale·radius)   central angle from the back-wall centre
   //      z = (py − cy)/(scale·halfHmm)      height (canvas-down → paper-up)
   //    Returns { pt:[x,y], a, z } or null (below horizon / off paper / behind camera).
-  const _cArc   = customArcDate();
-  const _cDelta = sunDeclination(dayOfYear(_cArc.month, _cArc.day));
+  const _cDelta = pathDeclination(dayOfYear(customMonth, customDay));
   const _cPhi   = effectiveLat();
   const _aMin = halfGap, _aMax = 2 * Math.PI - halfGap;
   function surfMap(hDeg) {
@@ -889,8 +888,7 @@ function fmtSolarTime(t) {
 // Sunrise/sunset solar times for the current custom date (symmetric around noon).
 // cos(H0) = −tan(φ)·tan(δ); polar day → full 24 h, polar night → empty (rise=set=12).
 function sunDayRange() {
-  const arc   = customArcDate();
-  const delta = sunDeclination(dayOfYear(arc.month, arc.day));
+  const delta = pathDeclination(dayOfYear(customMonth, customDay));
   const phi   = effectiveLat();
   const cosH0 = -Math.tan(phi) * Math.tan(delta);
   let H0h;                                  // half-day length in hours
@@ -1015,9 +1013,8 @@ function sunRayState(t, ctx) {
 function updateSunFill() {
   const rng = document.getElementById('rngSunTime');
   if (!rng) return;
-  const arc = customArcDate();
   const ctx = {
-    delta:  sunDeclination(dayOfYear(arc.month, arc.day)),       // path convention (positive φ)
+    delta:  pathDeclination(dayOfYear(customMonth, customDay)),  // path convention (positive φ)
     phi:    effectiveLat(),
     deltaS: sunDeclination(dayOfYear(customMonth, customDay)),   // signed-φ convention
     phiS:   effectiveLat() * hemisphere,

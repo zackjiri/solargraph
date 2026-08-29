@@ -270,9 +270,54 @@ function displayHourFromStandard(standardHour, doy) {
   return standardHour;
 }
 
-// Solar declination for day-of-year d (1 = Jan 1)
+// Earth's orbit is an ellipse (eccentricity ~0.0167), not a circle - by Kepler's 2nd law it sweeps
+// ecliptic longitude fastest near perihelion (~3 Jan) and slowest near aphelion (~4 Jul). Feeds
+// the equation-of-center correction in sunDeclination() below.
+const PERIHELION_DOY = 3;
+const EARTH_ECCENTRICITY = 0.0167;
+
+// Solar declination for day-of-year d (1 = Jan 1), via the equation of center (Kepler) rather
+// than a plain sine of calendar time. A plain `23.45°·sin(2π/365·(d−81))` implicitly assumes
+// ecliptic longitude is linear in time, which the elliptical orbit above makes wrong in two
+// compounding ways: (1) for any single date, by up to ~1.5-2° (worst near the equinoxes) - the
+// declination formula's own long-known imprecision; (2) that error's SIGN flips between the
+// first and second half of the year (faster near perihelion/Jan, slower near aphelion/Jul) - a
+// real asymmetry between how fast the sun's path actually progresses in, say, February vs.
+// August, which a symmetric sine can never reproduce no matter how it's tuned, only by computing
+// the true (not mean) ecliptic longitude directly. See project notes for the full derivation and
+// a worked numeric example (~186 vs ~179 days for the two halves of the year). Reduces the error
+// to <0.1-0.3° (equivalent to the commonly-cited "Spencer" level of precision).
 function sunDeclination(dayOfYear) {
-  return 23.45 * Math.PI / 180 * Math.sin(2 * Math.PI / 365 * (dayOfYear - 81));
+  const meanAnomaly = 2 * Math.PI / 365 * (dayOfYear - PERIHELION_DOY);
+  const e = EARTH_ECCENTRICITY;
+  // Equation of center - how far the true position runs ahead of (perihelion side) or behind
+  // (aphelion side) the mean position. First two terms of the standard series; the e³ term is
+  // <0.001° here and not worth carrying.
+  const eqOfCenter = (2 * e - e * e * e / 4) * Math.sin(meanAnomaly)
+                    + (5 * e * e / 4) * Math.sin(2 * meanAnomaly);
+  const meanLongitude = 2 * Math.PI / 365 * (dayOfYear - 81);   // 81 = spring equinox reference
+  const trueLongitude = meanLongitude + eqOfCenter;
+  const obliquity = 23.45 * Math.PI / 180;
+  return Math.asin(Math.sin(obliquity) * Math.sin(trueLongitude));
+}
+
+// "Path" convention (2D canvas Sun's-paths/Custom-date arcs - see drawSunArc() below - plus the
+// Sun Graph's year-wide on-paper overlay and the 3D panel's paper-surface sun path): these always
+// use a POSITIVE latitude, so the pinhole's culmination side stays fixed at the image centre
+// regardless of true hemisphere. sunPosition(H,δ,φ) ≡ sunPosition(H,−δ,−φ) exactly (flipping the
+// sign of both leaves elevation and azimuth unchanged), so negating the REAL day's declination
+// reproduces a real southern-hemisphere sky exactly through that always-positive latitude, with
+// no error beyond sunDeclination()'s own. This replaces the old "shift the calendar date by ~182
+// days and look up ITS declination" trick (customArcDate(), now removed) - which only
+// approximated the negation, since Earth's elliptical orbit means the date with truly opposite
+// declination isn't exactly half a year away (see the sunDeclination() note above). It also fixes
+// a real, separate bug that shift was masking: the southern-hemisphere winter/summer solstice
+// swap in drawAllSunArcs() picks the right real month, but without also negating its declination
+// the "winter" curve came out as the near-zenith (summer-shaped) one and vice versa - confirmed
+// empirically (noon elevation ~83° for "winter" vs. ~37° for "summer" at 30°S).
+function pathDeclination(dayOfYear) {
+  const d = sunDeclination(dayOfYear);
+  return hemisphere >= 0 ? d : -d;
 }
 
 // Day of year for given month/day
@@ -416,7 +461,7 @@ function sunPosition(H, delta, phi) {
 // style: { color, lineWidth, showHourDots, showHourLabels, edgeLabel }
 function drawSunArc(W, H, month, day, style) {
   const doy   = dayOfYear(month, day);
-  const delta = sunDeclination(doy);
+  const delta = pathDeclination(doy);
   const phi   = effectiveLat();
 
   // Sample at 0.25° steps for smooth curve
@@ -513,7 +558,12 @@ function drawAllSunArcs(W, H) {
       showHourDots: false, showHourLabels: false, edgeLabel: null });
   });
 
-  // Local winter solstice – blue
+  // Local winter solstice – blue. The month swap below and drawSunArc()'s own hemisphere negation
+  // (pathDeclination) are two different corrections that both stay necessary together: this picks
+  // the REAL month whose real declination has the right magnitude for "winter" here (Jun for the
+  // south), and pathDeclination() then negates that real declination so it actually renders as a
+  // low-sun shape through the convention's always-positive latitude - drop either one and the
+  // southern curves render backwards (see the note on pathDeclination() in core.js).
   const winterMonth = hemisphere >= 0 ? 12 : 6;
   drawSunArc(W, H, winterMonth, 21, {
     color: `rgba(60, 180, 255, ${Math.min(1, op * 0.85)})`, lineWidth: 1.5,

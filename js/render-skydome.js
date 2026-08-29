@@ -335,10 +335,10 @@ function drawSkyDomeSunPaths(ctx, layout) {
   }
 
   if (typeof showCustomArc === 'undefined' || showCustomArc) {
-    // The *real* calendar date, unlike the flat scan's customArcDate() (which shifts the date by
-    // 182 days for the southern hemisphere specifically to compensate for that view's unsigned-
-    // latitude convention - see core.js). Paired with signed latitude below, the real date already
-    // gives the correct true-compass path with no shifting needed.
+    // The *real* calendar date, unlike the flat scan's path convention (core.js's drawSunArc /
+    // pathDeclination()), which negates the declination for the southern hemisphere to compensate
+    // for that view's unsigned-latitude convention. Paired with signed latitude below, the real
+    // date already gives the correct true-compass path with no sign-flip needed.
     const cm = customMonth, cd = customDay;
     const pts = _skyDomeArcPoints(layout, cm, cd);
     _skyDomeStrokeArc(ctx, pts, `rgba(0,0,0,${Math.min(1, op * 0.85)})`, 3.5);
