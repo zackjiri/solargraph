@@ -482,28 +482,42 @@ function drawSunArc(W, H, month, day, style) {
   const delta = pathDeclination(doy);
   const phi   = effectiveLat();
 
-  // Sample at 0.25° steps for smooth curve
-  const curvePoints = [];
+  // Sample at 0.25° steps for smooth curve. Points are grouped into contiguous segments, not one
+  // flat list: when the can faces away from the sun's daily path (e.g. a north-facing YAW on the
+  // northern hemisphere), the visible/on-paper part of the arc is only near BOTH edges of the
+  // frame, with a real gap through the middle where the sun is behind the pinhole wall or off the
+  // exposed paper - not a continuous curve. Any skipped sample (below horizon, off the projected
+  // paper, or outside the canvas) ends the current segment so that gap is never bridged by a
+  // spurious straight line across the middle.
+  const segments = [];
+  let seg = null;
   for (let hDeg = -180; hDeg <= 180; hDeg += 0.25) {
     const Hrad = hDeg * Math.PI / 180;
     const { el, beta } = sunPosition(Hrad, delta, phi);
-    if (el < 0) continue;
-    const pos = azElToPixel(beta - yawDeg, el);
-    if (!pos) continue;
-    if (pos.px < -20 || pos.px > W + 20) continue;
-    curvePoints.push(pos);
+    let pos = null;
+    if (el >= 0) {
+      pos = azElToPixel(beta - yawDeg, el);
+      if (pos && (pos.px < -20 || pos.px > W + 20)) pos = null;
+    }
+    if (!pos) { seg = null; continue; }
+    if (!seg) { seg = []; segments.push(seg); }
+    seg.push(pos);
   }
 
+  const curvePoints = segments.flat();
   if (curvePoints.length < 2) return;
 
-  // Draw arc curve
-  ctx.beginPath();
-  ctx.moveTo(curvePoints[0].px, curvePoints[0].py);
-  for (let i = 1; i < curvePoints.length; i++) ctx.lineTo(curvePoints[i].px, curvePoints[i].py);
+  // Draw arc curve - one subpath per contiguous segment
   ctx.strokeStyle = style.color;
   ctx.lineWidth = style.lineWidth;
   ctx.setLineDash([]);
-  ctx.stroke();
+  for (const s of segments) {
+    if (s.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(s[0].px, s[0].py);
+    for (let i = 1; i < s.length; i++) ctx.lineTo(s[i].px, s[i].py);
+    ctx.stroke();
+  }
 
   // Edge label – clamped inside canvas
   if (showLabels && style.edgeLabel) {
