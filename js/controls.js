@@ -757,24 +757,35 @@ document.getElementById('btnMonDec').addEventListener('click', () => { stepCusto
 document.getElementById('btnMonInc').addEventListener('click', () => { stepCustomMonth(1);  commitCustomDate(); });
 document.getElementById('btnDayDec').addEventListener('click', () => { stepCustomDay(-1);  commitCustomDate(); });
 document.getElementById('btnDayInc').addEventListener('click', () => { stepCustomDay(1);   commitCustomDate(); });
+// Custom date (Display checkbox) and Sun path (custom date) (3D panel button) are the same on/off
+// switch shown in two places, now mirrored absolutely: whichever one changes - a direct click on
+// either, or CHMI turning Custom date on automatically via forceCustomArcOn() below - the other
+// follows immediately, so checkbox state, the month/day wheel sub-row, and the button's own ☑/☐
+// icon (updateAxisLegend()) never disagree.
+function setCustomDateActive(active) {
+  showCustomArc = active;
+  show3DCulmination = active;
+  document.getElementById('chkCustomArc').checked = active;
+  if (active) sunTimeHours = 12;   // fresh start at noon when turning it on
+  updateCustomDateSubrow();
+  updateAxisLegend();
+  updateSunAnimCtl();
+  draw();
+  draw3D();
+  updateSunWave();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+}
+
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
-  showCustomArc = e.target.checked; updateSunAnimCtl(); updateCustomDateSubrow(); draw(); updateSunWave();
-  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
+  setCustomDateActive(e.target.checked);
 });
 
-// Forces "Custom date" on (checkbox + state) if it isn't already - shared by all places whose
-// effect otherwise depends on it being on: turning the CHMI master switch on, picking the
-// custom-date CHMI submode (its single-day gradient is drawn entirely inside the showCustomArc
-// block in draw() and would otherwise silently show nothing if the user had unchecked it earlier),
-// and turning on the 3D panel's "Sun path (custom date)" button (one-directional - see its click
-// handler below; turning Sun path back OFF deliberately leaves Custom date as the user set it).
+// Forces it on if it isn't already - shared by the two CHMI actions whose effect otherwise
+// depends on it being on: turning the CHMI master switch on, and picking the custom-date CHMI
+// submode (its single-day gradient is drawn entirely inside the showCustomArc block in draw() and
+// would otherwise silently show nothing if the user had unchecked it earlier).
 function forceCustomArcOn() {
-  if (showCustomArc) return;
-  showCustomArc = true;
-  document.getElementById('chkCustomArc').checked = true;
-  updateCustomDateSubrow();
-  updateSunAnimCtl();
-  updateSunWave();
+  if (!showCustomArc || !show3DCulmination) setCustomDateActive(true);
 }
 
 // CHMI data (Display section): master switch + Custom date / Whole period sub-mode. Display is
@@ -836,15 +847,9 @@ function updateAxisLegend() {
   if (noonIcon) noonIcon.textContent = show3DCulmination ? '☑' : '☐';
   if (noonChk)  noonChk.checked = show3DCulmination;
 }
-// Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
+// Noon button click – mirrors "Custom date" absolutely, see setCustomDateActive() above.
 document.getElementById('btnNoon').addEventListener('click', () => {
-  show3DCulmination = !show3DCulmination;
-  if (show3DCulmination) {
-    sunTimeHours = 12;   // fresh start at noon when turning Sun path on
-    forceCustomArcOn();  // Sun path implies Custom date; turning Sun path back off does not undo it
-  }
-  updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
-  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // show/hide sun marker in the graph
+  setCustomDateActive(!show3DCulmination);
 });
 
 // Day-animation controls: play/stop button + solar-time slider
