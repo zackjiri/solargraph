@@ -310,8 +310,20 @@
       <label class="chk-row" title="Overlay the calculated horizon line"><input type="checkbox" id="chkHorizon" checked> Horizon</label>
       <label class="chk-row" title="Overlay solstice and equinox sun paths"><input type="checkbox" id="chkSunArc" checked> Sun's paths</label>
       <label class="chk-row" title="Overlay the sun path for the custom date below"><input type="checkbox" id="chkCustomArc" checked> Custom date</label>
+      <div class="custom-date-subrow" id="customDateSubrow">
+        <div class="wheel-row" title="Month for the Custom date overlay – drag or tap a side value">
+          <button class="wheel-btn" id="btnMonDec">◀</button>
+          <div class="wheel-track" id="wheelMonth"></div>
+          <button class="wheel-btn" id="btnMonInc">▶</button>
+        </div>
+        <div class="wheel-row" title="Day for the Custom date overlay – drag or tap a side value">
+          <button class="wheel-btn" id="btnDayDec">◀</button>
+          <div class="wheel-track" id="wheelDay"></div>
+          <button class="wheel-btn" id="btnDayInc">▶</button>
+        </div>
+      </div>
       <div class="chk-row-wrap">
-        <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine or air temperature data from the nearest CHMI weather station instead of the plain Custom Path"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
+        <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine or air temperature data from the nearest CHMI weather station instead of the plain Custom date"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
         <button class="info-icon-btn" id="btnChmiInfo" type="button" title="About this data (license)">ⓘ</button>
       </div>
       <div class="chmi-elem-row" id="chmiElemRow">
@@ -320,13 +332,13 @@
         <span class="chmi-elem-label" id="chmiElemLabelRight"></span>
       </div>
       <div class="chmi-mode-row" id="chmiModeGroup">
-        <button class="chmi-mode-btn" id="btnChmiCustom" data-mode="custom" title="Show measured sunshine only for the selected Custom Path day">custom date</button>
+        <button class="chmi-mode-btn" id="btnChmiCustom" data-mode="custom" title="Show measured sunshine only for the selected Custom date day">custom date</button>
         <button class="chmi-mode-btn active" id="btnChmiWhole" data-mode="whole" title="Show measured sunshine as a mosaic across the whole exposure interval">whole period</button>
       </div>
       <button class="sidebar-btn" id="btnHeatmap" style="margin-top:4px;color:rgba(255,255,255,0.45)" title="Show exposure / incidence-angle isolines">Show Isolines</button>
       <div class="slider-row" style="margin-top:4px">
         <div class="slider-header">
-          <span class="slider-label" style="color:var(--dim)">Opacity</span>
+          <span class="slider-label" style="color:var(--dim)">Line Opacity</span>
           <span class="slider-val" style="color:var(--dim)" id="lblOpacity">75%</span>
         </div>
         <input type="range" id="rngOpacity" min="1" max="100" value="75" style="accent-color:var(--dim)" title="Overlay line opacity">
@@ -424,20 +436,6 @@
       <button class="sidebar-btn" id="btnCalibReset" title="Reset yaw, pitch, roll, horizon, radius and location to defaults">Reset calibration</button>
     </div>
 
-    <div class="sidebar-section">
-      <div class="sidebar-title">Custom Path</div>
-      <div class="wheel-row" title="Month for the custom sun-path overlay – drag or tap a side value">
-        <button class="wheel-btn" id="btnMonDec">◀</button>
-        <div class="wheel-track" id="wheelMonth"></div>
-        <button class="wheel-btn" id="btnMonInc">▶</button>
-      </div>
-      <div class="wheel-row" title="Day for the custom sun-path overlay – drag or tap a side value">
-        <button class="wheel-btn" id="btnDayDec">◀</button>
-        <div class="wheel-track" id="wheelDay"></div>
-        <button class="wheel-btn" id="btnDayInc">▶</button>
-      </div>
-    </div>
-
   </div>
 </div>
 
@@ -492,7 +490,7 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?v=analyzerreset"></script>
+<script src="js/controls.js"></script>
 <script src="js/render-sungraph.js"></script>
 <script src="js/render-3d.js"></script>
 <script src="js/render-skydome.js"></script>
