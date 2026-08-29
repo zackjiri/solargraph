@@ -697,6 +697,15 @@ function renderDateWheels() { _monthWheel.render(); _dayWheel.render(); }
 renderDateWheels();
 window.addEventListener('resize', renderDateWheels);
 
+// Custom date's month/day wheels are sub-controls of the "Custom date" checkbox (Display) - same
+// show/hide-with-master pattern as the CHMI sub-rows (updateChmiElemSwitch/syncChmiModeGroupState
+// below): no space taken and not interactive while the overlay itself is off.
+function updateCustomDateSubrow() {
+  const row = document.getElementById('customDateSubrow');
+  if (row) row.style.display = document.getElementById('chkCustomArc').checked ? 'flex' : 'none';
+}
+updateCustomDateSubrow();
+
 // ─── Analyzer sub-view switcher (3D Model / Image / Sun Graph / Sky Dome) ────────────────────
 // Same wheel widget as Custom Path above, styled identically (.wheel-row/.wheel-btn/.wheel-track) -
 // side arrows or drag/tap/mouse-wheel step through the four mutually exclusive canvas views,
@@ -739,18 +748,21 @@ document.getElementById('btnMonInc').addEventListener('click', () => { stepCusto
 document.getElementById('btnDayDec').addEventListener('click', () => { stepCustomDay(-1);  commitCustomDate(); });
 document.getElementById('btnDayInc').addEventListener('click', () => { stepCustomDay(1);   commitCustomDate(); });
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
-  showCustomArc = e.target.checked; updateSunAnimCtl(); draw(); updateSunWave();
+  showCustomArc = e.target.checked; updateSunAnimCtl(); updateCustomDateSubrow(); draw(); updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // green custom-date line in the graph
 });
 
-// Forces "Custom date" on (checkbox + state) if it isn't already - shared by both places whose
-// effect otherwise depends on it being on: turning the CHMI master switch on, and picking the
+// Forces "Custom date" on (checkbox + state) if it isn't already - shared by all places whose
+// effect otherwise depends on it being on: turning the CHMI master switch on, picking the
 // custom-date CHMI submode (its single-day gradient is drawn entirely inside the showCustomArc
-// block in draw() and would otherwise silently show nothing if the user had unchecked it earlier).
+// block in draw() and would otherwise silently show nothing if the user had unchecked it earlier),
+// and turning on the 3D panel's "Sun path (custom date)" button (one-directional - see its click
+// handler below; turning Sun path back OFF deliberately leaves Custom date as the user set it).
 function forceCustomArcOn() {
   if (showCustomArc) return;
   showCustomArc = true;
   document.getElementById('chkCustomArc').checked = true;
+  updateCustomDateSubrow();
   updateSunAnimCtl();
   updateSunWave();
 }
@@ -817,7 +829,10 @@ function updateAxisLegend() {
 // Noon button click – toggles show3DCulmination directly (checkbox is visual-only)
 document.getElementById('btnNoon').addEventListener('click', () => {
   show3DCulmination = !show3DCulmination;
-  if (show3DCulmination) sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+  if (show3DCulmination) {
+    sunTimeHours = 12;   // fresh start at noon when turning Sun path on
+    forceCustomArcOn();  // Sun path implies Custom date; turning Sun path back off does not undo it
+  }
   updateAxisLegend(); updateSunAnimCtl(); draw3D(); updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // show/hide sun marker in the graph
 });
