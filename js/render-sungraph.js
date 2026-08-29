@@ -200,7 +200,7 @@ function updateSunGraphStatus() {
     }
   }
   const op = document.getElementById('sgOnPaper');   // interval the image is on the paper (set by drawSunGraph)
-  if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper);
+  if (op) op.textContent = _sgFmtRange(_sgActiveOnPaper, activeDay);
 
   // Legend "Transit" row: culmination time (solar noon, in the active time convention) and the
   // sun's elevation at that moment - same active day as the rest of this panel.
@@ -282,7 +282,11 @@ function _sgEnsureYearRuns() {
   return _sgYearRuns;
 }
 
-function _sgFmtRange(iv) { return iv ? (_sgHM(iv[0]) + ' – ' + _sgHM(iv[1])) : '—'; }
+// iv is [t0,t1] in true solar time (see _sgDayRuns) - reproject through displayHour() same as
+// the panel's other rows (sgRiseSet, sgLegendTransit) so it also follows the Time mode toggle.
+function _sgFmtRange(iv, day) {
+  return iv ? (_sgHM(displayHour(iv[0], day)) + ' – ' + _sgHM(displayHour(iv[1], day))) : '—';
+}
 
 // Outlined text (canvas-style, for readability over the bands): dark/light halo + fill.
 function _sgOutText(ctx, text, x, y, out) {

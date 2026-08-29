@@ -98,21 +98,30 @@ document.getElementById('chkHorizon').addEventListener('change', (e) => {
   showHorizon = e.target.checked; draw();
 });
 
+// Calibration (yaw/pitch/roll/radius/horizon/scan width) changes the sun ray's "enters the can"
+// interval that the Time slider is clamped to (§sunRayState/updateSunFill in render-3d.js) - so
+// each handler below re-clamps and resyncs that slider via refreshSunTimeRange(), the same call
+// the Custom date handler already makes. Without it, draw3D() still redraws the white boundary
+// lines to the new geometry, but the slider thumb and sunTimeHours stay at their old, now
+// possibly out-of-range value until the next manual drag - visibly desyncing thumb from markers.
 document.getElementById('rngYaw').addEventListener('input', (e) => {
   yawDeg = parseFloat(e.target.value);
   document.getElementById('lblYaw').textContent = (yawDeg >= 0 ? '+' : '') + yawDeg.toFixed(1) + '°';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
 });
 
 document.getElementById('rngPitch').addEventListener('input', (e) => {
   pitchDeg = parseFloat(e.target.value);
   document.getElementById('lblPitch').textContent = (pitchDeg >= 0 ? '+' : '') + pitchDeg.toFixed(1) + '°';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
 });
 
 document.getElementById('rngRoll').addEventListener('input', (e) => {
   rollDeg = parseFloat(e.target.value);
   document.getElementById('lblRoll').textContent = (rollDeg >= 0 ? '+' : '') + rollDeg.toFixed(1) + '°';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
 });
 
@@ -121,6 +130,7 @@ document.getElementById('rngHScale').addEventListener('input', (e) => {
   hScale = radius / R;
   document.getElementById('lblHScale').textContent = radius.toFixed(1) + ' mm';
   refreshCalibLimits();   // radius must not drop below scanWmm/(2π); also syncs horizon
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
 });
 
@@ -129,6 +139,7 @@ document.getElementById('rngHorizon').addEventListener('input', (e) => {
   horizonMm = Math.max(-hLim, Math.min(hLim, parseFloat(e.target.value)));
   document.getElementById('rngHorizon').value = horizonMm;
   document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
+  if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
 });
 
@@ -461,6 +472,7 @@ function applyScanW(val) {
   document.getElementById('inpScanW').value = scanWmm;
   updateScanH();
   refreshCalibLimits();   // recomputes the radius minimum and the horizon range
+  if (show3DCulmination) refreshSunTimeRange();   // re-clamp Time slider to the new entering interval
   if (canvasLW > 0) {
     scale = canvasLW / scanWmm;
     draw(); draw3D();
