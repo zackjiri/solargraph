@@ -136,6 +136,23 @@ function doyToString(doy) {
   return MONTH_NAMES[m] + ' ' + d;
 }
 
+// Invert sunDeclination(d) = target (rad) for day-of-year, starting from a closed-form seed based
+// on the old plain-sine model (fast, always within ~2-3 days) and polishing with Newton's method
+// against the real Kepler-based sunDeclination(). Two iterations are enough - the residual is
+// bounded by the near-zero derivative of declination at the solstices (many days share almost the
+// same declination there), not by iteration count; more iterations don't shrink it further.
+function refineDayFromDeclination(seed, target) {
+  let d = seed;
+  const h = 0.5;
+  for (let i = 0; i < 2; i++) {
+    const f  = sunDeclination(d) - target;
+    const fp = (sunDeclination(d + h) - sunDeclination(d - h)) / (2 * h);
+    if (Math.abs(fp) < 1e-9) break;
+    d = d - f / fp;
+  }
+  return d;
+}
+
 // From (azimut_world °, elevation °, lat rad) → { day1, day2, time }
 // Returns null if outside valid range
 function inverseSolar(az_world_deg, el_deg, phi_rad) {
@@ -154,19 +171,22 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   if (Math.abs(sinDelta) > 1) return null;
   const delta = Math.asin(sinDelta);
 
-  // Day of year from declination (two solutions: spring and autumn)
-  // δ = 23.45° · sin(2π/365 · (d - 81))
-  // sin⁻¹(δ / 23.45°) = 2π/365 · (d - 81)
+  // Day of year from declination (two solutions: spring and autumn side). Southern hemisphere:
+  // sign-flip the target declination (same exact identity as pathDeclination()), not a date shift
+  // - solves directly for the real, unshifted day. Seeded via the old closed-form linear-time
+  // formula, then refined against the real Kepler-based sunDeclination() (see
+  // refineDayFromDeclination() above) since that formula has no closed-form inverse.
   const maxDecl = 23.45 * Math.PI / 180;
-  if (Math.abs(delta) > maxDecl) return null;
-  const sinArg = delta / maxDecl;
-  const angle  = Math.asin(sinArg); // −π/2 .. π/2
+  const target = hemisphere >= 0 ? delta : -delta;
+  if (Math.abs(target) > maxDecl) return null;
+  const sinArg = target / maxDecl;
+  const angle  = Math.asin(sinArg); // −π/2 .. π/2, seed only
 
-  // Two solutions in [1,365]:
+  // Two seed solutions in [1,365]:
   // d1 = 81 + angle·365/(2π)        (spring side)
   // d2 = 81 + (π − angle)·365/(2π)  (autumn side)
-  const d1 = 81 + angle * 365 / (2 * Math.PI);
-  const d2 = 81 + (Math.PI - angle) * 365 / (2 * Math.PI);
+  const d1 = refineDayFromDeclination(81 + angle * 365 / (2 * Math.PI), target);
+  const d2 = refineDayFromDeclination(81 + (Math.PI - angle) * 365 / (2 * Math.PI), target);
 
   // Hour angle H from el/phi/delta:
   // cos(H) = (sin(el) - sin(φ)·sin(δ)) / (cos(φ)·cos(δ))
@@ -191,11 +211,9 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   const mm = Math.floor((solarHour - hh) * 60);
   const timeStr = hh + ':' + String(mm).padStart(2, '0');
 
-  // Southern hemisphere: shift dates by 182 days (local season correction)
-  const shift = hemisphere >= 0 ? 0 : 182;
   return {
-    day1: doyToString(d1 + shift),
-    day2: doyToString(d2 + shift),
+    day1: doyToString(d1),
+    day2: doyToString(d2),
     time: timeStr
   };
 }
