@@ -1161,7 +1161,11 @@ function enterTheater3D() {
   // theaterMode3D to decide whether CHMI is relevant here (it isn't), so it needs to already be
   // current.
   theaterMode3D = true;
-  setDisplaySectionEnabled(false);
+  // Custom date stays reachable from Display even here - it's what the "Sun path (custom date)"
+  // button/panel is actually driven by, so being able to pick the date without leaving 3D Model
+  // is directly useful, unlike the rest of Display (grid/horizon/CHMI/etc.), which genuinely
+  // doesn't apply to this view.
+  setDisplaySectionEnabled(false, ['chkCustomArc', 'btnMonDec', 'btnMonInc', 'btnDayDec', 'btnDayInc']);
   // Hide split-screen divider + swap button — they would overlay the 3D view
   splitHandle.style.display    = 'none';
   btnSplitInvert.style.display = 'none';

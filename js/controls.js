@@ -702,7 +702,17 @@ window.addEventListener('resize', renderDateWheels);
 // below): no space taken and not interactive while the overlay itself is off.
 function updateCustomDateSubrow() {
   const row = document.getElementById('customDateSubrow');
-  if (row) row.style.display = document.getElementById('chkCustomArc').checked ? 'flex' : 'none';
+  if (!row) return;
+  const visible = document.getElementById('chkCustomArc').checked;
+  row.style.display = visible ? 'flex' : 'none';
+  // The wheels' render() centres the active item using el.clientWidth, which is 0 while this row
+  // is display:none - any render that happens before the row is first shown (the page-load call
+  // above, or a later reveal after being hidden) lays the strip out for a 0px-wide track, landing
+  // the active item off to the right instead of centred. It then looks "fixed" the moment the
+  // user drags/steps the wheel, since that always re-renders with the real (by-then-visible)
+  // width - but it should be centred from the moment it appears, not just after the first
+  // interaction. Re-render once more right after actually becoming visible.
+  if (visible) renderDateWheels();
 }
 updateCustomDateSubrow();
 
