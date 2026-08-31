@@ -521,6 +521,12 @@ function draw3D() {
   let pa, noonLabel = null;
   let noonHitsPaper = true;   // false → ray hits cap/bottom or gap, inner dashed line turns red
   let noonIncidenceDeg = null; // angle between incoming ray and cylinder-wall normal at hit point
+  // true → the sun ray actually enters the can at this solar time (pa gets a real hit point
+  // below); false → sun is above the horizon but doesn't face the pinhole (now reachable by
+  // scrubbing the slider past the white "entering interval" lines - see controls.js) or is below
+  // the horizon. Gates the optical axis line and the HIT/MISS status pill - neither applies when
+  // the ray never entered the can, distinct from "entered but missed the paper".
+  let noonEntersCan = true;
 
   if (show3DCulmination) {
     // ── Animated sun ray: position for the current solar time (sunTimeHours) ──
@@ -543,7 +549,7 @@ function draw3D() {
       // MISS: the sun's image doesn't fall on the paper — still draw the optical axis to
       // where the ray actually goes (cap / back wall), as before 24_1. Exact ray-trace,
       // signed-latitude convention so the world azimuth is correct in both hemispheres.
-      noonHitsPaper = false; noonIncidenceDeg = null; pa = null;
+      noonHitsPaper = false; noonIncidenceDeg = null; pa = null; noonEntersCan = false;
       const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
       const phiS = effectiveLat() * hemisphere;
       const dS   = sunDeclination(dayOfYear(customMonth, customDay));
@@ -554,6 +560,7 @@ function draw3D() {
         const inW = [Math.cos(azR)*Math.cos(elR), Math.sin(azR)*Math.cos(elR), -Math.sin(elR)];
         const pn = R(1, 0, 0);   // pinhole outward normal (world)
         if ((-inW[0])*pn[0] + (-inW[1])*pn[1] + (-inW[2])*pn[2] > 1e-9) {   // sun faces the pinhole
+          noonEntersCan = true;
           const dw = rotCanInv(inW[0], inW[1], inW[2]);
           const dx = dw[0], dy = dw[1], dz = dw[2];
           const dxy2 = dx*dx + dy*dy;
@@ -644,8 +651,11 @@ function draw3D() {
     if (tsNoonRow) tsNoonRow.style.display = show3DCulmination ? '' : 'none';
 
     if (tsHit && tsMiss && show3DCulmination) {
-      tsHit.classList.toggle('active',  noonHitsPaper);
-      tsMiss.classList.toggle('active', !noonHitsPaper);
+      // Neither pill lights up when the ray never entered the can (sun above horizon but not
+      // facing the pinhole) - that's a distinct, now-reachable state from "entered but missed
+      // the paper" (MISS).
+      tsHit.classList.toggle('active',  noonEntersCan && noonHitsPaper);
+      tsMiss.classList.toggle('active', noonEntersCan && !noonHitsPaper);
     }
     // Az / Alt of the Sun at the current solar time (custom date) – above incidence
     const tsAzAltRow = document.getElementById('tsAzAltRow');
@@ -898,16 +908,18 @@ function sunDayRange() {
   return { tRise: 12 - H0h, tSet: 12 + H0h };
 }
 // Advance the animation clock: SUN_RATE_HPS hours of solar time per real second, +2 s pause.
-// The loop sweeps only the interval where the ray enters the can (green + red on the slider).
+// The loop sweeps the full sunrise..sunset range, same as the slider (see refreshSunTimeRange) -
+// including the stretches where the ray doesn't enter the can at all (draw3D() simply omits the
+// optical axis there, same as manual scrubbing - see "noonEntersCan").
 // Starts from sunAnimOffset (seconds into the cycle) so Play resumes where Stop left off.
 function advanceSunAnim(ts) {
-  const { tEnter, tExit } = sunEnterRange();
-  const spanH  = Math.max(0.001, tExit - tEnter);   // hours the ray enters the can
+  const { tRise, tSet } = sunDayRange();
+  const spanH  = Math.max(0.001, tSet - tRise);     // hours across the whole day
   const motion = spanH / SUN_RATE_HPS;              // seconds to sweep that interval
   if (sunAnimStart === null) sunAnimStart = ts;
   const elapsed = (ts - sunAnimStart) / 1000;       // seconds since Play
   const local   = (sunAnimOffset + elapsed) % (motion + 2);   // +2 s pause before each new loop
-  sunTimeHours  = local <= motion ? tEnter + local * SUN_RATE_HPS : tExit;  // hold at end during pause
+  sunTimeHours  = local <= motion ? tRise + local * SUN_RATE_HPS : tSet;  // hold at end during pause
   syncSunTimeUI();
 }
 // Reflect sunTimeHours in the slider + label. The slider's VALUE and its min/max (rise/set,
@@ -926,8 +938,9 @@ function syncSunTimeUI() {
   if (riseLbl) riseLbl.textContent = fmtSolarTime(displayHour(tRise, doy));
   if (setLbl)  setLbl.textContent  = fmtSolarTime(displayHour(tSet, doy));
 }
-// Slider spans the full day (sunrise..sunset) visually, but only the entering interval
-// (green + red) is clickable → clamp the value there.
+// Slider spans the full day (sunrise..sunset), scrubbable end to end - the entering interval
+// (green + red, between the white lines) is a visual marker only, not a physical stop (see the
+// 'input' listener in controls.js and "noonEntersCan" below in draw3D()).
 function refreshSunTimeRange() {
   maybeUpdateSunFill();                          // refresh fill + cached enter range first
   const { tRise, tSet } = sunDayRange();
@@ -936,7 +949,7 @@ function refreshSunTimeRange() {
     rng.min = tRise.toFixed(3);
     rng.max = tSet.toFixed(3);
   }
-  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, sunTimeHours));
+  sunTimeHours = Math.max(tRise, Math.min(tSet, sunTimeHours));
   syncSunTimeUI();
 }
 function setSunPlayIcon(playing) {
@@ -955,9 +968,9 @@ function startSunAnim() {
   sunAnimActive = true;
   sunAnimStart  = null;            // captured on first frame
   // Resume from the current solar time (where Stop / the slider left off)
-  const { tEnter, tExit } = sunEnterRange();
-  const motion = Math.max(0.001, tExit - tEnter) / SUN_RATE_HPS;
-  sunAnimOffset = Math.min(motion, Math.max(0, (sunTimeHours - tEnter) / SUN_RATE_HPS));
+  const { tRise, tSet } = sunDayRange();
+  const motion = Math.max(0.001, tSet - tRise) / SUN_RATE_HPS;
+  sunAnimOffset = Math.min(motion, Math.max(0, (sunTimeHours - tRise) / SUN_RATE_HPS));
   setSunPlayIcon(true);
   updateSunWave();                 // ensure the rAF loop is running
 }
@@ -1041,7 +1054,7 @@ function updateSunFill() {
   }
   parts.push(COL[prev] + ' 100%');
   if (t0 === null) { t0 = t1 = 12; }              // ray never enters – degenerate
-  _sunEnterT0 = t0; _sunEnterT1 = t1;             // cache for the loop / clamp / boundary lines
+  _sunEnterT0 = t0; _sunEnterT1 = t1;             // cache for the white boundary lines below
 
   // White vertical boundary lines at the entering interval (the clickable / animated part)
   const colorGrad = 'linear-gradient(to right, ' + parts.join(',') + ')';
@@ -1057,8 +1070,6 @@ function updateSunFill() {
   }
   rng.style.setProperty('--sun-fill', lineGrad + colorGrad);
 }
-// Cached interval (solar hours) where the ray enters the can – set by updateSunFill()
-function sunEnterRange() { return { tEnter: _sunEnterT0, tExit: _sunEnterT1 }; }
 // Rebuild the gradient only when a relevant parameter changed (cheap key check)
 let _sunFillKey = '';
 function maybeUpdateSunFill() {
@@ -1316,6 +1327,13 @@ document.getElementById('chkCladding').addEventListener('change', (e) => {
   }
   theaterCv.addEventListener('touchend', touchEnd);
   theaterCv.addEventListener('touchcancel', touchEnd);
+
+  // Mouse wheel = zoom (deltaY<0 on scroll-up/pinch-out → zoom in)
+  theaterCv.addEventListener('wheel', (e) => {
+    if (!theaterMode3D) return;
+    e.preventDefault();
+    setTheaterZoom(_3D.zoom * (1 - Math.sign(e.deltaY) * 0.1));
+  }, { passive: false });
 }
 
 // Resize theater canvas when container changes size

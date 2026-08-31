@@ -894,8 +894,12 @@ document.getElementById('btnSunPlay').addEventListener('click', () => {
 });
 document.getElementById('rngSunTime').addEventListener('input', (e) => {
   if (sunAnimActive) stopSunAnim();            // manual scrub stops the loop
-  // Only the entering interval (green + red, between the white lines) is clickable
-  sunTimeHours = Math.max(_sunEnterT0, Math.min(_sunEnterT1, parseFloat(e.target.value)));
+  // Full sunrise..sunset range is scrubbable (the native input's own min/max, set by
+  // refreshSunTimeRange) - the white lines at the entering interval (green+red) are a visual
+  // marker only, not a physical stop. Outside that interval the sun is above the horizon but
+  // doesn't face the pinhole, so draw3D() simply omits the optical axis for that instant (see
+  // "noonEntersCan" there) while the Az/Alt/date/time readouts keep updating normally.
+  sunTimeHours = parseFloat(e.target.value);
   syncSunTimeUI();
   draw(); draw3D();                            // 2D sun dot + 3D ray
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // move the sun marker in the graph
