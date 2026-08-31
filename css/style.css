@@ -1448,46 +1448,129 @@
      flex-basis:0 slots the same size always, so the switch never moves. */
   .skydome-proj-row {
     position: absolute; top: 10px; right: 12.5px;
-    width: 150px;
+    width: 230px;
     z-index: 12; display: none;          /* shown by JS only in the Sky Dome view */
-    align-items: center; gap: 8px;
+    padding: 5px 8px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  .skydome-proj-label {
-    flex: 1 1 0%;
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0.05em;
+  body.light .skydome-proj-row {
+    background: rgba(220,228,236,0.82);
+  }
+
+  /* Sky Map's "3D" ON/OFF toggle – small pill switch, same panel treatment as .skydome-proj-row */
+  #skyMap3DToggleRow {
+    position: absolute; top: 48px; right: 12.5px;
+    z-index: 12; display: none;          /* shown by JS only while Sky Map is selected */
+    align-items: center; gap: 6px;
+    padding: 5px 8px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  body.light #skyMap3DToggleRow {
+    background: rgba(220,228,236,0.82);
+  }
+  #skyMap3DToggleLabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
     color: var(--text);
-    white-space: nowrap;
-    transition: color 0.18s;
   }
-  .skydome-proj-label.dim { color: var(--dim); }
-  #skyDomeProjLabelLeft  { text-align: right; }
-  #skyDomeProjLabelRight { text-align: left; }
-  .skydome-proj-switch {
+  #btnSkyMap3DToggle {
     position: relative;
     flex: 0 0 auto;
-    width: 38px;
-    height: 21px;
-    border-radius: 11px;
+    width: 30px; height: 17px;
+    border-radius: 9px;
     border: none;
     padding: 0;
     cursor: pointer;
-    background: #3ca0e0;   /* OFF = Matrix (flat azimuth/elevation chart) */
+    background: var(--control-fill-hover);
     transition: background 0.18s;
   }
-  .skydome-proj-switch::after {
+  #btnSkyMap3DToggle::after {
     content: '';
     position: absolute;
-    top: 2px; left: 19px;   /* OFF (default) - thumb right, next to "MATRIX" */
-    width: 17px; height: 17px;
+    top: 2px; left: 2px;
+    width: 13px; height: 13px;
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  .skydome-proj-switch.on { background: #e8a020; }   /* ON = Dome - thumb left, next to "DOME" */
-  .skydome-proj-switch.on::after { left: 2px; }
+  #btnSkyMap3DToggle.on { background: #e8a020; }
+  #btnSkyMap3DToggle.on::after { left: 15px; }
+
+  /* Sky Map 3D zoom – vertical slider, same mechanic/styling as #theaterZoomCtl */
+  #skyMap3DZoomCtl {
+    position: absolute; top: 86px; right: 12.5px;
+    z-index: 12; display: none;          /* shown by JS only while Sky Map's 3D toggle is on */
+    flex-direction: column; align-items: center; gap: 7.5px;
+    padding: 10px 5px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    overflow: hidden;
+    width: 35px;
+  }
+  body.light #skyMap3DZoomCtl {
+    background: rgba(220,228,236,0.82);
+  }
+  #skyMap3DZoom {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    -webkit-appearance: slider-vertical;
+    appearance: slider-vertical;
+    width: 10px; height: 162.5px;
+    max-width: 25px;
+    accent-color: var(--accent2);
+    cursor: pointer;
+    touch-action: none;
+  }
+  #skyMap3DZoomVal {
+    font-family: var(--mono); font-size: 11.25px;
+    color: var(--accent2); letter-spacing: 0.04em;
+  }
+  /* Planetarium "render image" toggle – same panel treatment as .skydome-proj-row, sitting in the
+     same slot as #skyMap3DToggleRow (the two projections are mutually exclusive, so they never
+     show at once): between the projection wheel above and the zoom slider below. Single button
+     whose own label flips RENDER IMAGE ↔ HIDE IMAGE (styled like #btnSunPlay's play/stop toggle)
+     rather than a separate switch + label. */
+  #skyDomePlanetImgToggleRow {
+    position: absolute; top: 48px; right: 12.5px;
+    width: 230px;
+    z-index: 12; display: none;          /* shown by JS only in Planetarium */
+    padding: 5px 8px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  body.light #skyDomePlanetImgToggleRow {
+    background: rgba(220,228,236,0.82);
+  }
+  #btnSkyDomePlanetImgToggle {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(80,180,220,0.20);
+    color: var(--accent2);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+  }
+  #btnSkyDomePlanetImgToggle:hover { background: rgba(80,180,220,0.32); }
+  #btnSkyDomePlanetImgToggle.on {
+    background: rgba(80,220,120,0.26);
+    color: #50dc78;
+  }
+  #btnSkyDomePlanetImgToggle.on:hover { background: rgba(80,220,120,0.40); }
+
   #theaterStatus, #sgStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 16.25px 20px 18.75px;
