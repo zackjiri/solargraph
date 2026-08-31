@@ -193,12 +193,32 @@
       <canvas id="can3dTheater"></canvas>
       <canvas id="sunGraphCanvas"></canvas>
       <canvas id="skyDomeCanvas"></canvas>
-      <!-- Sky Dome projection switch – top-right, shown only in Sky Dome. Same iOS-switch pattern
-           as the CHMI element switch (Display section): single dynamic label opposite the thumb. -->
-      <div class="skydome-proj-row" id="skyDomeProjRow" title="Switch between the polar dome and the flat azimuth/elevation chart">
-        <span class="skydome-proj-label" id="skyDomeProjLabelLeft">DOME</span>
-        <button class="skydome-proj-switch on" id="btnSkyDomeProj" role="switch" aria-checked="true"></button>
-        <span class="skydome-proj-label" id="skyDomeProjLabelRight"></span>
+      <!-- Sky Dome projection switch (Sky Map / Az-El Chart) – top-right, shown only in Sky Dome.
+           Same wheel-picker widget as the Custom date month/day pickers and the main Analyzer
+           sub-view switcher (see makeWheelPicker() in controls.js). -->
+      <div class="skydome-proj-row wheel-row" id="skyDomeProjRow" title="Sky Dome projection – drag, tap a side value, or use the arrows">
+        <button class="wheel-btn" id="btnSkyDomeProjDec" title="Previous projection">◀</button>
+        <div class="wheel-track" id="skyDomeProjWheelTrack"></div>
+        <button class="wheel-btn" id="btnSkyDomeProjInc" title="Next projection">▶</button>
+      </div>
+      <!-- Sky Map's own "3D" ON/OFF toggle – small pill switch, shown only while Sky Map itself is
+           selected (not Az-El Chart). Swaps the flat polar grid for an orbiting 3D perspective view. -->
+      <div id="skyMap3DToggleRow" title="Show Sky Map as an orbiting 3D globe">
+        <span id="skyMap3DToggleLabel">3D</span>
+        <button id="btnSkyMap3DToggle" role="switch" aria-checked="false"></button>
+      </div>
+      <!-- Sky Map 3D zoom – vertical slider, shown only while Sky Map's "3D" toggle is on (mirrors
+           #theaterZoomCtl in the 3D Model theater). -->
+      <div id="skyMap3DZoomCtl">
+        <input type="range" id="skyMap3DZoom" min="0.5" max="2" step="0.1" value="1" title="Zoom the 3D sky map">
+        <span id="skyMap3DZoomVal">1.0×</span>
+      </div>
+      <!-- Planetarium "render image" toggle (pilot) – warps the calibrated photo onto the fisheye
+           dome via the shared az/el the two projections agree on. Shown only in Planetarium. -->
+      <div id="skyDomePlanetImgToggleRow">
+        <button id="btnSkyDomePlanetImgToggle" title="Warp the calibrated photo onto the sky dome">
+          <span>RENDER IMAGE</span>
+        </button>
       </div>
       <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
       <div id="sgStatusWrap">
@@ -485,7 +505,7 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.8.8
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.8.31
 </div>
 
 <script src="js/core.js"></script>
