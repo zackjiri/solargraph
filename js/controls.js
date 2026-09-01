@@ -72,6 +72,7 @@ container.addEventListener('mouseleave', () => {
 
 document.getElementById('chkSunArc').addEventListener('change', (e) => {
   showSunArc = e.target.checked; draw();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();   // shared across all Sky Dome projections
 });
 
 document.getElementById('btnHeatmap').addEventListener('click', () => {
@@ -89,10 +90,12 @@ document.getElementById('btnHeatmap').addEventListener('click', () => {
 
 document.getElementById('chkGrid').addEventListener('change', (e) => {
   showGrid = e.target.checked; draw();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();   // Planetarium's own grid so far
 });
 document.getElementById('chkLabels').addEventListener('change', (e) => {
   showLabels = e.target.checked; draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // line labels in the graph
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();      // already-enabled everywhere in Sky Dome
 });
 document.getElementById('chkHorizon').addEventListener('change', (e) => {
   showHorizon = e.target.checked; draw();

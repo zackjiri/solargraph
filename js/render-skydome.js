@@ -56,6 +56,20 @@ let skyMap3DOn = false;           // Sky Map's own 3D ON/OFF toggle - only relev
 let skyDomePlanetImageOn = false; // Planetarium's "render image" toggle (pilot) - see _skyDomePlanet3DDrawImage
 let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomePixelToAzEl
 
+// Which Display checkboxes stay live in Sky Dome - varies by projection, enabled one at a time as
+// each is actually wired up to its own draw code (see drawSkyDomeSunPaths' showSunArc,
+// drawSkyDomePlanet3DAxes' showGrid/showLabels above), not just because the underlying check would
+// technically already work everywhere. Labels + Custom date are always live (same two the Sun
+// Graph keeps, since the sun paths layered on here use the same custom-date state); Sun's paths
+// (showSunArc) is checked by the shared drawSkyDomeSunPaths() regardless of projection, so it's
+// live for all three. Re-evaluated on every projection switch (commitSkyDomeProjWheel()), not just
+// once on entry, since the enabled set differs per projection.
+function _skyDomeDisplayKeepIds() {
+  const keep = ['chkLabels', 'chkSunArc', ...CUSTOM_DATE_KEEP_IDS];
+  if (skyDomeProjection === 'planet3d') keep.push('chkGrid');
+  return keep;
+}
+
 function enterSkyDome() {
   // All three canvas takeovers (3D Model, Sun Graph, Sky Dome) are mutually exclusive.
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
@@ -78,9 +92,7 @@ function enterSkyDome() {
   // skyDomeActive to decide whether CHMI is relevant here (it isn't), so it needs to already be
   // current.
   skyDomeActive = true;
-  // Display off except Labels + Custom date - same two the Sun Graph keeps live, since the sun
-  // paths layered on here later will use the same custom-date state.
-  setDisplaySectionEnabled(false, ['chkLabels', ...CUSTOM_DATE_KEEP_IDS]);
+  setDisplaySectionEnabled(false, _skyDomeDisplayKeepIds());
   if (typeof updateViewButtons === 'function') updateViewButtons();
   if (typeof updateSkyMap3DControlsVisibility === 'function') updateSkyMap3DControlsVisibility();
   resizeSkyDome();
@@ -1165,6 +1177,7 @@ function commitSkyDomeProjWheel() {
   skyDomeProjection = SKY_DOME_PROJ_VALUES[_skyDomeProjIndex];
   _skyDomePlanetHDCancel();   // leaving (or entering) Planetarium invalidates any pending HD wait
   _skyDomeIndicatorHide();
+  setDisplaySectionEnabled(false, _skyDomeDisplayKeepIds());   // which checkboxes are live varies by projection
   updateSkyMap3DControlsVisibility();
   _skyDomeProjWheel.render();
   drawSkyDome();
@@ -1998,49 +2011,56 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
   _skyDomePlanet3DDrawShell(ctx, layout, _sunNow.az, _sunNow.el);
   _skyDomePlanet3DDrawImage(ctx, layout);
 
-  for (let az = 0; az < 360; az += 10) {
-    const isCardinal = (az % 90 === 0);
-    const is30 = (az % 30 === 0);
-    const pts = []; for (let el = 0; el <= 90; el += 3) pts.push([az, el]);
-    let color;
-    if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
-    else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
-    else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
-    _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
-  }
-  ctx.setLineDash([]);
+  // Az/Alt grid checkbox (§Display) - meridians/rings plus their own cardinal/degree labels,
+  // same two-tier structure as the main 2D view's drawGrid(): the whole grid is gated on showGrid,
+  // and within that its labels separately on showLabels (nested, not independent - unchecking
+  // Az/Alt grid removes the labels too, since they'd otherwise float with nothing to anchor to).
+  if (typeof showGrid === 'undefined' || showGrid) {
+    for (let az = 0; az < 360; az += 10) {
+      const isCardinal = (az % 90 === 0);
+      const is30 = (az % 30 === 0);
+      const pts = []; for (let el = 0; el <= 90; el += 3) pts.push([az, el]);
+      let color;
+      if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
+      else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
+      else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
+      _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
+    }
+    ctx.setLineDash([]);
 
-  for (let el = 0; el <= 90; el += 10) {
-    const pts = []; for (let az = 0; az <= 360; az += 5) pts.push([az, el]);
-    let color;
-    if (el === 0) { color = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
-    else { color = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
-    _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
-  }
-  ctx.setLineDash([]);
+    for (let el = 0; el <= 90; el += 10) {
+      const pts = []; for (let az = 0; az <= 360; az += 5) pts.push([az, el]);
+      let color;
+      if (el === 0) { color = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
+      else { color = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
+      _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
+    }
+    ctx.setLineDash([]);
 
-  const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let az = 0; az < 360; az += 10) {
-    const p = _skyDomePlanet3DProject(layout, az, 0);
-    if (p.visible === false) continue;
-    const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
-    const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
-    const isCardinal = az in CARD;
-    ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
-    ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
-    ctx.fillText(isCardinal ? CARD[az] : String(az), lx, ly);
-  }
+    if (typeof showLabels === 'undefined' || showLabels) {
+      const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let az = 0; az < 360; az += 10) {
+        const p = _skyDomePlanet3DProject(layout, az, 0);
+        if (p.visible === false) continue;
+        const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
+        const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
+        const isCardinal = az in CARD;
+        ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
+        ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
+        ctx.fillText(isCardinal ? CARD[az] : String(az), lx, ly);
+      }
 
-  ctx.font = "10px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = pal.text;
-  for (let el = 10; el <= 90; el += 10) {
-    const p = _skyDomePlanet3DProject(layout, 0, el);
-    if (p.visible === false) continue;
-    ctx.fillText(el + '°', p.x + 5, p.y);
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = pal.text;
+      for (let el = 10; el <= 90; el += 10) {
+        const p = _skyDomePlanet3DProject(layout, 0, el);
+        if (p.visible === false) continue;
+        ctx.fillText(el + '°', p.x + 5, p.y);
+      }
+    }
   }
 
   return layout;
 }
-// ═══════════════════════════════ end of parked planetarium code ═══════════════════════════════
