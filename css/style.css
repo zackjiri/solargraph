@@ -1578,6 +1578,45 @@
   }
   #btnSkyDomePlanetImgToggle.on:hover { background: rgba(8,22,15,0.95); }
 
+  /* Rendering-in-progress indicator (pulsing dot + label) - a fixed yellow, not the theme-varying
+     --accent (which turns dark orange-brown in light mode for contrast on the light SIDEBAR
+     panel), because this sits directly over the live canvas, whose own background can be
+     anything from a dark starfield to a bright daytime sky in EITHER theme. A thin black outline
+     on both the dot and the text (box-shadow ring / stroked text-shadow) keeps it legible against
+     any of that instead of needing a second theme-aware colour. */
+  #skyDomeRenderingIndicator {
+    position: absolute; left: 12.5px; bottom: 10px;
+    z-index: 12; display: none;   /* shown by _skyDomeIndicatorShow/Hide() only while active */
+    align-items: center; gap: 6px;
+    height: 22px; padding: 0 10px; box-sizing: border-box;
+    /* Fixed width, sized to the widest label ("HD IN 3/2 SECONDS", measured ~127px) + margin -
+       otherwise the pill itself visibly shrinks/grows as the countdown text changes length
+       (most jarringly right at "HD IN 1 SECOND" losing its trailing S). Shorter labels just sit
+       left-aligned with empty space after, rather than the pill resizing around them. */
+    width: 148px;
+    background: rgba(46,46,50,0.85);
+    border-radius: 999px;   /* fully rounded ends - radius = height/2, robust to exact height */
+    pointer-events: none;
+  }
+  #skyDomeRenderingIndicator .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ffd83c;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.7);
+    animation: skyDomeRenderPulse 1.1s ease-in-out infinite;
+  }
+  #skyDomeRenderingIndicator.green .dot { background: #5be878; }
+  #skyDomeRenderingIndicator .label {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: #ffd83c;
+    text-shadow: -1px -1px 0 rgba(0,0,0,0.75), 1px -1px 0 rgba(0,0,0,0.75),
+                 -1px  1px 0 rgba(0,0,0,0.75), 1px  1px 0 rgba(0,0,0,0.75);
+  }
+  #skyDomeRenderingIndicator.green .label { color: #5be878; }
+  @keyframes skyDomeRenderPulse {
+    0%, 100% { opacity: 1;    transform: scale(1); }
+    50%      { opacity: 0.35; transform: scale(0.72); }
+  }
+
   #theaterStatus, #sgStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 16.25px 20px 18.75px;
