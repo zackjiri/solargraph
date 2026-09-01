@@ -220,6 +220,14 @@
           <span>RENDER IMAGE</span>
         </button>
       </div>
+      <!-- Rendering-in-progress indicator (Planetarium image warp) - pulsing dot + label, shown
+           only while the coarse-mesh interaction pass is active (see _skyDomePlanet3DInteracting
+           in js/render-skydome.js). Bottom-left over the canvas, out of the way of the controls
+           stacked top-right. -->
+      <div id="skyDomeRenderingIndicator">
+        <span class="dot"></span>
+        <span class="label">RENDERING</span>
+      </div>
       <!-- Sun Graph info panel – top-right, collapsible (reuses theaterStatus style) -->
       <div id="sgStatusWrap">
         <div id="sgStatus">
