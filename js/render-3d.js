@@ -41,6 +41,47 @@ updateCamera();  // initialise vectors from default angles
 
 let theaterMode3D = false;
 
+// ─── Animated "chasing chevrons" axis-tip arrow ──────────────────────────────────────────────
+// Hex color + alpha multiplier → rgba() string. pal.axis* colors are plain hex (not rgba), so the
+// Mexican-wave-style pulsing alpha needs its own tiny converter here (kept local rather than
+// reusing render-skydome.js's regex-based _sd3WithAlpha, to avoid a backwards file-load-order
+// dependency - this file loads before that one).
+function _hexWithAlpha(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+}
+
+// A short chain of small filled triangles trailing back from the tip, each pulsing in sequence
+// (same _wavePhase-driven formula as the hourly-arrow "Mexican wave" in draw3D() below) so the
+// chain reads as continuous motion INTO the can/sphere (the ray is light entering the pinhole, not
+// leaving it - each triangle's apex points back toward tipX,tipY's own anchor origin, i.e. in
+// -dir, not +dir). Pure screen-space (tip position + direction + color only, no dependency on any
+// particular projection) - callable from any view, including js/render-skydome.js's Sky Map 3D
+// optical axis. dimMult (default 1) scales the whole chain's opacity - Sky Map 3D uses this for
+// its own far-side "seen through the shell" dimming (§20.11), same convention as everywhere else
+// in that view.
+function _drawAxisTerminalArrow(c, tipX, tipY, dirX, dirY, color, scale, dimMult) {
+  if (dimMult === undefined) dimMult = 1;
+  const nx = -dirY, ny = dirX;               // perpendicular to the shaft direction
+  const N = 3, spacing = 7 * scale;
+  for (let i = 0; i < N; i++) {
+    const pulse = 0.5 + 0.5 * Math.sin(_wavePhase * (Math.PI / 2000) - i * 0.7);
+    const cx = tipX - dirX * spacing * i, cy = tipY - dirY * spacing * i;
+    const len = (5 + 3.2 * pulse) * scale, wid = len * 0.6;
+    // Apex in -dir (back toward the pinhole/centre) - "entering", not "leaving".
+    const tx = cx - dirX * len,       ty = cy - dirY * len;
+    const bx = cx + dirX * len * 0.4, by = cy + dirY * len * 0.4;
+    c.beginPath();
+    c.moveTo(tx, ty);
+    c.lineTo(bx + nx * wid, by + ny * wid);
+    c.lineTo(bx - nx * wid, by - ny * wid);
+    c.closePath();
+    c.fillStyle = _hexWithAlpha(color, (0.35 + 0.65 * pulse) * dimMult);
+    c.fill();
+  }
+}
+
 function draw3D() {
   const cv = theaterMode3D
     ? document.getElementById('can3dTheater')
@@ -517,6 +558,28 @@ function draw3D() {
   const pinholePt = R(RN, 0, hO);   // pinhole in world space
   const pp = proj(pinholePt);
 
+  // Outward axis, capped at one can-radius (RN) past the pinhole instead of running to the
+  // canvas edge, ending in the animated chevron-chain arrow (_drawAxisTerminalArrow above).
+  // outDirWorld is a WORLD-space unit direction (not a screen-space one) so the cap distance is
+  // an exact physical RN regardless of perspective - the terminal point is computed in world
+  // space and only THEN projected, rather than extrapolating the already-projected pa→pp line.
+  function _drawCappedOutwardAxis(outDirWorld, color) {
+    const termWorld = [
+      pinholePt[0] + outDirWorld[0] * RN,
+      pinholePt[1] + outDirWorld[1] * RN,
+      pinholePt[2] + outDirWorld[2] * RN,
+    ];
+    const term = proj(termWorld);
+    if (!pp || !term) return;
+    const dx = term[0] - pp[0], dy = term[1] - pp[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 0.5) return;
+    const nx = dx / len, ny = dy / len;
+    c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(term[0], term[1]);
+    c.strokeStyle = color; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
+    _drawAxisTerminalArrow(c, term[0], term[1], nx, ny, color, lwMul);
+  }
+
   // ── Noon mode: ray fixed in world space, only hit-point moves with can ──
   let pa, noonLabel = null;
   let noonHitsPaper = true;   // false → ray hits cap/bottom or gap, inner dashed line turns red
@@ -537,6 +600,20 @@ function draw3D() {
     noonLabel = MONTH_NAMES[customMonth - 1] + ' ' + customDay
               + ' · ' + fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay)))
               + ' · Alt ' + Math.round(Math.max(0, sInf.el)) + '°';
+
+    // True-compass sun direction (NOT sInf above, which is in the path/mirrored convention used
+    // only for the label - see §6.4) - needed regardless of hit/miss for the outward axis's
+    // world-space direction below, so computed once up front and reused by both branches. Same
+    // convention the "faces pinhole" test already used here.
+    const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
+    const phiS = effectiveLat() * hemisphere;
+    const dS   = sunDeclination(dayOfYear(customMonth, customDay));
+    const sp   = sunPosition(Hs, dS, phiS);
+    const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
+    // World direction TOWARD the sun (S,W,Up frame) - the outward axis points at the sun; the
+    // incoming ray below travels the opposite way, so inW is just -outW.
+    const outW = [-Math.cos(azR)*Math.cos(elR), -Math.sin(azR)*Math.cos(elR), Math.sin(elR)];
+
     if (hit) {
       pa = hit.pt;
       noonHitsPaper = true;
@@ -550,14 +627,8 @@ function draw3D() {
       // where the ray actually goes (cap / back wall), as before 24_1. Exact ray-trace,
       // signed-latitude convention so the world azimuth is correct in both hemispheres.
       noonHitsPaper = false; noonIncidenceDeg = null; pa = null; noonEntersCan = false;
-      const Hs   = (sunTimeHours - 12) * 15 * Math.PI / 180;
-      const phiS = effectiveLat() * hemisphere;
-      const dS   = sunDeclination(dayOfYear(customMonth, customDay));
-      const sp   = sunPosition(Hs, dS, phiS);
       if (sp.el > 0) {
-        const elR = sp.el * Math.PI / 180, azR = sp.az * Math.PI / 180;
-        // incoming ray dir (into can), world frame +x=S +y=W +z=up
-        const inW = [Math.cos(azR)*Math.cos(elR), Math.sin(azR)*Math.cos(elR), -Math.sin(elR)];
+        const inW = [-outW[0], -outW[1], -outW[2]];   // incoming = negated outward
         const pn = R(1, 0, 0);   // pinhole outward normal (world)
         if ((-inW[0])*pn[0] + (-inW[1])*pn[1] + (-inW[2])*pn[2] > 1e-9) {   // sun faces the pinhole
           noonEntersCan = true;
@@ -581,45 +652,15 @@ function draw3D() {
       }
     }
 
-    // Outward line toward the sun (collinear pa→pp→canvas edge), colored by hit/miss
-    if (pa && pp) {
-      const odx = pp[0]-pa[0], ody = pp[1]-pa[1], olen = Math.sqrt(odx*odx+ody*ody);
-      if (olen > 0.5) {
-        const nx = odx/olen, ny = ody/olen;
-        let t = Infinity;
-        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
-        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
-        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
-        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
-        if (t > 0 && t < Infinity) {
-          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-          c.strokeStyle = noonHitsPaper ? pal.axisHit : pal.axisMiss;
-          c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
-        }
-      }
-    }
+    // Outward axis toward the sun, capped at one can-radius past the pinhole with an animated
+    // arrow (see _drawCappedOutwardAxis above) - only when the ray actually entered the can at
+    // all (same noonEntersCan gate the label/status-pill logic already uses, §8.7).
+    if (noonEntersCan) _drawCappedOutwardAxis(outW, noonHitsPaper ? pal.axisHit : pal.axisMiss);
 
   } else {
     // ── Default mode: el = 0, ray horizontal through can to back wall ──
     pa = proj(R(-RN, 0, hO));
-
-    // Outward extension: screen-space trick (direction from pa through pp, extended)
-    if (pp && pa) {
-      const dx = pp[0]-pa[0], dy = pp[1]-pa[1];
-      const len = Math.sqrt(dx*dx+dy*dy);
-      if (len > 0.5) {
-        const nx = dx/len, ny = dy/len;
-        let t = Infinity;
-        if (nx > 0) t = Math.min(t, (CW-pp[0])/nx);
-        else if (nx < 0) t = Math.min(t, -pp[0]/nx);
-        if (ny > 0) t = Math.min(t, (CH-pp[1])/ny);
-        else if (ny < 0) t = Math.min(t, -pp[1]/ny);
-        if (t > 0 && t < Infinity) {
-          c.beginPath(); c.moveTo(pp[0], pp[1]); c.lineTo(pp[0]+nx*t, pp[1]+ny*t);
-          c.strokeStyle = pal.axisOut; c.lineWidth = 2.0 * lwMul; c.setLineDash([]); c.stroke();
-        }
-      }
-    }
+    _drawCappedOutwardAxis(R(1, 0, 0), pal.axisOut);
   }
 
   // ── Status panel: update values (Analyzer preview + Theater) ──
@@ -864,6 +905,14 @@ function draw3D() {
 // Runs only while the day-path is visible (theater + noon). Re-renders the 3D view
 // at ~30 fps so the per-arrow pulse (driven by _wavePhase) travels along the chain.
 let _waveLast = 0;
+// Sky Map 3D's own optical-axis chevron arrow (js/render-skydome.js) needs this same _wavePhase-
+// driven redraw loop to actually animate - it's otherwise only wired to draw()/draw3D()/
+// drawSunGraph(). True only while that specific view is actually on screen.
+function _skyMap3DAxisWaveActive() {
+  return typeof skyDomeActive !== 'undefined' && skyDomeActive
+      && typeof skyDomeProjection !== 'undefined' && skyDomeProjection === 'dome'
+      && typeof skyMap3DOn !== 'undefined' && skyMap3DOn;
+}
 function sunWaveFrame(ts) {
   _wavePhase = ts;
   if (sunAnimActive) advanceSunAnim(ts);                   // advance the day animation
@@ -873,13 +922,15 @@ function sunWaveFrame(ts) {
     else { draw(); draw3D(); }                             // analyzer: 2D sun dot (+ preview)
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive
         && typeof drawSunGraph === 'function') drawSunGraph();   // animate the sun marker in the graph
+    if (_skyMap3DAxisWaveActive() && typeof drawSkyDome === 'function') drawSkyDome();  // Sky Map 3D's own arrow wave
 
   }
   sunWaveRAF = requestAnimationFrame(sunWaveFrame);
 }
 function updateSunWave() {
-  // Loop drives the arrow wave (theater) and/or the day animation (when playing)
-  const shouldRun = show3DCulmination && (theaterMode3D || sunAnimActive);
+  // Loop drives the arrow wave (theater), the day animation (when playing), and Sky Map 3D's own
+  // optical-axis arrow wave.
+  const shouldRun = show3DCulmination && (theaterMode3D || sunAnimActive || _skyMap3DAxisWaveActive());
   if (shouldRun && sunWaveRAF === null) {
     sunWaveRAF = requestAnimationFrame(sunWaveFrame);
   } else if (!shouldRun && sunWaveRAF !== null) {

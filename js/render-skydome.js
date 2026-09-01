@@ -52,7 +52,8 @@
 
 let skyDomeActive = false;
 let skyDomeProjection = 'dome';   // 'dome' | 'matrix' - set by the top-right wheel picker
-let skyMap3DOn = false;           // Sky Map's own 3D ON/OFF toggle - only relevant when 'dome'
+let skyMap3DOn = true;            // Sky Map's own 3D ON/OFF toggle - only relevant when 'dome' -
+                                   // defaults ON (index.html's pill markup must agree, see #btnSkyMap3DToggle)
 let skyDomePlanetImageOn = false; // Planetarium's "render image" toggle (pilot) - see _skyDomePlanet3DDrawImage
 let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomePixelToAzEl
 
@@ -100,6 +101,9 @@ function enterSkyDome() {
   // Gallery, see setMode() in controls.js) is itself a settled, untouched state - worth arming the
   // HD wait right away, same as picking Planetarium fresh via the projection wheel.
   if (skyDomeProjection === 'planet3d') _skyDomePlanetHDSchedule();
+  // Landing directly on Sky Map 3D (now the default, see index.html) needs its own optical-axis
+  // arrow-wave loop armed too - see _skyMap3DAxisWaveActive()/updateSunWave() in render-3d.js.
+  if (typeof updateSunWave === 'function') updateSunWave();
 }
 
 function exitSkyDome() {
@@ -119,6 +123,7 @@ function exitSkyDome() {
   _skyDomeIndicatorHide();
   _skyDomeHoverAz = null; _skyDomeHoverEl = null;   // don't leave a stale readout for the next view
   if (typeof updateViewButtons === 'function') updateViewButtons();
+  if (typeof updateSunWave === 'function') updateSunWave();   // stop Sky Map 3D's arrow-wave loop too
 
   if (currentMode === 'analyzer') {
     setDisplaySectionEnabled(true);
@@ -859,6 +864,70 @@ function drawSkyMap3DAxes(ctx, W, H, pal) {
   return layout;
 }
 
+// Sky Map 3D's own optical axis - the same "where does the current sun ray go" line the 3D Model
+// theater draws (render-3d.js), reprojected into Sky Map 3D's own orbiting-camera view. Visible
+// only while "Sun path (custom date)" is on, per the brief. No can is rendered here (that part of
+// the brief was withdrawn) - the "pinhole" is simply the scene's own centre (same point the
+// unit sphere, floor and Planetarium's own observer are all defined relative to), and the ray's
+// far end is exactly the sun's own true position on the sphere (_skyMap3DProject already handles
+// that - it's a plain sphere point, no can-local-frame bridging needed since there's no can
+// geometry here to bridge into). Capped at one sphere radius (the sun's own position IS that cap),
+// with the same animated chevron-chain arrow as render-3d.js's own axis (_drawAxisTerminalArrow,
+// render-3d.js - loads before this file).
+function _skyMap3DDrawOpticalAxis(ctx, layout) {
+  if (layout.mode !== 'skymap3d') return;
+  if (typeof show3DCulmination !== 'undefined' && !show3DCulmination) return;
+
+  // HIT/MISS/doesn't-enter-the-can state for the CURRENT solar time only (not a full-day sweep) -
+  // reuses render-3d.js's own sunRayState() and the exact context shape updateSunFill() builds it
+  // with (render-3d.js), rather than re-deriving the same physics a second time in this file.
+  const rsCtx = {
+    delta:  pathDeclination(dayOfYear(customMonth, customDay)),
+    phi:    effectiveLat(),
+    deltaS: sunDeclination(dayOfYear(customMonth, customDay)),
+    phiS:   effectiveLat() * hemisphere,
+    halfHmm: currentHalfHmm(),
+    halfGap: (2 * Math.PI - Math.min(2 * Math.PI - 0.01, scanWmm / radius)) / 2,
+  };
+  const state = sunRayState(sunTimeHours, rsCtx);
+  if (state === 0) return;   // doesn't enter the can at all - same gate as noonEntersCan (§8.7)
+  const color = state === 2 ? '#e8a020' /* HIT, matches pal.axisHit */
+                             : '#e04040' /* MISS, matches pal.axisMiss */;
+
+  const delta = sunDeclination(dayOfYear(customMonth, customDay));
+  const phi   = effectiveLat() * hemisphere;
+  const sunNow = sunPosition((sunTimeHours - 12) * 15 * Math.PI / 180, delta, phi);
+
+  // Direction-only visibility test (near vs. far side of the globe from the current orbit angle) -
+  // reuses _skyMap3DProject's own silhouette test rather than duplicating the formula; only its
+  // .visible flag is used here; the x/y it also computes (the sphere-surface point) isn't - the
+  // actual drawn endpoint below is further out (REACH), via _skyMap3DProjectRaw instead.
+  const sphereVisible = _skyMap3DProject(layout, sunNow.az, sunNow.el).visible !== false;
+  // Same "propustnost" (permeability) convention as everything else in Sky Map 3D (§20.11) - dim
+  // through the translucent shell on the far side instead of hard-hiding. A binary show/hide here
+  // read as the axis randomly vanishing while orbiting, since "far side" flips every time the
+  // camera crosses the sun's own meridian.
+  const dimMult = sphereVisible ? 1 : SKY_MAP3D_DIM_ALPHA_MULT;
+
+  // The ray sticks out past the dome surface by half a sphere radius (REACH = 1 + 0.5), instead of
+  // stopping exactly at the sun's own position on the sphere - drawn with _skyMap3DProjectRaw
+  // (arbitrary world point, not sphere-surface-only like _skyMap3DProject).
+  const REACH = 1.5;
+  const sunDir = _skyDomeUnitVec(sunNow.az, sunNow.el);
+  const start = _skyMap3DProjectRaw(layout, [0, 0, 0]);
+  const end = _skyMap3DProjectRaw(layout, [sunDir[0] * REACH, sunDir[1] * REACH, sunDir[2] * REACH]);
+  if (!start || !end) return;
+
+  const dx = end[0] - start[0], dy = end[1] - start[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return;
+  const nx = dx / len, ny = dy / len;
+
+  ctx.beginPath(); ctx.moveTo(start[0], start[1]); ctx.lineTo(end[0], end[1]);
+  ctx.strokeStyle = _hexWithAlpha(color, dimMult); ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
+  _drawAxisTerminalArrow(ctx, end[0], end[1], nx, ny, color, 1.3, dimMult);
+}
+
 // ── Dome axes (polar) ──────────────────────────────────────────────────────────────────────────
 function drawSkyDomePolarAxes(ctx, W, H, pal) {
   const mTop = 40, mSide = 34, mBottom = 26;
@@ -1045,6 +1114,7 @@ function drawSkyDome() {
   // ── Sun-path curves, drawn on top of the grid (same layering as the main canvas: grid, then
   //    the sun arcs) ─────────────────────────────────────────────────────────────────────────────
   drawSkyDomeSunPaths(ctx, layout);
+  _skyMap3DDrawOpticalAxis(ctx, layout);
 
   // ── Cursor crosshair: full elevation isoline + azimuth isoline through the hovered point ───────
   // Trivial in all projections - unlike the flat scan's isoline crosshair (drawCrosshair in
@@ -1184,6 +1254,7 @@ function commitSkyDomeProjWheel() {
   // Landing on Planetarium with the photo already on is itself "settled" (nothing is dragging) -
   // worth arming the HD wait right away rather than only after the next drag/zoom.
   if (skyDomeProjection === 'planet3d') _skyDomePlanetHDSchedule();
+  if (typeof updateSunWave === 'function') updateSunWave();   // start/stop Sky Map 3D's arrow-wave loop
 }
 const _skyDomeProjWheel = makeWheelPicker(document.getElementById('skyDomeProjWheelTrack'), {
   labelAt: (off) => SKY_DOME_PROJ_LABELS[((_skyDomeProjIndex + off) % SKY_DOME_PROJ_N + SKY_DOME_PROJ_N) % SKY_DOME_PROJ_N],
@@ -1204,6 +1275,7 @@ document.getElementById('btnSkyMap3DToggle').addEventListener('click', () => {
   btn.setAttribute('aria-checked', String(skyMap3DOn));
   updateSkyMap3DControlsVisibility();
   drawSkyDome();
+  if (typeof updateSunWave === 'function') updateSunWave();   // start/stop Sky Map 3D's arrow-wave loop
 });
 
 // ── Planetarium "render image" toggle (pilot) ─────────────────────────────────────────────────
