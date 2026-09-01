@@ -1750,13 +1750,30 @@ function _sdPlanetImgAffine(s0, s1, s2, d0, d1, d2) {
   const f = (d0[1]*(s1[0]*s2[1]-s2[0]*s1[1]) + d1[1]*(s2[0]*s0[1]-s0[0]*s2[1]) + d2[1]*(s0[0]*s1[1]-s1[0]*s0[1])) / denom;
   return [a, b, c, d, e, f];
 }
+// Clip-path edges are anti-aliased, and two adjacent triangles' AA edges don't blend to exactly
+// the same partial pixels - the gap between them reads as a faint seam, tracing out the whole
+// mesh as a visible grid. How visible depends on the engine's own clip/AA implementation (barely
+// noticeable on desktop Chrome, clearly visible on iPad Safari per direct testing) - not
+// something to rely on being invisible everywhere. Fixed the standard way: inflate the
+// DESTINATION clip triangle a hair outward from its own centroid before clipping, so neighbouring
+// triangles overlap by a sub-pixel amount instead of exactly abutting. The affine transform itself
+// is still built from the ORIGINAL (unexpanded) triangle, so this only extrapolates the same
+// texture mapping slightly past its own edge - not a different one - and the overlap is small
+// enough to be imperceptible on its own.
+const SD_PLANET_IMG_SEAM_PAD = 0.75;   // logical px
 function _sdPlanetImgDrawTriangle(ctx, img, s0, s1, s2, d0, d1, d2, alpha) {
   const m = _sdPlanetImgAffine(s0, s1, s2, d0, d1, d2);
   if (!m) return;
+  const cx = (d0[0] + d1[0] + d2[0]) / 3, cy = (d0[1] + d1[1] + d2[1]) / 3;
+  const inflate = (p) => {
+    const dx = p[0] - cx, dy = p[1] - cy, len = Math.hypot(dx, dy) || 1;
+    return [p[0] + dx / len * SD_PLANET_IMG_SEAM_PAD, p[1] + dy / len * SD_PLANET_IMG_SEAM_PAD];
+  };
+  const e0 = inflate(d0), e1 = inflate(d1), e2 = inflate(d2);
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.beginPath();
-  ctx.moveTo(d0[0], d0[1]); ctx.lineTo(d1[0], d1[1]); ctx.lineTo(d2[0], d2[1]);
+  ctx.moveTo(e0[0], e0[1]); ctx.lineTo(e1[0], e1[1]); ctx.lineTo(e2[0], e2[1]);
   ctx.closePath();
   ctx.clip();
   ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
