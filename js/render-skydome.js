@@ -1288,27 +1288,49 @@ document.getElementById('skyMap3DZoom').addEventListener('input', (e) => {
 // the dome itself), rather than panning the gaze to follow the cursor the way the Sky Map 3D
 // orbit-camera and a typical FPS mouse-look do. Only active while Planetarium is selected.
 let _skyDomePlanet3DDragging = false;
+// rAF-throttled: touchmove on iPad can fire well above 60 Hz (up to ~120 Hz on ProMotion
+// displays), and each move used to trigger a full synchronous updateSkyDomePlanetCamera() +
+// drawSkyDome() - with the image warp on (js/render-skydome.js's _skyDomePlanet3DDrawImage,
+// ~8ms/frame on desktop, more on an iPad's weaker Canvas 2D engine, see §20.17), events arrived
+// faster than they could be drawn and backed up the queue, reading as the view lagging behind the
+// finger. Coalescing every move into at most one draw per animation frame (applying only the
+// latest pointer position when it fires) decouples redraw rate from touch-event rate - the fix
+// that actually matters here, not the mesh/cache work itself (already reasonably fast in
+// isolation, see §20.17's cache).
 (function () {
   const cv = document.getElementById('skyDomeCanvas');
   let lastX = 0, lastY = 0;
+  let pendingX = 0, pendingY = 0, hasPending = false, rafScheduled = false;
 
-  function dragStart(x, y) {
-    _skyDomePlanet3DDragging = true;
-    lastX = x; lastY = y;
-    cv.style.cursor = 'grabbing';
-  }
-  function dragMove(x, y) {
-    if (!_skyDomePlanet3DDragging) return;
-    const dx = x - lastX, dy = y - lastY;
-    lastX = x; lastY = y;
+  function applyPendingMove() {
+    rafScheduled = false;
+    if (!hasPending) return;
+    hasPending = false;
+    const dx = pendingX - lastX, dy = pendingY - lastY;
+    lastX = pendingX; lastY = pendingY;
     _skyDomePlanet3D.camAz -= dx * 0.005;
     _skyDomePlanet3D.camEl  = Math.max(0, Math.min(Math.PI / 2 - 0.02, _skyDomePlanet3D.camEl + dy * 0.004));
     updateSkyDomePlanetCamera();
     drawSkyDome();
   }
+
+  function dragStart(x, y) {
+    _skyDomePlanet3DDragging = true;
+    _skyDomePlanet3DInteracting = true;
+    lastX = x; lastY = y;
+    cv.style.cursor = 'grabbing';
+  }
+  function dragMove(x, y) {
+    if (!_skyDomePlanet3DDragging) return;
+    pendingX = x; pendingY = y; hasPending = true;
+    if (rafScheduled) return;
+    rafScheduled = true;
+    requestAnimationFrame(applyPendingMove);
+  }
   function dragEnd() {
     if (!_skyDomePlanet3DDragging) return;
     _skyDomePlanet3DDragging = false;
+    _skyDomePlanet3DInteracting = pinching;   // stays true if a pinch is still in progress
     cv.style.cursor = 'default';
   }
 
@@ -1321,9 +1343,16 @@ let _skyDomePlanet3DDragging = false;
   window.addEventListener('mouseup', dragEnd);
 
   let pinching = false, pinchStartDist = 0, pinchStartZoom = 1;
+  let pendingPinchRatio = null, pinchRafScheduled = false;
   function touchDist(t) {
     const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
     return Math.hypot(dx, dy);
+  }
+  function applyPendingPinch() {
+    pinchRafScheduled = false;
+    if (pendingPinchRatio === null) return;
+    setSkyDomePlanet3DZoom(pinchStartZoom * pendingPinchRatio);
+    pendingPinchRatio = null;
   }
   cv.addEventListener('touchstart', (e) => {
     if (!skyDomeActive || skyDomeProjection !== 'planet3d') return;
@@ -1331,6 +1360,7 @@ let _skyDomePlanet3DDragging = false;
       dragStart(e.touches[0].clientX, e.touches[0].clientY);
     } else if (e.touches.length === 2) {
       pinching = true;
+      _skyDomePlanet3DInteracting = true;
       pinchStartDist = touchDist(e.touches);
       pinchStartZoom = _skyDomePlanet3D.zoom;
       _skyDomePlanet3DDragging = false;
@@ -1338,13 +1368,18 @@ let _skyDomePlanet3DDragging = false;
   }, { passive: true });
   cv.addEventListener('touchmove', (e) => {
     if (pinching && e.touches.length === 2) {
-      setSkyDomePlanet3DZoom(pinchStartZoom * (touchDist(e.touches) / pinchStartDist));
+      pendingPinchRatio = touchDist(e.touches) / pinchStartDist;
+      if (!pinchRafScheduled) { pinchRafScheduled = true; requestAnimationFrame(applyPendingPinch); }
     } else if (e.touches.length === 1) {
       dragMove(e.touches[0].clientX, e.touches[0].clientY);
     }
   }, { passive: true });
   cv.addEventListener('touchend', (e) => {
-    if (e.touches.length === 0) { dragEnd(); pinching = false; }
+    if (e.touches.length === 0) {
+      dragEnd();
+      pinching = false;
+      _skyDomePlanet3DInteracting = false;
+    }
   });
 })();
 
@@ -1679,6 +1714,16 @@ function _sdPlanetImgDrawTriangle(ctx, img, s0, s1, s2, d0, d1, d2, alpha) {
 
 const SD_PLANET_IMG_AZ_STEP = 4, SD_PLANET_IMG_EL_STEP = 4;   // same mesh density as the shell
 const SD_PLANET_IMG_FEATHER_FRAC = 0.06;   // feather width, as a fraction of the canvas' short side
+// While actively dragging/pinching, use a coarser mesh - a quarter the patches, so a quarter the
+// ctx.clip()+ctx.transform()+ctx.drawImage() calls per frame (§20.17's cache can't help here: the
+// camera itself changes every frame during interaction, so every frame is a genuine cache miss).
+// Safari's Canvas 2D is markedly slower than Chromium's at exactly this clip-heavy triangle-
+// texturing pattern, so this matters far more on iPad than it measures on desktop. Set by
+// _skyDomePlanet3DInteracting (the Planetarium drag/pinch handlers below); the interacting flag
+// is itself part of the cache key (_skyDomePlanetImgCacheKey), so the moment interaction ends the
+// next draw is treated as a fresh state and repaints once at full quality.
+const SD_PLANET_IMG_INTERACT_STEP_MUL = 2;
+let _skyDomePlanet3DInteracting = false;
 
 // Paints the photo warp onto ctx, patch by patch (two triangles each), same mesh shape as
 // _skyDomePlanet3DDrawShell above - except it covers the FULL sphere (el -90..90), not just the
@@ -1690,7 +1735,8 @@ const SD_PLANET_IMG_FEATHER_FRAC = 0.06;   // feather width, as a fraction of th
 // _skyDomePlanet3DDrawImage below so it can target either the live canvas or the offscreen cache.
 function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
   const featherPx = SD_PLANET_IMG_FEATHER_FRAC * Math.min(canvasLW, canvasLH);
-  const AZ_STEP = SD_PLANET_IMG_AZ_STEP, EL_STEP = SD_PLANET_IMG_EL_STEP;
+  const stepMul = _skyDomePlanet3DInteracting ? SD_PLANET_IMG_INTERACT_STEP_MUL : 1;
+  const AZ_STEP = SD_PLANET_IMG_AZ_STEP * stepMul, EL_STEP = SD_PLANET_IMG_EL_STEP * stepMul;
 
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = -90; el < 90; el += EL_STEP) {
@@ -1740,7 +1786,7 @@ function _skyDomePlanetImgCacheKey(layout) {
     p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
     yawDeg, pitchDeg, rollDeg, radius, horizonMm, scanWmm, hemisphere,
     layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
-    canvasLW, canvasLH,
+    canvasLW, canvasLH, _skyDomePlanet3DInteracting,
   ].join('|');
 }
 
