@@ -1393,6 +1393,12 @@ document.getElementById('viewGroup').querySelectorAll('input[type=radio]').forEa
 
 // ─── Mode toggle: Analyzer / Gallery ────────────────────────────────────────
 let currentMode = 'gallery'; // 'analyzer' | 'gallery'
+// Which of the four Analyzer sub-views (mode wheel: 3D Model / Image / Sun Graph / Sky Dome) was
+// active right before leaving for Gallery - restored on the way back in setMode('analyzer') below,
+// instead of always resetting to Image. skyDomeProjection itself already survives exitSkyDome()
+// untouched, so re-entering 'skydome' naturally lands back on whichever of Sky Map/Az-El Chart/
+// Planetarium was showing too, no separate tracking needed for that.
+let _lastAnalyzerSubView = 'image';
 
 function setMode(mode) {
   stopL2Loop();                 // cancel auto-loop when switching modes
@@ -1434,7 +1440,18 @@ function setMode(mode) {
     draw3D();
     if (typeof updateViewButtons === 'function') updateViewButtons();  // reveal the sub-view wheel, defaulting to Image
     if (typeof updateSunAnimCtl === 'function') updateSunAnimCtl();     // reflect default Sun-path state
+    // Restore whichever sub-view (3D Model / Sun Graph / Sky Dome) was active before Gallery took
+    // over, instead of always landing back on Image - each enter function calls updateViewButtons()
+    // itself, so the wheel ends up pointed at the right one without a second call here.
+    if (_lastAnalyzerSubView === '3d' && typeof enterTheater3D === 'function') enterTheater3D();
+    else if (_lastAnalyzerSubView === 'sungraph' && typeof enterSunGraph === 'function') enterSunGraph();
+    else if (_lastAnalyzerSubView === 'skydome' && typeof enterSkyDome === 'function') enterSkyDome();
   } else {
+    // Remember which sub-view was showing before it all gets torn down below.
+    if (typeof theaterMode3D !== 'undefined' && theaterMode3D) _lastAnalyzerSubView = '3d';
+    else if (typeof sunGraphActive !== 'undefined' && sunGraphActive) _lastAnalyzerSubView = 'sungraph';
+    else if (typeof skyDomeActive !== 'undefined' && skyDomeActive) _lastAnalyzerSubView = 'skydome';
+    else _lastAnalyzerSubView = 'image';
     if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();  // leaving Analyzer closes 3D model
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();   // ...and Sun Graph
     if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();   // ...and Sky Dome
@@ -1477,7 +1494,10 @@ document.getElementById('btnModeAnalyzer').addEventListener('click', () => {
 });
 document.getElementById('btnModeGallery').addEventListener('click', () => {
   if (currentMode === 'gallery') return;
-  if (theaterMode3D) exitTheater3D();
+  // setMode('gallery') already exits theaterMode3D itself (first line of its else-branch) - doing
+  // it again here, first, used to tear it down before setMode() could capture it into
+  // _lastAnalyzerSubView, so returning from Gallery always "forgot" a 3D Model sub-view specifically
+  // (Sun Graph/Sky Dome were unaffected, having no such redundant pre-exit).
   setMode('gallery');
 });
 

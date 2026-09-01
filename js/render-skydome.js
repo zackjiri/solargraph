@@ -84,6 +84,10 @@ function enterSkyDome() {
   if (typeof updateViewButtons === 'function') updateViewButtons();
   if (typeof updateSkyMap3DControlsVisibility === 'function') updateSkyMap3DControlsVisibility();
   resizeSkyDome();
+  // Returning to Sky Dome with the projection already left on Planetarium (e.g. coming back from
+  // Gallery, see setMode() in controls.js) is itself a settled, untouched state - worth arming the
+  // HD wait right away, same as picking Planetarium fresh via the projection wheel.
+  if (skyDomeProjection === 'planet3d') _skyDomePlanetHDSchedule();
 }
 
 function exitSkyDome() {
@@ -94,9 +98,13 @@ function exitSkyDome() {
   document.getElementById('skyDomePlanetImgToggleRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   skyDomeActive = false;
-  // Safety: exiting mid-drag (e.g. Escape) shouldn't leave either drag flag stuck.
+  // Safety: exiting mid-drag (e.g. Escape) shouldn't leave either drag flag - or the RENDERING
+  // indicator (§20.19) - stuck on for the next view.
   _skyMap3DDragging = false;
   _skyDomePlanet3DDragging = false;
+  _setSkyDomePlanet3DInteracting(false);
+  _skyDomePlanetHDCancel();
+  _skyDomeIndicatorHide();
   _skyDomeHoverAz = null; _skyDomeHoverEl = null;   // don't leave a stale readout for the next view
   if (typeof updateViewButtons === 'function') updateViewButtons();
 
@@ -1155,9 +1163,14 @@ function stepSkyDomeProjWheel(dir) {
 }
 function commitSkyDomeProjWheel() {
   skyDomeProjection = SKY_DOME_PROJ_VALUES[_skyDomeProjIndex];
+  _skyDomePlanetHDCancel();   // leaving (or entering) Planetarium invalidates any pending HD wait
+  _skyDomeIndicatorHide();
   updateSkyMap3DControlsVisibility();
   _skyDomeProjWheel.render();
   drawSkyDome();
+  // Landing on Planetarium with the photo already on is itself "settled" (nothing is dragging) -
+  // worth arming the HD wait right away rather than only after the next drag/zoom.
+  if (skyDomeProjection === 'planet3d') _skyDomePlanetHDSchedule();
 }
 const _skyDomeProjWheel = makeWheelPicker(document.getElementById('skyDomeProjWheelTrack'), {
   labelAt: (off) => SKY_DOME_PROJ_LABELS[((_skyDomeProjIndex + off) % SKY_DOME_PROJ_N + SKY_DOME_PROJ_N) % SKY_DOME_PROJ_N],
@@ -1186,7 +1199,10 @@ document.getElementById('btnSkyDomePlanetImgToggle').addEventListener('click', (
   const btn = document.getElementById('btnSkyDomePlanetImgToggle');
   btn.classList.toggle('on', skyDomePlanetImageOn);
   btn.querySelector('span').textContent = skyDomePlanetImageOn ? 'HIDE IMAGE' : 'RENDER IMAGE';
+  _skyDomePlanetHDCancel();   // turning the photo off (or back on) invalidates any pending HD wait
+  _skyDomeIndicatorHide();
   drawSkyDome();
+  if (skyDomePlanetImageOn) _skyDomePlanetHDSchedule();   // freshly on and untouched - worth arming
 });
 
 // ── Sky Map 3D zoom slider ─────────────────────────────────────────────────────────────────────
@@ -1200,6 +1216,10 @@ function setSkyMap3DZoom(z) {
   drawSkyDome();
 }
 function setSkyDomePlanet3DZoom(z) {
+  // Any zoom change is "touching the scene" - cancel a pending HD idle-wait/countdown regardless
+  // of whether this came from an active pinch (already mid-interaction) or a standalone wheel/
+  // slider nudge (see _skyDomePlanetHDSchedule below).
+  _skyDomePlanetHDCancel();
   _skyDomePlanet3D.zoom = Math.max(0.5, Math.min(2, z));
   updateSkyDomePlanetCamera();
   const rng = document.getElementById('skyMap3DZoom');
@@ -1207,6 +1227,10 @@ function setSkyDomePlanet3DZoom(z) {
   const val = document.getElementById('skyMap3DZoomVal');
   if (val) val.textContent = _skyDomePlanet3D.zoom.toFixed(1) + '×';
   drawSkyDome();
+  // Only arm the idle-wait for a standalone zoom (wheel/slider) - during an active pinch
+  // (_skyDomePlanet3DInteracting still true) this fires every frame and the real "settled" arm
+  // happens once in the touchend handler instead.
+  if (!_skyDomePlanet3DInteracting) _skyDomePlanetHDSchedule();
 }
 // One physical slider, dispatched to whichever 3D view is actually showing (see
 // updateSkyMap3DControlsVisibility - the two are never visible at the same time).
@@ -1302,21 +1326,27 @@ let _skyDomePlanet3DDragging = false;
   let lastX = 0, lastY = 0;
   let pendingX = 0, pendingY = 0, hasPending = false, rafScheduled = false;
 
-  function applyPendingMove() {
-    rafScheduled = false;
-    if (!hasPending) return;
+  // Applies whatever move is pending (if any) to the camera state; returns whether there was one.
+  // Shared by the rAF callback below and dragEnd()'s own synchronous flush, so the two can't drift.
+  function consumePendingMove() {
+    if (!hasPending) return false;
     hasPending = false;
     const dx = pendingX - lastX, dy = pendingY - lastY;
     lastX = pendingX; lastY = pendingY;
     _skyDomePlanet3D.camAz -= dx * 0.005;
     _skyDomePlanet3D.camEl  = Math.max(0, Math.min(Math.PI / 2 - 0.02, _skyDomePlanet3D.camEl + dy * 0.004));
+    return true;
+  }
+  function applyPendingMove() {
+    rafScheduled = false;
+    if (!consumePendingMove()) return;
     updateSkyDomePlanetCamera();
     drawSkyDome();
   }
 
   function dragStart(x, y) {
     _skyDomePlanet3DDragging = true;
-    _skyDomePlanet3DInteracting = true;
+    _setSkyDomePlanet3DInteracting(true);
     lastX = x; lastY = y;
     cv.style.cursor = 'grabbing';
   }
@@ -1330,8 +1360,20 @@ let _skyDomePlanet3DDragging = false;
   function dragEnd() {
     if (!_skyDomePlanet3DDragging) return;
     _skyDomePlanet3DDragging = false;
-    _skyDomePlanet3DInteracting = pinching;   // stays true if a pinch is still in progress
+    // Flush any move not yet applied by the rAF above, right here, synchronously - otherwise it
+    // would fire on the NEXT frame, after _setSkyDomePlanet3DInteracting() below already hides the
+    // RENDERING indicator, producing a redraw the indicator never represented. And if release
+    // happens to land when nothing was pending, this also guarantees the settle-to-full-quality
+    // redraw actually happens at all - nothing else was forcing it.
+    consumePendingMove();
+    _setSkyDomePlanet3DInteracting(pinching);   // stays true if a pinch is still in progress
+    updateSkyDomePlanetCamera();
+    drawSkyDome();
     cv.style.cursor = 'default';
+    // Arm the HD idle-wait only once the settle redraw above has actually finished (it's
+    // synchronous, so "finished" just means "after this line") - not while a pinch is still
+    // holding the view in the coarse-mesh state.
+    if (!pinching) _skyDomePlanetHDSchedule();
   }
 
   cv.addEventListener('mousedown', (e) => {
@@ -1360,7 +1402,7 @@ let _skyDomePlanet3DDragging = false;
       dragStart(e.touches[0].clientX, e.touches[0].clientY);
     } else if (e.touches.length === 2) {
       pinching = true;
-      _skyDomePlanet3DInteracting = true;
+      _setSkyDomePlanet3DInteracting(true);
       pinchStartDist = touchDist(e.touches);
       pinchStartZoom = _skyDomePlanet3D.zoom;
       _skyDomePlanet3DDragging = false;
@@ -1378,7 +1420,14 @@ let _skyDomePlanet3DDragging = false;
     if (e.touches.length === 0) {
       dragEnd();
       pinching = false;
-      _skyDomePlanet3DInteracting = false;
+      _setSkyDomePlanet3DInteracting(false);
+      // Same flush as dragEnd() above, for a pending pinch-zoom update instead of a pending pan -
+      // otherwise its own rAF would fire one frame later, after the indicator already hid.
+      if (pendingPinchRatio !== null) {
+        setSkyDomePlanet3DZoom(pinchStartZoom * pendingPinchRatio);
+        pendingPinchRatio = null;
+      }
+      _skyDomePlanetHDSchedule();   // arm the idle-wait now that everything above has settled
     }
   });
 })();
@@ -1387,14 +1436,17 @@ let _skyDomePlanet3DDragging = false;
 // One listener on the shared canvas, dispatched the same way as the #skyMap3DZoom slider above.
 (function () {
   const cv = document.getElementById('skyDomeCanvas');
+  // One tick = one slider step (±0.1, additive - not a relative %), same as the 3D Model theater's
+  // own wheel handler, so wheel and the shared #skyMap3DZoom slider move in lockstep. Rounded to
+  // avoid float drift across many ticks; Math.sign(0)=0 makes a stray deltaY=0 event a no-op.
   cv.addEventListener('wheel', (e) => {
     if (!skyDomeActive) return;
     const in3D = skyDomeProjection === 'planet3d' || (skyDomeProjection === 'dome' && skyMap3DOn);
     if (!in3D) return;
     e.preventDefault();
-    const factor = 1 - Math.sign(e.deltaY) * 0.1;
-    if (skyDomeProjection === 'planet3d') setSkyDomePlanet3DZoom(_skyDomePlanet3D.zoom * factor);
-    else setSkyMap3DZoom(_skyMap3D.zoom * factor);
+    const step = -Math.sign(e.deltaY) * 0.1;
+    if (skyDomeProjection === 'planet3d') setSkyDomePlanet3DZoom(Math.round((_skyDomePlanet3D.zoom + step) * 10) / 10);
+    else setSkyMap3DZoom(Math.round((_skyMap3D.zoom + step) * 10) / 10);
   }, { passive: false });
 })();
 
@@ -1725,6 +1777,84 @@ const SD_PLANET_IMG_FEATHER_FRAC = 0.06;   // feather width, as a fraction of th
 const SD_PLANET_IMG_INTERACT_STEP_MUL = 2;
 let _skyDomePlanet3DInteracting = false;
 
+// ── Rendering indicator (pill, bottom-left) - one shared setter for all three states ───────────
+function _skyDomeIndicatorShow(text, green) {
+  const el = document.getElementById('skyDomeRenderingIndicator');
+  if (!el) return;
+  el.querySelector('.label').textContent = text;
+  el.classList.toggle('green', !!green);
+  el.style.display = 'flex';
+}
+function _skyDomeIndicatorHide() {
+  const el = document.getElementById('skyDomeRenderingIndicator');
+  if (el) el.style.display = 'none';
+}
+
+// Single setter (instead of assigning the flag directly at each drag/pinch call site) so the
+// indicator always tracks it exactly - shown the instant the coarse mesh kicks in, hidden the
+// instant the settled full-quality frame is due. Starting a fresh interaction also cancels any
+// pending HD countdown (§20.20) - a new touch always takes priority over "waiting to sharpen".
+function _setSkyDomePlanet3DInteracting(v) {
+  if (v) _skyDomePlanetHDCancel();
+  if (_skyDomePlanet3DInteracting === v) return;
+  _skyDomePlanet3DInteracting = v;
+  if (v) _skyDomeIndicatorShow('RENDERING', false);
+  else _skyDomeIndicatorHide();
+}
+
+// ── "HD" pass: once the view has sat untouched for a while, spend a bit more time on one finer-
+// mesh repaint than we'd ever want to redo every frame - the best warp quality we can manage,
+// not a moving target for as long as nothing keeps disturbing it. Two-stage delay per the brief:
+// SD_PLANET_IMG_HD_IDLE_MS of silence first (no UI at all), THEN a visible 3-2-1 countdown, and
+// only THEN the actual pass. The idle clock starts counting only once the previous settle render
+// has actually finished (see dragEnd()/the touchend handler below) - not from the raw release
+// event - so a slow settle render (e.g. on iPad) can't eat into the "untouched" window.
+const SD_PLANET_IMG_HD_STEP_MUL = 0.25;   // 4°→1° mesh: ~16x the patches, ~110ms measured (vs.
+                                           // ~9ms at 4°, ~25ms at 2°) - a real, felt pause, which
+                                           // is exactly why _skyDomePlanetHDRender() below defers
+                                           // the actual paint a couple of frames: without that, the
+                                           // "RENDERING" switch to green never reaches the screen
+                                           // before this blocks the main thread for the whole pass.
+const SD_PLANET_IMG_HD_IDLE_MS = 1000;
+const SD_PLANET_IMG_HD_TICK_MS = 1000;
+let _skyDomePlanet3DHDPending = false;   // true only for the duration of the HD paint call itself
+let _skyDomePlanetHDTimer = null;        // any pending idle-wait or countdown-tick timeout
+
+function _skyDomePlanetHDCancel() {
+  if (_skyDomePlanetHDTimer !== null) { clearTimeout(_skyDomePlanetHDTimer); _skyDomePlanetHDTimer = null; }
+}
+// Call once the view has just finished settling (after a real drag/pinch/zoom's own redraw) -
+// arms the idle wait. Any further touch (see _setSkyDomePlanet3DInteracting/setSkyDomePlanet3DZoom)
+// cancels it before it can fire, same as leaving Planetarium or turning the photo off.
+function _skyDomePlanetHDSchedule() {
+  _skyDomePlanetHDCancel();
+  if (!skyDomePlanetImageOn || skyDomeProjection !== 'planet3d' || !imgBitmap) return;
+  _skyDomePlanetHDTimer = setTimeout(() => _skyDomePlanetHDCountdownTick(3), SD_PLANET_IMG_HD_IDLE_MS);
+}
+function _skyDomePlanetHDCountdownTick(n) {
+  if (n <= 0) { _skyDomePlanetHDTimer = null; _skyDomePlanetHDRender(); return; }
+  _skyDomeIndicatorShow('HD IN ' + n + ' SECOND' + (n === 1 ? '' : 'S'), false);
+  _skyDomePlanetHDTimer = setTimeout(() => _skyDomePlanetHDCountdownTick(n - 1), SD_PLANET_IMG_HD_TICK_MS);
+}
+function _skyDomePlanetHDRender() {
+  if (!skyDomePlanetImageOn || skyDomeProjection !== 'planet3d') return;
+  _skyDomeIndicatorShow('RENDERING', true);
+  // The actual pass (~110ms at 1°, see SD_PLANET_IMG_HD_STEP_MUL) is one long synchronous block -
+  // calling it right here would never let the browser paint the switch to "RENDERING" first, so
+  // it'd look like nothing happened until the whole thing was already done. Two nested rAF calls
+  // is the standard guarantee that a DOM change has actually reached the screen before continuing:
+  // the outer one fires before this frame paints, the inner one only after that paint has landed.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      _skyDomePlanet3DHDPending = true;
+      _skyDomePlanetImgCache.key = '';   // force _skyDomePlanet3DDrawImage to repaint, not re-blit
+      drawSkyDome();
+      _skyDomePlanet3DHDPending = false;
+      _skyDomeIndicatorHide();
+    });
+  });
+}
+
 // Paints the photo warp onto ctx, patch by patch (two triangles each), same mesh shape as
 // _skyDomePlanet3DDrawShell above - except it covers the FULL sphere (el -90..90), not just the
 // sky (el 0..90): the paper usually catches some of the ground/landscape below the horizon too,
@@ -1735,7 +1865,9 @@ let _skyDomePlanet3DInteracting = false;
 // _skyDomePlanet3DDrawImage below so it can target either the live canvas or the offscreen cache.
 function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
   const featherPx = SD_PLANET_IMG_FEATHER_FRAC * Math.min(canvasLW, canvasLH);
-  const stepMul = _skyDomePlanet3DInteracting ? SD_PLANET_IMG_INTERACT_STEP_MUL : 1;
+  const interacting = _skyDomePlanet3DInteracting;
+  const stepMul = interacting ? SD_PLANET_IMG_INTERACT_STEP_MUL
+    : _skyDomePlanet3DHDPending ? SD_PLANET_IMG_HD_STEP_MUL : 1;
   const AZ_STEP = SD_PLANET_IMG_AZ_STEP * stepMul, EL_STEP = SD_PLANET_IMG_EL_STEP * stepMul;
 
   for (let az = 0; az < 360; az += AZ_STEP) {
@@ -1760,7 +1892,13 @@ function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
       const edgeDist = Math.min(sMid.px, canvasLW - sMid.px, sMid.py, canvasLH - sMid.py);
       const featherAlpha = Math.max(0, Math.min(1, edgeDist / featherPx));
       if (featherAlpha <= 0.02) continue;
-      const alpha = featherAlpha * pMid.alpha;
+      // While actively dragging/pinching (coarse LOD mesh, §20.18), skip the feather/rim-fade
+      // GRADIENT itself - sampled at only a handful of patches across the transition band, a
+      // smooth alpha ramp just reads as a handful of unevenly-transparent blocky squares, which
+      // looks worse than a plain hard edge. Full opacity while interacting (still respects the
+      // boundary itself - patches beyond it are already culled above); the real gradient returns
+      // the instant the mesh snaps back to full resolution on release.
+      const alpha = interacting ? 1 : featherAlpha * pMid.alpha;
 
       _sdPlanetImgDrawTriangle(ctx, tex, [sTL.px,sTL.py], [sTR.px,sTR.py], [sBL.px,sBL.py],
                                           [pTL.x,pTL.y],   [pTR.x,pTR.y],   [pBL.x,pBL.y], alpha);

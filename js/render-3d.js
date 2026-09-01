@@ -1328,11 +1328,14 @@ document.getElementById('chkCladding').addEventListener('change', (e) => {
   theaterCv.addEventListener('touchend', touchEnd);
   theaterCv.addEventListener('touchcancel', touchEnd);
 
-  // Mouse wheel = zoom (deltaY<0 on scroll-up/pinch-out → zoom in)
+  // Mouse wheel = zoom (deltaY<0 on scroll-up/pinch-out → zoom in). One tick = one slider step
+  // (±0.1, additive - not a relative %) so wheel and the #theaterZoom slider move in lockstep;
+  // rounded to avoid float drift (0.1+0.2-style errors) across many ticks. Math.sign(0)=0 makes
+  // this a no-op for a stray deltaY=0 event, matching the old formula's behaviour there.
   theaterCv.addEventListener('wheel', (e) => {
     if (!theaterMode3D) return;
     e.preventDefault();
-    setTheaterZoom(_3D.zoom * (1 - Math.sign(e.deltaY) * 0.1));
+    setTheaterZoom(Math.round((_3D.zoom - Math.sign(e.deltaY) * 0.1) * 10) / 10);
   }, { passive: false });
 }
 
