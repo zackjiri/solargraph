@@ -1680,17 +1680,15 @@ function _sdPlanetImgDrawTriangle(ctx, img, s0, s1, s2, d0, d1, d2, alpha) {
 const SD_PLANET_IMG_AZ_STEP = 4, SD_PLANET_IMG_EL_STEP = 4;   // same mesh density as the shell
 const SD_PLANET_IMG_FEATHER_FRAC = 0.06;   // feather width, as a fraction of the canvas' short side
 
-// Warps the calibrated photo onto the fisheye dome, patch by patch (two triangles each), same
-// mesh shape as _skyDomePlanet3DDrawShell above - except it covers the FULL sphere (el -90..90),
-// not just the sky (el 0..90): the paper usually catches some of the ground/landscape below the
-// horizon too, unlike the ambient shell (a sky-only colour model with nothing to show there).
-// Feathers to transparent near the photo's own edge (the paper's real exposed extent - see
+// Paints the photo warp onto ctx, patch by patch (two triangles each), same mesh shape as
+// _skyDomePlanet3DDrawShell above - except it covers the FULL sphere (el -90..90), not just the
+// sky (el 0..90): the paper usually catches some of the ground/landscape below the horizon too,
+// unlike the ambient shell (a sky-only colour model with nothing to show there). Feathers to
+// transparent near the photo's own edge (the paper's real exposed extent - see
 // _skyDomePlanetImagePixel) instead of a hard cut, and respects the dome's own outer rim fade
-// (centerP.alpha) for consistency with everything else.
-function _skyDomePlanet3DDrawImage(ctx, layout) {
-  if (!skyDomePlanetImageOn) return;
-  const tex = _skyDomePlanetImageTexture();
-  if (!tex) return;
+// (centerP.alpha) for consistency with everything else. Factored out from
+// _skyDomePlanet3DDrawImage below so it can target either the live canvas or the offscreen cache.
+function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
   const featherPx = SD_PLANET_IMG_FEATHER_FRAC * Math.min(canvasLW, canvasLH);
   const AZ_STEP = SD_PLANET_IMG_AZ_STEP, EL_STEP = SD_PLANET_IMG_EL_STEP;
 
@@ -1724,6 +1722,58 @@ function _skyDomePlanet3DDrawImage(ctx, layout) {
                                           [pTR.x,pTR.y],   [pBR.x,pBR.y],   [pBL.x,pBL.y], alpha);
     }
   }
+}
+
+// Memoized: rebuilding the mesh above (a few thousand clipped/transformed drawImage calls,
+// ~8ms measured - the dominant cost of a Planetarium redraw) only actually changes the resulting
+// PIXELS when the camera, calibration, canvas size, or the photo itself change - not on every
+// drawSkyDome() call. Sun-time animation, Display checkboxes, cursor moves etc. all trigger a full
+// redraw without touching any of those, so most calls can just re-blit the previous result.
+// Rendered once into an offscreen canvas, cached until the key below actually differs; a live
+// camera drag/zoom still invalidates every frame (its own inputs genuinely change every frame),
+// same cost as before - this only removes the wasted repaints in between.
+let _skyDomePlanetImgCache = { canvas: null, cctx: null, key: '', W: 0, H: 0, RES: 0, tex: null };
+
+function _skyDomePlanetImgCacheKey(layout) {
+  const p = _skyDomePlanet3D;
+  return [
+    p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
+    yawDeg, pitchDeg, rollDeg, radius, horizonMm, scanWmm, hemisphere,
+    layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
+    canvasLW, canvasLH,
+  ].join('|');
+}
+
+function _skyDomePlanet3DDrawImage(ctx, layout) {
+  if (!skyDomePlanetImageOn) return;
+  const tex = _skyDomePlanetImageTexture();
+  if (!tex) return;
+
+  const cv = document.getElementById('skyDomeCanvas');
+  const RES = cv._res || 1;
+  const W = cv.width / RES, H = cv.height / RES;
+  const cache = _skyDomePlanetImgCache;
+  const sizeChanged = cache.W !== W || cache.H !== H || cache.RES !== RES;
+
+  if (!cache.canvas || sizeChanged) {
+    cache.canvas = document.createElement('canvas');
+    cache.canvas.width = Math.round(W * RES);
+    cache.canvas.height = Math.round(H * RES);
+    cache.cctx = cache.canvas.getContext('2d');
+    cache.W = W; cache.H = H; cache.RES = RES;
+    cache.key = '';   // force a repaint below
+  }
+
+  const key = _skyDomePlanetImgCacheKey(layout);
+  if (cache.key !== key || cache.tex !== tex) {
+    cache.cctx.setTransform(RES, 0, 0, RES, 0, 0);
+    cache.cctx.clearRect(0, 0, W, H);
+    _skyDomePlanet3DPaintImage(cache.cctx, layout, tex);
+    cache.key = key;
+    cache.tex = tex;
+  }
+
+  ctx.drawImage(cache.canvas, 0, 0, W, H);
 }
 
 // Same content as the flat polar grid - azimuth meridians, elevation rings, cardinal/degree
