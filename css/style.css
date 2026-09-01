@@ -1547,14 +1547,21 @@
   body.light #skyDomePlanetImgToggleRow {
     background: rgba(220,228,236,0.82);
   }
+  /* Nearly-opaque dark fill (not the usual light translucent tint) - this button sits directly
+     over the live Sky Dome canvas, which can render anywhere from a dark starfield to a bright
+     daytime sky, so its background can't rely on a fixed backdrop for contrast the way a button
+     over the static sidebar can. Measured a real case: canvas pixel rgb(126,148,206) behind the
+     button gave the old translucent-tint version only ~2.3:1 contrast - well under WCAG AA
+     (4.5:1). Solid dark fill + bright, high-luminance text keeps contrast reliable regardless of
+     what's rendered behind it. */
   #btnSkyDomePlanetImgToggle {
     width: 100%;
     height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(80,180,220,0.20);
-    color: var(--accent2);
+    background: rgba(10,18,26,0.85);
+    color: #8fd4f7;
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
@@ -1564,12 +1571,12 @@
     text-transform: uppercase;
     transition: background 0.15s, color 0.15s;
   }
-  #btnSkyDomePlanetImgToggle:hover { background: rgba(80,180,220,0.32); }
+  #btnSkyDomePlanetImgToggle:hover { background: rgba(10,18,26,0.95); }
   #btnSkyDomePlanetImgToggle.on {
-    background: rgba(80,220,120,0.26);
-    color: #50dc78;
+    background: rgba(8,22,15,0.85);
+    color: #7cf0a2;
   }
-  #btnSkyDomePlanetImgToggle.on:hover { background: rgba(80,220,120,0.40); }
+  #btnSkyDomePlanetImgToggle.on:hover { background: rgba(8,22,15,0.95); }
 
   #theaterStatus, #sgStatus {
     display: flex; flex-direction: column; gap: 0;
