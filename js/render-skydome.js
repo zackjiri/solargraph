@@ -401,8 +401,35 @@ function handleSkyDomeMouseLeave() {
 // as the main canvas (4 thin intermediate months + both solstices + equinox, with hour dots on
 // the equinox curve), plus the green Custom Path date with its south-transit label and animated
 // sun marker - identical in both projections, just re-projected.
-function _skyDomeArcPoints(layout, month, day) {
+// World-space (az,el) samples for one sun-path curve (or null for a hard break - wraparound only,
+// see below) - everything about this is independent of which projection is showing it or where
+// its camera currently points, so it's cached by the only four things that actually change it:
+// the curve's own date, the Matrix seam shift, and latitude/hemisphere. Recomputing this 721-sample
+// sweep (up to ~5800 sunPosition() calls/frame across all 8 curves - the thin months, both
+// solstices, equinox, custom date) on every single drawSkyDome() call was real, measured cost that
+// survived even after Sky Map 3D's shell got its own interaction-time LOD (§20.24) - date/latitude
+// change on user input, not on every drag/orbit frame, so there was nothing to recompute here most
+// of the time anyway.
+const _skyDomeArcWorldCache = new Map();
+function _skyDomeArcWorldPts(month, day, shift, phi) {
+  const key = month + '_' + day + '_' + shift + '_' + phi.toFixed(6);
+  let pts = _skyDomeArcWorldCache.get(key);
+  if (pts) return pts;
   const delta = sunDeclination(dayOfYear(month, day));
+  pts = [];
+  let prevAzS = null;
+  for (let hDeg = -180; hDeg <= 180; hDeg += 0.5) {
+    const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
+    if (s.el < 0) { prevAzS = null; continue; }
+    const azS = (s.az + shift + 360) % 360;
+    if (prevAzS !== null && Math.abs(azS - prevAzS) > 180) pts.push(null);
+    prevAzS = azS;
+    pts.push([s.az, s.el]);
+  }
+  _skyDomeArcWorldCache.set(key, pts);
+  return pts;
+}
+function _skyDomeArcPoints(layout, month, day) {
   // Signed latitude - this is a true-compass calculation (see file header), unlike the flat
   // scan's own sun-arc drawing (core.js's drawSunArc), which stays hemisphere-agnostic by using
   // unsigned latitude paired with a "culmination is always at the image centre" pixel convention.
@@ -410,8 +437,8 @@ function _skyDomeArcPoints(layout, month, day) {
   // always up, so the sign has to come from the real latitude for the culmination side (and the
   // whole day's rotation sense) to land on the correct side of the compass.
   const phi = effectiveLat() * hemisphere;
-  // The break-heuristic below has to look for a jump in whichever azimuth value actually
-  // determines the drawn seam - for Matrix that's the *shifted* (culmination-centred) azimuth
+  // The break-heuristic has to look for a jump in whichever azimuth value actually determines the
+  // drawn seam - for Matrix that's the *shifted* (culmination-centred) azimuth
   // (_skyDomeMatrixAzShift), not the raw compass one. For the northern hemisphere the shift is
   // 0, so this is a no-op and matches the original behaviour exactly. For the southern
   // hemisphere the shift is 180, which moves the seam to true south - away from true north,
@@ -424,21 +451,12 @@ function _skyDomeArcPoints(layout, month, day) {
   // right at culmination on an otherwise perfectly continuous arc. Dome is unaffected either
   // way (no seam - see _skyDomePoint), so reusing one shift-aware check for both is safe.
   const shift = layout.mode === 'matrix' ? _skyDomeMatrixAzShift() : 0;
-  const pts = [];
-  let prevAzS = null;
-  for (let hDeg = -180; hDeg <= 180; hDeg += 0.5) {
-    const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
-    if (s.el < 0) { prevAzS = null; continue; }
-    const azS = (s.az + shift + 360) % 360;
-    if (prevAzS !== null && Math.abs(azS - prevAzS) > 180) pts.push(null);
-    prevAzS = azS;
-    // Kept even when p.visible===false - _skyDomeStrokeArc turns that into a fade rather than a
-    // cut: a fixed dim (Sky Map 3D, seen through the translucent shell) or the point's own
-    // continuous .alpha (Planetarium, fading smoothly toward the rim - see
-    // _skyDomePlanet3DProject). null still marks the hard breaks above (below horizon, wraparound).
-    pts.push(_skyDomeProject(layout, s.az, s.el));
-  }
-  return pts;
+  const world = _skyDomeArcWorldPts(month, day, shift, phi);
+  // Kept even when p.visible===false - _skyDomeStrokeArc turns that into a fade rather than a
+  // cut: a fixed dim (Sky Map 3D, seen through the translucent shell) or the point's own
+  // continuous .alpha (Planetarium, fading smoothly toward the rim - see
+  // _skyDomePlanet3DProject). null still marks the hard breaks above (below horizon, wraparound).
+  return world.map(p => p === null ? null : _skyDomeProject(layout, p[0], p[1]));
 }
 
 // pts may contain null entries marking a hard break in the polyline (below horizon, azimuth
@@ -1673,8 +1691,11 @@ updateSkyDomePlanetCamera();
 // fisheye photo will recognise, and the shape actually expected of a "standing inside a dome" view.
 const PLANET3D_FADE_INNER = 130 * Math.PI / 180;   // full opacity out to here
 const PLANET3D_FADE_OUTER = 170 * Math.PI / 180;   // faded to fully transparent by here
-function _skyDomePlanet3DProject(layout, az, el) {
-  const v = _skyDomeUnitVec(az, el);
+// Split from the (az,el)-taking wrapper below so a caller that already has the world unit vector
+// (e.g. from _skyDomeGridVec's cache, see below) can skip _skyDomeUnitVec's trig entirely - the
+// camera-dependent half of the projection (everything here) still has to run fresh every frame
+// regardless, there's no way around that part.
+function _skyDomePlanet3DProjectRaw(layout, v) {
   const cosTheta = _sd3Dot(v, _skyDomePlanet3D.FWD);
   const theta = Math.acos(Math.max(-1, Math.min(1, cosTheta)));
   if (theta >= PLANET3D_FADE_OUTER) return { x: layout.cx, y: layout.cy, visible: false, alpha: 0 };
@@ -1685,6 +1706,23 @@ function _skyDomePlanet3DProject(layout, az, el) {
   const k = rho > 1e-6 ? theta / rho : 1;   // → 1 as theta→0, matching plain perspective at centre
   const sx = _skyDomePlanet3D.FOCAL * lx * k, sy = _skyDomePlanet3D.FOCAL * ly * k;
   return { x: layout.cx + sx * layout.scale, y: layout.cy - sy * layout.scale, visible: true, alpha };
+}
+function _skyDomePlanet3DProject(layout, az, el) {
+  return _skyDomePlanet3DProjectRaw(layout, _skyDomeUnitVec(az, el));
+}
+
+// Memoized _skyDomeUnitVec, for call sites that repeatedly sample the SAME fixed (az,el) grid every
+// frame (meridian/ring lines, shell patch corners) - not a general-purpose cache for _skyDomeUnitVec
+// itself, which is also called with one-off, never-repeated (az,el) pairs (sun position sweeps,
+// cursor readout) that would just grow this Map forever for no benefit. Only use this at a call site
+// where the same handful of (az,el) values recur on every single draw. Safe as a plain numeric key:
+// az∈[0,360], el∈[0,90], both always whole degrees at every call site that uses this.
+const _skyDomeGridVecCache = new Map();
+function _skyDomeGridVec(az, el) {
+  const key = az * 1000 + el;
+  let v = _skyDomeGridVecCache.get(key);
+  if (!v) { v = _skyDomeUnitVec(az, el); _skyDomeGridVecCache.set(key, v); }
+  return v;
 }
 
 // Inverse of the equidistant mapping above: canvas pixel → angle+direction-in-image-plane →
@@ -1794,18 +1832,24 @@ function _skyPlanetAmbientColorAt(elDeg, sunElDeg) {
 // that 4° was already judged plenty (see the comment below), so there's nothing finer worth settling
 // into once the drag stops.
 const SKY_PLANET3D_SHELL_INTERACT_STEP_MUL = 2;   // 4°→8° while actively dragging/pinching
+// Re-stroked over each patch's own fill, below - see the comment at the stroke call itself.
+const SKY_PLANET3D_SHELL_SEAM_PAD = 1.5;   // canvas px
 function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl) {
   const stepMul = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_INTERACT_STEP_MUL : 1;
   const AZ_STEP = 4 * stepMul, EL_STEP = 4 * stepMul;   // Planetarium's field of view is narrower
   const patches = [];               // than Sky Map 3D's near-hemisphere, so a coarser mesh already reads smooth.
+  // Corners/midpoints sample a fixed (az,el) grid every frame (only AZ_STEP/EL_STEP - i.e. the
+  // interacting flag - ever changes which grid), so _skyDomeGridVec's cache applies here exactly
+  // as it does to the meridian/ring lines above; adjacent cells also share corners, so this cuts
+  // real duplicate work too, not just repeated frames.
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = 0; el < 90; el += EL_STEP) {
       const az2 = az + AZ_STEP, el2 = Math.min(90, el + EL_STEP);
       const azMid = az + AZ_STEP / 2, elMid = (el + el2) / 2;
-      const centerP = _skyDomePlanet3DProject(layout, azMid, elMid);
+      const centerP = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(azMid, elMid));
       if (centerP.visible === false || centerP.alpha <= 0.02) continue;   // behind observer / faded out
       const corners = [[az, el], [az2, el], [az2, el2], [az, el2]].map(([a, e]) => {
-        const p = _skyDomePlanet3DProject(layout, a, e);
+        const p = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(a, e));
         return p.visible === false ? null : [p.x, p.y];
       });
       if (!corners.every(Boolean)) continue;
@@ -1825,6 +1869,17 @@ function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl) {
     ctx.fillStyle = grad;
     ctx.globalAlpha = p.alpha;   // fades the whole patch smoothly toward the rim (see _skyDomePlanet3DProject)
     ctx.fill();
+    // Reported on Windows Chrome (Skia's rasterizer): adjacent patches' antialiased edges don't
+    // blend to exactly the same partial-coverage pixels, leaving a faint seam that traces out the
+    // whole 4°×4° mesh as a visible grid - the same class of bug already fixed for the photo-warp
+    // triangle mesh's own seams (SD_PLANET_IMG_SEAM_PAD, §20.21), just showing up here instead
+    // (this shell has no seam handling of its own yet). A straight quad edge has no texture to
+    // preserve, unlike a texture-mapped triangle, so the simpler fix applies: re-stroke the exact
+    // same path with the exact same gradient - centered on the edge, it straddles and repaints
+    // whatever sliver either neighbour's own antialiasing left short.
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = SKY_PLANET3D_SHELL_SEAM_PAD;
+    ctx.stroke();
   }
   ctx.globalAlpha = 1;
 
@@ -2169,24 +2224,30 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
   // and within that its labels separately on showLabels (nested, not independent - unchecking
   // Az/Alt grid removes the labels too, since they'd otherwise float with nothing to anchor to).
   if (typeof showGrid === 'undefined' || showGrid) {
+    // Meridians/rings sample the same fixed (az,el) grid on every single frame - the underlying
+    // world direction never changes, only the camera does - so the trig (_skyDomeUnitVec) is
+    // looked up from _skyDomeGridVec's cache instead of recomputed, and only the camera-dependent
+    // projection (_skyDomePlanet3DProjectRaw) actually runs fresh here. Unlike the hover
+    // crosshair's own ring/meridian (drawn around the mouse cursor, a genuinely different point
+    // every frame - see _skyDomePlanet3DPolyline above), these are worth caching.
     for (let az = 0; az < 360; az += 10) {
       const isCardinal = (az % 90 === 0);
       const is30 = (az % 30 === 0);
-      const pts = []; for (let el = 0; el <= 90; el += 3) pts.push([az, el]);
+      const pts = []; for (let el = 0; el <= 90; el += 3) pts.push(_skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(az, el)));
       let color;
       if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
       else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
       else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
-      _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
+      _skyDomePlanet3DStrokePolyline(ctx, pts, color);
     }
     ctx.setLineDash([]);
 
     for (let el = 0; el <= 90; el += 10) {
-      const pts = []; for (let az = 0; az <= 360; az += 5) pts.push([az, el]);
+      const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(az, el)));
       let color;
       if (el === 0) { color = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
       else { color = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
-      _skyDomePlanet3DStrokePolyline(ctx, _skyDomePlanet3DPolyline(layout, pts), color);
+      _skyDomePlanet3DStrokePolyline(ctx, pts, color);
     }
     ctx.setLineDash([]);
 
@@ -2194,7 +2255,7 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
       const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       for (let az = 0; az < 360; az += 10) {
-        const p = _skyDomePlanet3DProject(layout, az, 0);
+        const p = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(az, 0));
         if (p.visible === false) continue;
         const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
         const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
@@ -2208,7 +2269,7 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillStyle = pal.text;
       for (let el = 10; el <= 90; el += 10) {
-        const p = _skyDomePlanet3DProject(layout, 0, el);
+        const p = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(0, el));
         if (p.visible === false) continue;
         ctx.fillText(el + '°', p.x + 5, p.y);
       }
