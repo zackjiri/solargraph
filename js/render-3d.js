@@ -1296,9 +1296,13 @@ document.getElementById('theaterZoom').addEventListener('input', (e) => {
 });
 
 // ── Cladding toggle ──────────────────────────────────────────────────────────
+// Also drives Sky Map 3D's own translucent shell (_skyMap3DDrawShell, render-skydome.js, loads
+// after this file) - same checkbox, same "hide the sphere's/cylinder's own skin" meaning in both
+// views, so one flag suffices rather than a second, duplicate checkbox.
 document.getElementById('chkCladding').addEventListener('change', (e) => {
   show3DCladding = e.target.checked;
   draw3D();
+  if (typeof drawSkyDome === 'function' && typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();
 });
 
 // ── Theater drag-orbit (mouse + one-finger touch) ────────────────────────────

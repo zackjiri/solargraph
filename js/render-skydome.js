@@ -260,8 +260,13 @@ updateSkyMap3DCamera();
 // technically behind the camera (lz<=0, only possible pathologically close up). Callers that
 // connect points into a polyline (sun-path curves, grid lines) must treat visible:false as a
 // break, same as the existing azimuth-wraparound null-breaks - see _skyDomeArcPoints.
-function _skyMap3DProject(layout, az, el) {
-  const v = _skyDomeUnitVec(az, el);
+// Split out from the (az,el)-taking wrapper below so a caller with an already-known world vector
+// (e.g. _skyDomeGridVec's cache) can skip _skyDomeUnitVec's trig - mirrors Planetarium's own
+// ...ProjectRaw/...Project split (§20.25). NOT the same thing as _skyMap3DProjectRaw below, despite
+// the similar name: that one is a leaner, array-returning variant built for the shell (which
+// pre-filters visibility per-patch and has no use for a dimmed "far side" state on individual
+// corners) - this one keeps the full {x,y,visible} shape grid lines/sun-paths depend on.
+function _skyMap3DProjectVec(layout, v) {
   const visible = _sd3Dot(v, _skyMap3D.camDirUnit) >= 1 / _skyMap3D.camDist;
   const p = _skyMap3D.camPos;
   const rel = [v[0] - p[0], v[1] - p[1], v[2] - p[2]];
@@ -270,6 +275,9 @@ function _skyMap3DProject(layout, az, el) {
   const lx = _sd3Dot(rel, _skyMap3D.RIGHT), ly = _sd3Dot(rel, _skyMap3D.UP);
   const sx = _SKY_MAP3D_FOCAL * lx / lz, sy = _SKY_MAP3D_FOCAL * ly / lz;
   return { x: layout.cx + sx * layout.scale, y: layout.cy - sy * layout.scale, visible };
+}
+function _skyMap3DProject(layout, az, el) {
+  return _skyMap3DProjectVec(layout, _skyDomeUnitVec(az, el));
 }
 
 function _skyDomeProject(layout, az, el) {
@@ -789,19 +797,27 @@ function _setSkyMap3DInteracting(v) { _skyMap3DInteracting = v; }
 // the mesh coarsens further still (see SKY_MAP3D_SHELL_INTERACT_STEP_MUL) since the coarser facets
 // are lost in the motion anyway - back to the full 2° the instant the camera stops moving.
 const SKY_MAP3D_SHELL_INTERACT_STEP_MUL = 4;   // 2°→8° while actively dragging/pinching
+// Wired to the same "cladding" checkbox as the 3D Model theater's own cylinder cladding
+// (#chkCladding/show3DCladding, render-3d.js) - off hides this shell entirely, mirroring what
+// that checkbox already does there (§ its own toggle handler now also redraws Sky Dome).
 function _skyMap3DDrawShell(ctx, layout) {
+  if (typeof show3DCladding !== 'undefined' && !show3DCladding) return;
   const stepMul = _skyMap3DInteracting ? SKY_MAP3D_SHELL_INTERACT_STEP_MUL : 1;
   const AZ_STEP = 2 * stepMul, EL_STEP = 2 * stepMul;
   const patches = [];
+  // Corners/centre sample a fixed (az,el) grid every frame (only AZ_STEP/EL_STEP - i.e. the
+  // interacting flag - ever changes which grid), so _skyDomeGridVec's cache applies here exactly
+  // as it does to Planetarium's own shell (§20.25); adjacent cells also share corners, so this
+  // cuts real duplicate work too, not just repeated frames.
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = 0; el < 90; el += EL_STEP) {
       const az2 = az + AZ_STEP, el2 = Math.min(90, el + EL_STEP);
       const azMid = az + AZ_STEP / 2, elMid = (el + el2) / 2;
-      const centerVec = _skyDomeUnitVec(azMid, elMid);
+      const centerVec = _skyDomeGridVec(azMid, elMid);
       const visible = _sd3Dot(centerVec, _skyMap3D.camDirUnit) >= 1 / _skyMap3D.camDist;
       if (!visible) continue;
       const corners = [[az, el], [az2, el], [az2, el2], [az, el2]]
-        .map(([a, e]) => _skyMap3DProjectRaw(layout, _skyDomeUnitVec(a, e)));
+        .map(([a, e]) => _skyMap3DProjectRaw(layout, _skyDomeGridVec(a, e)));
       if (!corners.every(Boolean)) continue;
       const rel = [centerVec[0] - _skyMap3D.camPos[0], centerVec[1] - _skyMap3D.camPos[1], centerVec[2] - _skyMap3D.camPos[2]];
       const depth = _sd3Dot(rel, _skyMap3D.FWD);
@@ -848,25 +864,29 @@ function drawSkyMap3DAxes(ctx, W, H, pal) {
   _skyMap3DDrawShell(ctx, layout);
 
   // ── Azimuth meridians (every 10°, cardinals bold, every 30° medium, rest fine dashed) ────────
+  // Sample a fixed (az,el) grid every frame - the underlying world direction never changes, only
+  // the camera does - so _skyDomeGridVec's cache supplies the vector and only the camera-dependent
+  // _skyMap3DProjectVec actually runs fresh here (same treatment as Planetarium's own meridians/
+  // rings, §20.25).
   for (let az = 0; az < 360; az += 10) {
     const isCardinal = (az % 90 === 0);
     const is30 = (az % 30 === 0);
-    const pts = []; for (let el = 0; el <= 90; el += 3) pts.push([az, el]);
+    const pts = []; for (let el = 0; el <= 90; el += 3) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
     let color;
     if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
     else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
     else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
-    _skyMap3DStrokePolyline(ctx, _skyMap3DPolyline(layout, pts), color);
+    _skyMap3DStrokePolyline(ctx, pts, color);
   }
   ctx.setLineDash([]);
 
   // ── Elevation rings (every 10°; 0° = horizon, drawn solid+bold) ───────────────────────────────
   for (let el = 0; el <= 90; el += 10) {
-    const pts = []; for (let az = 0; az <= 360; az += 5) pts.push([az, el]);
+    const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
     let color;
     if (el === 0) { color = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
     else { color = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
-    _skyMap3DStrokePolyline(ctx, _skyMap3DPolyline(layout, pts), color);
+    _skyMap3DStrokePolyline(ctx, pts, color);
   }
   ctx.setLineDash([]);
 
@@ -874,7 +894,7 @@ function drawSkyMap3DAxes(ctx, W, H, pal) {
   const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (let az = 0; az < 360; az += 10) {
-    const p = _skyDomeProject(layout, az, 0);
+    const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(az, 0));
     if (p.visible === false) continue;
     const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
     const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
@@ -889,7 +909,7 @@ function drawSkyMap3DAxes(ctx, W, H, pal) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillStyle = pal.text;
   for (let el = 10; el <= 90; el += 10) {
-    const p = _skyDomeProject(layout, 0, el);
+    const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(0, el));
     if (p.visible === false) continue;
     ctx.fillText(el + '°', p.x + 5, p.y);
   }
