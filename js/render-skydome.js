@@ -750,19 +750,30 @@ function _skyMap3DShellColorAt(elDeg) {
   return [Math.round(200 - 130 * t), Math.round(222 - 130 * t), Math.round(240 - 60 * t)];
 }
 
+// True while the Sky Map 3D orbit camera is actively being dragged/pinched - set by the drag/pinch
+// handlers near the bottom of this file. Mirrors _skyDomePlanet3DInteracting (Planetarium's own
+// interacting flag): only used to coarsen the shell mesh below while motion makes the extra detail
+// imperceptible anyway, not to gate anything else.
+let _skyMap3DInteracting = false;
+function _setSkyMap3DInteracting(v) { _skyMap3DInteracting = v; }
+
 // ── Translucent sky shell (mirrors the 3D Model panel's semi-transparent "cladding") ─────────
 // A lat/long mesh of small quad patches over the visible hemisphere, painter-sorted by depth.
-// Each patch is filled with a linear gradient between its own el/el2 sky colours (not one flat
-// colour) so adjacent patches match exactly at their shared edge - the gradient reads as one
-// smooth blend from horizon to zenith no matter how coarse the mesh is - while the mesh itself is
-// fine enough (8° steps) that the silhouette edge and curve don't look faceted either. Drawn
-// before the wireframe grid/curves so those stay legible on top.
+// Filled with one flat colour per patch (the shell colour at its own mid-elevation) rather than a
+// per-patch gradient: measured live, the colour step between adjacent 2°-wide patches is only ~1-3
+// RGB units (_skyMap3DShellColorAt's steepest channel moves ~1.44/° - see its formula), well under
+// what the eye resolves as banding, so the gradient's smoothing bought nothing here worth its cost
+// (a fresh CanvasGradient object + 2 addColorStop() calls per patch, ~3k times/frame) - unlike
+// Planetarium's own shell (_skyDomePlanet3DDrawShell) which keeps its gradient because its colour
+// also depends on the sun's live position (dusk/night tint), not just elevation.
+// 1° was measured at ~20ms/frame just for this fill (11-12k visible patches) - too slow to stay
+// smooth while dragging. 2° cuts that to ~3k patches, and while dragging/pinching (_skyMap3DInteracting)
+// the mesh coarsens further still (see SKY_MAP3D_SHELL_INTERACT_STEP_MUL) since the coarser facets
+// are lost in the motion anyway - back to the full 2° the instant the camera stops moving.
+const SKY_MAP3D_SHELL_INTERACT_STEP_MUL = 4;   // 2°→8° while actively dragging/pinching
 function _skyMap3DDrawShell(ctx, layout) {
-  // 1° was measured at ~20ms/frame just for this fill (11-12k visible patches) - too slow to stay
-  // smooth while dragging. 2° cuts that to ~3k patches / ~5-6ms, and since colour is already exact
-  // at every patch edge (the linear gradient above), the extra geometric resolution beyond 2° buys
-  // essentially no visible smoothness for a real cost - see the measurement this traded off against.
-  const AZ_STEP = 2, EL_STEP = 2;
+  const stepMul = _skyMap3DInteracting ? SKY_MAP3D_SHELL_INTERACT_STEP_MUL : 1;
+  const AZ_STEP = 2 * stepMul, EL_STEP = 2 * stepMul;
   const patches = [];
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = 0; el < 90; el += EL_STEP) {
@@ -780,17 +791,21 @@ function _skyMap3DDrawShell(ctx, layout) {
     }
   }
   patches.sort((a, b) => b.depth - a.depth);   // farthest first, nearest painted last (on top)
+  // Many patches at different azimuths share the same (el,el2) band and so the exact same colour -
+  // caching by band avoids rebuilding the same rgba() string ~AZ-STEP-count times per frame.
+  const colorCache = new Map();
   for (const p of patches) {
-    const c0 = _skyMap3DShellColorAt(p.el), c1 = _skyMap3DShellColorAt(p.el2);
-    const midLow  = [(p.corners[0][0] + p.corners[1][0]) / 2, (p.corners[0][1] + p.corners[1][1]) / 2];
-    const midHigh = [(p.corners[2][0] + p.corners[3][0]) / 2, (p.corners[2][1] + p.corners[3][1]) / 2];
+    const key = p.el;
+    let fill = colorCache.get(key);
+    if (fill === undefined) {
+      const c = _skyMap3DShellColorAt((p.el + p.el2) / 2);
+      fill = `rgba(${c[0]},${c[1]},${c[2]},0.32)`;
+      colorCache.set(key, fill);
+    }
     ctx.beginPath(); ctx.moveTo(p.corners[0][0], p.corners[0][1]);
     for (let i = 1; i < 4; i++) ctx.lineTo(p.corners[i][0], p.corners[i][1]);
     ctx.closePath();
-    const grad = ctx.createLinearGradient(midLow[0], midLow[1], midHigh[0], midHigh[1]);
-    grad.addColorStop(0, `rgba(${c0[0]},${c0[1]},${c0[2]},0.32)`);
-    grad.addColorStop(1, `rgba(${c1[0]},${c1[1]},${c1[2]},0.32)`);
-    ctx.fillStyle = grad; ctx.fill();
+    ctx.fillStyle = fill; ctx.fill();
   }
 }
 
@@ -1330,29 +1345,114 @@ document.getElementById('skyMap3DZoom').addEventListener('input', (e) => {
 // the drag, mousemove/mouseup on window so it keeps tracking even if the cursor leaves the canvas
 // mid-drag. While _skyMap3DDragging is true, handleSkyDomeMouseMove() (the hover/crosshair
 // readout) steps aside - see its early return. Only active while Sky Map's "3D" toggle is on.
+// rAF-throttled the same way as the Planetarium drag block below: a raw mousemove stream can fire
+// faster than _skyMap3DDrawShell (§ above) can redraw, especially on weaker hardware, and without
+// coalescing each event blocks the main thread in turn, backing up the queue so the view visibly
+// lags behind the cursor. Coalescing to at most one draw per animation frame (applying only the
+// latest pointer position) decouples redraw rate from input rate; the mesh itself also coarsens for
+// the duration (_setSkyMap3DInteracting, see _skyMap3DDrawShell) so the one draw per frame that does
+// happen is cheap too.
 (function () {
   const cv = document.getElementById('skyDomeCanvas');
   let lastX = 0, lastY = 0;
+  let pendingX = 0, pendingY = 0, hasPending = false, rafScheduled = false;
+
+  function consumePendingMove() {
+    if (!hasPending) return false;
+    hasPending = false;
+    const dx = pendingX - lastX, dy = pendingY - lastY;
+    lastX = pendingX; lastY = pendingY;
+    _skyMap3D.camAz += dx * 0.005;
+    _skyMap3D.camEl  = Math.max(0.06, Math.min(Math.PI / 2 - 0.04, _skyMap3D.camEl + dy * 0.004));
+    return true;
+  }
+  function applyPendingMove() {
+    rafScheduled = false;
+    if (!consumePendingMove()) return;
+    updateSkyMap3DCamera();
+    drawSkyDome();
+  }
 
   function orbitStart(x, y) {
     _skyMap3DDragging = true;
+    _setSkyMap3DInteracting(true);
     lastX = x; lastY = y;
     cv.style.cursor = 'grabbing';
   }
   function orbitMove(x, y) {
     if (!_skyMap3DDragging) return;
-    const dx = x - lastX, dy = y - lastY;
-    lastX = x; lastY = y;
-    _skyMap3D.camAz += dx * 0.005;
-    _skyMap3D.camEl  = Math.max(0.06, Math.min(Math.PI / 2 - 0.04, _skyMap3D.camEl + dy * 0.004));
-    updateSkyMap3DCamera();
-    drawSkyDome();
+    pendingX = x; pendingY = y; hasPending = true;
+    if (rafScheduled) return;
+    rafScheduled = true;
+    requestAnimationFrame(applyPendingMove);
   }
   function orbitEnd() {
     if (!_skyMap3DDragging) return;
     _skyMap3DDragging = false;
+    // Flush any move the rAF above hasn't applied yet, right here and synchronously - same reason
+    // as the Planetarium drag's dragEnd(): otherwise it would land on the NEXT frame, after the
+    // interacting flag below has already dropped the mesh back to full detail for a stale position,
+    // and (if nothing else were pending) the final settle-to-full-quality redraw might not happen
+    // at all.
+    consumePendingMove();
+    _setSkyMap3DInteracting(pinching);   // stays true if a pinch is still in progress
+    updateSkyMap3DCamera();
+    drawSkyDome();
     cv.style.cursor = 'default';
   }
+
+  // Touch: one finger = orbit, two fingers = pinch-zoom. Pinch is rAF-throttled the same way (see
+  // Planetarium's applyPendingPinch) - a raw touchmove stream can fire well above 60Hz.
+  let pinching = false, pinchStartDist = 0, pinchStartZoom = 1;
+  let pendingPinchRatio = null, pinchRafScheduled = false;
+  function touchDist(t) {
+    const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+  function applyPendingPinch() {
+    pinchRafScheduled = false;
+    if (pendingPinchRatio === null) return;
+    setSkyMap3DZoom(pinchStartZoom * pendingPinchRatio);
+    pendingPinchRatio = null;
+  }
+  cv.addEventListener('touchstart', (e) => {
+    if (!skyDomeActive || skyDomeProjection !== 'dome' || !skyMap3DOn) return;
+    if (e.touches.length === 1) {
+      orbitStart(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+      pinching = true;
+      _setSkyMap3DInteracting(true);
+      pinchStartDist = touchDist(e.touches);
+      pinchStartZoom = _skyMap3D.zoom;
+      _skyMap3DDragging = false;
+    }
+  }, { passive: true });
+  cv.addEventListener('touchmove', (e) => {
+    if (pinching && e.touches.length === 2) {
+      pendingPinchRatio = touchDist(e.touches) / pinchStartDist;
+      if (!pinchRafScheduled) { pinchRafScheduled = true; requestAnimationFrame(applyPendingPinch); }
+    } else if (e.touches.length === 1) {
+      orbitMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: true });
+  cv.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      const wasPinching = pinching;   // orbitEnd() below is a no-op for a pure pinch (see its guard)
+      orbitEnd();
+      pinching = false;
+      _setSkyMap3DInteracting(false);
+      if (pendingPinchRatio !== null) {
+        setSkyMap3DZoom(pinchStartZoom * pendingPinchRatio);   // draws at full quality itself
+        pendingPinchRatio = null;
+      } else if (wasPinching) {
+        // Pinch ending with no zoom update still in flight (the common case - the rAF above
+        // usually beats touchend by a frame): nothing else would force the settle-to-full-quality
+        // redraw, and the mesh would otherwise stay at the coarse interacting step on screen.
+        updateSkyMap3DCamera();
+        drawSkyDome();
+      }
+    }
+  });
 
   cv.addEventListener('mousedown', (e) => {
     if (!skyDomeActive || skyDomeProjection !== 'dome' || !skyMap3DOn) return;
@@ -1361,34 +1461,6 @@ document.getElementById('skyMap3DZoom').addEventListener('input', (e) => {
   });
   window.addEventListener('mousemove', (e) => orbitMove(e.clientX, e.clientY));
   window.addEventListener('mouseup', orbitEnd);
-
-  // Touch: one finger = orbit, two fingers = pinch-zoom.
-  let pinching = false, pinchStartDist = 0, pinchStartZoom = 1;
-  function touchDist(t) {
-    const dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
-    return Math.hypot(dx, dy);
-  }
-  cv.addEventListener('touchstart', (e) => {
-    if (!skyDomeActive || skyDomeProjection !== 'dome' || !skyMap3DOn) return;
-    if (e.touches.length === 1) {
-      orbitStart(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 2) {
-      pinching = true;
-      pinchStartDist = touchDist(e.touches);
-      pinchStartZoom = _skyMap3D.zoom;
-      _skyMap3DDragging = false;
-    }
-  }, { passive: true });
-  cv.addEventListener('touchmove', (e) => {
-    if (pinching && e.touches.length === 2) {
-      setSkyMap3DZoom(pinchStartZoom * (touchDist(e.touches) / pinchStartDist));
-    } else if (e.touches.length === 1) {
-      orbitMove(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  }, { passive: true });
-  cv.addEventListener('touchend', (e) => {
-    if (e.touches.length === 0) { orbitEnd(); pinching = false; }
-  });
 })();
 
 // ── Planetarium look-around drag + pinch-zoom (mouse + touch) ─────────────────────────────────
@@ -1714,9 +1786,18 @@ function _skyPlanetAmbientColorAt(elDeg, sunElDeg) {
   return _lerp3(col, [235, 140, 70], glowStrength);
 }
 
+// While actively dragging/pinching (_skyDomePlanet3DInteracting - same flag the photo-warp mesh
+// already reads, see SD_PLANET_IMG_INTERACT_STEP_MUL below), coarsen this shell too: it rebuilds
+// from scratch every frame like Sky Map 3D's (see _skyMap3DDrawShell), so it pays the same per-drag
+// cost even though its own base mesh (4°) is already coarser. No idle-time "HD" refinement beyond
+// the base 4° - unlike the photo warp, this shell's colour model is smooth/low-frequency enough
+// that 4° was already judged plenty (see the comment below), so there's nothing finer worth settling
+// into once the drag stops.
+const SKY_PLANET3D_SHELL_INTERACT_STEP_MUL = 2;   // 4°→8° while actively dragging/pinching
 function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl) {
-  const AZ_STEP = 4, EL_STEP = 4;   // Planetarium's field of view is narrower than Sky Map 3D's
-  const patches = [];               // near-hemisphere, so a coarser mesh is already plenty smooth.
+  const stepMul = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_INTERACT_STEP_MUL : 1;
+  const AZ_STEP = 4 * stepMul, EL_STEP = 4 * stepMul;   // Planetarium's field of view is narrower
+  const patches = [];               // than Sky Map 3D's near-hemisphere, so a coarser mesh already reads smooth.
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = 0; el < 90; el += EL_STEP) {
       const az2 = az + AZ_STEP, el2 = Math.min(90, el + EL_STEP);
