@@ -51,9 +51,10 @@
 // see enterSkyDome()/exitSkyDome() and their counterparts in render-3d.js/render-sungraph.js).
 
 let skyDomeActive = false;
-let skyDomeProjection = 'dome';   // 'dome' | 'matrix' - set by the top-right wheel picker
-let skyMap3DOn = true;            // Sky Map's own 3D ON/OFF toggle - only relevant when 'dome' -
-                                   // defaults ON (index.html's pill markup must agree, see #btnSkyMap3DToggle)
+let skyDomeProjection = 'planet3d';   // 'dome' | 'matrix' | 'planet3d' - set by the top-right wheel
+                                       // picker; defaults to Planetarium (build 31_3+, was 'dome')
+let skyMap3DOn = false;           // Sky Map's own 3D ON/OFF toggle - only relevant when 'dome' -
+                                   // defaults OFF/2D (index.html's pill markup must agree, see #btnSkyMap3DToggle)
 let skyDomePlanetImageOn = false; // Planetarium's "render image" toggle (pilot) - see _skyDomePlanet3DDrawImage
 let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomePixelToAzEl
 
@@ -231,7 +232,7 @@ function _skyMap3DOccluded(p) {
 // #theaterZoom). The camera orbits the sphere from outside it, unlike the parked planetarium view.
 const _SKY_MAP3D_BASE_DIST = 2.4;   // camera distance at zoom=1×
 const _SKY_MAP3D_FOCAL     = 1.4;
-const _skyMap3D = { camAz: Math.PI / 4, camEl: 0.35, zoom: 1.0 };
+const _skyMap3D = { camAz: 3 * Math.PI / 4, camEl: 0.35, zoom: 1.0 };   // camera starts SE (was NE)
 let _skyMap3DDragging = false;   // true while orbit-dragging - see the drag block near the bottom
 
 // Recompute the camera's position and RIGHT/UP/FWD basis from camAz/camEl/zoom - call after
