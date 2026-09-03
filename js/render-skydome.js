@@ -68,7 +68,10 @@ let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomeP
 // once on entry, since the enabled set differs per projection.
 function _skyDomeDisplayKeepIds() {
   const keep = ['chkLabels', 'chkSunArc', ...CUSTOM_DATE_KEEP_IDS];
-  if (skyDomeProjection === 'planet3d') keep.push('chkGrid');
+  // 'dome' covers Sky Map's flat 2D and its own 3D orbit toggle alike (skyMap3DOn just picks
+  // which of the two draw functions runs) - both now respect showGrid, see drawSkyDomePolarAxes/
+  // drawSkyMap3DAxes. Az-El Chart ('matrix') deliberately left out - out of scope here.
+  if (skyDomeProjection === 'planet3d' || skyDomeProjection === 'dome') keep.push('chkGrid');
   return keep;
 }
 
@@ -872,55 +875,72 @@ function drawSkyMap3DAxes(ctx, W, H, pal) {
   _skyMap3DDrawFloorAndCompass(ctx, layout, pal, lt);
   _skyMap3DDrawShell(ctx, layout);
 
-  // ── Azimuth meridians (every 10°, cardinals bold, every 30° medium, rest fine dashed) ────────
-  // Sample a fixed (az,el) grid every frame - the underlying world direction never changes, only
-  // the camera does - so _skyDomeGridVec's cache supplies the vector and only the camera-dependent
-  // _skyMap3DProjectVec actually runs fresh here (same treatment as Planetarium's own meridians/
-  // rings, §20.25).
-  for (let az = 0; az < 360; az += 10) {
-    const isCardinal = (az % 90 === 0);
-    const is30 = (az % 30 === 0);
-    const pts = []; for (let el = 0; el <= 90; el += 3) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
-    let color;
-    if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
-    else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
-    else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
-    _skyMap3DStrokePolyline(ctx, pts, color);
-  }
-  ctx.setLineDash([]);
-
-  // ── Elevation rings (every 10°; 0° = horizon, drawn solid+bold) ───────────────────────────────
-  for (let el = 0; el <= 90; el += 10) {
-    const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
-    let color;
-    if (el === 0) { color = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
-    else { color = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
-    _skyMap3DStrokePolyline(ctx, pts, color);
-  }
-  ctx.setLineDash([]);
-
-  // ── Azimuth labels at the horizon, nudged outward along the screen-space radial direction ────
-  const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let az = 0; az < 360; az += 10) {
-    const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(az, 0));
-    if (p.visible === false) continue;
-    const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
-    const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
-    const isCardinal = az in CARD;
-    ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
-    ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
-    ctx.fillText(isCardinal ? CARD[az] : String(az), lx, ly);
+  // Horizon ring (el=0) drawn unconditionally, outside the Az/Alt grid gating below - without it
+  // there's no reference at all for "level" once the rest of the grid is hidden, so it stays even
+  // with the checkbox off (same idea as the always-on floor/compass/shell above it).
+  {
+    const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, 0)));
+    ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    _skyMap3DStrokePolyline(ctx, pts, pal.rim);
   }
 
-  // ── Elevation labels along the north meridian ─────────────────────────────────────────────────
-  ctx.font = "10px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = pal.text;
-  for (let el = 10; el <= 90; el += 10) {
-    const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(0, el));
-    if (p.visible === false) continue;
-    ctx.fillText(el + '°', p.x + 5, p.y);
+  // Az/Alt grid checkbox (§Display) - meridians/rings plus their own cardinal/degree labels, same
+  // two-tier structure as Planetarium's own drawSkyDomePlanet3DAxes: the whole grid is gated on
+  // showGrid, and within that its labels separately on showLabels (nested, not independent -
+  // unchecking Az/Alt grid removes the labels too, since they'd otherwise float with nothing to
+  // anchor to). Floor/compass/shell/horizon above are NOT part of this - those are their own
+  // always-on elements (compass rose has its own legend entry), unaffected by this checkbox.
+  if (typeof showGrid === 'undefined' || showGrid) {
+    // ── Azimuth meridians (every 10°, cardinals bold, every 30° medium, rest fine dashed) ────────
+    // Sample a fixed (az,el) grid every frame - the underlying world direction never changes, only
+    // the camera does - so _skyDomeGridVec's cache supplies the vector and only the camera-dependent
+    // _skyMap3DProjectVec actually runs fresh here (same treatment as Planetarium's own meridians/
+    // rings, §20.25).
+    for (let az = 0; az < 360; az += 10) {
+      const isCardinal = (az % 90 === 0);
+      const is30 = (az % 30 === 0);
+      const pts = []; for (let el = 0; el <= 90; el += 3) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
+      let color;
+      if (isCardinal) { color = az === 0 ? pal.north : pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
+      else if (is30)  { color = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]); }
+      else            { color = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]); }
+      _skyMap3DStrokePolyline(ctx, pts, color);
+    }
+    ctx.setLineDash([]);
+
+    // ── Elevation rings (every 10°, 10-90°; 0°/horizon is drawn unconditionally above) ────────────
+    ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+    for (let el = 10; el <= 90; el += 10) {
+      const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyMap3DProjectVec(layout, _skyDomeGridVec(az, el)));
+      _skyMap3DStrokePolyline(ctx, pts, pal.ring);
+    }
+    ctx.setLineDash([]);
+
+    if (typeof showLabels === 'undefined' || showLabels) {
+      // ── Azimuth labels at the horizon, nudged outward along the screen-space radial direction ──
+      const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let az = 0; az < 360; az += 10) {
+        const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(az, 0));
+        if (p.visible === false) continue;
+        const dx = p.x - cx0, dy = p.y - cy0, len = Math.hypot(dx, dy) || 1;
+        const lx = p.x + dx / len * 14, ly = p.y + dy / len * 14;
+        const isCardinal = az in CARD;
+        ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
+        ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
+        ctx.fillText(isCardinal ? CARD[az] : String(az), lx, ly);
+      }
+
+      // ── Elevation labels along the north meridian ───────────────────────────────────────────────
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = pal.text;
+      for (let el = 10; el <= 90; el += 10) {
+        const p = _skyMap3DProjectVec(layout, _skyDomeGridVec(0, el));
+        if (p.visible === false) continue;
+        ctx.fillText(el + '°', p.x + 5, p.y);
+      }
+    }
   }
 
   return layout;
@@ -1000,60 +1020,73 @@ function drawSkyDomePolarAxes(ctx, W, H, pal) {
   const layout = { mode: 'dome', cx: cx0, cy: cy0, R };
   const pt = (az, el) => _skyDomePoint(cx0, cy0, R, az, el);
 
-  // Dome background disc.
+  // Dome background disc - always drawn, not part of the Az/Alt grid checkbox below.
   ctx.beginPath(); ctx.arc(cx0, cy0, R, 0, Math.PI * 2);
   ctx.fillStyle = pal.plot; ctx.fill();
 
-  // ── Azimuth radials (every 10°, cardinals bold, every 30° medium, rest fine dashed) ──────────
-  for (let az = 0; az < 360; az += 10) {
-    const isCardinal = (az % 90 === 0);
-    const is30 = (az % 30 === 0);
-    const p1 = pt(az, 0);
-    ctx.beginPath();
-    ctx.moveTo(cx0, cy0);
-    ctx.lineTo(p1.x, p1.y);
-    if (isCardinal) {
-      ctx.strokeStyle = az === 0 ? pal.north : pal.rim;
-      ctx.lineWidth = 1.5; ctx.setLineDash([]);
-    } else if (is30) {
-      ctx.strokeStyle = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
-    } else {
-      ctx.strokeStyle = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]);
+  // Horizon ring (el=0, i.e. the disc's own rim) drawn unconditionally, outside the Az/Alt grid
+  // gating below - without it the disc has no visible boundary at all once the rest of the grid is
+  // hidden, so it stays even with the checkbox off (same idea as the always-on background above).
+  ctx.beginPath(); ctx.arc(cx0, cy0, R, 0, Math.PI * 2);
+  ctx.strokeStyle = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.stroke();
+
+  // Az/Alt grid checkbox (§Display) - same two-tier structure as Sky Map 3D/Planetarium's own axes
+  // functions: the whole grid is gated on showGrid, and within that its labels separately on
+  // showLabels (unchecking Az/Alt grid removes the labels too, nothing left for them to anchor to).
+  if (typeof showGrid === 'undefined' || showGrid) {
+    // ── Azimuth radials (every 10°, cardinals bold, every 30° medium, rest fine dashed) ──────────
+    for (let az = 0; az < 360; az += 10) {
+      const isCardinal = (az % 90 === 0);
+      const is30 = (az % 30 === 0);
+      const p1 = pt(az, 0);
+      ctx.beginPath();
+      ctx.moveTo(cx0, cy0);
+      ctx.lineTo(p1.x, p1.y);
+      if (isCardinal) {
+        ctx.strokeStyle = az === 0 ? pal.north : pal.rim;
+        ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      } else if (is30) {
+        ctx.strokeStyle = pal.az30; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+      } else {
+        ctx.strokeStyle = pal.az10; ctx.lineWidth = 0.8; ctx.setLineDash([2, 4]);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
+    ctx.setLineDash([]);
 
-  // ── Elevation rings (every 10°; 0° = horizon = rim, drawn solid+bold) ─────────────────────────
-  for (let el = 0; el <= 90; el += 10) {
-    const r = R * (90 - el) / 90;
-    if (r <= 0) continue;
-    ctx.beginPath(); ctx.arc(cx0, cy0, r, 0, Math.PI * 2);
-    if (el === 0) { ctx.strokeStyle = pal.rim; ctx.lineWidth = 1.5; ctx.setLineDash([]); }
-    else { ctx.strokeStyle = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); }
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
+    // ── Elevation rings (every 10°, 10-80°; 0°/horizon = rim is drawn unconditionally above) ────
+    for (let el = 10; el < 90; el += 10) {
+      const r = R * (90 - el) / 90;
+      if (r <= 0) continue;
+      ctx.beginPath(); ctx.arc(cx0, cy0, r, 0, Math.PI * 2);
+      ctx.strokeStyle = pal.ring; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
 
-  // ── Azimuth labels just outside the rim: cardinals as letters, others as "10°" every 10° ─────
-  const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
-  ctx.font = "10px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  for (let az = 0; az < 360; az += 10) {
-    const p = _skyDomePoint(cx0, cy0, R + 14, az, 0);
-    const isCardinal = az in CARD;
-    ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
-    ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
-    ctx.fillText(isCardinal ? CARD[az] : String(az), p.x, p.y);
-  }
+    if (typeof showLabels === 'undefined' || showLabels) {
+      // ── Azimuth labels just outside the rim: cardinals as letters, others as "10°" every 10° ──
+      const CARD = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let az = 0; az < 360; az += 10) {
+        const p = _skyDomePoint(cx0, cy0, R + 14, az, 0);
+        const isCardinal = az in CARD;
+        ctx.font = isCardinal ? "bold 13px 'Share Tech Mono', monospace" : "10px 'Share Tech Mono', monospace";
+        ctx.fillStyle = isCardinal ? (az === 0 ? pal.north : pal.text) : pal.text;
+        ctx.fillText(isCardinal ? CARD[az] : String(az), p.x, p.y);
+      }
 
-  // ── Elevation labels along the north radius, offset slightly right of the line ────────────────
-  ctx.font = "10px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = pal.text;
-  for (let el = 10; el <= 90; el += 10) {
-    const r = R * (90 - el) / 90;
-    ctx.fillText(el + '°', cx0 + 5, cy0 - r);
+      // ── Elevation labels along the north radius, offset slightly right of the line ─────────────
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = pal.text;
+      for (let el = 10; el <= 90; el += 10) {
+        const r = R * (90 - el) / 90;
+        ctx.fillText(el + '°', cx0 + 5, cy0 - r);
+      }
+    }
   }
 
   return layout;
