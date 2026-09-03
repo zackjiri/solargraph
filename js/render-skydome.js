@@ -67,7 +67,7 @@ let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomeP
 // live for all three. Re-evaluated on every projection switch (commitSkyDomeProjWheel()), not just
 // once on entry, since the enabled set differs per projection.
 function _skyDomeDisplayKeepIds() {
-  const keep = ['chkLabels', 'chkSunArc', ...CUSTOM_DATE_KEEP_IDS];
+  const keep = ['chkLabels', 'chkSunArc', 'btnAnalemma', ...CUSTOM_DATE_KEEP_IDS];
   // 'dome' covers Sky Map's flat 2D and its own 3D orbit toggle alike (skyMap3DOn just picks
   // which of the two draw functions runs) - both now respect showGrid, see drawSkyDomePolarAxes/
   // drawSkyMap3DAxes. Az-El Chart ('matrix') deliberately left out - out of scope here.
@@ -398,10 +398,11 @@ function handleSkyDomeMouseMove(e) {
   // culmination is at true-az 0 for the southern hemisphere, which must map to 180 in that frame.
   const azForSolar = hit.az !== null ? (hemisphere >= 0 ? hit.az : (hit.az + 180) % 360) : null;
   const sol = azForSolar !== null ? inverseSolar(azForSolar, hit.el, effectiveLat()) : null;
+  const { dayHtml, timeHtml } = _readoutDayTimeHtml(sol);
   document.getElementById('valAz').textContent   = hit.az !== null ? hit.az.toFixed(1) + '°' : '—';
   document.getElementById('valAlt').textContent  = '+' + hit.el.toFixed(1) + '°';
-  document.getElementById('valDay').textContent  = sol ? sol.day1 + ' / ' + sol.day2 : '—';
-  document.getElementById('valTime').textContent = sol ? sol.time : '—';
+  document.getElementById('valDay').innerHTML    = dayHtml;
+  document.getElementById('valTime').innerHTML   = timeHtml;
   document.getElementById('valDir').textContent  = hit.az !== null ? azimutToDir(hit.az) : '—';
 
   drawSkyDome();
@@ -479,6 +480,60 @@ function _skyDomeArcPoints(layout, month, day) {
   return world.map(p => p === null ? null : _skyDomeProject(layout, p[0], p[1]));
 }
 
+// The analemma (see core.js's drawAnalemma for the fixed-clock-reading rationale,
+// _analemmaTrueHourFor for why True solar time collapses this to a line while Mean/Standard trace
+// the usual figure-8, and _analemmaBuildPoints for the shared horizon-edge bisection logic used
+// here) - true-compass convention (signed latitude, unshifted hDeg - same as this file's own
+// animated sun marker/hour dots, not the flat scan's mirrored path convention). _skyDomeProject
+// handles negative elevation the same as every other projection in the app (nothing physically
+// stops the sun from having a computable position below the horizon), so sampleAt below doesn't
+// gate on it - only _analemmaBuildPoints decides what's actually drawn.
+function _skyDomeAnalemmaPoints(layout) {
+  const phi = effectiveLat() * hemisphere;
+  const shownHour = displayHour(sunTimeHours, dayOfYear(customMonth, customDay));
+  const sampleAt = (day) => {
+    const trueHour = _analemmaTrueHourFor(shownHour, day);
+    const hDeg = (trueHour - 12) * 15;
+    const delta = sunDeclination(day);
+    const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
+    return { el: s.el, point: _skyDomeProject(layout, s.az, s.el) };
+  };
+  return _analemmaBuildPoints(sampleAt);
+}
+// Strokes the analemma as a Catmull-Rom spline (see core.js's _analemmaStrokeRun for the flat
+// scan's version of the same technique) through whichever runs _analemmaRuns (core.js) finds -
+// visibly smoother than straight segments between the 12 sparse points, without sampling any extra
+// days, and correctly broken (not bridged) across any month that's below the horizon at this hour.
+// Each segment gets its own dimming (Sky Map 3D far side / Planetarium rim fade - _skyDomeAlphaOf),
+// averaged from its two endpoints rather than bucketed into bands like _skyDomeStrokeArc does for
+// its dense day-arcs - unnecessary precision for a curve built from only 12 points to begin with.
+function _skyDomeStrokeAnalemma(ctx, layout, color, lineWidth, dash) {
+  const baseAlpha = _sd3AlphaOf(color);
+  ctx.lineWidth = lineWidth; ctx.setLineDash(dash || []);
+  for (const run of _analemmaRuns(_skyDomeAnalemmaPoints(layout))) {
+    const pts = run.points, n = pts.length;
+    if (n < 2) continue;
+    const at = (i) => run.closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))];
+    const segCount = run.closed ? n : n - 1;
+    for (let i = 0; i < segCount; i++) {
+      const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+      const segAlpha = (_skyDomeAlphaOf(p1) + _skyDomeAlphaOf(p2)) / 2;
+      ctx.strokeStyle = _sd3WithAlpha(color, baseAlpha * segAlpha);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      if (n === 2) {
+        ctx.lineTo(p2.x, p2.y);
+      } else {
+        const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
+        const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+}
+
 // pts may contain null entries marking a hard break in the polyline (below horizon, azimuth
 // wraparound - see _skyDomeArcPoints above). Otherwise the effective alpha for each point is:
 // p.alpha if the projection set one (Planetarium: a continuous fade toward the rim - see
@@ -494,11 +549,11 @@ const _SKY_ARC_ALPHA_BUCKET = 0.12;
 function _skyDomeAlphaOf(p) {
   return p.alpha !== undefined ? p.alpha : (p.visible === false ? _skyMap3DDimMult() : 1);
 }
-function _skyDomeStrokeArc(ctx, pts, color, lineWidth) {
+function _skyDomeStrokeArc(ctx, pts, color, lineWidth, dash) {
   if (pts.length < 2) return;
   const baseAlpha = _sd3AlphaOf(color);
   const alphaOf = _skyDomeAlphaOf;
-  ctx.lineWidth = lineWidth; ctx.setLineDash([]);
+  ctx.lineWidth = lineWidth; ctx.setLineDash(dash || []);
   let curBucket = null, curAlpha = 1, first = true;
   const strokeSeg = () => { ctx.strokeStyle = _sd3WithAlpha(color, baseAlpha * curAlpha); ctx.stroke(); };
   ctx.beginPath();
@@ -592,6 +647,13 @@ function drawSkyDomeSunPaths(ctx, layout) {
     const summerMonth = hemisphere >= 0 ? 6 : 12;
     _skyDomeStrokeArc(ctx, _skyDomeArcPoints(layout, summerMonth, 21),
       `rgba(255, 100, 60, ${Math.min(1, op * 0.85)})`, 1.5);
+
+    if (typeof showAnalemma !== 'undefined' && showAnalemma) {
+      ctx.lineCap = 'round';   // short [1,6] dash reads as dots only with round caps
+      _skyDomeStrokeAnalemma(ctx, layout,
+        `rgba(175, 82, 222, ${Math.min(1, op * 0.9)})`, 2.6, [1, 6]);
+      ctx.lineCap = 'butt';   // restore the canvas default for whatever draws next
+    }
   }
 
   if (typeof showCustomArc === 'undefined' || showCustomArc) {

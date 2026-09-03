@@ -29,7 +29,10 @@ function draw() {
   if (showHorizon) drawHorizon(W, H);
 
   // Sun arcs – full annual set
-  if (showSunArc) drawAllSunArcs(W, H);
+  if (showSunArc) {
+    drawAllSunArcs(W, H);
+    if (showAnalemma) drawAnalemma(W, H);
+  }
 
   // Whole-period CHMI mosaic tiles the entire exposure interval - unlike the single-day gradient
   // below, it isn't really "about" the Custom Path date, so it stays visible even with "Custom

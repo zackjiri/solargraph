@@ -923,7 +923,10 @@ function sunWaveFrame(ts) {
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive
         && typeof drawSunGraph === 'function') drawSunGraph();   // animate the sun marker in the graph
     if (_skyMap3DAxisWaveActive() && typeof drawSkyDome === 'function') drawSkyDome();  // Sky Map 3D's own arrow wave
-
+    // sunAnimActive changes sunTimeHours every frame - while not hovering, the info-panel readout
+    // (Az/Alt/Day/Time/Dir + SSV10M/T) reads it via the fallback path, so it needs to be refreshed
+    // here too or it stays frozen at the value it had when the cursor last left the canvas.
+    if (sunAnimActive && typeof updateInfoReadout === 'function') updateInfoReadout();
   }
   sunWaveRAF = requestAnimationFrame(sunWaveFrame);
 }

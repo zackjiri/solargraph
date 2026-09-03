@@ -31,6 +31,7 @@ container.addEventListener('mousemove', (e) => {
       document.getElementById('valDay').textContent  = '—';
       document.getElementById('valTime').textContent = '—';
       document.getElementById('valDir').textContent  = '—';
+      updateInfoReadout();   // no longer hovering - falls back to Custom date/sunTimeHours
       draw();
     }
     return;
@@ -55,11 +56,13 @@ container.addEventListener('mousemove', (e) => {
     ? inverseSolar(azimut_world, theta_deg, effectiveLat())
     : null;
 
+  const { dayHtml, timeHtml } = _readoutDayTimeHtml(sol);
   document.getElementById('valAz').textContent  = inRange ? displayAz.toFixed(1) + '°' : '—';
   document.getElementById('valAlt').textContent  = inRange ? (theta_deg >= 0 ? '+' : '') + theta_deg.toFixed(1) + '°' : '—';
-  document.getElementById('valDay').textContent  = sol ? sol.day1 + ' / ' + sol.day2 : '—';
-  document.getElementById('valTime').textContent = sol ? sol.time : '—';
+  document.getElementById('valDay').innerHTML    = dayHtml;
+  document.getElementById('valTime').innerHTML   = timeHtml;
   document.getElementById('valDir').textContent  = inRange ? azimutToDir(displayAz) : '—';
+  updateInfoReadout();
 
   draw();
 });
@@ -74,13 +77,124 @@ container.addEventListener('mouseleave', () => {
   document.getElementById('valDay').textContent  = '—';
   document.getElementById('valTime').textContent = '—';
   document.getElementById('valDir').textContent  = '—';
+  updateInfoReadout();   // no longer hovering - falls back to Custom date/sunTimeHours
   draw();
 });
+
+// ── Info readout (top bar): Az/Alt/Day/Time/Dir fallback + SSV10M/T ────────────────────────────
+// Two things layered onto the same bar:
+//
+// 1. Az/Alt/Day/Time/Dir - while hovering, these already come from the cursor (mousemove handler
+//    above) and are left alone here (changing the date/time doesn't move the cursor, so there's
+//    nothing to reconcile with a live hover). While NOT hovering, if "Custom date" (showCustomArc)
+//    is on, they instead read FORWARD from the selected date + the sunTimeHours slider
+//    (_readoutFallbackSunPos, core.js) - the opposite direction of the hover path's pixelToAzEl()+
+//    inverseSolar(), and independent of CHMI ("bez ohledu na výběr CHMI" - deliberately not gated
+//    on showImgChmi/show3DCulmination). Day/Time show a single unambiguous date/time here (no
+//    day1/day2 split - going forward from a real date there's nothing to disambiguate).
+// 2. SSV10M (%) and T (°C) - two independently-hideable fields, shown only while "CHMI data"
+//    (showImgChmi) is on in the plain Image sub-view (Gallery/3D Model/Sun Graph/Sky Dome never
+//    touch this). SSV10M is visible whenever CHMI is (a precondition for turning CHMI on at all -
+//    see setShowImgChmi()); T only if THIS image actually declares a temperature dataset
+//    (currentChmiExtra.element === 'T', from filelist.json's chmi_extra). Value source, in order:
+//     a. Hovering - same Az/Alt/day/hour as above, just resolved down to ONE real calendar day via
+//        the H1/H2 generation-label rule (_chmiReadoutPreferredDoy, core.js) instead of showing
+//        both day1/day2 like the Day field does.
+//     b. Not hovering - Custom date + sunTimeHours, same source as the base five's own fallback.
+//    Unlike the base five, BOTH Custom date AND Sun path (custom date) must be on (showCustomArc &&
+//    show3DCulmination) - without an active custom date/time there's no well-defined point in time
+//    to look CHMI up at, so both fields show '—' in that case (still visible, just idle).
+function updateInfoReadout() {
+  const inImageMode = currentMode === 'analyzer' && !theaterMode3D
+    && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
+    && !(typeof skyDomeActive !== 'undefined' && skyDomeActive);
+
+  // ── 1. Az/Alt/Day/Time/Dir fallback ─────────────────────────────────────────────────────────
+  if (mouseX < 0) {
+    if (inImageMode && showCustomArc) {
+      const sp = _readoutFallbackSunPos();
+      const displayAz = hemisphere >= 0 ? sp.az : (sp.az + 180) % 360;
+      // Reproject through the selected time-display mode (True/Mean/Standard) - unambiguous here,
+      // unlike the hover path in inverseSolar(), since the fallback source is a single real
+      // calendar day (customMonth/customDay), not a symmetric day1/day2 pair. fmtSolarTime rounds
+      // to the nearest minute, same formatter the slider label uses - keeps the two in exact sync.
+      const shownHour = displayHour(sunTimeHours, dayOfYear(customMonth, customDay));
+      document.getElementById('valAz').textContent   = displayAz.toFixed(1) + '°';
+      document.getElementById('valAlt').textContent  = (sp.el >= 0 ? '+' : '') + sp.el.toFixed(1) + '°';
+      document.getElementById('valDay').textContent  = MONTH_NAMES[customMonth - 1] + ' ' + customDay;
+      document.getElementById('valTime').textContent = fmtSolarTime(shownHour);
+      document.getElementById('valDir').textContent  = azimutToDir(displayAz);
+    } else {
+      document.getElementById('valAz').textContent   = '—';
+      document.getElementById('valAlt').textContent  = '—';
+      document.getElementById('valDay').textContent  = '—';
+      document.getElementById('valTime').textContent = '—';
+      document.getElementById('valDir').textContent  = '—';
+    }
+  }
+
+  // ── 2. SSV10M/T ──────────────────────────────────────────────────────────────────────────────
+  const ssvSep = document.getElementById('chmiSSVSep'), ssvGroup = document.getElementById('chmiSSVGroup');
+  const tSep   = document.getElementById('chmiTSep'),   tGroup   = document.getElementById('chmiTGroup');
+  if (!ssvGroup || !tGroup) return;
+
+  const ssvVisible = inImageMode && !!showImgChmi;
+  const tVisible = ssvVisible && typeof currentChmiExtra !== 'undefined' && currentChmiExtra && currentChmiExtra.element === 'T';
+  ssvSep.style.display = ssvVisible ? '' : 'none';
+  ssvGroup.style.display = ssvVisible ? '' : 'none';
+  tSep.style.display = tVisible ? '' : 'none';
+  tGroup.style.display = tVisible ? '' : 'none';
+  if (!ssvVisible) return;
+
+  const elSSV = document.getElementById('valSSV'), elT = document.getElementById('valT');
+  if (!showCustomArc || !show3DCulmination) { elSSV.textContent = '—'; elT.textContent = '—'; elT.style.color = ''; return; }
+
+  let trueHour, doy;
+  if (mouseX >= 0) {
+    const { beta_deg, theta_deg, azimut_world } = pixelToAzEl(mouseX, mouseY);
+    if (Math.abs(beta_deg) >= 180 || theta_deg < 0) { elSSV.textContent = '—'; elT.textContent = '—'; elT.style.color = ''; return; }
+    const sol = inverseSolar(azimut_world, theta_deg, effectiveLat());
+    if (!sol) { elSSV.textContent = '—'; elT.textContent = '—'; elT.style.color = ''; return; }
+    trueHour = sol.hourTrue;
+    doy = _chmiReadoutPreferredDoy(sol.doy1, sol.doy2);
+  } else {
+    trueHour = sunTimeHours;
+    doy = dayOfYear(customMonth, customDay);
+  }
+
+  const { ssv, t, tColor } = _chmiReadoutValuesAt(trueHour, doy);
+  elSSV.textContent = ssv;
+  elT.textContent = t;
+  elT.style.color = tColor || '';
+}
 
 document.getElementById('chkSunArc').addEventListener('change', (e) => {
   showSunArc = e.target.checked; draw();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();   // shared across all Sky Dome projections
   updateLineOpacityAvailability();
+  updateAnalemmaSubrow();
+});
+
+// Analemma - sub-option of "Sun's paths" (chkSunArc), same show/hide-with-master pattern as the
+// Custom date sub-row (updateCustomDateSubrow) just below: no space taken and not interactive
+// while Sun's paths itself is off. showAnalemma's own state is untouched here - only the row's
+// visibility - so turning Sun's paths back on later doesn't silently reactivate a curve the user
+// deliberately left off, and doesn't reset one they'd left on either (draw()'s own showSunArc &&
+// showAnalemma gate is what actually keeps the curve from rendering while Sun's paths is off).
+function updateAnalemmaSubrow() {
+  const row = document.getElementById('analemmaSubrow');
+  if (!row) return;
+  row.style.display = document.getElementById('chkSunArc').checked ? 'flex' : 'none';
+}
+updateAnalemmaSubrow();
+
+document.getElementById('btnAnalemma').addEventListener('click', () => {
+  showAnalemma = !showAnalemma;
+  const btn = document.getElementById('btnAnalemma');
+  btn.classList.toggle('on', showAnalemma);
+  btn.setAttribute('aria-checked', String(showAnalemma));
+  draw();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();
 });
 
 document.getElementById('btnHeatmap').addEventListener('click', () => {
@@ -642,6 +756,7 @@ function stepCustomDay(dir) {
 }
 function commitCustomDate() {
   updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  updateInfoReadout();   // new date changes both the hover-path day and the fallback day alike
 }
 
 // Day value `off` steps away from the current date, without mutating state
@@ -829,6 +944,7 @@ function setCustomDateActive(active) {
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   updateLineOpacityAvailability();
+  updateInfoReadout();   // SSV10M/T need BOTH this and show3DCulmination on - see updateInfoReadout()
 }
 
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
@@ -859,6 +975,7 @@ function setShowImgChmi(val) {
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   updateLineOpacityAvailability();
+  updateInfoReadout();   // SSV10M/T only show at all while this is on
 }
 document.getElementById('chkImgChmi').addEventListener('change', (e) => {
   setShowImgChmi(e.target.checked);
@@ -923,6 +1040,7 @@ document.getElementById('rngSunTime').addEventListener('input', (e) => {
   syncSunTimeUI();
   draw(); draw3D();                            // 2D sun dot + 3D ray
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();   // move the sun marker in the graph
+  updateInfoReadout();   // fallback-path time (not hovering) tracks this slider directly
 });
 
 // ─── Opacity label ──────────────────────────────────────────────────────────
@@ -1165,6 +1283,7 @@ async function setCurrentChmiFromGallery() {
     updateChmiLegendAvailability();
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
     draw();
+    updateInfoReadout();   // new image = new (or no) currentChmi/currentChmiExtra
   };
 
   if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) { finish(); return; }
@@ -1427,11 +1546,14 @@ let _lastAnalyzerSubView = 'image';
 // one shared value across the whole app, unchanged. Gallery starts with everything off (a clean
 // image, no overlays, per the brief); Analyzer's snapshot is seeded with the app's own existing
 // defaults so first-run Analyzer behaviour is unchanged.
-let analyzerDisplayState = { grid: true, labels: true, horizon: true, sunArc: true, customArc: true, imgChmi: false };
-let galleryDisplayState  = { grid: false, labels: false, horizon: false, sunArc: false, customArc: false, imgChmi: false };
+// analemma stays false in both snapshots' seed values - it's off by default regardless of mode
+// (see updateAnalemmaSubrow's comment), not something either mode starts with pre-activated.
+let analyzerDisplayState = { grid: true, labels: true, horizon: true, sunArc: true, customArc: true, imgChmi: false, analemma: false };
+let galleryDisplayState  = { grid: false, labels: false, horizon: false, sunArc: false, customArc: false, imgChmi: false, analemma: false };
 function _captureDisplayState(target) {
   target.grid = showGrid; target.labels = showLabels; target.horizon = showHorizon;
   target.sunArc = showSunArc; target.customArc = showCustomArc; target.imgChmi = showImgChmi;
+  target.analemma = showAnalemma;
 }
 // "Line Opacity" only affects overlay LINES (grid/horizon/sun's paths/custom date/CHMI) - not
 // Labels, which are text, not a line. Dim + disable its row whenever none of those five are
@@ -1452,16 +1574,20 @@ function updateLineOpacityAvailability() {
 function _applyDisplayState(src) {
   showGrid = src.grid; showLabels = src.labels; showHorizon = src.horizon;
   showSunArc = src.sunArc; showCustomArc = src.customArc; showImgChmi = src.imgChmi;
+  showAnalemma = !!src.analemma;
   document.getElementById('chkGrid').checked = showGrid;
   document.getElementById('chkLabels').checked = showLabels;
   document.getElementById('chkHorizon').checked = showHorizon;
   document.getElementById('chkSunArc').checked = showSunArc;
   document.getElementById('chkCustomArc').checked = showCustomArc;
   document.getElementById('chkImgChmi').checked = showImgChmi;
+  const analemmaBtn = document.getElementById('btnAnalemma');
+  if (analemmaBtn) { analemmaBtn.classList.toggle('on', showAnalemma); analemmaBtn.setAttribute('aria-checked', String(showAnalemma)); }
   // Keep each checkbox's own dependent UI in sync too, same as their individual change handlers.
   if (typeof syncChmiModeGroupState === 'function') syncChmiModeGroupState();
   if (typeof updateChmiElemSwitch === 'function') updateChmiElemSwitch();
   if (typeof updateCustomDateSubrow === 'function') updateCustomDateSubrow();
+  if (typeof updateAnalemmaSubrow === 'function') updateAnalemmaSubrow();
   const legendItem = document.querySelector('[data-band="chmi"]');
   if (legendItem) legendItem.classList.toggle('off', !showImgChmi);
   updateLineOpacityAvailability();
@@ -1581,7 +1707,7 @@ function enterImageView() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
-  if (typeof updateViewButtons === 'function') updateViewButtons();
+  if (typeof updateViewButtons === 'function') updateViewButtons();   // also refreshes SSV10M/T visibility
 }
 
 // Already in Analyzer (incl. Sun Graph / 3D Model sub-views) → no-op; the graph is part of Analyzer.
@@ -1641,6 +1767,12 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
     draw();
     if (typeof draw3D === 'function') draw3D();
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+    // Sky Dome's own hour labels (_skyDomeHourDots) also reproject through displayHour() but live
+    // outside draw()/draw3D() - redraw it too when it's the active view, same as the info panel.
+    if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof drawSkyDome === 'function') drawSkyDome();
+    // The info panel's own Time field (hover AND fallback) also reprojects through displayHour()
+    // now - without this it stayed stuck on the previous mode's reading until the next mousemove.
+    if (typeof updateInfoReadout === 'function') updateInfoReadout();
   }
 
   let saved = 'standard';

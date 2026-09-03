@@ -43,6 +43,11 @@ function updateViewButtons() {
       && !(typeof skyDomeActive !== 'undefined' && skyDomeActive);
     imgLeg.style.display = showImgLeg ? 'flex' : 'none';
   }
+
+  // Single chokepoint for every sub-view enter/exit (3D Model, Sun Graph, Sky Dome, Image, Gallery
+  // via setMode()) - SSV10M/T (controls.js) are Image-mode-only, same scope as imgLeg just above,
+  // so this is exactly where their visibility needs re-checking too.
+  if (typeof updateInfoReadout === 'function') updateInfoReadout();
 }
 
 function enterSunGraph() {

@@ -207,14 +207,33 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   const solarHour = 12 - H * 180 / Math.PI / 15;
   if (solarHour < 0 || solarHour > 24) return null;
 
-  const hh = Math.floor(solarHour);
-  const mm = Math.floor((solarHour - hh) * 60);
-  const timeStr = hh + ':' + String(mm).padStart(2, '0');
+  // Raw day-of-year integers (same wrap-to-[1,365] rule doyToString applies internally).
+  const doy1 = ((Math.round(d1) - 1 + 365) % 365) + 1;
+  const doy2 = ((Math.round(d2) - 1 + 365) % 365) + 1;
+
+  // Reproject through the selected time-display convention (True/Mean/Standard), same as every
+  // other printed clock reading in the project (syncSunTimeUI's slider label, drawSunArc's hourly
+  // dots, Sky Dome's own hour labels) - solarHour itself is the true-solar hour angle and doesn't
+  // depend on which day-solution is picked (H is identical for d1/d2 by construction), but the EoT
+  // correction displayHour() applies does vary by real calendar day. day1 (spring side) is used as
+  // the reference here, same default the H1/H2 CHMI rule falls back to when nothing else resolves
+  // the ambiguity (_chmiReadoutPreferredDoy) - day1/day2 can very rarely differ by a minute or two
+  // in Mean/Standard mode as a result, same inherent ambiguity the Day field already shows openly.
+  // fmtSolarTime (render-3d.js) rounds to the nearest minute (with 59→60 carry) - same formatter
+  // the slider label/rise-set labels use, so this always matches them exactly instead of drifting
+  // by a minute from an independent floor().
+  const shownHour = displayHour(solarHour, doy1);
+  const timeStr = fmtSolarTime(shownHour);
 
   return {
     day1: doyToString(d1),
     day2: doyToString(d2),
-    time: timeStr
+    time: timeStr,
+    // doy1/doy2 and the unrounded true-solar hour, for callers that need to look something up by
+    // day/hour (e.g. the SSV10M/T readout, §Info panel) rather than just display day1/day2/time.
+    doy1: doy1,
+    doy2: doy2,
+    hourTrue: solarHour,
   };
 }
 function azimutToDir(az) {
@@ -457,6 +476,136 @@ function _sgEnsureChmiByDoy() {
   return _sgChmiByDoy;
 }
 
+// ── SSV10M/T readout (top info bar, §Info panel) ──────────────────────────────────────────────
+// Unlike _sgEnsureChmiByDoy() above (always whichever ONE dataset the element switch has active),
+// the readout wants SSV10M and the extra element (T, when this image has one) at the same time
+// regardless of the switch state - so each dataset gets its own independent bucket cache, mirroring
+// the same (dataset identity, timeZoneHours) invalidation rule.
+let _roChmiByDoy = null, _roChmiByDoySrc = null, _roChmiByDoyZone = null;
+function _roChmiEnsureByDoy() {
+  if (typeof currentChmi === 'undefined' || !currentChmi) { _roChmiByDoySrc = null; _roChmiByDoy = null; return null; }
+  if (_roChmiByDoySrc === currentChmi && _roChmiByDoyZone === timeZoneHours) return _roChmiByDoy;
+  _roChmiByDoySrc = currentChmi;
+  _roChmiByDoyZone = timeZoneHours;
+  _roChmiByDoy = _chmiBucketByDoy(currentChmi.values, timeZoneHours);
+  return _roChmiByDoy;
+}
+let _roChmiExtraByDoy = null, _roChmiExtraByDoySrc = null, _roChmiExtraByDoyZone = null;
+function _roChmiExtraEnsureByDoy() {
+  if (typeof currentChmiExtra === 'undefined' || !currentChmiExtra) { _roChmiExtraByDoySrc = null; _roChmiExtraByDoy = null; return null; }
+  if (_roChmiExtraByDoySrc === currentChmiExtra && _roChmiExtraByDoyZone === timeZoneHours) return _roChmiExtraByDoy;
+  _roChmiExtraByDoySrc = currentChmiExtra;
+  _roChmiExtraByDoyZone = timeZoneHours;
+  _roChmiExtraByDoy = _chmiBucketByDoy(currentChmiExtra.values, timeZoneHours);
+  return _roChmiExtraByDoy;
+}
+
+// Whether the currently-selected gallery generation's own label names it as an 'H2' (second-half-
+// of-year) shoot - the exposure actually happened on the autumn-side day of any day1/day2 pair, not
+// the spring-side default. Not derivable from the CHMI data itself, a rule tied purely to the
+// generation label (user-specified convention, see filelist.json's generation labels, e.g.
+// "2025_H2_GEN-I"). False (spring side, doy1) if the label names neither half or nothing is loaded.
+function _chmiReadoutPrefersDay2() {
+  const gen = (typeof FILELIST !== 'undefined' && FILELIST && typeof galleryState !== 'undefined' && galleryState)
+    ? FILELIST.generations.find(g => g.id === galleryState.genId) : null;
+  const label = gen ? gen.label : '';
+  return label.includes('H2');
+}
+// Which of inverseSolar()'s two day solutions (doy1 = spring side, doy2 = autumn side - a given
+// Az/Alt matches the sun's position on two calendar days symmetric around a solstice) is the real
+// exposure day for THIS image, per _chmiReadoutPrefersDay2() above.
+function _chmiReadoutPreferredDoy(doy1, doy2) {
+  return _chmiReadoutPrefersDay2() ? doy2 : doy1;
+}
+
+// ── Hover readout: colour-code the day1/day2 (and, in Mean/Standard mode, time1/time2) split ──
+// §20.35 found that inverseSolar()'s two day solutions share the exact same TRUE solar hour angle
+// (by construction - sunPosition(H,δ,φ) only depends on declination/latitude, not which calendar
+// day produced that declination) but generally do NOT share the same Mean/Standard clock reading,
+// since the equation-of-time correction displayHour() applies is not symmetric about a solstice the
+// way declination is - at the equinoxes (day1/day2 six months apart) the two readings can differ by
+// upward of 15 minutes, not "a minute or two" as originally assumed. Rather than silently picking
+// one, both fields show BOTH values - day1/time1 first, day2/time2 second (H1/H2 order) - and colour
+// whichever one actually matches this image's own H1/H2 generation label green (the real exposure
+// day), the other dim/grey - same "which one is actually true right now" language the HIT/MISS pill
+// (render-3d.js) already uses. Time collapses to a single plain value in True solar time mode, where
+// the two readings are identical (nothing to disambiguate) - and does the same in Mean/Standard mode
+// on the rare occasion both round to the same printed minute.
+const _READOUT_DAY2_GREEN = '#50dc78';   // same green as the HIT pill / Custom Path line
+function _readoutDayTimeHtml(sol) {
+  if (!sol) return { dayHtml: '—', timeHtml: '—' };
+  const prefersDay2 = _chmiReadoutPrefersDay2();
+  const col1 = prefersDay2 ? 'var(--dim)' : _READOUT_DAY2_GREEN;
+  const col2 = prefersDay2 ? _READOUT_DAY2_GREEN : 'var(--dim)';
+  const dayHtml = `<span style="color:${col1}">${sol.day1}</span>`
+                + ` / <span style="color:${col2}">${sol.day2}</span>`;
+
+  const t1 = fmtSolarTime(displayHour(sol.hourTrue, sol.doy1));
+  const t2 = fmtSolarTime(displayHour(sol.hourTrue, sol.doy2));
+  const timeHtml = (t1 === t2)
+    ? t1
+    : `<span style="color:${col1}">${t1}</span> / <span style="color:${col2}">${t2}</span>`;
+  return { dayHtml, timeHtml };
+}
+
+// SSV10M is stored as raw seconds of sunshine within the 10-minute sample window (0-600, NOT
+// already a fraction or percent - see chmi/*.json's own "unit": "seconds_per_10min" and
+// extract-chmi_V2.ps1's unit table) - convert to the percent the readout label promises.
+function _chmiReadoutFormatSSV(sec) {
+  if (sec === undefined || sec === null) return '—';
+  return Math.round(sec / 600 * 100) + '%';
+}
+function _chmiReadoutFormatT(tempC) {
+  if (tempC === undefined || tempC === null) return '—';
+  return (tempC >= 0 ? '+' : '') + tempC.toFixed(1) + '°C';
+}
+
+// Core SSV10M/T lookup for the readout: true-solar hour + a single resolved real day-of-year ->
+// formatted display strings for both fields. Reuses _imgChmiSlotsFor() (render-2d.js, loads after
+// this file but only ever CALLED later, at interaction time) for the same hour->10-min-slot mapping
+// the 2D canvas's own CHMI overlay already uses, rather than re-deriving it here. A slot present in
+// the map but holding `null` (station gap) and a slot simply absent from the map (day outside this
+// image's exposure coverage) both correctly fall through to '—' via the formatters above - neither
+// needs distinguishing here, matching drawChmiArc's own "both render as no-data" treatment.
+function _chmiReadoutValuesAt(trueHour, doy) {
+  const standardHour = standardFromTrue(trueHour, doy);
+  const slot = ((Math.round(standardHour * 6) % 144) + 144) % 144;
+
+  const ssvByDoy = _roChmiEnsureByDoy();
+  const ssvSlots = ssvByDoy ? _imgChmiSlotsFor(ssvByDoy, doy) : null;
+  const ssvVal = ssvSlots ? ssvSlots.get(slot) : undefined;
+
+  const extraByDoy = _roChmiExtraEnsureByDoy();
+  const extraSlots = extraByDoy ? _imgChmiSlotsFor(extraByDoy, doy) : null;
+  const extraVal = extraSlots ? extraSlots.get(slot) : undefined;
+  // Only meaningful as "T" if this image's extra dataset actually IS temperature - filelist.json
+  // currently only ever declares one extra code per image (see setCurrentChmiFromGallery()), and
+  // it's always 'T' today, but this stays correct if that ever changes.
+  const tVal = (typeof currentChmiExtra !== 'undefined' && currentChmiExtra && currentChmiExtra.element === 'T') ? extraVal : undefined;
+
+  // Font colour for the T value matches the same temperature gradient the CHMI overlay itself uses
+  // on the image (_chmiTempColor, the 45-band ČHMÚ scale above) - null (caller's default colour)
+  // when there's no real value to colour.
+  const tColor = (tVal !== undefined && tVal !== null) ? _chmiTempColor(tVal, 1) : null;
+
+  return { ssv: _chmiReadoutFormatSSV(ssvVal), t: _chmiReadoutFormatT(tVal), tColor };
+}
+
+// Forward sun position (Custom date + sunTimeHours -> {az, el}, world compass, same shape/units
+// sunPosition() always returns) for the top readout's fallback path (§Info panel, updateInfoReadout
+// in controls.js): while hovering, Az/Alt/Day/Time/Dir are read backward from the cursor via
+// pixelToAzEl()+inverseSolar(); while NOT hovering but "Custom date" is on, they instead read
+// forward from the selected date/time - this is that other direction, reusing the exact same
+// declination/latitude/hour-angle inputs render-3d.js's own Custom-date status readout
+// (tsAzAlt) already computes the same way.
+function _readoutFallbackSunPos() {
+  const doy = dayOfYear(customMonth, customDay);
+  const delta = sunDeclination(doy);
+  const phi = effectiveLat() * hemisphere;
+  const H = (sunTimeHours - 12) * 15 * Math.PI / 180;
+  return sunPosition(H, delta, phi);
+}
+
 // Azimuth and elevation of sun for hour angle H (rad), declination δ (rad), latitude φ (rad)
 // Returns { az, el } in degrees; az = world azimuth 0=N, 90=E, 180=S, 270=W
 function sunPosition(H, delta, phi) {
@@ -616,7 +765,144 @@ function drawAllSunArcs(W, H) {
   });
 }
 
+// The analemma - the sun's position at one FIXED CLOCK reading (Mean or Standard time - see
+// _analemmaTrueHourFor below) sampled across the year, the classic figure-8 loop you get
+// photographing the sun at the same clock time every few days. The "same clock time" is exactly
+// what makes it an 8: the equation of time shifts the TRUE solar hour angle that produces that
+// clock reading by a different amount on each calendar day, so the sun drifts east/west across the
+// months on top of its north/south declination drift - the two together trace the loop. In True
+// solar time mode there's no such shift (true solar time and true hour angle are the same thing by
+// definition), so every month lands on the exact same hour angle and the "loop" degenerates to a
+// vertical line - that's correct behaviour, not a bug (see _analemmaTrueHourFor).
+//
+// The fixed clock reading itself is whatever's currently showing: the CURRENT day (customMonth/Day)
+// and CURRENT sunTimeHours, reprojected through the active display mode - i.e. exactly what the
+// Time readout/slider label already print. Kept simple per spec: one point per month, always the
+// 21st (not the real solstice/equinox dates elsewhere in this function), connected as a dotted
+// closed loop back to January. Sub-option of "Sun's paths" (showSunArc) - gated by the caller, not
+// in here - independent of Custom date/showCustomArc, since it isn't "the" custom day, just
+// whatever hour the slider currently sits at.
+function drawAnalemma(W, H) {
+  const op = dispOpacity;
+  const phi = effectiveLat();
+  const shownHour = displayHour(sunTimeHours, dayOfYear(customMonth, customDay));
+  const sampleAt = (day) => {
+    const trueHour = _analemmaTrueHourFor(shownHour, day);
+    const hDeg = (trueHour - 12) * 15 * hemisphere;   // same convention as the animated sun marker (render-2d.js)
+    const delta = pathDeclination(day);
+    const { el, beta } = sunPosition(hDeg * Math.PI / 180, delta, phi);
+    const pos = azElToPixel(beta - yawDeg, el);   // valid for ANY el, not just el>=0 - see drawHorizon's own el=0 call
+    return { el, point: pos ? { x: pos.px, y: pos.py } : null };
+  };
+  ctx.strokeStyle = `rgba(175, 82, 222, ${Math.min(1, op * 0.9)})`;   // same purple as the Analemma switch (#af52de)
+  ctx.lineWidth = 2.6;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([1, 6]);   // dotted, not dashed - short round caps read as dots
+  for (const run of _analemmaRuns(_analemmaBuildPoints(sampleAt))) _analemmaStrokeRun(ctx, run.points, run.closed);
+  ctx.setLineDash([]);
+}
+// Builds the analemma's point/gap sequence from the 12 monthly samples (day=21 each month) plus,
+// wherever two ADJACENT months disagree on visibility, one extra point exactly at the horizon
+// (el=0) - found by bisecting the real fractional day between them, not by sampling extra whole
+// days. Fixes the earlier version simply stopping a run at the last/first whole visible month: the
+// true curve keeps going right up to the horizon, and now the drawn one does too. sampleAt(day) ->
+// {el, point} is the ONLY thing that differs between the flat scan and Sky Dome (different
+// declination/projection conventions - see drawAnalemma / _skyDomeAnalemmaPoints); everything else,
+// including this function and the run-splitting/spline drawing below it, is shared as-is. `point`
+// must be valid for ANY el, not just el>=0 - every projection in this app already handles negative
+// elevation fine (nothing physically stops the sun from having a computable position below the
+// horizon, it's just not visible there), so sampleAt should never gate on sign itself.
+function _analemmaBuildPoints(sampleAt) {
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const day = dayOfYear(m, 21);
+    const s = sampleAt(day);
+    months.push({ day, el: s.el, point: s.point });
+  }
+  // Bisects the real day between two adjacent months that disagree on visibility, narrowing in on
+  // exactly where el crosses zero. b.day is a's own day plus up to 365 (not wrapped into [1,365])
+  // while bisecting, so the interval stays a single ordered range even across the Dec->Jan
+  // boundary - only wrapped back into a real calendar day right before each sampleAt() call.
+  const horizonEdge = (a, b) => {
+    const aVisible = a.el >= 0;
+    let d0 = a.day, d1 = b.day > a.day ? b.day : b.day + 365;
+    for (let i = 0; i < 18; i++) {
+      const dm = (d0 + d1) / 2;
+      const s = sampleAt(dm > 365 ? dm - 365 : dm);
+      if ((s.el >= 0) === aVisible) d0 = dm; else d1 = dm;
+    }
+    const dm = (d0 + d1) / 2;
+    return sampleAt(dm > 365 ? dm - 365 : dm).point;
+  };
+  const raw = [];
+  for (let i = 0; i < 12; i++) {
+    const cur = months[i], next = months[(i + 1) % 12];
+    raw.push(cur.el >= 0 ? cur.point : null);
+    if ((cur.el >= 0) !== (next.el >= 0)) raw.push(horizonEdge(cur, next));
+  }
+  return raw;
+}
+// Splits a circular array of 12 monthly points (or null where that month is below the horizon at
+// the fixed hour - see drawAnalemma/_skyDomeAnalemmaPoints) into runs of consecutive visible
+// months. A curve should never bridge straight across a month that isn't actually there - that
+// silently implies the sun was visible in between, which it wasn't. All 12 present (the common
+// case) is one CLOSED run (the loop back to January); any gap breaks it into one or more OPEN runs,
+// each ending where visibility does. Handles wraparound (e.g. Nov/Dec/Jan all invisible splits the
+// remaining Feb-Oct into one run; a gap elsewhere can still wrap an open run across the Dec->Jan
+// boundary).
+function _analemmaRuns(arr) {
+  const n = arr.length;
+  if (arr.every(p => p !== null)) return [{ points: arr.slice(), closed: true }];
+  const firstGap = arr.findIndex(p => p === null);
+  const runs = [];
+  let current = [];
+  for (let k = 0; k < n; k++) {
+    const p = arr[(firstGap + 1 + k) % n];
+    if (p === null) { if (current.length) runs.push({ points: current, closed: false }); current = []; }
+    else current.push(p);
+  }
+  if (current.length) runs.push({ points: current, closed: false });
+  return runs;
+}
+// Strokes one run through a Catmull-Rom spline (converted to per-segment cubic Beziers) instead of
+// straight segments between the 12 sparse points - visibly smoother without sampling any extra
+// days. Closed runs (loop) wrap their neighbour lookups; open runs (broken by a horizon gap) clamp
+// at both ends instead, since there's no real neighbour to borrow a tangent from past the gap.
+// pts.length < 2 draws nothing (a single visible month has no segment to connect).
+function _analemmaStrokeRun(ctx, pts, closed) {
+  const n = pts.length;
+  if (n < 2) { return; }
+  if (n === 2) {   // two points define no curvature - a straight segment is the honest result
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke();
+    return;
+  }
+  const at = (i) => closed ? pts[(i + n) % n] : pts[Math.max(0, Math.min(n - 1, i))];
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  const segCount = closed ? n : n - 1;
+  for (let i = 0; i < segCount; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+  }
+  ctx.stroke();
+}
+// Inverse of displayHour(): given a clock reading already in the CURRENT display mode and the real
+// calendar day it should apply to, returns the TRUE solar hour angle that produces that reading on
+// that specific day. Mean/Standard already have a direct inverse (equation of time - and, for
+// Standard, the longitude offset - are day-of-year functions only, not hour-of-day ones, so this
+// is an exact closed form, no iteration needed); True solar time has no conversion to invert at all
+// (trueHour === the clock reading itself, on every day alike) - which is exactly why the analemma
+// collapses to a vertical line there instead of forming the usual figure-8 (see drawAnalemma above).
+function _analemmaTrueHourFor(shownHour, doy) {
+  if (timeDisplayMode === 'mean') return trueFromMean(shownHour, doy);
+  if (timeDisplayMode === 'standard') return trueFromStandard(shownHour, doy);
+  return shownHour;
+}
+
 let showSunArc = true;   // Sun's paths on by default (Gallery + Analyzer)
+let showAnalemma = false;   // Sun's paths sub-option, off by default even when Sun's paths is on
 let showHeatmap = false;
 let showImgChmi = false;   // 2D-canvas CHMI overlay master switch (Display section), off by default
 let chmiDisplayMode = 'whole';   // 'custom' = single-day halo on the Custom Path (legacy behaviour)
