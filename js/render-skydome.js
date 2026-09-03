@@ -200,6 +200,14 @@ function _sd3Dot(a, b)   { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
 // render-3d.js), just as a single shared constant here since everything dimming here sits on or
 // under one shell rather than needing per-material front/back tuning.
 const SKY_MAP3D_DIM_ALPHA_MULT = 0.28;
+// With the cladding/shell turned off (#chkCladding), there's no translucent surface left to "see
+// through" any more - every line should read at full opacity regardless of which side of the
+// sphere it's on, not just the shell fill itself (_skyMap3DDrawShell already skips drawing
+// entirely when cladding is off). Every "permeability" dim site below goes through this instead of
+// the raw constant, so turning cladding off gives full visibility everywhere in one place.
+function _skyMap3DDimMult() {
+  return (typeof show3DCladding !== 'undefined' && !show3DCladding) ? 1 : SKY_MAP3D_DIM_ALPHA_MULT;
+}
 function _sd3AlphaOf(rgba) {
   const m = rgba.match(/rgba?\([^,]+,[^,]+,[^,]+(?:,([^)]+))?\)/);
   return m && m[1] !== undefined ? parseFloat(m[1]) : 1;
@@ -481,7 +489,7 @@ const _SKY_ARC_ALPHA_BUCKET = 0.12;
 // continuous .alpha if the projection set one (Planetarium's rim fade), else the fixed
 // SKY_MAP3D_DIM_ALPHA_MULT dim for a far-side-of-the-sphere point (Sky Map 3D), else opaque.
 function _skyDomeAlphaOf(p) {
-  return p.alpha !== undefined ? p.alpha : (p.visible === false ? SKY_MAP3D_DIM_ALPHA_MULT : 1);
+  return p.alpha !== undefined ? p.alpha : (p.visible === false ? _skyMap3DDimMult() : 1);
 }
 function _skyDomeStrokeArc(ctx, pts, color, lineWidth) {
   if (pts.length < 2) return;
@@ -654,7 +662,7 @@ function _skyMap3DPolyline(layout, points) {
 // az/el band); this function only manages colour and the path itself.
 function _skyMap3DStrokePolyline(ctx, pts, color) {
   if (pts.length < 2) return;
-  const dimColor = _sd3WithAlpha(color, _sd3AlphaOf(color) * SKY_MAP3D_DIM_ALPHA_MULT);
+  const dimColor = _sd3WithAlpha(color, _sd3AlphaOf(color) * _skyMap3DDimMult());
   const strokeSeg = (vis) => { ctx.strokeStyle = vis === false ? dimColor : color; ctx.stroke(); };
   let curVis = null, first = true;
   ctx.beginPath();
@@ -738,7 +746,7 @@ function _skyMap3DDrawFloorAndCompass(ctx, layout, pal, lt) {
     ];
     const N_SEG = 16;
     for (const card of cardinals) {
-      const dimColor = _sd3WithAlpha(card.color, SKY_MAP3D_DIM_ALPHA_MULT);
+      const dimColor = _sd3WithAlpha(card.color, _skyMap3DDimMult());
       ctx.lineWidth = 1.5; ctx.setLineDash([]);
       let prevPt = fc, prevOcc = _skyMap3DOccluded([0, 0, 0]);
       for (let i = 1; i <= N_SEG; i++) {
@@ -961,7 +969,7 @@ function _skyMap3DDrawOpticalAxis(ctx, layout) {
   // through the translucent shell on the far side instead of hard-hiding. A binary show/hide here
   // read as the axis randomly vanishing while orbiting, since "far side" flips every time the
   // camera crosses the sun's own meridian.
-  const dimMult = sphereVisible ? 1 : SKY_MAP3D_DIM_ALPHA_MULT;
+  const dimMult = sphereVisible ? 1 : _skyMap3DDimMult();
 
   // The ray sticks out past the dome surface by half a sphere radius (REACH = 1 + 0.5), instead of
   // stopping exactly at the sun's own position on the sphere - drawn with _skyMap3DProjectRaw
@@ -1856,6 +1864,10 @@ const SKY_PLANET3D_SHELL_INTERACT_STEP_MUL = 2;   // 4°→8° while actively dr
 // Re-stroked over each patch's own fill, below - see the comment at the stroke call itself.
 const SKY_PLANET3D_SHELL_SEAM_PAD = 1.5;   // canvas px
 function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl) {
+  // Wired to the same "cladding" checkbox as the 3D Model theater's cylinder cladding and Sky Map
+  // 3D's own shell (#chkCladding/show3DCladding, render-3d.js) - off hides this ambient sky fill
+  // entirely, mirroring what that checkbox already does in the other two views.
+  if (typeof show3DCladding !== 'undefined' && !show3DCladding) return;
   const stepMul = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_INTERACT_STEP_MUL : 1;
   const AZ_STEP = 4 * stepMul, EL_STEP = 4 * stepMul;   // Planetarium's field of view is narrower
   const patches = [];               // than Sky Map 3D's near-hemisphere, so a coarser mesh already reads smooth.
