@@ -1,5 +1,11 @@
 // ─── Event listeners ───────────────────────────────────────────────────────
 container.addEventListener('mousemove', (e) => {
+  // Gallery: plain OS cursor, no crosshair, no readout - skips pixelToAzEl/inverseSolar (real
+  // trig, not just a lookup) running on every single mousemove pixel, which is the expensive part
+  // on older machines. The readout bar itself stays visible in Gallery, just permanently idle -
+  // see setMode()'s gallery branch, which resets it to the same '—' placeholders this handler
+  // already falls back to below. Cheapest possible check, so put it first.
+  if (currentMode !== 'analyzer') return;
   if (splitActive) return;
   if (theaterMode3D) return;  // theater mode: no readout, no crosshair
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) return;  // sun graph: same as theater
@@ -59,6 +65,7 @@ container.addEventListener('mousemove', (e) => {
 });
 
 container.addEventListener('mouseleave', () => {
+  if (currentMode !== 'analyzer') return;   // Gallery never sets mouseX away from -1 to begin with
   if (splitActive) return;
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseLeave(); return; }
   mouseX = -1; mouseY = -1;
@@ -73,6 +80,7 @@ container.addEventListener('mouseleave', () => {
 document.getElementById('chkSunArc').addEventListener('change', (e) => {
   showSunArc = e.target.checked; draw();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();   // shared across all Sky Dome projections
+  updateLineOpacityAvailability();
 });
 
 document.getElementById('btnHeatmap').addEventListener('click', () => {
@@ -91,6 +99,7 @@ document.getElementById('btnHeatmap').addEventListener('click', () => {
 document.getElementById('chkGrid').addEventListener('change', (e) => {
   showGrid = e.target.checked; draw();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) drawSkyDome();   // Planetarium's own grid so far
+  updateLineOpacityAvailability();
 });
 document.getElementById('chkLabels').addEventListener('change', (e) => {
   showLabels = e.target.checked; draw();
@@ -99,6 +108,7 @@ document.getElementById('chkLabels').addEventListener('change', (e) => {
 });
 document.getElementById('chkHorizon').addEventListener('change', (e) => {
   showHorizon = e.target.checked; draw();
+  updateLineOpacityAvailability();
 });
 
 // Calibration (yaw/pitch/roll/radius/horizon/scan width) changes the sun ray's "enters the can"
@@ -797,22 +807,28 @@ document.getElementById('btnMonInc').addEventListener('click', () => { stepCusto
 document.getElementById('btnDayDec').addEventListener('click', () => { stepCustomDay(-1);  commitCustomDate(); });
 document.getElementById('btnDayInc').addEventListener('click', () => { stepCustomDay(1);   commitCustomDate(); });
 // Custom date (Display checkbox) and Sun path (custom date) (3D panel button) are the same on/off
-// switch shown in two places, now mirrored absolutely: whichever one changes - a direct click on
-// either, or CHMI turning Custom date on automatically via forceCustomArcOn() below - the other
-// follows immediately, so checkbox state, the month/day wheel sub-row, and the button's own ☑/☐
-// icon (updateAxisLegend()) never disagree.
+// switch shown in two places IN ANALYZER, mirrored absolutely there: whichever one changes - a
+// direct click on either, or CHMI turning Custom date on automatically via forceCustomArcOn()
+// below - the other follows immediately, so checkbox state, the month/day wheel sub-row, and the
+// button's own ☑/☐ icon (updateAxisLegend()) never disagree. In Gallery there IS no 3D panel/
+// button to mirror - Gallery keeps its own independent Display memory (see setMode()), so this
+// deliberately leaves show3DCulmination and every 3D-only side effect alone when called from
+// there, rather than leaking Gallery's own checkbox into Analyzer's 3D state.
 function setCustomDateActive(active) {
   showCustomArc = active;
-  show3DCulmination = active;
   document.getElementById('chkCustomArc').checked = active;
-  if (active) sunTimeHours = 12;   // fresh start at noon when turning it on
   updateCustomDateSubrow();
-  updateAxisLegend();
-  updateSunAnimCtl();
+  if (currentMode === 'analyzer') {
+    show3DCulmination = active;
+    if (active) sunTimeHours = 12;   // fresh start at noon when turning it on
+    updateAxisLegend();
+    updateSunAnimCtl();
+    draw3D();
+    updateSunWave();
+  }
   draw();
-  draw3D();
-  updateSunWave();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  updateLineOpacityAvailability();
 }
 
 document.getElementById('chkCustomArc').addEventListener('change', (e) => {
@@ -842,6 +858,7 @@ function setShowImgChmi(val) {
   updateChmiElemSwitch();
   draw();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  updateLineOpacityAvailability();
 }
 document.getElementById('chkImgChmi').addEventListener('change', (e) => {
   setShowImgChmi(e.target.checked);
@@ -1403,9 +1420,72 @@ let currentMode = 'gallery'; // 'analyzer' | 'gallery'
 // Planetarium was showing too, no separate tracking needed for that.
 let _lastAnalyzerSubView = 'image';
 
+// Gallery keeps its own independent memory of the Display checkboxes (grid/labels/horizon/sun's
+// paths/custom date/CHMI data) - captured out of and applied into the live globals (showGrid etc.)
+// on every mode transition below, same swap-a-snapshot idiom as _lastAnalyzerSubView above. The
+// selected custom date itself (customMonth/customDay) is deliberately NOT part of this - it stays
+// one shared value across the whole app, unchanged. Gallery starts with everything off (a clean
+// image, no overlays, per the brief); Analyzer's snapshot is seeded with the app's own existing
+// defaults so first-run Analyzer behaviour is unchanged.
+let analyzerDisplayState = { grid: true, labels: true, horizon: true, sunArc: true, customArc: true, imgChmi: false };
+let galleryDisplayState  = { grid: false, labels: false, horizon: false, sunArc: false, customArc: false, imgChmi: false };
+function _captureDisplayState(target) {
+  target.grid = showGrid; target.labels = showLabels; target.horizon = showHorizon;
+  target.sunArc = showSunArc; target.customArc = showCustomArc; target.imgChmi = showImgChmi;
+}
+// "Line Opacity" only affects overlay LINES (grid/horizon/sun's paths/custom date/CHMI) - not
+// Labels, which are text, not a line. Dim + disable its row whenever none of those five are
+// currently active, in either mode - otherwise the slider looks live but has nothing left to
+// actually control. Scoped to the main Display panel only (not the section-wide enable/disable
+// setDisplaySectionEnabled does for the 3D Model/Sun Graph/Sky Dome sub-views) - called from each
+// of the five checkboxes' own change handlers and from _applyDisplayState() below, so it always
+// reflects the live state regardless of what changed it.
+function updateLineOpacityAvailability() {
+  const input = document.getElementById('rngOpacity');
+  const row = input.closest('.slider-row');
+  if (!row) return;
+  const anyActive = showGrid || showHorizon || showSunArc || showCustomArc || showImgChmi;
+  row.style.opacity = anyActive ? '' : '0.35';
+  row.style.pointerEvents = anyActive ? '' : 'none';
+  input.disabled = !anyActive;
+}
+function _applyDisplayState(src) {
+  showGrid = src.grid; showLabels = src.labels; showHorizon = src.horizon;
+  showSunArc = src.sunArc; showCustomArc = src.customArc; showImgChmi = src.imgChmi;
+  document.getElementById('chkGrid').checked = showGrid;
+  document.getElementById('chkLabels').checked = showLabels;
+  document.getElementById('chkHorizon').checked = showHorizon;
+  document.getElementById('chkSunArc').checked = showSunArc;
+  document.getElementById('chkCustomArc').checked = showCustomArc;
+  document.getElementById('chkImgChmi').checked = showImgChmi;
+  // Keep each checkbox's own dependent UI in sync too, same as their individual change handlers.
+  if (typeof syncChmiModeGroupState === 'function') syncChmiModeGroupState();
+  if (typeof updateChmiElemSwitch === 'function') updateChmiElemSwitch();
+  if (typeof updateCustomDateSubrow === 'function') updateCustomDateSubrow();
+  const legendItem = document.querySelector('[data-band="chmi"]');
+  if (legendItem) legendItem.classList.toggle('off', !showImgChmi);
+  updateLineOpacityAvailability();
+}
+// The page loads directly into Gallery (currentMode's own default) without ever calling setMode()
+// itself - core.js's showGrid/showLabels/etc. (and index.html's matching `checked` markup) still
+// carry Analyzer's "everything on" defaults at this point, so apply Gallery's all-off state once,
+// right here, to match on first paint instead of only from the next mode switch onward.
+_applyDisplayState(galleryDisplayState);
+container.style.cursor = 'default';
+
 function setMode(mode) {
   stopL2Loop();                 // cancel auto-loop when switching modes
+  _captureDisplayState(currentMode === 'analyzer' ? analyzerDisplayState : galleryDisplayState);
   currentMode = mode;
+  _applyDisplayState(mode === 'analyzer' ? analyzerDisplayState : galleryDisplayState);
+  // Swapping the Display globals above doesn't repaint anything by itself - the canvas still shows
+  // whatever the LAST draw() actually rendered (the mode being left), and several paths below only
+  // redraw conditionally (e.g. the Analyzer branch's own draw3D()/loadGalleryImage() calls are
+  // gated on view/layer checks that may both be false, and the sub-view restore further down has
+  // no branch at all for the plain 'image' case). An explicit, unconditional draw() here - cheap,
+  // and already called redundantly elsewhere in this function - guarantees the canvas reflects the
+  // just-applied state immediately, regardless of what those other paths do or skip.
+  draw();
   const btnA = document.getElementById('btnModeAnalyzer');
   const btnG = document.getElementById('btnModeGallery');
   const galleryPanel = document.getElementById('galleryPanel');
@@ -1440,6 +1520,7 @@ function setMode(mode) {
     if (!imgBitmap) uploadZoneEl.classList.remove('hidden');
     setPresetButtonsEnabled(imgBitmap !== null);
     document.getElementById('statusWrap').style.display = 'flex';   // info panel in Analyzer
+    container.style.cursor = 'none';   // Analyzer draws its own crosshair - correct even before the first mousemove
     draw3D();
     if (typeof updateViewButtons === 'function') updateViewButtons();  // reveal the sub-view wheel, defaulting to Image
     if (typeof updateSunAnimCtl === 'function') updateSunAnimCtl();     // reflect default Sun-path state
@@ -1461,6 +1542,18 @@ function setMode(mode) {
     if (typeof updateViewButtons === 'function') updateViewButtons();              // hide the sub-toggles
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
+    // Gallery has no crosshair/readout (see the mousemove handler's own early return) - plain
+    // cursor, and the Az/Alt/Day/Time/Dir bar stays visible but permanently idle, same '—'
+    // placeholders it already falls back to off-canvas in Analyzer. Reset explicitly here rather
+    // than waiting for a mouseleave that won't come, in case real values were left showing from
+    // Analyzer at the moment of switching.
+    mouseX = -1; mouseY = -1;
+    document.getElementById('valAz').textContent   = '—';
+    document.getElementById('valAlt').textContent  = '—';
+    document.getElementById('valDay').textContent  = '—';
+    document.getElementById('valTime').textContent = '—';
+    document.getElementById('valDir').textContent  = '—';
+    container.style.cursor = 'default';
     btnA.className = 'mode-btn';
     btnG.className = 'mode-btn active-gallery';
     galleryPanel.classList.add('visible');

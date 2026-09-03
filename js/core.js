@@ -705,7 +705,9 @@ function setSplitMode(active) {
   splitActive = active;
   splitHandle.style.display    = active ? 'block' : 'none';
   btnSplitInvert.style.display = active ? 'flex'  : 'none';
-  container.style.cursor = active ? 'col-resize' : 'none';
+  // Off-state cursor depends on mode: Analyzer draws its own crosshair (needs the OS cursor
+  // hidden, 'none'), Gallery doesn't (needs the plain default cursor) - see setMode().
+  container.style.cursor = active ? 'col-resize' : (typeof currentMode !== 'undefined' && currentMode === 'analyzer' ? 'none' : 'default');
   document.getElementById('l2OpacityRow').style.display = active ? 'block' : 'none';
   draw();
 }

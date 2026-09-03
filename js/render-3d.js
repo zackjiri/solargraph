@@ -1192,6 +1192,17 @@ function setDisplaySectionEnabled(enabled, keepIds) {
   // switch), or they're left looking fully active (bright, not dimmed) in a view that doesn't
   // render CHMI at all, even though their buttons are individually disabled underneath.
   if (typeof updateChmiLegendAvailability === 'function') updateChmiLegendAvailability();
+  // Same reasoning as updateChmiLegendAvailability above: this section's own enabled state can
+  // change on every view switch (setMode(), enterTheater3D()/enterSunGraph()/enterSkyDome() and
+  // their exits), and the generic per-row loop above always re-brightens the Line Opacity row
+  // whenever the section itself is unlocked - even if none of the five overlays it actually
+  // controls (grid/horizon/sun's paths/custom date/CHMI) happen to be on, which does happen now
+  // that Gallery can start with everything off (see controls.js's Display-state snapshot). Only
+  // called when enabled=true: when the section is genuinely locked (enabled=false, e.g. the 3D
+  // Model/Sun Graph/Sky Dome sub-views), the loop above has already decided this row's state more
+  // strictly than this check ever would, and re-running it here could wrongly re-brighten a row
+  // that's supposed to stay locked.
+  if (enabled && typeof updateLineOpacityAvailability === 'function') updateLineOpacityAvailability();
 }
 
 function enterTheater3D() {
