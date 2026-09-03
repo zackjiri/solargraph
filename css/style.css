@@ -243,6 +243,14 @@
 
   .readout-value.blue { color: var(--accent2); }
 
+  /* SSV10M/T (controls.js's updateInfoReadout()) - T's colour tracks the live CHMI temperature
+     gradient (_chmiTempColor, core.js), so a thin black outline keeps it legible against light
+     theme's own light background regardless of which gradient colour lands there. */
+  #valSSV, #valT {
+    -webkit-text-stroke: 0.6px #000;
+    paint-order: stroke fill;
+  }
+
   .readout-sep {
     color: var(--border);
     font-size: 16px;
@@ -593,6 +601,52 @@
     width: 100%;
     cursor: pointer;
   }
+
+  /* Analemma - sub-option of "Sun's paths" (chkSunArc) above, same show/hide-by-parent-state
+     pattern as the Custom date sub-row just below (toggled by JS - updateAnalemmaSubrow() in
+     controls.js - not CSS alone, since the switch also needs to stop being interactive while Sun's
+     paths itself is off). Row height matches a plain .chk-row's own natural height (checkbox is
+     12px, font-size 11px) - the switch itself (14px tall) sits within that, not a bigger custom
+     row, so it doesn't disturb the Display section's line rhythm. iOS-style pill switch, same
+     technique as .chmi-elem-switch below - grey OFF (var(--dim)), purple ON, thumb slides right on
+     activation (plain boolean switch - unlike chmi-elem-switch's dual-label semantics, where the
+     thumb instead sits next to whichever label is currently active). */
+  .analemma-subrow {
+    display: none;   /* flex, set by JS */
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 19px;   /* aligns under chkSunArc's own label text, past its checkbox + gap */
+  }
+  .analemma-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text);
+  }
+  .analemma-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 12px;   /* matches .chk-row input[type=checkbox]'s own 12px exactly */
+    border-radius: 6px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: var(--dim);   /* OFF */
+    transition: background 0.18s;
+  }
+  .analemma-switch::after {
+    content: '';
+    position: absolute;
+    top: 1.5px; left: 1.5px;   /* OFF - thumb left */
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  .analemma-switch.on { background: #af52de; }   /* same purple as the curve itself */
+  .analemma-switch.on::after { left: 11.5px; }   /* ON - thumb right */
 
   /* Custom date's month/day wheel pickers - sub-controls of the "Custom date" checkbox above
      (Display section), same show/hide-by-parent-state pattern as the CHMI sub-rows just below.
