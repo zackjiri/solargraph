@@ -17,6 +17,7 @@
       <div class="mode-toggle">
         <button class="mode-btn active-gallery" id="btnModeGallery" title="Browse and compare captured solargraphs">Gallery</button>
         <button class="mode-btn" id="btnModeAnalyzer" title="Simulate and calibrate the pinhole projection">Analyzer</button>
+        <button class="mode-btn mode-btn-eclipse" id="btnModeEclipse" title="2026-08-12 total solar eclipse, computed from Besselian elements for the current Calibration location - experimental">Eclipse</button>
       </div>
       <!-- Sub-toggles, shown only in Analyzer; sit flush under the toggle (widths matched in JS) -->
       <div class="mode-subrow wheel-row" title="Analyzer sub-view – drag, tap a side value, or use the arrows">
@@ -71,6 +72,18 @@
     <div class="readout-item" id="chmiTGroup" style="display:none">
       <span class="readout-label">T</span>
       <span class="readout-value" id="valT" style="color:#e8c860;font-size:12px;min-width:48px">—</span>
+    </div>
+    <!-- Eclipse-only - shown/hidden by _eclipseUpdateReadout() (render-eclipse.js), same pattern as
+         SSV10M/T above. Live values at the CURRENT slider time, not the Stats panel's "at max". -->
+    <span class="readout-sep" id="eclMagSep" style="display:none">|</span>
+    <div class="readout-item" id="eclMagGroup" style="display:none">
+      <span class="readout-label">Mag</span>
+      <span class="readout-value" id="valEclMag" style="color:#e8c860;font-size:12px;min-width:40px">—</span>
+    </div>
+    <span class="readout-sep" id="eclObscSep" style="display:none">|</span>
+    <div class="readout-item" id="eclObscGroup" style="display:none">
+      <span class="readout-label">Obsc</span>
+      <span class="readout-value" id="valEclObsc" style="color:#e8c860;font-size:12px;min-width:48px">—</span>
     </div>
   </div>
 </div>
@@ -193,6 +206,16 @@
     <input type="file" id="presetFileInput" accept=".json" style="display:none">
   </div>
 
+  <!-- Eclipse info panel (Analyzer sub-view) - replaces #can3dPanel while active. Experimental,
+       see js/render-eclipse.js. -->
+  <div id="eclipsePanel">
+    <div class="panel-title">2026 Aug 12 Eclipse</div>
+    <div id="eclipsePhaseLabel" class="ecl-heading">—</div>
+    <div id="eclipseCircTable" class="ecl-table"></div>
+    <div class="ecl-heading">Stats</div>
+    <div id="eclipseStatsTable" class="ecl-table"></div>
+  </div>
+
   <!-- Canvas column -->
   <div class="canvas-col">
     <div class="upload-zone" id="uploadZone">
@@ -205,6 +228,12 @@
       <canvas id="can3dTheater"></canvas>
       <canvas id="sunGraphCanvas"></canvas>
       <canvas id="skyDomeCanvas"></canvas>
+      <canvas id="eclipseCanvas"></canvas>
+      <!-- Eclipse time slider - overlaid on the canvas itself (under the Sun), not in the side
+           panel - same style as #rngSunTime under the 3D Model preview. Shown only in Eclipse. -->
+      <div id="eclipseSliderRow">
+        <input type="range" id="rngEclipseTime" min="0" max="1" step="0.001" value="0.5">
+      </div>
       <!-- Sky Dome projection switch (Sky Map / Az-El Chart) – top-right, shown only in Sky Dome.
            Same wheel-picker widget as the Custom date month/day pickers and the main Analyzer
            sub-view switcher (see makeWheelPicker() in controls.js). -->
@@ -390,8 +419,24 @@
       </div>
     </div>
 
+    <!-- Eclipse's own Display section - replaces #displaySection while the Eclipse sub-view is
+         active (js/render-eclipse.js). Not linked to the photo-overlay checkboxes above, since
+         none of those apply here. -->
+    <div class="sidebar-section" id="eclipseDisplaySection">
+      <div class="sidebar-title">Display</div>
+      <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid, 0.1° apart (azimuth gold, altitude blue - same colours as the main Az/Alt grid) - slides with the Sun's real position over time, same as Horizon"><input type="checkbox" id="chkEclipseGrid" checked> Az/Alt grid</label>
+      <label class="chk-row" title="Label the grid axes with their real degree values, the horizon line, and the equatorial cross's N/S/E/W"><input type="checkbox" id="chkEclipseLabels" checked> Labels</label>
+      <label class="chk-row" title="Overlay a cross built on the equatorial (RA/Dec-like) frame the Besselian elements themselves use, rotated to show true N/S/E/W as the Sun/Moon drift across the sky"><input type="checkbox" id="chkEclipseEquatorial" checked> Equatorial grid</label>
+      <label class="chk-row" title="Overlay the horizon as a translucent black half-plane (90% opaque, 10% see-through) - shows when the Sun has actually set for this observer, even though the Sun/Moon diagram stays fixed regardless"><input type="checkbox" id="chkEclipseHorizon" checked> Horizon</label>
+    </div>
+
     <div class="sidebar-section" id="calibrationSection">
       <div class="sidebar-title">Calibration</div>
+      <!-- Everything but Location - hidden while the Eclipse sub-view is active (js/render-eclipse.js:
+           the pinhole calibration sliders don't apply there, only the observer's location does).
+           Own display:flex/column/gap so hiding this one wrapper doesn't collapse the row spacing
+           of the rows still inside it - see #calibNonLocationGroup in css/style.css. -->
+      <div id="calibNonLocationGroup">
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:#a0c8e0" title="Physical size of the photo paper (height follows from width)">Scan width / height</span>
@@ -441,6 +486,7 @@
         </div>
         <input type="range" id="rngHScale" min="15" max="80" step="0.5" value="33" style="accent-color:#cc88cc" title="Effective radius of the film can / cylinder">
       </div>
+      </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--accent-red)">Location</span>
@@ -478,6 +524,11 @@
         <button class="lat-btn" id="btnTimeZoneInc">▶</button>
         <span style="font-family:var(--mono);font-size:9px;color:var(--dim)">h</span>
       </div>
+      <!-- Eclipse-only - shown/hidden by enterEclipse()/exitEclipse() (render-eclipse.js). Jumps
+           the slider to the astronomically exact greatest-eclipse instant, even when that instant
+           falls after the Sun has set (in which case the initial view defaults to sunset instead -
+           see _eclipseRecompute's defaultT). -->
+      <button class="sidebar-btn" id="btnEclipseMaxPhase" style="display:none" title="Jump to the moment of greatest local eclipse - clamped to sunset if the astronomical maximum would otherwise fall after the Sun has set">Move to maximum phase</button>
       <button class="sidebar-btn" id="btnCalibReset" title="Reset yaw, pitch, roll, horizon, radius and location to defaults">Reset calibration</button>
     </div>
 
@@ -539,5 +590,6 @@
 <script src="js/render-sungraph.js"></script>
 <script src="js/render-3d.js"></script>
 <script src="js/render-skydome.js"></script>
+<script src="js/render-eclipse.js"></script>
 </body>
 </html>
