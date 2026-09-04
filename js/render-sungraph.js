@@ -25,8 +25,11 @@ let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overl
 // three takeovers (3D Model / Sun Graph / Sky Dome) is active, that IS the Image state - always
 // resolves there, never left ambiguous.
 function updateViewButtons() {
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
   const sub = document.querySelector('.mode-subrow');
-  if (sub) sub.style.display = (currentMode === 'analyzer') ? 'flex' : 'none';
+  // Eclipse isn't part of the wheel (it's a top-level mode, see #btnModeEclipse) - hide the
+  // sub-view wheel while it's showing, same as it's hidden outside Analyzer entirely.
+  if (sub) sub.style.display = (currentMode === 'analyzer' && !eclipseIsActive) ? 'flex' : 'none';
 
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) _modeWheelIndex = 0;
   else if (typeof sunGraphActive !== 'undefined' && sunGraphActive) _modeWheelIndex = 2;
@@ -34,13 +37,14 @@ function updateViewButtons() {
   else _modeWheelIndex = 1;   // Image – the neutral base view, and the default on entering Analyzer
   if (typeof _modeWheel !== 'undefined' && _modeWheel) _modeWheel.render();
 
-  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome).
+  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome/Eclipse).
   const imgLeg = document.getElementById('imgLegendWrap');
   if (imgLeg) {
     const showImgLeg = currentMode === 'analyzer'
       && !(typeof theaterMode3D !== 'undefined' && theaterMode3D)
       && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
-      && !(typeof skyDomeActive !== 'undefined' && skyDomeActive);
+      && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
+      && !eclipseIsActive;
     imgLeg.style.display = showImgLeg ? 'flex' : 'none';
   }
 
@@ -53,6 +57,7 @@ function updateViewButtons() {
 function enterSunGraph() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) exitTheater3D();  // mutually exclusive takeovers
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
 
   const container  = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');

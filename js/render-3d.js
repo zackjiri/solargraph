@@ -1209,9 +1209,10 @@ function setDisplaySectionEnabled(enabled, keepIds) {
 }
 
 function enterTheater3D() {
-  // Sun Graph, Sky Dome and 3D theater are mutually exclusive canvas takeovers.
+  // Sun Graph, Sky Dome, Eclipse and 3D theater are mutually exclusive canvas takeovers.
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
   const container = document.getElementById('canvasContainer');
   // The 3D model needs no scan → ensure the canvas area is visible (mirrors enterSunGraph).
   container.classList.remove('hidden');

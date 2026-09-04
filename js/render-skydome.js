@@ -76,9 +76,10 @@ function _skyDomeDisplayKeepIds() {
 }
 
 function enterSkyDome() {
-  // All three canvas takeovers (3D Model, Sun Graph, Sky Dome) are mutually exclusive.
+  // All four canvas takeovers (3D Model, Sun Graph, Sky Dome, Eclipse) are mutually exclusive.
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
 
   const container  = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');

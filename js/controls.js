@@ -12,6 +12,10 @@ container.addEventListener('mousemove', (e) => {
   // Sky Dome: same shared readout, recalibrated for the dome's own polar geometry (see
   // handleSkyDomeMouseMove in render-skydome.js) instead of the flat scan's pixelToAzEl.
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseMove(e); return; }
+  // Eclipse: no crosshair, no hover readout - the top bar shows the Sun's position over time
+  // instead (driven by the time slider, see _eclipseUpdateReadout in render-eclipse.js), same as
+  // theater/Sun Graph above.
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
 
   // Canvas is CSS 100% × 100% with object-fit: contain, so the bitmap is
   // letterboxed inside the element – map through the real image bounds.
@@ -71,6 +75,7 @@ container.addEventListener('mouseleave', () => {
   if (currentMode !== 'analyzer') return;   // Gallery never sets mouseX away from -1 to begin with
   if (splitActive) return;
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseLeave(); return; }
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
   mouseX = -1; mouseY = -1;
   document.getElementById('valAz').textContent  = '—';
   document.getElementById('valAlt').textContent  = '—';
@@ -105,9 +110,15 @@ container.addEventListener('mouseleave', () => {
 //    show3DCulmination) - without an active custom date/time there's no well-defined point in time
 //    to look CHMI up at, so both fields show '—' in that case (still visible, just idle).
 function updateInfoReadout() {
+  // Eclipse drives the same five top-bar fields itself (_eclipseUpdateReadout in
+  // render-eclipse.js, called from drawEclipse() on every slider move/resize) - leave them alone
+  // here rather than blanking them to '—', since this function gets called from plenty of places
+  // that have nothing to do with Eclipse (e.g. the time-display-mode menu).
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
   const inImageMode = currentMode === 'analyzer' && !theaterMode3D
     && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
-    && !(typeof skyDomeActive !== 'undefined' && skyDomeActive);
+    && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
+    && !(typeof eclipseActive !== 'undefined' && eclipseActive);
 
   // ── 1. Az/Alt/Day/Time/Dir fallback ─────────────────────────────────────────────────────────
   if (mouseX < 0) {
@@ -448,6 +459,7 @@ function applyLat(val) {
   if (show3DCulmination) refreshSunTimeRange();   // LAT/hemisphere shifts the "enters the can" interval too
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
 }
 
 document.getElementById('inpLat').addEventListener('change', (e) => {
@@ -473,6 +485,7 @@ document.getElementById('btnN').addEventListener('click', () => {
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
 });
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -482,6 +495,7 @@ document.getElementById('btnS').addEventListener('click', () => {
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
 });
 
 // ─── Longitude control ──────────────────────────────────────────────────────
@@ -496,6 +510,7 @@ function applyLong(val) {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();   // longitude shifts the whole eclipse geometry - recompute from scratch
 }
 
 document.getElementById('inpLong').addEventListener('change', (e) => {
@@ -520,6 +535,7 @@ document.getElementById('btnE').addEventListener('click', () => {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
 });
 document.getElementById('btnW').addEventListener('click', () => {
   lonHemisphere = -1;
@@ -528,6 +544,7 @@ document.getElementById('btnW').addEventListener('click', () => {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
 });
 
 // ─── Time zone offset control ───────────────────────────────────────────────
@@ -545,6 +562,11 @@ function applyTimeZone(val) {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
+  // Unlike LAT/LONG, the timezone offset doesn't change the eclipse geometry itself (contact
+  // times in Besselian t-space stay put) - but it DOES change every displayed clock reading
+  // ("UTC+N"), both in the top readout and the left panel's circumstance table, so those still
+  // need a redraw - just a lighter one than enterEclipse()'s full recompute+slider-reset.
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshDisplay === 'function') _eclipseRefreshDisplay();
 }
 
 document.getElementById('inpTimeZone').addEventListener('change', (e) => {
@@ -890,6 +912,8 @@ updateCustomDateSubrow();
 // entering Analyzer; see enterImageView() below and updateViewButtons() in render-sungraph.js,
 // which is what actually keeps _modeWheelIndex in sync with reality (this file only drives the
 // wheel widget itself).
+// Eclipse is NOT part of this wheel - it's its own top-level mode, a peer of Gallery/Analyzer
+// (see #btnModeEclipse below and enterEclipse()/exitEclipse() in render-eclipse.js).
 const MODE_VIEW_LABELS = ['3D Model', 'Image', 'Sun Graph', 'Sky Dome'];
 let _modeWheelIndex = 1;   // which of the 4 the wheel is currently centred on - starts on Image
 
@@ -1665,6 +1689,7 @@ function setMode(mode) {
     if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();  // leaving Analyzer closes 3D model
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();   // ...and Sun Graph
     if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();   // ...and Sky Dome
+    if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();   // ...and Eclipse
     if (typeof updateViewButtons === 'function') updateViewButtons();              // hide the sub-toggles
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
@@ -1707,12 +1732,18 @@ function enterImageView() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
   if (typeof updateViewButtons === 'function') updateViewButtons();   // also refreshes SSV10M/T visibility
 }
 
 // Already in Analyzer (incl. Sun Graph / 3D Model sub-views) → no-op; the graph is part of Analyzer.
+// Eclipse is the one exception: currentMode stays 'analyzer' the whole time it's active (it's just
+// a canvas takeover layered on top, same as 3D Model/Sun Graph/Sky Dome), so the plain mode-switch
+// above would no-op right past it. Clicking ANALYZER while Eclipse is showing should fall back to
+// the plain Image sub-view instead of doing nothing.
 document.getElementById('btnModeAnalyzer').addEventListener('click', () => {
-  if (currentMode !== 'analyzer') setMode('analyzer');
+  if (currentMode !== 'analyzer') { setMode('analyzer'); return; }
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterImageView === 'function') enterImageView();
 });
 document.getElementById('btnModeGallery').addEventListener('click', () => {
   if (currentMode === 'gallery') return;
