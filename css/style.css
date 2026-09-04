@@ -163,7 +163,7 @@
         NOT zoomed – they sit over an unzoomed canvas and contain backdrop-filter layers that
         zoom would rasterise-then-upscale into a blur, so their +25% size is baked directly into
         the CSS below (25_1). ── */
-  .top-strip, .info-bar, .sidebar, .gallery-panel, #can3dPanel { zoom: 1.25; }
+  .top-strip, .info-bar, .sidebar, .gallery-panel, #can3dPanel, #eclipsePanel { zoom: 1.25; }
   /* #can3d sits inside the zoomed panel; its backing store is rendered at the final device
      size (205×250 = 164×200 × 1.25, see index.html) and pinned to a 164×200 CSS box, so the
      bitmap maps 1:1 to device pixels and the model stays sharp instead of being upscaled (25_1). */
@@ -862,6 +862,26 @@
       #1e6aaa 5px,
       #35aae8 5px,
       #35aae8 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  /* Eclipse - top-level mode toggle, peer to Gallery/Analyzer (not an Analyzer sub-view - it's its
+     own thing, with its own canvas/panels, see js/render-eclipse.js). */
+  .mode-btn.active-eclipse {
+    background: repeating-linear-gradient(
+      45deg,
+      #3a3a3e,
+      #3a3a3e 5px,
+      #f5c518 5px,
+      #f5c518 10px
     );
     color: #fff;
     font-weight: bold;
@@ -1779,3 +1799,88 @@
     accent-color: var(--accent2);
     cursor: pointer;
   }
+
+  /* Eclipse sub-view - lives in #canvasContainer alongside the other three takeovers (Theater3D/
+     Sun Graph/Sky Dome), same pattern (js/render-eclipse.js: enterEclipse/exitEclipse). */
+  #eclipseCanvas {
+    position: absolute; inset: 0;
+    display: none;
+    background: #4a90d9;
+    z-index: 10;
+    cursor: default;
+  }
+
+  /* Left info panel - replaces #can3dPanel while Eclipse is active (same base look/width). */
+  #eclipsePanel {
+    flex: 0 0 200px;
+    width: 200px;
+    background: var(--panel);
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px 10px;
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+  }
+  #eclipsePanel.visible { display: flex; }
+  /* Hidden by default like #eclipsePanel above - enterEclipse()/exitEclipse() (render-eclipse.js)
+     flip this to 'flex' only while the Eclipse mode is actually active; without this default it
+     inherits .sidebar-section's display:flex and shows year-round, stacked under #displaySection. */
+  #eclipseDisplaySection { display: none; }
+  /* Shared by #eclipsePhaseLabel and the "Stats" heading below it - and by #eclipseCircTable and
+     #eclipseStatsTable, the two rowed data blocks under each heading. */
+  .ecl-heading {
+    font-family: var(--mono); font-size: 11px; font-weight: bold; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .ecl-table {
+    font-family: var(--mono); font-size: 10px; color: var(--text);
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .ecl-table .ecl-row { display: flex; justify-content: space-between; gap: 8px; }
+  .ecl-table .ecl-row span:first-child { color: var(--dim); }
+
+  /* Eclipse time slider - overlaid on the canvas (under the Sun, near the bottom), NOT in the side
+     panel - half the canvas width, centred. Same double-height-track / thin-line-thumb look as
+     #rngSunTime under the 3D Model preview (css/style.css:1446). Track fill is a yellow(no eclipse)
+     -> black(totality) gradient by phase, with white tick lines at C1/C2/C3/C4, built in JS
+     (_eclipseBuildSliderFill, render-eclipse.js) into --eclipse-fill - same custom-property idiom
+     as #rngSunTime's --sun-fill. Falls back to the old flat purple until that first runs. */
+  #eclipseSliderRow {
+    position: absolute;
+    left: 50%; bottom: 16px;
+    transform: translateX(-50%);
+    width: 50%;
+    z-index: 11;
+    display: none;
+  }
+  #rngEclipseTime {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 16px;
+    background: transparent; cursor: pointer; margin: 0;
+  }
+  #rngEclipseTime::-webkit-slider-runnable-track {
+    height: 16px; border-radius: var(--radius-sm);
+    background: var(--eclipse-fill, rgba(175,82,222,0.28));
+  }
+  #rngEclipseTime::-moz-range-track {
+    height: 16px; border-radius: var(--radius-sm);
+    background: var(--eclipse-fill, rgba(175,82,222,0.28));
+  }
+  #rngEclipseTime::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 3px; height: 24px; margin-top: -5px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  #rngEclipseTime::-moz-range-thumb {
+    width: 3px; height: 24px;
+    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+
+  /* Calibration: everything but Location, hidden while Eclipse is active (js/render-eclipse.js) -
+     own flex/column/gap so the rows inside keep their normal spacing despite being one extra
+     level of nesting deep (see index.html's #calibNonLocationGroup). */
+  #calibNonLocationGroup { display: flex; flex-direction: column; gap: 8px; }
+  #calibNonLocationGroup.hidden, #btnCalibReset.hidden { display: none; }
