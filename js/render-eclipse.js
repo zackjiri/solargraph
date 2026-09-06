@@ -543,11 +543,18 @@ function drawEclipse(t) {
       }
     }
 
-    const azLoI = Math.ceil((sunAz - viewSpanDeg) / gridStepDeg);
-    const azHiI = Math.floor((sunAz + viewSpanDeg) / gridStepDeg);
+    // Azimuth is a bearing around the vertical axis, so a degree of azimuth covers less real sky
+    // the higher the Sun sits - dx needs the same cos(sunEl) correction as the Moon's own position
+    // below (found via a rendered-vs-Besselian mismatch at 42.8N/8.0W's C1). viewSpanDeg itself is
+    // widened by the same factor so enough lines are still generated to cover the visible width
+    // (each degree of azimuth now covers fewer pixels, so more of them fit on screen).
+    const cosSunEl = Math.cos(sunGeom.el * Math.PI / 180);
+    const azViewSpanDeg = viewSpanDeg / Math.max(0.05, cosSunEl);
+    const azLoI = Math.ceil((sunAz - azViewSpanDeg) / gridStepDeg);
+    const azHiI = Math.floor((sunAz + azViewSpanDeg) / gridStepDeg);
     for (let i = azLoI; i <= azHiI; i++) {
       const azVal = i * gridStepDeg;
-      const x = cx + (azVal - sunAz) * pxPerDeg;
+      const x = cx + (azVal - sunAz) * cosSunEl * pxPerDeg;
       ctx.lineWidth = 1;
       ctx.strokeStyle = 'rgba(232,160,32,0.65)';
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
@@ -603,13 +610,23 @@ function drawEclipse(t) {
   // a real RA/Dec offset from the Sun (u = dRA*cosDec, v = dDec - the standard tangent-plane/
   // "standard coordinates" relation) - which then goes through the app's OWN sunPosition(), the
   // same function computing the Sun's own alt/az just above, to get the Moon's real altitude and
-  // azimuth. Placed on screen via the exact same grid-relative mapping the Az/Alt grid and Horizon
-  // overlay already use (dx=(az-sunAz)*px, dy=-(el-sunEl)*px) - NOT the rot()/parallactic-angle
-  // shortcut the compass cross uses, which put the Moon's bite on the wrong side (a real observer
-  // at 49.5N/16E on 2026-08-12 reported first contact from the Sun's upper-right, not upper-left,
-  // and confirmed the times match exactly - only the orientation was off). This route reuses only
-  // already-validated code (sunPosition, the grid's own trusted offset formula) rather than a
-  // second, separate rotation - and its magnitude cross-checks against L1 almost exactly at C1.
+  // azimuth. Placed on screen via the same grid-relative mapping the Az/Alt grid and Horizon
+  // overlay use (dy=-(el-sunEl)*px) - NOT the rot()/parallactic-angle shortcut the compass cross
+  // uses, which put the Moon's bite on the wrong side (a real observer at 49.5N/16E on 2026-08-12
+  // reported first contact from the Sun's upper-right, not upper-left).
+  //
+  // Bug found afterwards (a different observer at 42.8N/8.0W: "start" read 18:32 - the exact
+  // Besselian C1 - but the rendered discs were still visibly, not just imperceptibly, apart at
+  // that time): dx used the raw azimuth DIFFERENCE (moonAz-sunAz)*px with no cos(altitude) factor.
+  // Azimuth is a bearing swept around the *vertical* axis, so the same 1° of azimuth covers less
+  // real sky the higher the Sun sits - dx must be scaled by cos(sunEl) to stay a true angular
+  // separation (the exact dRA*cosDec logic above, just for Az/Alt instead of RA/Dec). Verified
+  // directly against the canvas's own drawn arc() calls at 42.8N/8.0W's C1 (sun at +21.8°, so
+  // cos(el)=0.928, nowhere near 1): the old formula drew the discs 9.8px apart where they should
+  // exactly touch; with cos(el) included the gap is under a pixel, matching the Besselian m/L1
+  // definition of C1 to five decimal places. Left uncorrected, the error grows with altitude and
+  // was easy to miss at low altitude (where cos(el)~1 hides it) - which is exactly how the
+  // original, wrong "cross-check" note used to read here.
   const circ = _eclipseLocalCirc(t);
   const moonRadiusPx = ECLIPSE_MOON_SEMIDIAM_DEG * pxPerDeg;
   const dRA = (ECLIPSE_UV_SIGN * circ.u * scaleDeg * Math.PI / 180) / Math.cos(deltaRad);
@@ -617,7 +634,8 @@ function drawEclipse(t) {
   const moonGeom = sunPosition(hAngle - dRA, decMoon, phi);
   const moonAzWorld = (moonGeom.beta + 180 + 360) % 360;
   const moonAz = hemisphere >= 0 ? moonAzWorld : (moonAzWorld + 180) % 360;
-  const mx = cx + (moonAz - sunAz) * pxPerDeg, my = cy - (moonGeom.el - sunGeom.el) * pxPerDeg;
+  const mx = cx + (moonAz - sunAz) * Math.cos(sunGeom.el * Math.PI / 180) * pxPerDeg,
+        my = cy - (moonGeom.el - sunGeom.el) * pxPerDeg;
   ctx.beginPath(); ctx.arc(mx, my, moonRadiusPx, 0, Math.PI * 2);
   ctx.fillStyle = '#3a3a3e';
   ctx.fill();
