@@ -232,7 +232,16 @@
       <!-- Eclipse time slider - overlaid on the canvas itself (under the Sun), not in the side
            panel - same style as #rngSunTime under the 3D Model preview. Shown only in Eclipse. -->
       <div id="eclipseSliderRow">
-        <input type="range" id="rngEclipseTime" min="0" max="1" step="0.001" value="0.5">
+        <button id="btnEclipsePlay" title="Animate the eclipse (5 simulated minutes per real second), resuming from the current position">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+        </button>
+        <div id="eclipseSliderStack">
+          <input type="range" id="rngEclipseTime" min="0" max="1" step="0.001" value="0.5" title="White where the eclipse is above the horizon here, red where it's below (bottom edge of the track)">
+          <div class="sun-rise-set" id="eclipseStartEndRow">
+            <span id="lblEclipseStart">start —</span>
+            <span id="lblEclipseEnd">end —</span>
+          </div>
+        </div>
       </div>
       <!-- Sky Dome projection switch (Sky Map / Az-El Chart) – top-right, shown only in Sky Dome.
            Same wheel-picker widget as the Custom date month/day pickers and the main Analyzer
