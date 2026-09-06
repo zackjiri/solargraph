@@ -209,22 +209,33 @@
     color: var(--dim);
     letter-spacing: 0.08em;
   }
+  /* Purely decorative (the "pinhole projection definition: x = 2r..." reminder) - the first thing
+     to drop when header is tight, so the mode toggle + its Analyzer sub-view wheel (which the user
+     actually needs to operate) get the room instead of being squeezed off the right edge on
+     tablet-width screens. header's only <span> (verified: .readout's own spans are a sibling of
+     <header>, not a descendant), so this selector can't catch anything else by accident. */
+  @media (max-width: 1000px) {
+    header span { display: none; }
+  }
 
-  /* Readout bar */
+  /* Readout bar. Wraps (not hidden via overflow) below the width where every field - including the
+     Eclipse-only Mag/Obsc pair (§21.13) or CHMI's SSV10M/T - actually fits on one line; on a
+     narrow/tablet width that's a second, shorter line rather than fields silently disappearing off
+     the clipped right edge (the previous nowrap+overflow:hidden behaviour). */
   .readout {
     display: flex;
-    gap: 16px;
+    gap: 8px;
+    row-gap: 4px;
     align-items: center;
     font-family: var(--mono);
     font-size: 12px;
-    flex-wrap: nowrap;
-    overflow: hidden;
+    flex-wrap: wrap;
   }
 
   .readout-item {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 4px;
     white-space: nowrap;
   }
 
@@ -1465,8 +1476,14 @@
      thumb = thin vertical cursor line (no ball) */
   #rngSunTime {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 16px;            /* ~2× a default range track */
-    background: transparent; cursor: pointer; margin: 3px 0;
+    width: 100%; height: 44px;    /* was 16px - enlarged tap target for tablets (usual 44px
+                                      minimum touch-target guideline); the extra height is
+                                      invisible padding below, clawed back via margin so the
+                                      RISE/SET labels underneath don't shift down */
+    padding: 14px 0;               /* global box-sizing:border-box (line 145) keeps the content
+                                       box - where the track/thumb actually render - at the
+                                       original 16px regardless of this padding */
+    background: transparent; cursor: pointer; margin: -11px 0;   /* was 3px 0 - see note above: (-11)+44+(-11) = 22 = the original 3+16+3 */
   }
   #rngSunTime::-webkit-slider-runnable-track {
     height: 16px; border-radius: var(--radius-sm);
@@ -1850,33 +1867,108 @@
      as #rngSunTime's --sun-fill. Falls back to the old flat purple until that first runs. */
   #eclipseSliderRow {
     position: absolute;
-    left: 50%; bottom: 16px;
+    left: 50%; bottom: 2px;   /* was 16px - shifted down to compensate for #rngEclipseTime's now-
+                                 taller invisible tap target below, so the visible track/thumb stay
+                                 at the same screen position they were at before that change */
     transform: translateX(-50%);
     width: 50%;
     z-index: 11;
-    display: none;
+    display: none;   /* JS (enterEclipse/exitEclipse) toggles this to 'flex' - a flex row so
+                         #btnEclipsePlay sits to the LEFT of the slider/labels stack, not above it */
+    align-items: flex-start;   /* was center - the button's top edge lines up with the TRACK's own
+                                   top edge (see its margin-top below), not the centre of the whole
+                                   stack (slider + start/end row together) */
+    gap: 20px;   /* was 8px - enough clearance that the "start" label (centred on its own real
+                    position, which can land close to the stack's left edge) doesn't visually run
+                    into the button */
   }
+  /* Wraps ONLY the input + its start/end label row (not the play button) so the labels' own
+     left:X% positioning (_eclipseUpdateStartEndLabels) stays relative to the SLIDER's width, not
+     the wider row that now also includes the button. */
+  #eclipseSliderStack {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+  /* Play/stop toggle for the slider - same icon-swap idiom as #btnSunPlay (setSunPlayIcon,
+     render-3d.js) and the same colour states, just icon-only (no text label) to fit this compact
+     canvas-overlay context instead of #btnSunPlay's full-width sidebar button. */
+  #btnEclipsePlay {
+    flex: 0 0 auto;
+    width: 28px; height: 28px;
+    margin-top: 8px;   /* #rngEclipseTime's own top padding (8px, see below) before its visible
+                           track starts - matches that so this button's top edge and the track's
+                           top edge line up, per align-items:flex-start above */
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(240,208,64,0.22);
+    color: var(--accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  #btnEclipsePlay:hover { background: rgba(240,208,64,0.34); }
+  #btnEclipsePlay.playing { background: rgba(232,120,40,0.26); color: #f0a050; }
+  #btnEclipsePlay.playing:hover { background: rgba(232,120,40,0.40); }
+  #btnEclipsePlay svg { display: block; }
   #rngEclipseTime {
     -webkit-appearance: none; appearance: none;
-    width: 100%; height: 16px;
+    width: 100%; height: 44px;   /* was 16px - enlarged tap target for tablets (44px is the usual
+                                     minimum touch-target guideline); the rest is invisible padding
+                                     (below), leaving a 28px content/track box - same height as
+                                     #btnEclipsePlay, to its left, so the two visually match */
+    padding: 8px 0;               /* global box-sizing:border-box (line 145) keeps the content box
+                                      - where the track/thumb pseudo-elements actually render - at
+                                      28px regardless of this padding (44 - 2*8 = 28) */
     background: transparent; cursor: pointer; margin: 0;
   }
+  /* Track height 28px (was 20px) - matches #btnEclipsePlay's own 28px height, to its left, so the
+     two line up visually. The bottom 4px of the SAME background is the horizon-visibility strip
+     (white=above horizon, red=below, built into --eclipse-fill's own background-position/-size
+     layering, see _eclipseBuildSliderFill in render-eclipse.js) - one element, not a separate bar
+     underneath, so the thumb (below) can visibly reach into it too. */
   #rngEclipseTime::-webkit-slider-runnable-track {
-    height: 16px; border-radius: var(--radius-sm);
+    height: 28px; border-radius: var(--radius-sm);
     background: var(--eclipse-fill, rgba(175,82,222,0.28));
   }
   #rngEclipseTime::-moz-range-track {
-    height: 16px; border-radius: var(--radius-sm);
+    height: 28px; border-radius: var(--radius-sm);
     background: var(--eclipse-fill, rgba(175,82,222,0.28));
   }
   #rngEclipseTime::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
-    width: 3px; height: 24px; margin-top: -5px;
+    width: 3px; height: 32px; margin-top: -2px;   /* grown from 24px along with the track (28px, was
+                                                      20px) to keep the same 2px overhang each side,
+                                                      so it still visibly crosses into the bottom
+                                                      horizon strip */
     background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
   }
   #rngEclipseTime::-moz-range-thumb {
-    width: 3px; height: 24px;
+    width: 3px; height: 32px;
     background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+  }
+  /* Positioned (not flex/space-between) so each label sits centred exactly over the real time it
+     names on the track below - the visible/effective start and end (_eclipseVisibleRange) aren't
+     always the track's own min/max (a below-horizon C1/C4 gets clamped inward to sunrise/sunset,
+     §21.14-style), so a plain left/right-edge layout would misrepresent where that time actually
+     falls. left% set per label by _eclipseUpdateStartEndLabels. Font size matches the "TIME 12:00"
+     value above #rngSunTime (.slider-val, 11px) - NOT .sun-rise-set's tiny 8px RISE/SET line,
+     that read too small here. Legibility against the Eclipse canvas's own varying twilight sky
+     (§21.9) comes from an outline hugging the glyphs themselves (same -webkit-text-stroke idiom as
+     #valSSV/#valT, css/style.css:260), not a filled background box/pill behind the text. */
+  #eclipseStartEndRow {
+    position: relative;
+    height: 13px;
+    margin-top: 3px;
+    font-size: 11px;
+  }
+  #eclipseStartEndRow span {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    -webkit-text-stroke: 0.6px #000;
+    paint-order: stroke fill;
   }
 
   /* Calibration: everything but Location, hidden while Eclipse is active (js/render-eclipse.js) -
