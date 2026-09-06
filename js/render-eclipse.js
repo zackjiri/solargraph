@@ -136,14 +136,15 @@ function _eclipseRecompute() {
   const c2 = roots2.length >= 1 ? roots2[0] : null, c3 = roots2.length >= 2 ? roots2[1] : null;
 
   // Default moment to land on - also what "Move to maximum phase" (btnEclipseMaxPhase) jumps back
-  // to: normally the true greatest-eclipse instant (tMax), but for a PARTIAL-only event (no
-  // totality) whose tMax happens to fall after the Sun has already set, that "peak" isn't actually
-  // observable - default to sunset instead, the last moment the partial eclipse could really be
-  // seen, rather than a below-horizon instant the user would just have to scrub away from
-  // immediately. tMax itself stays available for the Stats panel's "at max" figures (an objective
-  // property of the eclipse, not of what's visible from here) - just not as a slider destination.
+  // to: normally the true greatest-eclipse instant (tMax), but whenever that instant falls after
+  // the Sun has already set (partial OR total - a total event can have its tMax below the horizon
+  // just as easily as a partial one, e.g. 37N/13E for this eclipse), that "peak" isn't actually
+  // observable - default to sunset instead, the last moment the event could really be seen, rather
+  // than a below-horizon instant the user would just have to scrub away from immediately. tMax
+  // itself stays available for the Stats panel's "at max" figures (an objective property of the
+  // eclipse, not of what's visible from here) - just not as a slider destination.
   let defaultT = tMax;
-  if (visible && c2 === null && _eclipseSunAltAt(tMax) < 0) {
+  if (visible && _eclipseSunAltAt(tMax) < 0) {
     const sunsetRoots = _eclipseScanRoots((t) => _eclipseSunAltAt(t), c1, c4, 1000);
     for (const r of sunsetRoots) {
       if (_eclipseSunAltAt(r - 0.001) > 0) { defaultT = r; break; }   // + -> - crossing = sunset, not sunrise
@@ -331,10 +332,21 @@ function _eclipseObscuration(t) {
              + r2 * r2 * Math.acos(a2) - d2 * Math.sqrt(Math.max(0, r2 * r2 - d2 * d2));
   return Math.max(0, Math.min(1, area / (Math.PI * r1 * r1)));
 }
-function _eclipseBrightnessFactor(t) { return Math.pow(1 - _eclipseObscuration(t), 0.4); }
-// Deliberately lighter than the Moon disc itself (#3a3a3e / rgb(58,58,62)) so the disc still reads
-// as a distinct, darker shape against the dimmed sky rather than disappearing into it.
-const ECLIPSE_TOTALITY_GREY = [92, 92, 100];
+// Last 1% of coverage (O=0,99->1,00) darkens faster than the base curve's own local slope would
+// give - the base V=(1-O)^0.4 already falls quickly there, but the very final approach to totality
+// gets an extra, deliberate push toward black, landing exactly on V=0 at O=1 (full totality grey,
+// see ECLIPSE_TOTALITY_GREY below).
+function _eclipseBrightnessFactor(t) {
+  const O = _eclipseObscuration(t);
+  if (O < 0.99) return Math.pow(1 - O, 0.4);
+  const vAt99 = Math.pow(0.01, 0.4);
+  const localT = (O - 0.99) / 0.01;
+  return vAt99 * (1 - localT) ** 2;
+}
+// Deliberately just a little lighter than the Moon disc itself (#3a3a3e / rgb(58,58,62)) so the
+// disc still reads as a distinct, darker shape against the dimmed sky rather than disappearing
+// into it - darker than the original [92,92,100] (kept the same faint cool tint).
+const ECLIPSE_TOTALITY_GREY = [70, 70, 76];
 
 function drawEclipse(t) {
   const cv = document.getElementById('eclipseCanvas');
@@ -393,8 +405,16 @@ function drawEclipse(t) {
   // Same rotation matrix ctx.rotate(-q) would apply, just done on the raw numbers instead of the
   // drawing context - because the horizon overlay below needs to stay a single, robust, always-
   // full-width horizontal band, not a shape that has to be rotated (and re-bounded) along with it.
+  // Only used by the Equatorial grid below (the Moon's own position goes through real topocentric
+  // az/el instead, see the comment above the Moon disc). The extra x-negation corrects a left/right
+  // mirror confirmed by an independent check: a point offset slightly toward increasing declination
+  // (i.e. really "toward the north celestial pole"), converted to its own real az/el and placed via
+  // the same trusted (az,el)->screen mapping the Az/Alt grid uses, lands at +x when this raw
+  // rot(0,-r) math (without the negation) placed the "N" tip at -x - the y/altitude component was
+  // already correct, only the x/azimuthal one was flipped. Confirmed for all four arms (N/S/E/W),
+  // not just N.
   const cosQ = Math.cos(q), sinQ = Math.sin(q);
-  const rot = (x, y) => ({ x: x * cosQ + y * sinQ, y: -x * sinQ + y * cosQ });
+  const rot = (x, y) => ({ x: -(x * cosQ + y * sinQ), y: -x * sinQ + y * cosQ });
 
   // Az/Alt grid - same idea and colours as the app's own main grid (Azimuth = gold #E8A020,
   // Altitude = blue #20A0E8, see index.html's legend). Stepped every 0.5° - the field of view here
@@ -479,10 +499,12 @@ function drawEclipse(t) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       // Sit just PAST the line's own end (gridR), not a few px short of it (which used to land
       // the label right on top of the line itself) - so the label and the cross read as two
-      // separate things instead of overlapping.
+      // separate things instead of overlapping. Only "N" labelled (not S/E/W too) - one anchor
+      // point is enough to read the cross's orientation, and it sidesteps having to spell out
+      // "not the same as horizon N/S/E/W" (see the checkbox's own tooltip) four times over.
       const labelR = gridR + 14;
-      const compass = [['N', 0, -labelR], ['S', 0, labelR], ['E', labelR, 0], ['W', -labelR, 0]];
-      for (const [label, x, y] of compass) { const p = rot(x, y); ctx.fillText(label, cx + p.x, cy + p.y); }
+      const nTip = rot(0, -labelR);
+      ctx.fillText('N', cx + nTip.x, cy + nTip.y);
     }
   }
 
@@ -560,16 +582,22 @@ function _eclipseUpdateCircTable() {
   const table = document.getElementById('eclipseCircTable');
   if (!table || !_eclipseCircumstances) return;
   const c = _eclipseCircumstances;
-  const row = (label, val) => `<div class="ecl-row"><span>${label}</span><span>${val}</span></div>`;
+  // Contact times that fall while the Sun is already below the horizon aren't actually observable
+  // from here (e.g. a total eclipse whose C1 or tMax happens after sunset, §1 above) - flagged red
+  // rather than just silently listed the same as any other time.
+  const row = (label, t) => {
+    const style = _eclipseSunAltAt(t) < 0 ? ' style="color:var(--accent-red)"' : '';
+    return `<div class="ecl-row"><span>${label}</span><span${style}>${_eclipseFmtUTC(t)}</span></div>`;
+  };
   const rows = [];
   if (!c.visible) {
-    rows.push(row('Status', 'not visible here'));
+    rows.push('<div class="ecl-row"><span>Status</span><span>not visible here</span></div>');
   } else {
-    rows.push(row('C1 begins', _eclipseFmtUTC(c.c1)));
-    if (c.c2 !== null) rows.push(row('C2 totality', _eclipseFmtUTC(c.c2)));
-    rows.push(row('Max', _eclipseFmtUTC(c.tMax)));
-    if (c.c3 !== null) rows.push(row('C3 ends', _eclipseFmtUTC(c.c3)));
-    rows.push(row('C4 ends', _eclipseFmtUTC(c.c4)));
+    rows.push(row('C1 begins', c.c1));
+    if (c.c2 !== null) rows.push(row('C2 totality', c.c2));
+    rows.push(row('Max', c.tMax));
+    if (c.c3 !== null) rows.push(row('C3 ends', c.c3));
+    rows.push(row('C4 ends', c.c4));
   }
   table.innerHTML = rows.join('');
 }
@@ -641,6 +669,11 @@ function enterEclipse() {
   // exitEclipse().
   document.getElementById('btnModeAnalyzer').className = 'mode-btn';
   document.getElementById('btnModeEclipse').classList.add('active-eclipse');
+  // valDay's 110px min-width exists to fit the general app's day1/day2 hover pairs - Eclipse only
+  // ever shows one fixed date ("Aug 12"), so that width is wasted space that pushes the readout
+  // bar (already carrying the extra Mag/Obsc fields, §21.13) toward wrapping at narrower widths.
+  // Reset in exitEclipse() below.
+  document.getElementById('valDay').style.minWidth = '50px';
 
   eclipseActive = true;
   const circ = _eclipseRecompute();
@@ -663,6 +696,7 @@ function exitEclipse() {
   document.getElementById('eclipseSliderRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   eclipseActive = false;
+  document.getElementById('valDay').style.minWidth = '110px';   // restore the general app's width (day1/day2 pairs)
 
   document.getElementById('can3dPanel').classList.add('visible');
   document.getElementById('eclipsePanel').classList.remove('visible');
