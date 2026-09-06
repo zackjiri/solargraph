@@ -159,8 +159,11 @@ function _eclipseRecompute() {
 // covered at each point along the track - not just a straight-line ease between the contact times,
 // so the black band's width on screen reflects how long totality actually lasts here, same idea as
 // #rngSunTime's own --sun-fill (render-3d.js) built from real per-instant state rather than guessed
-// endpoints. White tick lines mark C1/C2/C3/C4 (partial/totality begin+end) on top, using that same
-// gradient-layering trick (a second, mostly-transparent gradient stacked above the colour one).
+// endpoints. White tick lines mark C1/C2/C3/C4 (partial/totality begin+end) on top of that, and a
+// thin horizon-visibility strip (white=above horizon, red=below) along the very bottom edge, on
+// top of everything - three background LAYERS on the one track element (each given its own
+// position/size via the background shorthand's "pos / size" syntax) rather than a separate bar
+// underneath, so the thumb (taller than the track, css/style.css) visibly reaches into the strip.
 const ECLIPSE_FILL_YELLOW = [245, 197, 24];   // #f5c518 - matches the Sun disc / no-eclipse state
 const ECLIPSE_FILL_BLACK  = [18, 16, 10];     // matches the Moon disc / totality - not pure #000, so it still reads as a colour, not "empty"
 function _eclipseBuildSliderFill(circ) {
@@ -183,12 +186,15 @@ function _eclipseBuildSliderFill(circ) {
                      lerp(ECLIPSE_FILL_YELLOW[1], ECLIPSE_FILL_BLACK[1], f) + ',' +
                      lerp(ECLIPSE_FILL_YELLOW[2], ECLIPSE_FILL_BLACK[2], f) + ')';
   };
-  const N = 100, stops = [];
+  const N = 100, stops = [], horizonStops = [];
   for (let i = 0; i <= N; i++) {
     const t = min + span * i / N;
-    stops.push(colorAt(t) + ' ' + (i / N * 100).toFixed(2) + '%');
+    const pct = (i / N * 100).toFixed(2);
+    stops.push(colorAt(t) + ' ' + pct + '%');
+    horizonStops.push((_eclipseSunAltAt(t) >= 0 ? '#fff' : '#e84040') + ' ' + pct + '%');
   }
-  const colorGrad = 'linear-gradient(to right, ' + stops.join(',') + ')';
+  const colorGrad = 'linear-gradient(to right, ' + stops.join(',') + ') top / 100% 100% no-repeat';
+  const horizonGrad = 'linear-gradient(to right, ' + horizonStops.join(',') + ') bottom / 100% 4px no-repeat';
   let markGrad = '';
   if (circ.visible) {
     const marks = [circ.c1, circ.c2, circ.c3, circ.c4].filter((v) => v !== null);
@@ -196,9 +202,88 @@ function _eclipseBuildSliderFill(circ) {
       const p = ((t - min) / span * 100).toFixed(2);
       return `transparent calc(${p}% - 1px), #fff calc(${p}% - 1px), #fff calc(${p}% + 1px), transparent calc(${p}% + 1px)`;
     });
-    markGrad = 'linear-gradient(90deg, ' + segs.join(', ') + '), ';
+    markGrad = 'linear-gradient(90deg, ' + segs.join(', ') + ') top / 100% 100% no-repeat, ';
   }
-  slider.style.setProperty('--eclipse-fill', markGrad + colorGrad);
+  slider.style.setProperty('--eclipse-fill', horizonGrad + ', ' + markGrad + colorGrad);
+}
+// Whether the Sun is ever above the horizon anywhere within [lo, hi] - checked directly at both
+// endpoints first (cheap, covers the overwhelmingly common case), only falling back to a full
+// crossing scan for the rarer case where the Sun dips below and back up (or vice versa) entirely
+// within the window while both endpoints happen to read the same sign.
+function _eclipseAnyVisibleIn(lo, hi) {
+  if (_eclipseSunAltAt(lo) >= 0 || _eclipseSunAltAt(hi) >= 0) return true;
+  return _eclipseScanRoots(_eclipseSunAltAt, lo, hi, 1000).length > 0;
+}
+// Whether the Besselian penumbra reaching this location (circ.visible) ever actually coincides
+// with the Sun being above the horizon - a location can have real C1..C4 contact times and still
+// never show anything, if the whole partial window happens to fall while the Sun is down (e.g.
+// 35N/20E for this eclipse: C1 itself is already past sunset).
+function _eclipseAnyVisible(circ) {
+  return circ.visible && _eclipseAnyVisibleIn(circ.c1, circ.c4);
+}
+// The portion of [lo, hi] actually observable from here: its ends clamped inward to sunrise/sunset
+// when the real endpoint itself falls below the horizon (mirrors defaultT's own sunset clamp,
+// §21.14, but bidirectional - also covers a start clamped forward past sunrise). Used both for the
+// whole penumbral event (c1,c4) and, separately, for totality alone (c2,c3) - a location can see
+// only PART of totality above the horizon even while seeing all of the surrounding partial phase.
+function _eclipseVisibleWindow(lo, hi) {
+  let start = lo, end = hi;
+  if (_eclipseSunAltAt(lo) < 0) {
+    const roots = _eclipseScanRoots(_eclipseSunAltAt, lo, hi, 1000);
+    for (const r of roots) { if (_eclipseSunAltAt(r + 0.001) > 0) { start = r; break; } }   // - -> + = sunrise
+  }
+  if (_eclipseSunAltAt(hi) < 0) {
+    const roots = _eclipseScanRoots(_eclipseSunAltAt, lo, hi, 1000);
+    for (let i = roots.length - 1; i >= 0; i--) {
+      if (_eclipseSunAltAt(roots[i] - 0.001) > 0) { end = roots[i]; break; }   // + -> - = sunset, last one before hi
+    }
+  }
+  return { start, end };
+}
+function _eclipseVisibleRange(circ) { return _eclipseVisibleWindow(circ.c1, circ.c4); }
+// Plain "14:30" - no seconds, no "UTC+N" suffix (both shown elsewhere already) - for the compact
+// start/end row under the slider, same shifted-civil-time convention as _eclipseFmtUTC.
+function _eclipseFmtHM(t) {
+  const shiftedHours = ECLIPSE_T0_UTC_HOURS + t + timeZoneHours;
+  const minOfDay = (((Math.round(shiftedHours * 60)) % 1440) + 1440) % 1440;
+  return String(Math.floor(minOfDay / 60)).padStart(2, '0') + ':' + String(minOfDay % 60).padStart(2, '0');
+}
+// Each label sits centred (left:X%, translateX(-50%) in CSS) directly over the real time it
+// names, matching wherever that falls on the track below - NOT always the track's own 0%/100%
+// edges, since a below-horizon C1/C4 gets clamped inward to sunrise/sunset (_eclipseVisibleRange).
+function _eclipseUpdateStartEndLabels(circ) {
+  const elS = document.getElementById('lblEclipseStart'), elE = document.getElementById('lblEclipseEnd');
+  const slider = document.getElementById('rngEclipseTime');
+  if (!elS || !elE || !slider) return;
+  // No placeholder dashes here (unlike the circumstances table) - if there's nothing to see from
+  // this location at all, "start"/"end" naming a time is itself misleading, so the row is just
+  // empty rather than showing a "—" that implies a visible-but-unknown window.
+  if (!circ.visible || !_eclipseAnyVisible(circ)) {
+    elS.style.display = 'none'; elE.style.display = 'none';
+    return;
+  }
+  elS.style.display = ''; elE.style.display = '';
+  const min = parseFloat(slider.min), max = parseFloat(slider.max);
+  const span = Math.max(0.0001, max - min);
+  const { start, end } = _eclipseVisibleRange(circ);
+  elS.textContent = 'start ' + _eclipseFmtHM(start);
+  elE.textContent = 'end ' + _eclipseFmtHM(end);
+  const startPct = (start - min) / span * 100, endPct = (end - min) / span * 100;
+  elS.style.left = startPct.toFixed(2) + '%';
+  elE.style.left = endPct.toFixed(2) + '%';
+  // A short visible window (start/end close together, e.g. a quick sunset right after C1) can
+  // centre the two labels close enough to overlap - getBoundingClientRect forces a layout, so this
+  // reads real post-position widths rather than guessing from character counts. Nudge both apart
+  // symmetrically just enough to clear each other, rather than abandoning the "each centred on its
+  // real time" placement entirely.
+  const row = elS.parentElement;
+  const rowWidth = row ? row.getBoundingClientRect().width : 0;
+  const overlapPx = elS.getBoundingClientRect().right - elE.getBoundingClientRect().left;
+  if (overlapPx > 0 && rowWidth > 0) {
+    const shiftPct = (overlapPx / 2 / rowWidth) * 100 + 1;   // +1% breathing room
+    elS.style.left = `calc(${startPct.toFixed(2)}% - ${shiftPct.toFixed(2)}%)`;
+    elE.style.left = `calc(${endPct.toFixed(2)}% + ${shiftPct.toFixed(2)}%)`;
+  }
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────────────────────
@@ -570,7 +655,10 @@ function drawEclipse(t) {
     if (_eclipseCircumstances) {
       const c = _eclipseCircumstances;
       let phase = 'no eclipse here';
-      if (c.visible) {
+      // A location can have real C1..C4 contact times and still never once have the Sun above the
+      // horizon during them (e.g. 35N/20E for this eclipse - C1 itself is already past sunset) -
+      // that's "no eclipse here" in every practical sense, regardless of where the slider sits.
+      if (c.visible && _eclipseAnyVisible(c)) {
         if (c.c2 !== null && c.c3 !== null && t >= c.c2 && t <= c.c3) phase = 'totality';
         else if (t >= c.c1 && t <= c.c4) phase = 'partial';
       }
@@ -620,16 +708,30 @@ function _eclipseUpdateStatsTable() {
   if (!table || !_eclipseCircumstances) return;
   const c = _eclipseCircumstances;
   const row = (label, val) => `<div class="ecl-row"><span>${label}</span><span>${val}</span></div>`;
-  if (!c.visible) { table.innerHTML = ''; return; }
+  // Nothing to report if the location never sees any of this above the horizon (_eclipseAnyVisible)
+  // - same "no eclipse here" standard the phase label and start/end row already apply.
+  if (!c.visible || !_eclipseAnyVisible(c)) { table.innerHTML = ''; return; }
   const r1 = ECLIPSE_SUN_SEMIDIAM_DEG, r2 = ECLIPSE_MOON_SEMIDIAM_DEG;
-  const mDegAtMax = c.mMin * _eclipseScaleDegPerUnit();
-  const magnitude = (r1 + r2 - mDegAtMax) / (2 * r1);
+  // At defaultT (the horizon-clamped landing point, §21.14), NOT the true astronomical tMax/mMin -
+  // magnitude and obscuration are "how much of the Sun is covered" numbers, which should describe
+  // what's actually observable from here, not a theoretical peak that might never be visible.
+  const mDegAtDefault = _eclipseLocalCirc(c.defaultT).m * _eclipseScaleDegPerUnit();
+  const magnitude = Math.max(0, (r1 + r2 - mDegAtDefault) / (2 * r1));
+  // Both durations clamped to the horizon-visible portion (_eclipseVisibleWindow) - same principle
+  // as magnitude/obscuration above: describe what's actually observable from here, not the full
+  // geometric span, some of which may fall while the Sun is down.
+  const visSpan = _eclipseVisibleRange(c);
+  let totalityDur = '—';
+  if (c.c2 !== null && c.c3 !== null && _eclipseAnyVisibleIn(c.c2, c.c3)) {
+    const visTot = _eclipseVisibleWindow(c.c2, c.c3);
+    totalityDur = _eclipseFmtDuration(visTot.end - visTot.start);
+  }
   const rows = [
     row('Magnitude at max', magnitude.toFixed(3)),
     row('Moon/Sun size ratio', (r2 / r1).toFixed(4)),
-    row('Obscuration', (_eclipseObscuration(c.tMax) * 100).toFixed(1) + '%'),
-    row('Duration (penumbral)', _eclipseFmtDuration(c.c4 - c.c1)),
-    row('Duration (totality)', (c.c2 !== null && c.c3 !== null) ? _eclipseFmtDuration(c.c3 - c.c2) : '—'),
+    row('Obscuration', (_eclipseObscuration(c.defaultT) * 100).toFixed(1) + '%'),
+    row('Duration (penumbral)', _eclipseFmtDuration(visSpan.end - visSpan.start)),
+    row('Duration (totality)', totalityDur),
   ];
   table.innerHTML = rows.join('');
 }
@@ -652,7 +754,7 @@ function enterEclipse() {
   if (uploadZone) uploadZone.classList.add('hidden');
 
   document.getElementById('eclipseCanvas').style.display = 'block';
-  document.getElementById('eclipseSliderRow').style.display = 'block';
+  document.getElementById('eclipseSliderRow').style.display = 'flex';
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';
 
@@ -676,6 +778,7 @@ function enterEclipse() {
   document.getElementById('valDay').style.minWidth = '50px';
 
   eclipseActive = true;
+  eclipseAnimEverPlayed = false;   // re-arm "first Play starts from the beginning" for this (re-)entry
   const circ = _eclipseRecompute();
   _eclipseUpdateCircTable();
   _eclipseUpdateStatsTable();
@@ -688,10 +791,15 @@ function enterEclipse() {
     slider.min = '-3'; slider.max = '3'; slider.value = circ.defaultT.toString();
   }
   _eclipseBuildSliderFill(circ);
+  _eclipseUpdateStartEndLabels(circ);
+  // No point offering Play where there's nothing to animate - same "no eclipse here" standard as
+  // the phase label and start/end row (_eclipseAnyVisible).
+  document.getElementById('btnEclipsePlay').style.display = _eclipseAnyVisible(circ) ? '' : 'none';
   if (typeof updateViewButtons === 'function') updateViewButtons();
   resizeEclipse();
 }
 function exitEclipse() {
+  _eclipseStopAnim();   // don't keep the rAF loop running once the canvas is hidden
   document.getElementById('eclipseCanvas').style.display = 'none';
   document.getElementById('eclipseSliderRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
@@ -745,13 +853,94 @@ function resizeEclipse() {
 function _eclipseRefreshDisplay() {
   if (!eclipseActive) return;
   _eclipseUpdateCircTable();
+  _eclipseUpdateStartEndLabels(_eclipseCircumstances);   // also timezone-shifted (_eclipseFmtHM) - was missing here, so start/end stayed stale on a Time zone change
   drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
 }
+// Play/loop animation - same setup as the Analyzer's day animation (startSunAnim/advanceSunAnim,
+// render-3d.js): resumes from wherever the slider currently sits, sweeps to the end, holds there
+// for a 2 s pause, then loops back to the start - just its own independent rAF loop (Eclipse has
+// no other reason to keep one running, unlike render-3d.js's shared wave/theater loop) and its own,
+// much slower rate (5 simulated MINUTES per real second, vs. the Analyzer's 0.5 simulated HOURS).
+const ECLIPSE_ANIM_RATE_HPS = 5 / 60;   // hours of Besselian t per real second
+let eclipseAnimActive = false;
+let eclipseAnimStart  = null;   // ms timestamp captured on the first frame after Play
+let eclipseAnimOffset = 0;      // seconds into the cycle to resume from (Play continues from Stop)
+let eclipseAnimRAF    = null;
+// The very first Play after landing on a location always starts from the beginning of the visible
+// window, ignoring wherever the slider happens to sit - the DEFAULT landing spot is often itself
+// already at/near the end of that window (a location whose max falls right at sunset, §21.14), so
+// "resume from current position" on that very first press would begin the loop already at the end,
+// sitting through the 2s end-of-loop pause before anything visibly moves. Reset (to re-arm this)
+// in enterEclipse() - every subsequent Play, after a Stop or a manual scrub, DOES resume from the
+// current position as normal.
+let eclipseAnimEverPlayed = false;
+function _eclipseSetPlayIcon(playing) {
+  const btn = document.getElementById('btnEclipsePlay');
+  if (!btn) return;
+  btn.classList.toggle('playing', playing);
+  const ic = btn.querySelector('svg');
+  if (ic) ic.innerHTML = playing
+    ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'                 // stop (square)
+    : '<polygon points="2,1 11,6 2,11"/>';                              // play (triangle)
+}
+// Swept range is the horizon-VISIBLE window (_eclipseVisibleRange), not the slider's own full
+// min/max - looping through a stretch that's below the horizon the whole time (still manually
+// scrubbable, just not part of the animated loop) wouldn't show anything moving on screen anyway.
+function _eclipseAdvanceAnim(ts) {
+  const slider = document.getElementById('rngEclipseTime');
+  const vis = _eclipseVisibleRange(_eclipseCircumstances);
+  const min = vis.start, max = vis.end;
+  const spanH = Math.max(0.001, max - min);
+  const motion = spanH / ECLIPSE_ANIM_RATE_HPS;      // seconds to sweep the visible range
+  if (eclipseAnimStart === null) eclipseAnimStart = ts;
+  const elapsed = (ts - eclipseAnimStart) / 1000;    // seconds since Play
+  const local = (eclipseAnimOffset + elapsed) % (motion + 2);   // +2 s pause before each new loop
+  const t = local <= motion ? min + local * ECLIPSE_ANIM_RATE_HPS : max;   // hold at end during pause
+  slider.value = t;
+  drawEclipse(t);
+}
+function _eclipseAnimFrame(ts) {
+  if (!eclipseAnimActive) { eclipseAnimRAF = null; return; }
+  _eclipseAdvanceAnim(ts);
+  eclipseAnimRAF = requestAnimationFrame(_eclipseAnimFrame);
+}
+function _eclipseStartAnim() {
+  if (eclipseAnimActive || !eclipseActive || !_eclipseCircumstances || !_eclipseAnyVisible(_eclipseCircumstances)) return;
+  eclipseAnimActive = true;
+  eclipseAnimStart = null;             // captured on first frame
+  const slider = document.getElementById('rngEclipseTime');
+  const vis = _eclipseVisibleRange(_eclipseCircumstances);
+  const motion = Math.max(0.001, vis.end - vis.start) / ECLIPSE_ANIM_RATE_HPS;
+  if (!eclipseAnimEverPlayed) {
+    // First Play ever for this location: always the beginning, see the flag's own comment above.
+    eclipseAnimEverPlayed = true;
+    eclipseAnimOffset = 0;
+    slider.value = vis.start;
+    drawEclipse(vis.start);
+  } else {
+    // Resume from the current slider position, not always the start - clamped into the visible
+    // window in case the slider currently sits outside it (a below-horizon stretch was manually
+    // scrubbed to before Play was pressed).
+    eclipseAnimOffset = Math.min(motion, Math.max(0, (parseFloat(slider.value) - vis.start) / ECLIPSE_ANIM_RATE_HPS));
+  }
+  _eclipseSetPlayIcon(true);
+  if (eclipseAnimRAF === null) eclipseAnimRAF = requestAnimationFrame(_eclipseAnimFrame);
+}
+function _eclipseStopAnim() {
+  eclipseAnimActive = false;
+  _eclipseSetPlayIcon(false);
+  if (eclipseAnimRAF !== null) { cancelAnimationFrame(eclipseAnimRAF); eclipseAnimRAF = null; }
+}
+document.getElementById('btnEclipsePlay').addEventListener('click', () => {
+  if (eclipseAnimActive) _eclipseStopAnim(); else _eclipseStartAnim();
+});
 document.getElementById('rngEclipseTime').addEventListener('input', (e) => {
+  if (eclipseAnimActive) _eclipseStopAnim();   // manual scrub stops the loop, same as the Analyzer's Time slider
   drawEclipse(parseFloat(e.target.value));
 });
 document.getElementById('btnEclipseMaxPhase').addEventListener('click', () => {
   if (!_eclipseCircumstances) return;
+  if (eclipseAnimActive) _eclipseStopAnim();   // a manual jump, same as scrubbing
   const slider = document.getElementById('rngEclipseTime');
   slider.value = _eclipseCircumstances.defaultT;
   drawEclipse(_eclipseCircumstances.defaultT);
