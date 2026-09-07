@@ -443,10 +443,19 @@ document.getElementById('presetFileInput').addEventListener('change', (e) => {
 });
 
 // ─── Latitude control ──────────────────────────────────────────────────────
+// Precision/display format is normally a flat 0.1deg step (.toFixed(1)) - Eclipse's own DEC/DM
+// location-format toggle (js/render-eclipse.js) overrides both, ONLY while Eclipse is active, via
+// _eclipseLocStepDeg()/_eclipseFormatLocInput(); Analyzer itself never sees a behaviour change.
 function applyLat(val) {
-  // Round to 1 decimal place, clamp 0–90
-  LAT = Math.round(Math.max(0, Math.min(90, val)) * 10) / 10;
-  document.getElementById('inpLat').value = LAT.toFixed(1);
+  const step = (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1;
+  // Clamp 0-90, then round to the active step - the extra 1e6 rounding just clears float noise
+  // (e.g. 42.849999999999994) that Math.round(x/step)*step can otherwise leave behind.
+  LAT = Math.round(Math.round(Math.max(0, Math.min(90, val)) / step) * step * 1e6) / 1e6;
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseFormatLocInput === 'function') {
+    _eclipseFormatLocInput('inpLat', LAT);
+  } else {
+    document.getElementById('inpLat').value = LAT.toFixed(1);
+  }
 
   const atEquator = LAT === 0;
   document.getElementById('btnN').disabled = atEquator;
@@ -459,23 +468,28 @@ function applyLat(val) {
   if (show3DCulmination) refreshSunTimeRange();   // LAT/hemisphere shifts the "enters the can" interval too
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
 }
 
+// _eclipseParseLocValue reads DM-format text ("42°48'") back into decimal degrees while Eclipse's
+// DM mode is active; otherwise it's just parseFloat, same as before this existed.
+function _parseLocValue(raw) {
+  return (typeof _eclipseParseLocValue === 'function') ? _eclipseParseLocValue(raw) : (parseFloat(raw) || 0);
+}
 document.getElementById('inpLat').addEventListener('change', (e) => {
-  applyLat(parseFloat(e.target.value) || 0);
+  applyLat(_parseLocValue(e.target.value));
 });
 document.getElementById('inpLat').addEventListener('blur', (e) => {
-  applyLat(parseFloat(e.target.value) || 0);
+  applyLat(_parseLocValue(e.target.value));
 });
 document.getElementById('inpLat').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLat(parseFloat(e.target.value) || 0);
+  if (e.key === 'Enter') applyLat(_parseLocValue(e.target.value));
 });
 document.getElementById('btnLatDec').addEventListener('click', () => {
-  applyLat(LAT - 0.1);
+  applyLat(LAT - ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
 });
 document.getElementById('btnLatInc').addEventListener('click', () => {
-  applyLat(LAT + 0.1);
+  applyLat(LAT + ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
 });
 document.getElementById('btnN').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -485,7 +499,7 @@ document.getElementById('btnN').addEventListener('click', () => {
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
 });
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -495,38 +509,43 @@ document.getElementById('btnS').addEventListener('click', () => {
   if (show3DCulmination) refreshSunTimeRange();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
 });
 
 // ─── Longitude control ──────────────────────────────────────────────────────
 // Mirrors latitude exactly: UI edits a 0-180 magnitude + E/W state (lonHemisphere); only the
 // signed combination (lonHemisphere * LONG) ever gets serialized to presets.json.
 function applyLong(val) {
-  LONG = Math.round(Math.max(0, Math.min(180, val)) * 10) / 10;
-  document.getElementById('inpLong').value = LONG.toFixed(1);
+  const step = (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1;
+  LONG = Math.round(Math.round(Math.max(0, Math.min(180, val)) / step) * step * 1e6) / 1e6;
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseFormatLocInput === 'function') {
+    _eclipseFormatLocInput('inpLong', LONG);
+  } else {
+    document.getElementById('inpLong').value = LONG.toFixed(1);
+  }
   // LONG doesn't move the "enters the can" interval (sunRayState/sunDayRange are longitude-
   // independent), only the displayed time-of-day text (standard/mean mode) - so just resync the
   // slider's own labels, no need to re-clamp sunTimeHours or rebuild its track fill.
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();   // longitude shifts the whole eclipse geometry - recompute from scratch
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // longitude shifts the whole eclipse geometry - recompute from scratch
 }
 
 document.getElementById('inpLong').addEventListener('change', (e) => {
-  applyLong(parseFloat(e.target.value) || 0);
+  applyLong(_parseLocValue(e.target.value));
 });
 document.getElementById('inpLong').addEventListener('blur', (e) => {
-  applyLong(parseFloat(e.target.value) || 0);
+  applyLong(_parseLocValue(e.target.value));
 });
 document.getElementById('inpLong').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLong(parseFloat(e.target.value) || 0);
+  if (e.key === 'Enter') applyLong(_parseLocValue(e.target.value));
 });
 document.getElementById('btnLongDec').addEventListener('click', () => {
-  applyLong(LONG - 0.1);
+  applyLong(LONG - ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
 });
 document.getElementById('btnLongInc').addEventListener('click', () => {
-  applyLong(LONG + 0.1);
+  applyLong(LONG + ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
 });
 document.getElementById('btnE').addEventListener('click', () => {
   lonHemisphere = 1;
@@ -535,7 +554,7 @@ document.getElementById('btnE').addEventListener('click', () => {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
 });
 document.getElementById('btnW').addEventListener('click', () => {
   lonHemisphere = -1;
@@ -544,7 +563,7 @@ document.getElementById('btnW').addEventListener('click', () => {
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterEclipse === 'function') enterEclipse();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
 });
 
 // ─── Time zone offset control ───────────────────────────────────────────────

@@ -1,47 +1,32 @@
-// ─── Eclipse prototype (2026-08-12 total solar eclipse) ────────────────────────────────────────
-// Experimental, standalone, single-event canvas - NOT wired into the Gallery/Analyzer mode
-// machinery. Computes real local circumstances (when/how much the Moon covers the Sun) from the
-// Besselian elements NASA publishes for this specific eclipse, for whatever LAT/LONG the
-// Calibration panel is currently set to - i.e. reuses the app's own location, not a hardcoded one.
+// ─── Eclipse engine ─────────────────────────────────────────────────────────────────────────
+// Universal Besselian-element-driven local-circumstances engine + renderer - NOT specific to any
+// one eclipse. Per-event data (Besselian coefficients, semi-diameters, calendar day, greatest-
+// eclipse reference point, source/validation notes) lives in js/eclipse-data/*.js, each file
+// pushing one entry into window.ECLIPSE_EVENTS (loaded before this file); this engine always
+// operates on whichever entry is currently active (_eclipseActiveEvent). Computes real local
+// circumstances (when/how much the Moon covers the Sun) for whatever LAT/LONG the Calibration
+// panel is currently set to - i.e. reuses the app's own location, not a hardcoded one.
 //
-// Besselian elements: https://eclipse.gsfc.nasa.gov/SEbeselm/SEbeselm2001/SE2026Aug12Tbeselm.html
-// t0 = 2026 Aug 12, 18:00:00.0 TDT. Each element is a0 + a1*t + a2*t^2 + a3*t^3, t = hours since t0,
-// valid for -3 <= t <= +3 (15.00-21.00 TDT). Algorithm: standard Besselian-element local-circumstances
-// method (Meeus, "Astronomical Algorithms" ch.54 / Explanatory Supplement to the Astronomical
-// Almanac §11.3) - validated numerically against NASA's own published "Greatest Eclipse" reference
-// point (65°13.5'N, 025°13.7'W, 17:45:53.8 UT): this implementation puts the observer's distance
-// from the shadow axis (m) at ~0.0012 (Earth-radii units, i.e. essentially exactly on-axis) at that
-// exact time/place, and independently reproduces the page's own quoted Sun altitude/azimuth there
-// (25.8°/248.4°) to within 0.05° using the app's own sunPosition()/declination machinery - both
-// signs (longitude convention, hemisphere) match, so this is trusted as correct within a small
-// margin. The (u,v) sign convention for which side the Moon enters/exits from was NOT independently
-// re-derived from first principles (time didn't allow re-deriving Meeus's fundamental-plane axis
-// orientation from scratch) - only checked by eye against the rendered result once built; flip
-// ECLIPSE_UV_SIGN below if a future observer location shows the Moon crossing backwards.
-const ECLIPSE_T0_UTC_HOURS = 17 + 58 / 60 + 48.6 / 3600;   // 18:00:00.0 TDT - deltaT(71.4s) -> UT
-const ECLIPSE_DAY_MONTH = 8, ECLIPSE_DAY_DAY = 12;          // 2026 Aug 12 (real calendar day, for EoT/declination)
-const ECLIPSE_BE = {
-  x:  [0.475593, 0.5189288, -0.0000773, -0.0000088],
-  y:  [0.771161, -0.2301664, -0.0001245, 0.0000037],
-  d:  [14.79667, -0.012065, -0.000003],
-  l1: [0.537954, 0.0000940, -0.0000121],
-  l2: [-0.008142, 0.0000935, -0.0000121],
-  mu: [88.74776, 15.003093],
-};
-const ECLIPSE_TANF1 = 0.0046141, ECLIPSE_TANF2 = 0.0045911;
-// Geocentric semi-diameters of Sun/Moon AT t0 (from the page's "Geocentric Coordinates... at
-// Greatest Eclipse" block) - used only to calibrate how many degrees one Besselian fundamental-
-// plane unit represents (see _eclipseScaleDegPerUnit), and as the drawn disc radii themselves
-// (both change negligibly over the ~2h the elements are valid for, so treated as constant).
-const ECLIPSE_SUN_SEMIDIAM_DEG  = (15 + 47.0 / 60) / 60;   // 15'47.0"
-const ECLIPSE_MOON_SEMIDIAM_DEG = (16 + 16.9 / 60) / 60;   // 16'16.9"
-const ECLIPSE_UV_SIGN = 1;   // flip to -1 if a rendered case shows the Moon crossing the wrong side
+// Algorithm: standard Besselian-element local-circumstances method (Meeus, "Astronomical
+// Algorithms" ch.54 / Explanatory Supplement to the Astronomical Almanac §11.3).
+let _eclipseActiveEvent = (window.ECLIPSE_EVENTS && window.ECLIPSE_EVENTS[0]) || null;
+// Switches the engine to a different registered event (e.g. a Catalog tile click, once that UI
+// exists) - recomputes local circumstances for the new event and redraws if Eclipse is on screen;
+// leaves the slider's own min/max/position alone here (the caller decides whether to reset those).
+function _eclipseSetActiveEvent(event) {
+  _eclipseActiveEvent = event;
+  _eclipseRecompute();
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) {
+    const slider = document.getElementById('rngEclipseTime');
+    if (slider) drawEclipse(parseFloat(slider.value));
+  }
+}
 
 function _eclipsePoly(coeffs, t) { let s = 0, tp = 1; for (const c of coeffs) { s += c * tp; tp *= t; } return s; }
 function _eclipseElementsAt(t) {
   return {
-    x: _eclipsePoly(ECLIPSE_BE.x, t), y: _eclipsePoly(ECLIPSE_BE.y, t), d: _eclipsePoly(ECLIPSE_BE.d, t),
-    l1: _eclipsePoly(ECLIPSE_BE.l1, t), l2: _eclipsePoly(ECLIPSE_BE.l2, t), mu: _eclipsePoly(ECLIPSE_BE.mu, t),
+    x: _eclipsePoly(_eclipseActiveEvent.be.x, t), y: _eclipsePoly(_eclipseActiveEvent.be.y, t), d: _eclipsePoly(_eclipseActiveEvent.be.d, t),
+    l1: _eclipsePoly(_eclipseActiveEvent.be.l1, t), l2: _eclipsePoly(_eclipseActiveEvent.be.l2, t), mu: _eclipsePoly(_eclipseActiveEvent.be.mu, t),
   };
 }
 // Local circumstances for the app's OWN current Calibration location (LAT/lonHemisphere/LONG,
@@ -63,11 +48,11 @@ function _eclipseLocalCirc(t) {
   const eta = rhoSinPhi * Math.cos(dRad) - rhoCosPhi * Math.cos(H) * Math.sin(dRad);
   const zeta = rhoSinPhi * Math.sin(dRad) + rhoCosPhi * Math.cos(H) * Math.cos(dRad);
   const u = el.x - xi, v = el.y - eta;
-  const L1 = el.l1 - zeta * ECLIPSE_TANF1, L2 = el.l2 - zeta * ECLIPSE_TANF2;
+  const L1 = el.l1 - zeta * _eclipseActiveEvent.tanf1, L2 = el.l2 - zeta * _eclipseActiveEvent.tanf2;
   return { u, v, L1, L2, m: Math.hypot(u, v) };
 }
 function _eclipseScaleDegPerUnit() {
-  return (ECLIPSE_SUN_SEMIDIAM_DEG + ECLIPSE_MOON_SEMIDIAM_DEG) / ECLIPSE_BE.l1[0];
+  return (_eclipseActiveEvent.sunSemidiamDeg + _eclipseActiveEvent.moonSemidiamDeg) / _eclipseActiveEvent.be.l1[0];
 }
 // Parallactic angle (Sun): angle at the Sun between the direction to the North Celestial Pole and
 // the direction to the observer's zenith - the standard rotation from an equatorial (RA/Dec,
@@ -83,8 +68,8 @@ function _eclipseParallacticAngle(H_rad, deltaRad) {
 // the eclipse elements - t0 is 18:00 TDT on the real calendar day 2026-08-12, so this is just the
 // app's ordinary sunPosition() pipeline fed the right day/hour.
 function _eclipseSunGeom(t) {
-  const doy = dayOfYear(ECLIPSE_DAY_MONTH, ECLIPSE_DAY_DAY);
-  const utcHour = ECLIPSE_T0_UTC_HOURS + t;
+  const doy = dayOfYear(_eclipseActiveEvent.dayMonth, _eclipseActiveEvent.dayDay);
+  const utcHour = _eclipseActiveEvent.t0UtcHours + t;
   const lonEastDeg = lonHemisphere * LONG;
   const meanSolarHour = utcHour + lonEastDeg / 15;
   const trueSolarHour = trueFromMean(meanSolarHour, doy);
@@ -164,8 +149,9 @@ function _eclipseRecompute() {
 // top of everything - three background LAYERS on the one track element (each given its own
 // position/size via the background shorthand's "pos / size" syntax) rather than a separate bar
 // underneath, so the thumb (taller than the track, css/style.css) visibly reaches into the strip.
-const ECLIPSE_FILL_YELLOW = [245, 197, 24];   // #f5c518 - matches the Sun disc / no-eclipse state
-const ECLIPSE_FILL_BLACK  = [18, 16, 10];     // matches the Moon disc / totality - not pure #000, so it still reads as a colour, not "empty"
+const ECLIPSE_FILL_YELLOW   = [245, 197, 24];   // #f5c518 - matches the Sun disc / no-eclipse state
+const ECLIPSE_FILL_BLACK    = [18, 16, 10];     // matches the Moon disc / deepest PARTIAL phase - not pure #000, so it still reads as a colour, not "empty"
+const ECLIPSE_FILL_TOTALITY = [96, 42, 196];    // saturated blue-violet - totality (C2-C3) gets its own distinct colour rather than blending into the same black a deep partial phase already reaches, so the two are never visually ambiguous on the track
 function _eclipseBuildSliderFill(circ) {
   const slider = document.getElementById('rngEclipseTime');
   if (!slider) return;
@@ -173,14 +159,16 @@ function _eclipseBuildSliderFill(circ) {
   const span = Math.max(0.0001, max - min);
   const lerp = (a, b, f) => Math.round(a + (b - a) * f);
   const colorAt = (t) => {
-    let f = 0;   // 0 = no eclipse (yellow), 1 = totality (black)
+    // Totality itself (C2-C3) - a flat, distinct colour regardless of exactly how deep m dips,
+    // checked before the partial-phase gradient below rather than folded into it (unlike the
+    // deepest partial phase, which DOES still grade smoothly into black via f).
+    if (circ.visible && circ.c2 !== null && circ.c3 !== null && t >= circ.c2 && t <= circ.c3) {
+      return `rgb(${ECLIPSE_FILL_TOTALITY[0]},${ECLIPSE_FILL_TOTALITY[1]},${ECLIPSE_FILL_TOTALITY[2]})`;
+    }
+    let f = 0;   // 0 = no eclipse (yellow), 1 = deepest partial phase (black)
     if (circ.visible && t > circ.c1 && t < circ.c4) {
-      if (circ.c2 !== null && circ.c3 !== null && t >= circ.c2 && t <= circ.c3) {
-        f = 1;   // inside totality itself - fully black regardless of exactly how deep m dips
-      } else {
-        const r = _eclipseLocalCirc(t);
-        f = Math.max(0, Math.min(1, 1 - r.m / r.L1));   // partial phase - how much of the Sun is covered
-      }
+      const r = _eclipseLocalCirc(t);
+      f = Math.max(0, Math.min(1, 1 - r.m / r.L1));   // partial phase - how much of the Sun is covered
     }
     return 'rgb(' + lerp(ECLIPSE_FILL_YELLOW[0], ECLIPSE_FILL_BLACK[0], f) + ',' +
                      lerp(ECLIPSE_FILL_YELLOW[1], ECLIPSE_FILL_BLACK[1], f) + ',' +
@@ -244,7 +232,7 @@ function _eclipseVisibleRange(circ) { return _eclipseVisibleWindow(circ.c1, circ
 // Plain "14:30" - no seconds, no "UTC+N" suffix (both shown elsewhere already) - for the compact
 // start/end row under the slider, same shifted-civil-time convention as _eclipseFmtUTC.
 function _eclipseFmtHM(t) {
-  const shiftedHours = ECLIPSE_T0_UTC_HOURS + t + timeZoneHours;
+  const shiftedHours = _eclipseActiveEvent.t0UtcHours + t + timeZoneHours;
   const minOfDay = (((Math.round(shiftedHours * 60)) % 1440) + 1440) % 1440;
   return String(Math.floor(minOfDay / 60)).padStart(2, '0') + ':' + String(minOfDay % 60).padStart(2, '0');
 }
@@ -297,7 +285,7 @@ function _eclipseUpdateStartEndLabels(circ) {
 // within 0.9 s, well under this feature's own precision, so that distinction doesn't survive the
 // UTC relabelling and isn't worth carrying as a second caveat on top of it.)
 function _eclipseFmtUTC(t) {
-  const shiftedHours = ECLIPSE_T0_UTC_HOURS + t + timeZoneHours;
+  const shiftedHours = _eclipseActiveEvent.t0UtcHours + t + timeZoneHours;
   const totalSec = Math.round(shiftedHours * 3600);
   const secOfDay = ((totalSec % 86400) + 86400) % 86400;
   const h = Math.floor(secOfDay / 3600);
@@ -324,7 +312,7 @@ function _eclipseUpdateReadout(t) {
   const displayAz = hemisphere >= 0 ? azWorld : (azWorld + 180) % 360;
   valAz.textContent = displayAz.toFixed(1) + '°';
   valAlt.textContent = (s.el >= 0 ? '+' : '') + s.el.toFixed(1) + '°';
-  valDay.textContent = MONTH_NAMES[ECLIPSE_DAY_MONTH - 1] + ' ' + ECLIPSE_DAY_DAY;
+  valDay.textContent = MONTH_NAMES[_eclipseActiveEvent.dayMonth - 1] + ' ' + _eclipseActiveEvent.dayDay;
   valTime.textContent = _eclipseFmtUTC(t);
   valDir.textContent = azimutToDir(displayAz);
 
@@ -339,7 +327,7 @@ function _eclipseUpdateReadout(t) {
     obscSep.style.display = ''; obscGroup.style.display = '';
     const valMag = document.getElementById('valEclMag'), valObsc = document.getElementById('valEclObsc');
     if (_eclipseCircumstances && _eclipseCircumstances.visible) {
-      const r1 = ECLIPSE_SUN_SEMIDIAM_DEG, r2 = ECLIPSE_MOON_SEMIDIAM_DEG;
+      const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
       const mDeg = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
       const magnitude = Math.max(0, (r1 + r2 - mDeg) / (2 * r1));
       valMag.textContent = magnitude.toFixed(3);
@@ -407,7 +395,7 @@ function _eclipseAmbientColorAt(sunElDeg) {
 // of the disc is covered, then falls away fast, matching how a 90%-covered Sun still looks almost
 // like a normal day.
 function _eclipseObscuration(t) {
-  const r1 = ECLIPSE_SUN_SEMIDIAM_DEG, r2 = ECLIPSE_MOON_SEMIDIAM_DEG;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
   const d = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
   if (d >= r1 + r2) return 0;                                     // no overlap at all
   if (d <= Math.abs(r1 - r2)) return Math.min(1, (Math.min(r1, r2) ** 2) / (r1 * r1));   // one disc wholly inside the other
@@ -433,8 +421,13 @@ function _eclipseBrightnessFactor(t) {
 // into it - darker than the original [92,92,100] (kept the same faint cool tint).
 const ECLIPSE_TOTALITY_GREY = [70, 70, 76];
 
-function drawEclipse(t) {
-  const cv = document.getElementById('eclipseCanvas');
+// canvasEl/updateReadout let this same renderer draw a live Catalog-tile thumbnail for some OTHER
+// event (js/render-eclipse.js's enterEclipseCatalog()) without touching the real Visualization's
+// own canvas or clobbering the shared top readout bar/phase label with that other event's numbers -
+// both default to the normal Visualization behaviour, so every existing call site (just drawEclipse(t))
+// is unaffected.
+function drawEclipse(t, canvasEl, updateReadout = true) {
+  const cv = canvasEl || document.getElementById('eclipseCanvas');
   if (!cv) return;
   const RES = cv._res || 1;
   const ctx = cv.getContext('2d');
@@ -464,7 +457,7 @@ function drawEclipse(t) {
   const size = Math.min(W, H);
   const scaleDeg = _eclipseScaleDegPerUnit();
   const sunRadiusPx = size * 0.24;
-  const pxPerDeg = sunRadiusPx / ECLIPSE_SUN_SEMIDIAM_DEG;
+  const pxPerDeg = sunRadiusPx / _eclipseActiveEvent.sunSemidiamDeg;
 
   const chkGrid = document.getElementById('chkEclipseGrid');
   const chkLabels = document.getElementById('chkEclipseLabels');
@@ -628,9 +621,9 @@ function drawEclipse(t) {
   // was easy to miss at low altitude (where cos(el)~1 hides it) - which is exactly how the
   // original, wrong "cross-check" note used to read here.
   const circ = _eclipseLocalCirc(t);
-  const moonRadiusPx = ECLIPSE_MOON_SEMIDIAM_DEG * pxPerDeg;
-  const dRA = (ECLIPSE_UV_SIGN * circ.u * scaleDeg * Math.PI / 180) / Math.cos(deltaRad);
-  const decMoon = deltaRad + ECLIPSE_UV_SIGN * circ.v * scaleDeg * Math.PI / 180;
+  const moonRadiusPx = _eclipseActiveEvent.moonSemidiamDeg * pxPerDeg;
+  const dRA = (_eclipseActiveEvent.uvSign * circ.u * scaleDeg * Math.PI / 180) / Math.cos(deltaRad);
+  const decMoon = deltaRad + _eclipseActiveEvent.uvSign * circ.v * scaleDeg * Math.PI / 180;
   const moonGeom = sunPosition(hAngle - dRA, decMoon, phi);
   const moonAzWorld = (moonGeom.beta + 180 + 360) % 360;
   const moonAz = hemisphere >= 0 ? moonAzWorld : (moonAzWorld + 180) % 360;
@@ -666,7 +659,10 @@ function drawEclipse(t) {
 
   // Date/time + Sun coordinates go to the shared top readout bar (valAz/valAlt/valDay/valTime/
   // valDir), not a canvas-local label - see _eclipseUpdateReadout. Phase stays in the left panel
-  // (there's no field for it in the top bar's fixed Az/Alt/Day/Time/Dir layout).
+  // (there's no field for it in the top bar's fixed Az/Alt/Day/Time/Dir layout). Skipped entirely
+  // for a Catalog-tile thumbnail render (updateReadout=false) - that readout/label belong to
+  // whichever event Visualization actually has active, not to whatever tile happens to be rendering.
+  if (!updateReadout) return;
   _eclipseUpdateReadout(t);
   const phaseLbl = document.getElementById('eclipsePhaseLabel');
   if (phaseLbl) {
@@ -729,7 +725,7 @@ function _eclipseUpdateStatsTable() {
   // Nothing to report if the location never sees any of this above the horizon (_eclipseAnyVisible)
   // - same "no eclipse here" standard the phase label and start/end row already apply.
   if (!c.visible || !_eclipseAnyVisible(c)) { table.innerHTML = ''; return; }
-  const r1 = ECLIPSE_SUN_SEMIDIAM_DEG, r2 = ECLIPSE_MOON_SEMIDIAM_DEG;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
   // At defaultT (the horizon-clamped landing point, §21.14), NOT the true astronomical tMax/mMin -
   // magnitude and obscuration are "how much of the Sun is covered" numbers, which should describe
   // what's actually observable from here, not a theoretical peak that might never be visible.
@@ -759,8 +755,20 @@ function _eclipseUpdateStatsTable() {
 // standalone overlay. Left panel (#eclipsePanel) replaces #can3dPanel, its own Display section
 // (#eclipseDisplaySection) replaces #displaySection, and Calibration collapses to just Location
 // (#calibNonLocationGroup + btnCalibReset hidden) - none of the pinhole/photo calibration applies
-// here, only the observer's location does. ─────────────────────────────────────────────────────
+// here, only the observer's location does.
+//
+// Eclipse itself has two sub-views, switched via their own wheel picker (#eclipseSubRow, same
+// widget as the Analyzer sub-view switcher/Sky Dome's projection switch - makeWheelPicker(),
+// controls.js): Catalog (a grid of registered events to choose from - the landing sub-view every
+// time Eclipse is entered from Gallery/Analyzer) and Visualization (the single-event animation,
+// everything below this point that existed before the Catalog was added). enterEclipse()/
+// exitEclipse() now only handle what's true of EITHER sub-view (leaving/entering the takeover
+// itself, the top-level mode-button look, Calibration collapsing to Location); everything specific
+// to actually animating one event lives in enterEclipseVisualization()/exitEclipseVisualization(),
+// entered only once a Catalog tile is picked (or the sub-view wheel is stepped manually).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 let eclipseActive = false;
+let eclipseSubView = 'catalog';   // 'catalog' | 'visualization' - which Eclipse sub-view is on screen
 function enterEclipse() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
@@ -771,66 +779,48 @@ function enterEclipse() {
   container.classList.remove('hidden');
   if (uploadZone) uploadZone.classList.add('hidden');
 
-  document.getElementById('eclipseCanvas').style.display = 'block';
-  document.getElementById('eclipseSliderRow').style.display = 'flex';
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';
-
   document.getElementById('can3dPanel').classList.remove('visible');
-  document.getElementById('eclipsePanel').classList.add('visible');
   document.getElementById('displaySection').style.display = 'none';
+  // Shown for BOTH sub-views (not just Visualization) - the Catalog's own tile previews are real
+  // drawEclipse() renders too, so grid/labels/equatorial/horizon are just as live there.
   document.getElementById('eclipseDisplaySection').style.display = 'flex';
   document.getElementById('calibNonLocationGroup').classList.add('hidden');
   document.getElementById('btnCalibReset').classList.add('hidden');
-  document.getElementById('btnEclipseMaxPhase').style.display = '';
   // Eclipse is a peer of Gallery/Analyzer, not a sub-state of Analyzer - only ITS button should
   // read as active while it's showing, even though currentMode technically stays 'analyzer'
   // underneath (see the click handler below). Analyzer's own striped look comes back in
   // exitEclipse().
   document.getElementById('btnModeAnalyzer').className = 'mode-btn';
   document.getElementById('btnModeEclipse').classList.add('active-eclipse');
-  // valDay's 110px min-width exists to fit the general app's day1/day2 hover pairs - Eclipse only
-  // ever shows one fixed date ("Aug 12"), so that width is wasted space that pushes the readout
-  // bar (already carrying the extra Mag/Obsc fields, §21.13) toward wrapping at narrower widths.
-  // Reset in exitEclipse() below.
-  document.getElementById('valDay').style.minWidth = '50px';
 
   eclipseActive = true;
-  eclipseAnimEverPlayed = false;   // re-arm "first Play starts from the beginning" for this (re-)entry
-  const circ = _eclipseRecompute();
-  _eclipseUpdateCircTable();
-  _eclipseUpdateStatsTable();
-  const slider = document.getElementById('rngEclipseTime');
-  if (circ.visible) {
-    slider.min = (circ.c1 - 0.05).toString();
-    slider.max = (circ.c4 + 0.05).toString();
-    slider.value = circ.defaultT.toString();
-  } else {
-    slider.min = '-3'; slider.max = '3'; slider.value = circ.defaultT.toString();
-  }
-  _eclipseBuildSliderFill(circ);
-  _eclipseUpdateStartEndLabels(circ);
-  // No point offering Play where there's nothing to animate - same "no eclipse here" standard as
-  // the phase label and start/end row (_eclipseAnyVisible).
-  document.getElementById('btnEclipsePlay').style.display = _eclipseAnyVisible(circ) ? '' : 'none';
+  document.getElementById('eclipseSubRow').style.display = 'flex';
+  document.getElementById('eclipseLocFormatRow').style.display = 'flex';
+  // Always land on Catalog first, regardless of which sub-view was showing last time Eclipse was
+  // active - Visualization only loads once a specific event tile is picked.
+  _eclipseSubIndex = 0;
+  _eclipseSubWheel.render();
+  enterEclipseCatalog();
+
   if (typeof updateViewButtons === 'function') updateViewButtons();
-  resizeEclipse();
 }
 function exitEclipse() {
-  _eclipseStopAnim();   // don't keep the rAF loop running once the canvas is hidden
-  document.getElementById('eclipseCanvas').style.display = 'none';
-  document.getElementById('eclipseSliderRow').style.display = 'none';
+  if (eclipseSubView === 'visualization') exitEclipseVisualization(); else exitEclipseCatalog();
+  document.getElementById('eclipseSubRow').style.display = 'none';
+  document.getElementById('eclipseLocFormatRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   eclipseActive = false;
-  document.getElementById('valDay').style.minWidth = '110px';   // restore the general app's width (day1/day2 pairs)
+  _eclipseSetLocFormat('dec');   // Analyzer's own Location fields never inherit DM mode - order
+                                  // matters: eclipseActive must already be false so this reformats
+                                  // #inpLat/#inpLong back to Analyzer's own plain 0.1deg display.
 
   document.getElementById('can3dPanel').classList.add('visible');
-  document.getElementById('eclipsePanel').classList.remove('visible');
   document.getElementById('displaySection').style.display = '';
   document.getElementById('eclipseDisplaySection').style.display = 'none';
   document.getElementById('calibNonLocationGroup').classList.remove('hidden');
   document.getElementById('btnCalibReset').classList.remove('hidden');
-  document.getElementById('btnEclipseMaxPhase').style.display = 'none';
   document.getElementById('btnModeEclipse').classList.remove('active-eclipse');
   document.getElementById('eclMagSep').style.display = 'none';
   document.getElementById('eclMagGroup').style.display = 'none';
@@ -851,6 +841,422 @@ function exitEclipse() {
     }
   }
 }
+
+// ── Catalog sub-view - a grid of every registered event (window.ECLIPSE_EVENTS, js/eclipse-data/
+// *.js), each tile a LIVE canvas-rendered preview (drawEclipse() itself, not a separate renderer)
+// at that event's own horizon-clamped default moment - either for the app's own current
+// Calibration Location, or for that event's own "Greatest Eclipse" point, depending on the
+// location-mode switch below. Rendering a tile temporarily swaps _eclipseActiveEvent (and
+// LAT/LONG in Greatest-Eclipse mode) - _eclipseRenderCatalogGrid() saves/restores them around the
+// whole grid so this never disturbs whatever Visualization actually has active.
+let _eclipseCatalogTypeFilter = 'all';    // 'all' | 'total' | 'partial' | 'annular' - filters on event.type
+let _eclipseCatalogUseGreatest = false;   // false = my Location, true = each event's own Greatest Eclipse point
+const ECLIPSE_CATALOG_TILE_PX = 300;      // fixed render resolution - CSS scales the tile to fit the
+                                           // grid; kept a step ahead of the tile's own ~210px CSS
+                                           // display size (see .eclipse-tile min-width) so it stays crisp
+function enterEclipseCatalog() {
+  eclipseSubView = 'catalog';
+  exitEclipseVisualization();
+  document.getElementById('eclipseCatalogPanel').style.display = 'flex';
+  // The top Az/Alt/Day/Time/Dir/Mag/Obsc readout describes one instant of one event - meaningless
+  // while just browsing the grid (there's no single "current" event/time here). visibility (not
+  // display) so the row's own space stays reserved - the header shouldn't reflow/jump when Catalog
+  // opens, just show a blank readout.
+  document.getElementById('readout').style.visibility = 'hidden';
+  _eclipseRenderCatalogGrid();
+}
+function exitEclipseCatalog() {
+  document.getElementById('eclipseCatalogPanel').style.display = 'none';
+  document.getElementById('readout').style.visibility = '';
+}
+function _eclipseRenderCatalogGrid() {
+  const grid = document.getElementById('eclipseCatalogGrid');
+  if (!grid) return;
+  // Newest first (top-left, given the grid's normal left-to-right/top-to-bottom flow) - registration
+  // order in index.html's <script> tags doesn't imply chronological order, so sort explicitly here
+  // rather than relying on it.
+  const events = (window.ECLIPSE_EVENTS || []).slice().sort((a, b) =>
+    (b.year - a.year) || (b.dayMonth - a.dayMonth) || (b.dayDay - a.dayDay));
+  grid.innerHTML = '';
+  const savedEvent = _eclipseActiveEvent;
+  const savedLat = LAT, savedHemi = hemisphere, savedLon = LONG, savedLonHemi = lonHemisphere;
+  for (const ev of events) {
+    if (_eclipseCatalogTypeFilter !== 'all' && ev.type !== _eclipseCatalogTypeFilter) continue;
+    _eclipseActiveEvent = ev;
+    if (_eclipseCatalogUseGreatest) {
+      LAT = ev.greatestEclipse.lat; hemisphere = ev.greatestEclipse.hemisphere;
+      LONG = ev.greatestEclipse.lon; lonHemisphere = ev.greatestEclipse.lonHemisphere;
+    } else {
+      LAT = savedLat; hemisphere = savedHemi; LONG = savedLon; lonHemisphere = savedLonHemi;
+    }
+    const circ = _eclipseRecompute();
+
+    const tile = document.createElement('div');
+    tile.className = 'eclipse-tile';
+    const dateLbl = document.createElement('div');
+    dateLbl.className = 'eclipse-tile-date';
+    dateLbl.textContent = MONTH_NAMES[ev.dayMonth - 1] + ' ' + ev.dayDay + ', ' + ev.year;
+    tile.appendChild(dateLbl);
+
+    if (_eclipseAnyVisible(circ)) {
+      const cv = document.createElement('canvas');
+      cv.className = 'eclipse-tile-canvas';
+      cv.width = ECLIPSE_CATALOG_TILE_PX; cv.height = ECLIPSE_CATALOG_TILE_PX;
+      drawEclipse(circ.defaultT, cv, false);
+      tile.appendChild(cv);
+
+      // Global event.type (Total/Annular) only actually applies at a given location if totality/
+      // annularity itself is above the horizon here - otherwise this location only ever sees the
+      // surrounding partial phase, regardless of what the eclipse does elsewhere on Earth.
+      const hasCentral = circ.c2 !== null && circ.c3 !== null && _eclipseAnyVisibleIn(circ.c2, circ.c3);
+      const typeLbl = document.createElement('div');
+      typeLbl.className = 'eclipse-tile-type';
+      typeLbl.textContent = hasCentral ? (ev.type === 'annular' ? 'Annular' : 'Total') : 'Partial';
+      tile.appendChild(typeLbl);
+
+      tile.classList.add('clickable');
+      tile.title = 'Open ' + ev.label;
+      tile.addEventListener('click', () => {
+        _eclipseSetActiveEvent(ev);
+        _eclipseSubIndex = 1;
+        _eclipseSubWheel.render();
+        enterEclipseVisualization();
+      });
+    } else {
+      tile.classList.add('no-eclipse');
+      const blank = document.createElement('div');
+      blank.className = 'eclipse-tile-canvas eclipse-tile-blank';
+      tile.appendChild(blank);
+      const noneLbl = document.createElement('div');
+      noneLbl.className = 'eclipse-tile-none';
+      noneLbl.textContent = 'NO ECLIPSE';
+      tile.appendChild(noneLbl);
+    }
+    grid.appendChild(tile);
+  }
+  _eclipseActiveEvent = savedEvent;
+  LAT = savedLat; hemisphere = savedHemi; LONG = savedLon; lonHemisphere = savedLonHemi;
+  _eclipseRecompute();   // leave global circumstances consistent with the real active event/location
+}
+document.getElementById('eclipseCatalogTypeFilter').addEventListener('click', (e) => {
+  const btn = e.target.closest('.ns-btn');
+  if (!btn || !document.getElementById('eclipseCatalogTypeFilter').contains(btn)) return;
+  _eclipseCatalogTypeFilter = btn.dataset.type;
+  document.querySelectorAll('#eclipseCatalogTypeFilter .ns-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  _eclipseRenderCatalogGrid();
+});
+document.getElementById('btnEclipseCatalogLocMode').addEventListener('click', () => {
+  _eclipseCatalogUseGreatest = !_eclipseCatalogUseGreatest;
+  const btn = document.getElementById('btnEclipseCatalogLocMode');
+  btn.classList.toggle('on', _eclipseCatalogUseGreatest);
+  btn.setAttribute('aria-checked', String(_eclipseCatalogUseGreatest));
+  document.getElementById('eclipseCatalogLocModeLabelA').classList.toggle('active-loc', !_eclipseCatalogUseGreatest);
+  document.getElementById('eclipseCatalogLocModeLabelB').classList.toggle('active-loc', _eclipseCatalogUseGreatest);
+  _eclipseRenderCatalogGrid();
+});
+// LAT/hemisphere/LONG/lonHemisphere change hook (controls.js's applyLat/applyLong/btnN/btnS/btnE/
+// btnW) - refreshes whichever Eclipse sub-view is actually on screen, rather than unconditionally
+// jumping back to Catalog the way calling enterEclipse() itself would (that function is also the
+// top-level "just clicked the Eclipse button" entry point, and always lands on Catalog).
+function _eclipseRefreshForLocationChange() {
+  if (!eclipseActive) return;
+  if (eclipseSubView === 'visualization') enterEclipseVisualization();
+  else _eclipseRenderCatalogGrid();
+}
+
+// ── Visualization sub-view - the single-event animation (everything Eclipse originally was,
+// before the Catalog existed).
+function enterEclipseVisualization() {
+  eclipseSubView = 'visualization';
+  exitEclipseCatalog();
+
+  document.getElementById('eclipseCanvas').style.display = 'block';
+  document.getElementById('eclipseSliderRow').style.display = 'flex';
+  document.getElementById('eclipsePanel').classList.add('visible');
+  document.getElementById('btnEclipseMaxPhase').style.display = '';
+  document.getElementById('btnEclipseGreatestPoint').style.display = '';
+  // valDay's 110px min-width exists to fit the general app's day1/day2 hover pairs - Eclipse only
+  // ever shows one fixed date ("Aug 12"), so that width is wasted space that pushes the readout
+  // bar (already carrying the extra Mag/Obsc fields, §21.13) toward wrapping at narrower widths.
+  // Reset in exitEclipseVisualization() below.
+  document.getElementById('valDay').style.minWidth = '50px';
+
+  eclipseAnimEverPlayed = false;   // re-arm "first Play starts from the beginning" for this (re-)entry
+  const circ = _eclipseRecompute();
+  _eclipseUpdateCircTable();
+  _eclipseUpdateStatsTable();
+  const slider = document.getElementById('rngEclipseTime');
+  if (circ.visible) {
+    slider.min = (circ.c1 - 0.05).toString();
+    slider.max = (circ.c4 + 0.05).toString();
+    slider.value = circ.defaultT.toString();
+  } else {
+    slider.min = '-3'; slider.max = '3'; slider.value = circ.defaultT.toString();
+  }
+  _eclipseBuildSliderFill(circ);
+  _eclipseUpdateStartEndLabels(circ);
+  // No point offering Play where there's nothing to animate - same "no eclipse here" standard as
+  // the phase label and start/end row (_eclipseAnyVisible).
+  document.getElementById('btnEclipsePlay').style.display = _eclipseAnyVisible(circ) ? '' : 'none';
+  _eclipseUpdateGalleryUI();
+  resizeEclipse();
+}
+function exitEclipseVisualization() {
+  _eclipseStopAnim();   // don't keep the rAF loop running once the canvas is hidden
+  document.getElementById('eclipseCanvas').style.display = 'none';
+  document.getElementById('eclipseSliderRow').style.display = 'none';
+  document.getElementById('eclipsePanel').classList.remove('visible');
+  document.getElementById('btnEclipseMaxPhase').style.display = 'none';
+  document.getElementById('btnEclipseGreatestPoint').style.display = 'none';
+  document.getElementById('btnEclipseLoadGallery').style.display = 'none';
+  document.getElementById('valDay').style.minWidth = '110px';   // restore the general app's width (day1/day2 pairs)
+}
+
+// Catalog/Visualization sub-view switcher - same wheel-picker widget as the Analyzer sub-view
+// switcher and Sky Dome's projection switch (makeWheelPicker(), controls.js).
+const ECLIPSE_SUB_VALUES = ['catalog', 'visualization'];
+const ECLIPSE_SUB_LABELS = ['CATALOG', 'VISUALIZATION'];
+const ECLIPSE_SUB_N = ECLIPSE_SUB_VALUES.length;
+let _eclipseSubIndex = 0;
+function stepEclipseSubWheel(dir) {
+  _eclipseSubIndex = ((_eclipseSubIndex + dir) % ECLIPSE_SUB_N + ECLIPSE_SUB_N) % ECLIPSE_SUB_N;
+}
+function commitEclipseSubWheel() {
+  const target = ECLIPSE_SUB_VALUES[_eclipseSubIndex];
+  if (target === 'catalog') enterEclipseCatalog(); else enterEclipseVisualization();
+  _eclipseSubWheel.render();
+}
+const _eclipseSubWheel = makeWheelPicker(document.getElementById('eclipseSubWheelTrack'), {
+  labelAt: (off) => ECLIPSE_SUB_LABELS[((_eclipseSubIndex + off) % ECLIPSE_SUB_N + ECLIPSE_SUB_N) % ECLIPSE_SUB_N],
+  step: stepEclipseSubWheel,
+  itemW: 104,
+  onCommit: commitEclipseSubWheel,
+});
+document.getElementById('btnEclipseSubDec').addEventListener('click', () => { stepEclipseSubWheel(-1); commitEclipseSubWheel(); });
+document.getElementById('btnEclipseSubInc').addEventListener('click', () => { stepEclipseSubWheel(1);  commitEclipseSubWheel(); });
+_eclipseSubWheel.render();
+
+// ── Location format (Eclipse-only): decimal degrees (2 dp, 0.01deg step) vs degrees+arc-minutes
+// (1' step). Analyzer's own #inpLat/#inpLong precision (0.1deg, .toFixed(1)) is untouched - these
+// only take effect while eclipseActive (see applyLat/applyLong, controls.js), and the format resets
+// to 'dec' whenever Eclipse is exited (exitEclipse() below) so Analyzer never inherits DM mode.
+let _eclipseLocFormat = 'dec';   // 'dec' | 'dm'
+function _eclipseLocStepDeg() {
+  if (typeof eclipseActive === 'undefined' || !eclipseActive) return 0.1;   // Analyzer's own precision, unchanged
+  return _eclipseLocFormat === 'dm' ? 1 / 60 : 0.01;
+}
+// Renders an already-rounded/clamped decimal-degree value (applyLat/applyLong's own job) into the
+// given <input> in whichever format is active. DEC keeps the plain <input type="number"> (2 dp);
+// DM needs free text ("42°48'") since a number input can't hold degree/minute symbols, so the
+// input's own type is switched too.
+function _eclipseFormatLocInput(inputId, deg) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  if (eclipseIsActive && _eclipseLocFormat === 'dm') {
+    el.type = 'text';
+    const d = Math.floor(deg);
+    let m = Math.round((deg - d) * 60);
+    // A rounded 60' carries into the next whole degree (e.g. 42.999...deg -> "43°00'", not "42°60'").
+    const carry = m >= 60;
+    el.value = (carry ? d + 1 : d) + '°' + String(carry ? 0 : m).padStart(2, '0') + "'";
+  } else {
+    el.type = 'number';
+    el.step = eclipseIsActive ? '0.01' : '0.1';
+    el.value = deg.toFixed(eclipseIsActive ? 2 : 1);
+  }
+}
+// Parses whatever the user actually typed into #inpLat/#inpLong back into plain decimal degrees -
+// only meaningful in DM mode (DEC mode's <input type="number"> already only ever holds a plain
+// number, so controls.js's _parseLocValue falls back to plain parseFloat there). Lenient about the
+// exact separators typed: "42°48'", "42 48", "42:48" and a bare "42.8" are all accepted.
+function _eclipseParseLocInput(text) {
+  if (typeof eclipseActive === 'undefined' || !eclipseActive || _eclipseLocFormat !== 'dm') return NaN;
+  const m = String(text).trim().match(/^(\d+(?:\.\d+)?)\s*[°:\s]?\s*(\d+(?:\.\d+)?)?\s*['′]?\s*$/);
+  if (!m) return NaN;
+  const deg = parseFloat(m[1]);
+  const min = m[2] !== undefined ? parseFloat(m[2]) : 0;
+  return deg + min / 60;
+}
+function _eclipseParseLocValue(raw) {
+  const v = _eclipseParseLocInput(raw);
+  return isNaN(v) ? (parseFloat(raw) || 0) : v;
+}
+function _eclipseSetLocFormat(fmt) {
+  _eclipseLocFormat = fmt;
+  document.getElementById('btnEclipseLocDec').className = 'ns-btn' + (fmt === 'dec' ? ' active' : '');
+  document.getElementById('btnEclipseLocDM').className = 'ns-btn' + (fmt === 'dm' ? ' active' : '');
+  _eclipseFormatLocInput('inpLat', LAT);
+  _eclipseFormatLocInput('inpLong', LONG);
+}
+document.getElementById('btnEclipseLocDec').addEventListener('click', () => _eclipseSetLocFormat('dec'));
+document.getElementById('btnEclipseLocDM').addEventListener('click', () => _eclipseSetLocFormat('dm'));
+
+// "FIND THE GREATEST POINT" (Visualization-only) - jumps LAT/hemisphere/LONG/lonHemisphere to the
+// active event's own Greatest Eclipse point, through the normal applyLat/applyLong path (so
+// clamping/hemisphere-button state/redraws all happen exactly as if the user had typed it in).
+document.getElementById('btnEclipseGreatestPoint').addEventListener('click', () => {
+  if (!_eclipseActiveEvent) return;
+  const g = _eclipseActiveEvent.greatestEclipse;
+  hemisphere = g.hemisphere; lonHemisphere = g.lonHemisphere;
+  document.getElementById('btnN').className = g.hemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnS').className = g.hemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  document.getElementById('btnE').className = g.lonHemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnW').className = g.lonHemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  applyLat(g.lat);
+  applyLong(g.lon);
+});
+
+// ── Photo gallery (Load/Hide gallery button) - Visualization-only, and only for an event that has
+// one registered (window.ECLIPSE_GALLERY[event.id], fetched once from filelist_eclipse.json below
+// - a plain JSON file, not a <script>, since it's just data). Calibrates Location to the photos'
+// own shared shooting location, then marks each photo's own capture time on the slider as a small
+// clickable triangle; clicking one both jumps the slider to that exact moment AND opens the photo
+// in a modal (§ no prior modal existed in this project before this feature).
+window.ECLIPSE_GALLERY = {};
+async function _eclipseLoadGalleryData() {
+  try {
+    const res = await fetch('filelist_eclipse.json');
+    window.ECLIPSE_GALLERY = await res.json();
+  } catch (e) {
+    console.warn('Error loading eclipse gallery data:', e);
+  }
+  // Covers the (unlikely on localhost, but possible on a slow connection) case where this fetch
+  // resolves AFTER the user has already entered Visualization for an event that has a gallery -
+  // the button would otherwise stay hidden until the next unrelated re-render.
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && eclipseSubView === 'visualization') _eclipseUpdateGalleryUI();
+}
+_eclipseLoadGalleryData();
+// "18:08:20" -> 18.1389 (decimal hours) - the format filelist_eclipse.json stores times in.
+function _eclipseParseTimeUtc(str) {
+  const [h, m, s] = str.split(':').map(Number);
+  return h + m / 60 + (s || 0) / 3600;
+}
+
+let _eclipseLoadedGallery = null;   // the gallery object currently shown as slider markers, or null
+// Single source of truth for the button's label/visibility and the markers themselves - called
+// from enterEclipseVisualization() (every entry/re-entry, including after applyLat/applyLong's own
+// cascade) and from the fetch callback above, so it's never possible for the two to disagree.
+function _eclipseUpdateGalleryUI() {
+  const gallery = window.ECLIPSE_GALLERY && window.ECLIPSE_GALLERY[_eclipseActiveEvent.id];
+  const btn = document.getElementById('btnEclipseLoadGallery');
+  btn.style.display = gallery ? '' : 'none';
+  // Switching events (via Catalog) makes `gallery` a different object (or undefined) than whatever
+  // _eclipseLoadedGallery still points at - that mismatch is what naturally clears stale markers
+  // here, rather than needing an explicit reset call on every path that changes _eclipseActiveEvent.
+  if (_eclipseLoadedGallery && _eclipseLoadedGallery === gallery) {
+    _eclipseRenderGalleryMarkers(_eclipseLoadedGallery);
+    btn.textContent = 'Hide gallery';
+    btn.classList.add('loaded');
+  } else {
+    _eclipseLoadedGallery = null;
+    const markersWrap = document.getElementById('eclipseGalleryMarkers');
+    markersWrap.innerHTML = '';
+    markersWrap.style.display = 'none';
+    btn.textContent = 'Load gallery';
+    btn.classList.remove('loaded');
+  }
+}
+document.getElementById('btnEclipseLoadGallery').addEventListener('click', () => {
+  const gallery = window.ECLIPSE_GALLERY && window.ECLIPSE_GALLERY[_eclipseActiveEvent.id];
+  if (!gallery) return;
+  if (_eclipseLoadedGallery === gallery) {
+    // Already showing - hide again, same toggle idiom as the DEC/DM format buttons. Location
+    // itself is left wherever it ended up, same as "Find the greatest point" never reverts it.
+    _eclipseLoadedGallery = null;
+    _eclipseUpdateGalleryUI();
+    return;
+  }
+  _eclipseLoadedGallery = gallery;   // _eclipseUpdateGalleryUI(), called via enterEclipseVisualization()
+                                      // below, (re-)renders markers against the slider bounds
+                                      // applyLat/applyLong are about to trigger
+  hemisphere = gallery.lat >= 0 ? 1 : -1; lonHemisphere = gallery.lon >= 0 ? 1 : -1;
+  document.getElementById('btnN').className = hemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnS').className = hemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  document.getElementById('btnE').className = lonHemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnW').className = lonHemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  applyLat(Math.abs(gallery.lat));
+  applyLong(Math.abs(gallery.lon));
+});
+// Builds one marker per photo, positioned at that photo's own UTC capture time - same
+// percent-of-[slider.min,slider.max] math the C1-C4 tick marks use (_eclipseBuildSliderFill), just
+// against a real clock time instead of a computed contact time. `t` (Besselian hours since t0) is
+// plain UTC-to-UTC subtraction - no time-zone shift needed, since both the photo's parsed time and
+// t0UtcHours are already real UTC.
+//
+// Two photos taken close together in time land within a few px of each other on screen - clicking
+// the correct one would be impossible once they visually overlap. Fixed by GROUPING markers within
+// ECLIPSE_GALLERY_CLUSTER_PX of their neighbour (measured in real on-screen px, via the slider's
+// own rendered width) into one `.eclipse-gallery-marker-group`: at rest every marker in a group
+// sits exactly on top of the group's own centre (harmless for a singleton "group" of one), and
+// only fans out sideways - via each marker's own `--spread-x` - while the GROUP is hovered
+// (`.eclipse-gallery-marker-group:hover`, see css/style.css), so a lone marker never moves at all.
+const ECLIPSE_GALLERY_CLUSTER_PX = 24;
+function _eclipseRenderGalleryMarkers(gallery) {
+  const wrap = document.getElementById('eclipseGalleryMarkers');
+  const slider = document.getElementById('rngEclipseTime');
+  const min = parseFloat(slider.min), max = parseFloat(slider.max);
+  const span = Math.max(0.0001, max - min);
+  const trackPx = Math.max(1, slider.getBoundingClientRect().width);
+  wrap.innerHTML = '';
+
+  const items = gallery.photos.map((photo) => {
+    const t = _eclipseParseTimeUtc(photo.timeUtc) - _eclipseActiveEvent.t0UtcHours;
+    const pct = Math.max(0, Math.min(100, (t - min) / span * 100));
+    return { photo, t, pct };
+  }).sort((a, b) => a.pct - b.pct);
+
+  const clusterThresholdPct = ECLIPSE_GALLERY_CLUSTER_PX / trackPx * 100;
+  const groups = [];
+  items.forEach((item) => {
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && item.pct - lastGroup[lastGroup.length - 1].pct < clusterThresholdPct) {
+      lastGroup.push(item);
+    } else {
+      groups.push([item]);
+    }
+  });
+
+  groups.forEach((group) => {
+    const centerPct = group.reduce((s, it) => s + it.pct, 0) / group.length;
+    const groupEl = document.createElement('div');
+    groupEl.className = 'eclipse-gallery-marker-group';
+    groupEl.style.left = centerPct.toFixed(3) + '%';
+    group.forEach((item, i) => {
+      const spreadX = (i - (group.length - 1) / 2) * (ECLIPSE_GALLERY_CLUSTER_PX + 4);
+      const btn = document.createElement('button');
+      btn.className = 'eclipse-gallery-marker';
+      btn.style.setProperty('--spread-x', spreadX.toFixed(1) + 'px');
+      btn.title = item.photo.file.split('/').pop() + ' — ' + _eclipseFmtHM(item.t);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (eclipseAnimActive) _eclipseStopAnim();   // manual jump, same convention as scrubbing/other jump buttons
+        slider.value = item.t;
+        drawEclipse(item.t);
+        _eclipseOpenGalleryModal(item.photo.file);
+      });
+      groupEl.appendChild(btn);
+    });
+    wrap.appendChild(groupEl);
+  });
+  wrap.style.display = items.length ? 'block' : 'none';
+}
+function _eclipseOpenGalleryModal(src) {
+  document.getElementById('eclipseGalleryModalImg').src = src;
+  document.getElementById('eclipseGalleryModal').classList.add('visible');
+}
+function _eclipseCloseGalleryModal() {
+  document.getElementById('eclipseGalleryModal').classList.remove('visible');
+  document.getElementById('eclipseGalleryModalImg').src = '';   // release the (possibly large) image once closed
+}
+document.getElementById('btnEclipseGalleryModalClose').addEventListener('click', _eclipseCloseGalleryModal);
+document.getElementById('eclipseGalleryModal').addEventListener('click', (e) => {
+  if (e.target.id === 'eclipseGalleryModal') _eclipseCloseGalleryModal();   // click on the backdrop itself, not the photo
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('eclipseGalleryModal').classList.contains('visible')) _eclipseCloseGalleryModal();
+});
+
 function resizeEclipse() {
   if (!eclipseActive) return;
   const container = document.getElementById('canvasContainer');
@@ -963,19 +1369,19 @@ document.getElementById('btnEclipseMaxPhase').addEventListener('click', () => {
   slider.value = _eclipseCircumstances.defaultT;
   drawEclipse(_eclipseCircumstances.defaultT);
 });
-document.getElementById('chkEclipseGrid').addEventListener('change', () => {
-  drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
-});
-document.getElementById('chkEclipseLabels').addEventListener('change', () => {
-  drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
-});
-document.getElementById('chkEclipseEquatorial').addEventListener('change', () => {
-  drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
-});
-document.getElementById('chkEclipseHorizon').addEventListener('change', () => {
-  drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
-});
-window.addEventListener('resize', () => { if (eclipseActive) resizeEclipse(); });
+// Display checkboxes (grid/labels/equatorial/horizon) are read directly off the DOM by drawEclipse()
+// itself (see chkGrid/chkLabels/... near the top of that function) - live for BOTH sub-views, since
+// the Catalog tiles are real drawEclipse() renders too, not a separate preview renderer. So a change
+// here needs to refresh whichever sub-view is actually on screen, not just Visualization's canvas.
+function _eclipseRefreshCurrentView() {
+  if (eclipseSubView === 'visualization') drawEclipse(parseFloat(document.getElementById('rngEclipseTime').value));
+  else _eclipseRenderCatalogGrid();
+}
+document.getElementById('chkEclipseGrid').addEventListener('change', _eclipseRefreshCurrentView);
+document.getElementById('chkEclipseLabels').addEventListener('change', _eclipseRefreshCurrentView);
+document.getElementById('chkEclipseEquatorial').addEventListener('change', _eclipseRefreshCurrentView);
+document.getElementById('chkEclipseHorizon').addEventListener('change', _eclipseRefreshCurrentView);
+window.addEventListener('resize', () => { if (eclipseActive && eclipseSubView === 'visualization') resizeEclipse(); });
 
 // Top-level mode button, a peer of Gallery/Analyzer rather than an Analyzer sub-view - it still
 // piggybacks on Analyzer's canvas-container/panel/calibration scaffolding (see enterEclipse()
