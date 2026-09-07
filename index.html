@@ -25,6 +25,14 @@
         <div class="wheel-track" id="modeWheelTrack"></div>
         <button class="wheel-btn" id="btnModeInc" title="Next view">▶</button>
       </div>
+      <!-- Eclipse sub-view switcher (Catalog / Visualization) - shown only while Eclipse is active
+           (mutually exclusive with the Analyzer sub-row above, display set by JS in
+           render-eclipse.js), same wheel-picker widget. -->
+      <div class="eclipse-subrow wheel-row" id="eclipseSubRow" title="Eclipse sub-view – drag, tap a side value, or use the arrows">
+        <button class="wheel-btn" id="btnEclipseSubDec" title="Previous view">◀</button>
+        <div class="wheel-track" id="eclipseSubWheelTrack"></div>
+        <button class="wheel-btn" id="btnEclipseSubInc" title="Next view">▶</button>
+      </div>
     </div>
     <div class="time-mode-wrap">
       <button id="btnTimeMode" title="Time display mode">🕐</button>
@@ -229,6 +237,25 @@
       <canvas id="sunGraphCanvas"></canvas>
       <canvas id="skyDomeCanvas"></canvas>
       <canvas id="eclipseCanvas"></canvas>
+      <!-- Eclipse Catalog sub-view - grid of registered events to choose from (js/eclipse-data/*.js),
+           the landing sub-view every time Eclipse is entered. Tiles built/rendered by JS
+           (_eclipseRenderCatalogGrid, js/render-eclipse.js) - live canvas preview per event. -->
+      <div id="eclipseCatalogPanel">
+        <div id="eclipseCatalogFilters">
+          <div class="ns-toggle" id="eclipseCatalogTypeFilter" title="Filter by eclipse type">
+            <button class="ns-btn active" data-type="all">ALL</button>
+            <button class="ns-btn" data-type="total">TOTAL</button>
+            <button class="ns-btn" data-type="partial">PARTIAL</button>
+            <button class="ns-btn" data-type="annular">ANNULAR</button>
+          </div>
+          <div class="eclipse-catalog-locmode">
+            <span class="eclipse-catalog-locmode-label active-loc" id="eclipseCatalogLocModeLabelA">MY LOCATION</span>
+            <button class="eclipse-catalog-locmode-switch" id="btnEclipseCatalogLocMode" role="switch" aria-checked="false" title="Show each event from its own Greatest Eclipse point instead of the current Location"></button>
+            <span class="eclipse-catalog-locmode-label" id="eclipseCatalogLocModeLabelB">GREATEST ECLIPSE</span>
+          </div>
+        </div>
+        <div id="eclipseCatalogGrid"></div>
+      </div>
       <!-- Eclipse time slider - overlaid on the canvas itself (under the Sun), not in the side
            panel - same style as #rngSunTime under the 3D Model preview. Shown only in Eclipse. -->
       <div id="eclipseSliderRow">
@@ -236,6 +263,10 @@
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
         </button>
         <div id="eclipseSliderStack">
+          <!-- Photo gallery markers (Load gallery button, render-eclipse.js) - one small triangle
+               per photo, positioned above the track at that photo's own capture time. Empty/hidden
+               until Load gallery is pressed for an event that has one. -->
+          <div id="eclipseGalleryMarkers"></div>
           <input type="range" id="rngEclipseTime" min="0" max="1" step="0.001" value="0.5" title="White where the eclipse is above the horizon here, red where it's below (bottom edge of the track)">
           <div class="sun-rise-set" id="eclipseStartEndRow">
             <span id="lblEclipseStart">start —</span>
@@ -501,6 +532,15 @@
           <span class="slider-label" style="color:var(--accent-red)">Location</span>
         </div>
       </div>
+      <!-- Eclipse-only - shown/hidden by enterEclipse()/exitEclipse() (render-eclipse.js). Decimal
+           degrees (2 dp) vs degrees+arc-minutes for #inpLat/#inpLong; resets to DEC whenever
+           Eclipse is exited so Analyzer's own Location fields are never affected. Own row (not
+           inline with the "Location" heading) so it just sits flush-left like every other row here
+           - no alignment trick needed against N/S/E/W below it. -->
+      <div class="ns-toggle" id="eclipseLocFormatRow" style="display:none;margin-top:2px" title="Location display format">
+        <button class="ns-btn active" id="btnEclipseLocDec" title="Decimal degrees">DEC</button>
+        <button class="ns-btn" id="btnEclipseLocDM" title="Degrees + arc-minutes">DM</button>
+      </div>
       <div class="lat-row" style="margin-top:2px" title="Observation latitude">
         <button class="lat-btn" id="btnLatDec">◀</button>
         <input type="number" class="lat-input" id="inpLat" min="0" max="90" step="0.1" value="50.0">
@@ -538,6 +578,15 @@
            falls after the Sun has set (in which case the initial view defaults to sunset instead -
            see _eclipseRecompute's defaultT). -->
       <button class="sidebar-btn" id="btnEclipseMaxPhase" style="display:none" title="Jump to the moment of greatest local eclipse - clamped to sunset if the astronomical maximum would otherwise fall after the Sun has set">Move to maximum phase</button>
+      <!-- Eclipse-only, Visualization-only (hidden in Catalog too - shown/hidden by
+           enterEclipseVisualization()/exitEclipseVisualization(), render-eclipse.js). Jumps
+           LAT/hemisphere/LONG/lonHemisphere to the active event's own Greatest Eclipse point. -->
+      <button class="sidebar-btn" id="btnEclipseGreatestPoint" style="display:none" title="Jump Location to this event's own Greatest Eclipse point">Find the greatest point</button>
+      <!-- Eclipse-only, Visualization-only, AND only when the active event has a registered photo
+           gallery (window.ECLIPSE_GALLERY[event.id], fetched from filelist_eclipse.json) - shown/hidden by
+           _eclipseUpdateGalleryButtonVisibility() (render-eclipse.js). Calibrates Location to the
+           photos' own shared shooting location and marks their capture times on the slider. -->
+      <button class="sidebar-btn" id="btnEclipseLoadGallery" style="display:none" title="Calibrate Location to this event's photo gallery and mark each photo's capture time on the slider">Load gallery</button>
       <button class="sidebar-btn" id="btnCalibReset" title="Reset yaw, pitch, roll, horizon, radius and location to defaults">Reset calibration</button>
     </div>
 
@@ -563,6 +612,18 @@
   <div class="meta-row" style="margin-top:6px;border-top:1px solid var(--border);padding-top:7px">
     <span class="meta-label">Duration</span>
     <span class="meta-val" id="metaDuration" style="color:var(--accent)"></span>
+  </div>
+</div>
+
+<!-- Eclipse gallery photo modal - opened by clicking a marker on the Eclipse time slider
+     (Load gallery button, render-eclipse.js). No prior modal/lightbox convention existed in this
+     project to reuse (only the small anchored .info-popup above) - centred, dimmed backdrop is a
+     new pattern here, but keeps the same .visible show/hide idiom and sits above .info-popup's own
+     z-index:200. -->
+<div id="eclipseGalleryModal">
+  <div id="eclipseGalleryModalBody">
+    <button id="btnEclipseGalleryModalClose" title="Close">✕</button>
+    <img id="eclipseGalleryModalImg" alt="Eclipse photo">
   </div>
 </div>
 
@@ -599,6 +660,11 @@
 <script src="js/render-sungraph.js"></script>
 <script src="js/render-3d.js"></script>
 <script src="js/render-skydome.js"></script>
+<script src="js/eclipse-data/2026-08-12.js"></script>
+<script src="js/eclipse-data/2011-01-04.js"></script>
+<script src="js/eclipse-data/2015-03-20.js"></script>
+<script src="js/eclipse-data/2021-06-10.js"></script>
+<script src="js/eclipse-data/2022-10-25.js"></script>
 <script src="js/render-eclipse.js"></script>
 </body>
 </html>

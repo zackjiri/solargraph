@@ -1,0 +1,56 @@
+{
+  "2026-08-12": {
+    "lat": 49.536858,
+    "lon": 16.270358,
+    "photos": [
+      { "file": "img/eclipse/A2026-08-12_PSE01.jpg", "timeUtc": "18:08:20" },
+      { "file": "img/eclipse/A2026-08-12_PSE02.jpg", "timeUtc": "18:09:25" },
+      { "file": "img/eclipse/A2026-08-12_PSE03.jpg", "timeUtc": "17:25:23" }
+    ]
+  },
+  "2022-10-25": {
+    "lat": 49.187545,
+    "lon": 16.608352,
+    "photos": [
+      { "file": "img/eclipse/A2022-10-25_PSE01.jpg", "timeUtc": "10:25:43" }
+    ]
+  },
+  "2021-06-10": {
+    "lat": 49.20448,
+    "lon": 16.583605,
+    "photos": [
+      { "file": "img/eclipse/A2021-06-10_PSE01.jpg", "timeUtc": "10:30:34" },
+      { "file": "img/eclipse/A2021-06-10_PSE02.jpg", "timeUtc": "10:54:47" },
+      { "file": "img/eclipse/A2021-06-10_PSE03.jpg", "timeUtc": "11:09:26" }
+    ]
+  },
+  "2015-03-20": {
+    "lat": 49.243832,
+    "lon": 16.56997,
+    "photos": [
+      { "file": "img/eclipse/A2015-03-20_PSE01.jpg", "timeUtc": "09:26:34" },
+      { "file": "img/eclipse/A2015-03-20_PSE02.jpg", "timeUtc": "09:48:09" },
+      { "file": "img/eclipse/A2015-03-20_PSE06.jpg", "timeUtc": "09:50:49" },
+      { "file": "img/eclipse/A2015-03-20_PSE04.jpg", "timeUtc": "10:34:41" },
+      { "file": "img/eclipse/A2015-03-20_PSE05.jpg", "timeUtc": "10:38:22" },
+      { "file": "img/eclipse/A2015-03-20_PSE03.jpg", "timeUtc": "10:47:25" },
+      { "file": "img/eclipse/A2015-03-20_PSE07.jpg", "timeUtc": "10:47:25" },
+      { "file": "img/eclipse/A2015-03-20_PSE08.jpg", "timeUtc": "10:57:53" }
+    ]
+  },
+  "2011-01-04": {
+    "lat": 49.530347,
+    "lon": 16.326672,
+    "photos": [
+      { "file": "img/eclipse/A2011-01-04_PSE01.jpg", "timeUtc": "08:34:00" },
+      { "file": "img/eclipse/A2011-01-04_PSE02.jpg", "timeUtc": "08:34:20" },
+      { "file": "img/eclipse/A2011-01-04_PSE03.jpg", "timeUtc": "08:44:58" },
+      { "file": "img/eclipse/A2011-01-04_PSE05.jpg", "timeUtc": "08:49:44" },
+      { "file": "img/eclipse/A2011-01-04_PSE04.jpg", "timeUtc": "09:14:42" },
+      { "file": "img/eclipse/A2011-01-04_PSE06.jpg", "timeUtc": "09:17:49" },
+      { "file": "img/eclipse/A2011-01-04_PSE07.jpg", "timeUtc": "09:23:25" },
+      { "file": "img/eclipse/A2011-01-04_PSE08.jpg", "timeUtc": "09:32:00" },
+      { "file": "img/eclipse/A2011-01-04_PSE09.jpg", "timeUtc": "09:36:42" }
+    ]
+  }
+}
