@@ -783,6 +783,29 @@
   .ns-btn.active-s { background: var(--accent2); color: #000; font-weight: bold; }
   .ns-btn:disabled { opacity: 0.3; cursor: default; }
 
+  /* Eclipse's own Location-format toggle (DEC/DM) - its own row below the "Location" heading,
+     flush-left like every other row in this section (no alignment trick needed against N/S/E/W
+     below it). Shorter than the shared .ns-toggle default, and both halves the same fixed width
+     instead of following each label's own text length ("DEC" vs "DM"). width:fit-content because,
+     unlike N/S/E/W (flex children of their own .lat-row, naturally shrink-to-fit), this is now a
+     standalone block-level div - without it, .ns-toggle's plain display:flex would stretch it to
+     the sidebar's full width instead of hugging its own two buttons. */
+  #eclipseLocFormatRow { width: fit-content; }
+  #eclipseLocFormatRow .ns-btn {
+    width: 22px;
+    height: 14px;
+    line-height: 14px;
+    padding: 0;
+    text-align: center;
+    font-size: 9px;
+  }
+  /* N/S and E/W hemisphere toggles - same fixed per-button width as DEC/DM above (22px), instead of
+     each letter's own natural glyph width (which the shared .ns-btn would otherwise use, and which
+     differs slightly between N vs S vs E vs W too - see _eclipseRefreshForLocationChange's history
+     for how that showed up as a stray sub-pixel misalignment). All three toggles live in the same
+     zoomed .sidebar context, so one shared width lines them all up exactly. */
+  #btnN, #btnS, #btnE, #btnW { width: 22px; }
+
   /* Reset + Load buttons */
   .sidebar-btn {
     font-family: var(--mono);
@@ -799,6 +822,19 @@
     transition: background 0.2s, color 0.2s;
   }
   .sidebar-btn:hover { background: var(--control-fill-hover); color: var(--accent); }
+
+  /* Load/Hide gallery - set apart from the plain-grey jump buttons above it (its own feature, not
+     just another Location shortcut) with extra top margin (on top of .sidebar-section's own 8px
+     gap), and coloured like #btnSunPlay/ANIMATE SUNLIGHT - same warm-gold idle look, same
+     orange "active" look while toggled to Hide gallery (.loaded, set in _eclipseUpdateGalleryUI). */
+  #btnEclipseLoadGallery {
+    margin-top: 20px;
+    background: rgba(240,208,64,0.22);
+    color: var(--accent);
+  }
+  #btnEclipseLoadGallery:hover { background: rgba(240,208,64,0.34); }
+  #btnEclipseLoadGallery.loaded { background: rgba(232,120,40,0.26); color: #f0a050; }
+  #btnEclipseLoadGallery.loaded:hover { background: rgba(232,120,40,0.40); }
 
   #btnHeatmap.active {
     color: rgba(255,255,255,0.9);
@@ -922,6 +958,19 @@
     position: absolute;
     top: 100%; left: 0; right: 0;
     display: none;                    /* flex, set by JS in Analyzer */
+    padding: 4px 8px;
+    background: var(--panel);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 6;
+  }
+
+  /* Eclipse sub-view switcher (Catalog / Visualization) - same slot/position as .mode-subrow
+     above (mutually exclusive - only one of the two is ever visible, display set by JS). */
+  .eclipse-subrow {
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    display: none;                    /* flex, set by JS while Eclipse is active */
     padding: 4px 8px;
     background: var(--panel);
     border-radius: 0 0 var(--radius-sm) var(--radius-sm);
@@ -1060,6 +1109,41 @@
     letter-spacing: 0.05em;
   }
   .info-popup.visible { display: block; }
+
+  /* Eclipse gallery photo modal (Load gallery button, render-eclipse.js) - centred, dimmed
+     backdrop; a new pattern (no prior modal in this project), but reuses the same display:none /
+     .visible{display:...} toggle idiom as .info-popup above, and sits above its z-index:200. */
+  #eclipseGalleryModal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  #eclipseGalleryModal.visible { display: flex; }
+  #eclipseGalleryModalBody {
+    position: relative;
+    max-width: 92vw; max-height: 92vh;
+  }
+  #eclipseGalleryModalImg {
+    display: block;
+    max-width: 92vw; max-height: 92vh;
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+  }
+  #btnEclipseGalleryModalClose {
+    position: absolute; top: -14px; right: -14px;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  #btnEclipseGalleryModalClose:hover { color: var(--accent); }
 
   .meta-row {
     display: flex;
@@ -1827,6 +1911,157 @@
     cursor: default;
   }
 
+  /* Eclipse Catalog sub-view - grid of registered events, the landing sub-view every time Eclipse
+     is entered (enterEclipseCatalog(), js/render-eclipse.js). Same takeover slot as #eclipseCanvas,
+     shown instead of it while browsing rather than animating one event. */
+  #eclipseCatalogPanel {
+    position: absolute; inset: 0;
+    display: none;                    /* flex, set by JS - enterEclipseCatalog()/exitEclipseCatalog() */
+    flex-direction: column;
+    background: #050608;
+    z-index: 10;
+    overflow-y: auto;
+    overflow-x: hidden;
+    cursor: default;   /* .canvas-container itself sets cursor:none (Analyzer draws its own crosshair)
+                          - Catalog is a plain browsing UI, so restore the real cursor everywhere in
+                          it; .eclipse-tile.clickable below still gets its own pointer on hover. */
+  }
+
+  /* Filter row - Type (segmented pill, same .ns-toggle/.ns-btn component as the N/S/E/W hemisphere
+     buttons) + the "my Location vs. this event's own Greatest Eclipse" switch (same iOS-pill
+     mechanic as .analemma-switch, own accent colour). */
+  #eclipseCatalogFilters {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 14px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  /* Type filter - same .ns-toggle/.ns-btn pill as elsewhere, but all four segments equal-width
+     (ALL/TOTAL/PARTIAL/ANNULAR differ a lot in label length) and ALL gets a white active state
+     (not the shared gold .ns-btn.active) to read as "no filter" rather than as a type of its own. */
+  #eclipseCatalogTypeFilter {
+    min-width: 260px;   /* the toggle's own shrink-to-fit width would otherwise collapse well below
+                           this once its children can shrink to 0 (see min-width:0 below) - fixing
+                           a floor here is what actually keeps the four segments legible/equal. */
+  }
+  #eclipseCatalogTypeFilter .ns-btn {
+    flex: 1 1 0;
+    min-width: 0;      /* without this, flex:1 alone still yields content-driven widths (ANNULAR
+                          wider than ALL) - a flex item's min-width defaults to its content's own
+                          width, which overrides an equal flex-basis unless explicitly zeroed. */
+    box-sizing: border-box;
+    height: 24px;      /* matches the N/S/E/W hemisphere buttons' own rendered height - unlike those
+                          (inside the zoomed .sidebar), the Catalog panel isn't under the app's 1.25
+                          zoom, so this is a plain 1:1 24px, not 24/1.25. Sized directly rather than
+                          via padding/line-height, which the width-fitting font-size below would
+                          otherwise leave short. */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 11px;        /* matches the N/S/E/W hemisphere buttons' own font-size, now that the
+                                button height matches theirs too */
+    padding: 0 2px;
+    letter-spacing: 0.08em;
+  }
+  #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
+    background: #fff;
+    color: #000;
+  }
+  .eclipse-catalog-locmode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eclipse-catalog-locmode-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--dim);
+    transition: color 0.15s;
+  }
+  .eclipse-catalog-locmode-label.active-loc { color: var(--text); font-weight: bold; }
+  .eclipse-catalog-locmode-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 30px; height: 17px;
+    border-radius: 9px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: var(--control-fill-hover);
+    transition: background 0.18s;
+  }
+  .eclipse-catalog-locmode-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  .eclipse-catalog-locmode-switch.on { background: var(--accent); }
+  .eclipse-catalog-locmode-switch.on::after { left: 15px; }
+
+  /* Tile grid - one square tile per registered event (window.ECLIPSE_EVENTS). 210px = 140px + 50%. */
+  #eclipseCatalogGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 14px;
+    padding: 14px;
+  }
+  .eclipse-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    background: var(--panel);
+    border-radius: var(--radius-sm);
+    padding: 6px;
+  }
+  .eclipse-tile.clickable { cursor: pointer; transition: outline 0.15s; outline: 1px solid transparent; }
+  .eclipse-tile.clickable:hover { outline: 1px solid var(--accent); }
+  .eclipse-tile-date {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--accent);
+    text-align: center;
+  }
+  .eclipse-tile-canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    display: block;
+  }
+  /* No canvas render for a location that never sees this event (§ perf note in
+     _eclipseRenderCatalogGrid) - a flat grey square stands in for it instead. */
+  .eclipse-tile-blank { background: #1c1e22; }
+  .eclipse-tile.no-eclipse { opacity: 0.5; }
+  .eclipse-tile-type {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--accent);
+    text-align: center;
+  }
+  .eclipse-tile-none {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    color: var(--accent-red);
+    text-align: center;
+  }
+
   /* Left info panel - replaces #can3dPanel while Eclipse is active (same base look/width). */
   #eclipsePanel {
     flex: 0 0 200px;
@@ -1890,6 +2125,62 @@
     flex: 1;
     min-width: 0;
   }
+  /* Photo gallery markers (Load gallery button, render-eclipse.js) - floats ABOVE the slider via
+     absolute positioning + negative top, so it doesn't disturb #eclipseSliderStack's own layout
+     box (and, by extension, #btnEclipsePlay's alignment to the track's top edge, which assumes
+     the stack's own flow height is unchanged). Empty/hidden until a gallery is actually loaded. */
+  #eclipseGalleryMarkers {
+    position: absolute;
+    left: 0; right: 0; top: -16px;   /* box's own bottom edge (top + height) lands exactly on
+                                         #rngEclipseTime's own top padding (8px) - i.e. the visible
+                                         track's top edge - so the triangle tip below touches it */
+    height: 24px;
+    display: none;             /* JS toggles to 'block' once _eclipseRenderGalleryMarkers() runs */
+    pointer-events: none;      /* only the marker buttons themselves (deep inside) are clickable */
+  }
+  /* One group per cluster of markers close enough in time to visually collide
+     (_eclipseRenderGalleryMarkers's own clustering, ECLIPSE_GALLERY_CLUSTER_PX) - positioned at the
+     cluster's own real time; a "cluster" of just one marker is the common case and behaves exactly
+     like a single free-standing marker (its --spread-x is 0, so hovering it moves nothing). */
+  .eclipse-gallery-marker-group {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+  }
+  .eclipse-gallery-marker {
+    position: absolute;
+    top: 0; left: 0;
+    transform: translateX(-50%);   /* rest: every marker in the group sits stacked on its centre */
+    width: 24px; height: 24px;   /* generous tap target around the visible triangle, same
+                                     touch-target-vs-visual-size split used elsewhere on this slider */
+    padding: 0; margin: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-end;   /* triangle sits at the BOTTOM of the box, not the top - so the box's
+                                 own extra hit-area padding is all ABOVE the triangle, and the tip
+                                 itself (at the box's bottom edge) is what touches the track, with
+                                 no invisible overlap stealing clicks from the track below it */
+    justify-content: center;
+    transition: transform 0.18s ease;
+  }
+  /* Only while the GROUP (not the individual marker) is hovered do overlapping markers fan out
+     sideways by their own --spread-x (set per-marker in JS, 0 for anything not actually clustered)
+     - this is what makes clicking the right one of two near-identical photo times possible. */
+  .eclipse-gallery-marker-group:hover .eclipse-gallery-marker {
+    transform: translateX(calc(-50% + var(--spread-x, 0px)));
+  }
+  .eclipse-gallery-marker::after {
+    content: '';
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 13px solid #2ecc71;   /* green, pointing down at its exact time on the track below */
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.6));   /* legible against the twilight sky/varying track colour */
+  }
+  .eclipse-gallery-marker:hover::after { border-top-color: #58e39c; }
   /* Play/stop toggle for the slider - same icon-swap idiom as #btnSunPlay (setSunPlayIcon,
      render-3d.js) and the same colour states, just icon-only (no text label) to fit this compact
      canvas-overlay context instead of #btnSunPlay's full-width sidebar button. */
