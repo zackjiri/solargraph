@@ -440,7 +440,11 @@ function _eclipseObscuration(t) {
   const circ = _eclipseLocalCirc(t);
   // Same authoritative test as C2/C3 (§21.2) - check it first so Obscuration never contradicts the
   // Circumstances table/slider fill it's supposed to describe, regardless of the area formula below.
-  if (circ.m <= Math.abs(circ.L2)) return 1;
+  // ONLY for total (L2 < 0, umbral cone) - the Sun really is 100% covered there. Annular (L2 > 0,
+  // antumbral cone) never reaches 100% even at dead-centre - a ring of Sun stays visible, capped at
+  // (moon/sun)^2 - so it must fall through to the area formula below instead of being forced to 1
+  // here (that's exactly what the "d <= |r1-r2|" branch already computes correctly on its own).
+  if (circ.L2 < 0 && circ.m <= Math.abs(circ.L2)) return 1;
   const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseMoonSemidiamTopoAt(t);
   const d = circ.m * _eclipseScaleDegPerUnit();
   if (d >= r1 + r2) return 0;                                     // no overlap at all
