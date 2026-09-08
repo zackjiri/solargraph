@@ -23,10 +23,19 @@ function _eclipseSetActiveEvent(event) {
 }
 
 function _eclipsePoly(coeffs, t) { let s = 0, tp = 1; for (const c of coeffs) { s += c * tp; tp *= t; } return s; }
+// mu (Greenwich Hour Angle of the shadow axis) tracks Earth's own physical rotation, which runs on
+// UT - unlike x/y/d/l1/l2, which describe smooth ephemeris geometry and are correctly evaluated at
+// the polynomial's own TDT-based t (hours since t0, t0 itself given in TDT). Evaluating mu at that
+// same TDT-based t (instead of the corresponding UT-elapsed time, t - deltaTSec/3600) leaves one
+// whole deltaT's worth of Earth's rotation (~60-70s, ~15-20km on the ground) missing from H, shifting
+// every computed ground point/longitude west by that amount - confirmed empirically for all three
+// events independently cross-checked against NASA's own published Greatest Eclipse point (residual
+// dropped from 15-21km to under 100m using this shift for 1999-08-11/2008-08-01/2026-08-12).
 function _eclipseElementsAt(t) {
   return {
     x: _eclipsePoly(_eclipseActiveEvent.be.x, t), y: _eclipsePoly(_eclipseActiveEvent.be.y, t), d: _eclipsePoly(_eclipseActiveEvent.be.d, t),
-    l1: _eclipsePoly(_eclipseActiveEvent.be.l1, t), l2: _eclipsePoly(_eclipseActiveEvent.be.l2, t), mu: _eclipsePoly(_eclipseActiveEvent.be.mu, t),
+    l1: _eclipsePoly(_eclipseActiveEvent.be.l1, t), l2: _eclipsePoly(_eclipseActiveEvent.be.l2, t),
+    mu: _eclipsePoly(_eclipseActiveEvent.be.mu, t - _eclipseActiveEvent.deltaTSec / 3600),
   };
 }
 // Local circumstances for the app's OWN current Calibration location (LAT/lonHemisphere/LONG,
@@ -327,9 +336,7 @@ function _eclipseUpdateReadout(t) {
     obscSep.style.display = ''; obscGroup.style.display = '';
     const valMag = document.getElementById('valEclMag'), valObsc = document.getElementById('valEclObsc');
     if (_eclipseCircumstances && _eclipseCircumstances.visible) {
-      const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
-      const mDeg = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
-      const magnitude = Math.max(0, (r1 + r2 - mDeg) / (2 * r1));
+      const magnitude = Math.max(0, _eclipseMagnitude(t));
       valMag.textContent = magnitude.toFixed(3);
       valObsc.textContent = (_eclipseObscuration(t) * 100).toFixed(1) + '%';
     } else {
@@ -394,9 +401,26 @@ function _eclipseAmbientColorAt(sunElDeg) {
 // non-linear response to dimming light: V=(1-O)^0.4 - brightness barely drops until the last ~10%
 // of the disc is covered, then falls away fast, matching how a 90%-covered Sun still looks almost
 // like a normal day.
-function _eclipseObscuration(t) {
+// Eclipse magnitude (fraction of the Sun's DIAMETER covered along the line of centers) - the
+// standard (r1+r2-d)/(2*r1) formula in degrees. A from-Besselian-units-only shortcut was tried
+// (using L1/L2/m directly, no degree conversion) but abandoned: it gave a magnitude >1 for a
+// confirmed ANNULAR event (physically impossible - the Moon can never appear bigger than the
+// Sun there), because L1 and L2 are scaled by DIFFERENT cone half-angles (tanf1 vs tanf2) - a bare
+// L1/L2 ratio doesn't actually cancel that mismatch the way it first appeared to. The known gap
+// against NASA's published magnitude (§21.21/§26) remains unresolved; this only restores the
+// pre-`34_1` degree-based formula (still the least-wrong option found so far).
+function _eclipseMagnitude(t) {
   const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
-  const d = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
+  const mDeg = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
+  return (r1 + r2 - mDeg) / (2 * r1);
+}
+function _eclipseObscuration(t) {
+  const circ = _eclipseLocalCirc(t);
+  // Same authoritative test as C2/C3 (§21.2) - check it first so Obscuration never contradicts the
+  // Circumstances table/slider fill it's supposed to describe, regardless of the area formula below.
+  if (circ.m <= Math.abs(circ.L2)) return 1;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
+  const d = circ.m * _eclipseScaleDegPerUnit();
   if (d >= r1 + r2) return 0;                                     // no overlap at all
   if (d <= Math.abs(r1 - r2)) return Math.min(1, (Math.min(r1, r2) ** 2) / (r1 * r1));   // one disc wholly inside the other
   const d1 = (d * d - r2 * r2 + r1 * r1) / (2 * d), d2 = d - d1;   // standard two-circle lens intersection
@@ -735,8 +759,7 @@ function _eclipseUpdateStatsTable() {
   // At defaultT (the horizon-clamped landing point, §21.14), NOT the true astronomical tMax/mMin -
   // magnitude and obscuration are "how much of the Sun is covered" numbers, which should describe
   // what's actually observable from here, not a theoretical peak that might never be visible.
-  const mDegAtDefault = _eclipseLocalCirc(c.defaultT).m * _eclipseScaleDegPerUnit();
-  const magnitude = Math.max(0, (r1 + r2 - mDegAtDefault) / (2 * r1));
+  const magnitude = Math.max(0, _eclipseMagnitude(c.defaultT));
   // Both durations clamped to the horizon-visible portion (_eclipseVisibleWindow) - same principle
   // as magnitude/obscuration above: describe what's actually observable from here, not the full
   // geometric span, some of which may fall while the Sun is down.
