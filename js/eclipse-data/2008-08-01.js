@@ -13,6 +13,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'total',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2008, dayMonth: 8, dayDay: 1,   // 2008 Aug 01 (real calendar day, for EoT/declination)
   t0UtcHours: 10 - 65.6 / 3600,   // 10:00:00.0 TD - deltaT(65.6s) -> UT (10:22:12.3 TD / 10:21:06.7 UT1 at Greatest Eclipse)
+  deltaTSec: 65.6,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [0.10176, 0.52858, -0.00006, -0.00001],
     y:  [0.85063, -0.20252, -0.00015, 0.00000],

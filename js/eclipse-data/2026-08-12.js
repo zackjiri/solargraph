@@ -20,6 +20,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'total',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2026, dayMonth: 8, dayDay: 12,   // 2026 Aug 12 (real calendar day, for EoT/declination)
   t0UtcHours: 17 + 58 / 60 + 48.6 / 3600,   // 18:00:00.0 TDT - deltaT(71.4s) -> UT
+  deltaTSec: 71.4,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [0.475593, 0.5189288, -0.0000773, -0.0000088],
     y:  [0.771161, -0.2301664, -0.0001245, 0.0000037],

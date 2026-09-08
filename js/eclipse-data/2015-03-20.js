@@ -18,6 +18,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'total',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2015, dayMonth: 3, dayDay: 20,   // 2015 Mar 20 (real calendar day, for EoT/declination)
   t0UtcHours: 10 - 67.7 / 3600,   // 10:00:00.0 TD - deltaT(67.7s) -> UT
+  deltaTSec: 67.7,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [-0.16829, 0.55374, 0.00001, -0.00001],
     y:  [0.93905, 0.17865, -0.00005, -0.00000],

@@ -26,6 +26,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'partial',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2011, dayMonth: 1, dayDay: 4,   // 2011 Jan 4 (real calendar day, for EoT/declination)
   t0UtcHours: 9 - 66.3 / 3600,   // 09:00:00.0 TD - deltaT(66.3s) -> UT
+  deltaTSec: 66.3,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [-0.14063, 0.51627, -0.00004, -0.00001],
     y:  [1.05582, 0.10514, 0.00011, -0.00000],

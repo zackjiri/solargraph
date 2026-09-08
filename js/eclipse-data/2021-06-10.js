@@ -17,6 +17,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'annular',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2021, dayMonth: 6, dayDay: 10,   // 2021 Jun 10 (real calendar day, for EoT/declination)
   t0UtcHours: 11 - 70.4 / 3600,   // 11:00:00.0 TD - deltaT(70.4s) -> UT
+  deltaTSec: 70.4,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [-0.01871, 0.50123, 0.00003, -0.00001],
     y:  [0.92610, 0.08878, -0.00018, -0.00000],

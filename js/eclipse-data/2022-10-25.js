@@ -22,6 +22,7 @@ window.ECLIPSE_EVENTS.push({
   type: 'partial',   // global type of the event's path on Earth, independent of what's visible from any one location
   year: 2022, dayMonth: 10, dayDay: 25,   // 2022 Oct 25 (real calendar day, for EoT/declination)
   t0UtcHours: 11 - 70.9 / 3600,   // 11:00:00.0 TD - deltaT(70.9s) -> UT
+  deltaTSec: 70.9,   // also feeds mu's own UT-vs-TDT correction (_eclipseElementsAt, render-eclipse.js)
   be: {
     x:  [0.45479, 0.49555, 0.00003, -0.00001],
     y:  [0.96877, -0.23959, 0.00002, 0.00000],
