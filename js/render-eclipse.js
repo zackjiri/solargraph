@@ -673,12 +673,18 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
       // horizon during them (e.g. 35N/20E for this eclipse - C1 itself is already past sunset) -
       // that's "no eclipse here" in every practical sense, regardless of where the slider sits.
       if (c.visible && _eclipseAnyVisible(c)) {
-        if (c.c2 !== null && c.c3 !== null && t >= c.c2 && t <= c.c3) phase = 'totality';
+        if (c.c2 !== null && c.c3 !== null && t >= c.c2 && t <= c.c3) phase = _eclipseCentralPhaseWord();
         else if (t >= c.c1 && t <= c.c4) phase = 'partial';
       }
       phaseLbl.textContent = phase;
     }
   }
+}
+// "totality" for total events, "annular" for annular events - user-facing wording only; internal
+// physics/variable names (m < |L2|, ECLIPSE_TOTALITY_GREY, etc.) stay generic "totality" since
+// they describe the same central-phase geometry regardless of which type it actually is.
+function _eclipseCentralPhaseWord() {
+  return (_eclipseActiveEvent && _eclipseActiveEvent.type === 'annular') ? 'annular' : 'totality';
 }
 function _eclipseUpdateCircTable() {
   const table = document.getElementById('eclipseCircTable');
@@ -696,7 +702,7 @@ function _eclipseUpdateCircTable() {
     rows.push('<div class="ecl-row"><span>Status</span><span>not visible here</span></div>');
   } else {
     rows.push(row('C1 begins', c.c1));
-    if (c.c2 !== null) rows.push(row('C2 totality', c.c2));
+    if (c.c2 !== null) rows.push(row('C2 ' + _eclipseCentralPhaseWord(), c.c2));
     rows.push(row('Max', c.tMax));
     if (c.c3 !== null) rows.push(row('C3 ends', c.c3));
     rows.push(row('C4 ends', c.c4));
@@ -745,7 +751,7 @@ function _eclipseUpdateStatsTable() {
     row('Moon/Sun size ratio', (r2 / r1).toFixed(4)),
     row('Obscuration', (_eclipseObscuration(c.defaultT) * 100).toFixed(1) + '%'),
     row('Duration (penumbral)', _eclipseFmtDuration(visSpan.end - visSpan.start)),
-    row('Duration (totality)', totalityDur),
+    row('Duration (' + _eclipseCentralPhaseWord() + ')', totalityDur),
   ];
   table.innerHTML = rows.join('');
 }
@@ -796,8 +802,18 @@ function enterEclipse() {
   document.getElementById('btnModeEclipse').classList.add('active-eclipse');
 
   eclipseActive = true;
+  // Switch #inpLat/#inpLong to Eclipse's own format (2 dp text, masked - see _eclipseFormatLocInput)
+  // right away, rather than leaving them as Analyzer's plain type="number" until the first +/- click
+  // or DEC/DM toggle happens to trigger a reformat.
+  _eclipseFormatLocInput('inpLat', LAT);
+  _eclipseFormatLocInput('inpLong', LONG);
   document.getElementById('eclipseSubRow').style.display = 'flex';
   document.getElementById('eclipseLocFormatRow').style.display = 'flex';
+  // Apparent/Mean/Standard only ever affects the general app's own displayHour()/EoT pipeline -
+  // Eclipse's own time formatting (_eclipseFmtUTC/_eclipseFmtHM) is always plain UTC+offset and
+  // never consults timeDisplayMode at all, so this switcher would have zero effect here anyway.
+  document.getElementById('btnTimeMode').style.display = 'none';
+  document.getElementById('timeModeMenu').classList.remove('open');
   // Always land on Catalog first, regardless of which sub-view was showing last time Eclipse was
   // active - Visualization only loads once a specific event tile is picked.
   _eclipseSubIndex = 0;
@@ -810,6 +826,7 @@ function exitEclipse() {
   if (eclipseSubView === 'visualization') exitEclipseVisualization(); else exitEclipseCatalog();
   document.getElementById('eclipseSubRow').style.display = 'none';
   document.getElementById('eclipseLocFormatRow').style.display = 'none';
+  document.getElementById('btnTimeMode').style.display = '';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   eclipseActive = false;
   _eclipseSetLocFormat('dec');   // Analyzer's own Location fields never inherit DM mode - order
@@ -914,6 +931,17 @@ function _eclipseRenderCatalogGrid() {
       typeLbl.textContent = hasCentral ? (ev.type === 'annular' ? 'Annular' : 'Total') : 'Partial';
       tile.appendChild(typeLbl);
 
+      // Gallery badge - same window.ECLIPSE_GALLERY[event.id] the Visualization "Load gallery"
+      // button itself checks (§ below). Only on the visible/clickable branch - a greyed-out
+      // "NO ECLIPSE" tile isn't something you can open into regardless of whether photos exist.
+      if (window.ECLIPSE_GALLERY && window.ECLIPSE_GALLERY[ev.id]) {
+        const badge = document.createElement('img');
+        badge.className = 'eclipse-tile-gallery-badge';
+        badge.src = 'icon_gallery.png';
+        badge.alt = 'Photo gallery available';
+        tile.appendChild(badge);
+      }
+
       tile.classList.add('clickable');
       tile.title = 'Open ' + ev.label;
       tile.addEventListener('click', () => {
@@ -973,6 +1001,7 @@ function enterEclipseVisualization() {
   document.getElementById('eclipseCanvas').style.display = 'block';
   document.getElementById('eclipseSliderRow').style.display = 'flex';
   document.getElementById('eclipsePanel').classList.add('visible');
+  document.getElementById('btnEclipseVisExit').style.display = 'block';
   document.getElementById('btnEclipseMaxPhase').style.display = '';
   document.getElementById('btnEclipseGreatestPoint').style.display = '';
   // valDay's 110px min-width exists to fit the general app's day1/day2 hover pairs - Eclipse only
@@ -999,6 +1028,7 @@ function enterEclipseVisualization() {
   // the phase label and start/end row (_eclipseAnyVisible).
   document.getElementById('btnEclipsePlay').style.display = _eclipseAnyVisible(circ) ? '' : 'none';
   _eclipseUpdateGalleryUI();
+  _eclipseUpdateDistanceToPath();
   resizeEclipse();
 }
 function exitEclipseVisualization() {
@@ -1006,8 +1036,10 @@ function exitEclipseVisualization() {
   document.getElementById('eclipseCanvas').style.display = 'none';
   document.getElementById('eclipseSliderRow').style.display = 'none';
   document.getElementById('eclipsePanel').classList.remove('visible');
+  document.getElementById('btnEclipseVisExit').style.display = 'none';
   document.getElementById('btnEclipseMaxPhase').style.display = 'none';
   document.getElementById('btnEclipseGreatestPoint').style.display = 'none';
+  document.getElementById('eclipseDistToPathRow').style.display = 'none';
   document.getElementById('btnEclipseLoadGallery').style.display = 'none';
   document.getElementById('valDay').style.minWidth = '110px';   // restore the general app's width (day1/day2 pairs)
 }
@@ -1032,9 +1064,24 @@ const _eclipseSubWheel = makeWheelPicker(document.getElementById('eclipseSubWhee
   itemW: 104,
   onCommit: commitEclipseSubWheel,
 });
+// Shared by the "✕ exit" button and the Escape key below - both just return to Catalog.
+function _eclipseExitVisualizationToCatalog() {
+  _eclipseSubIndex = 0;
+  _eclipseSubWheel.render();
+  enterEclipseCatalog();
+}
+document.getElementById('btnEclipseVisExit').addEventListener('click', _eclipseExitVisualizationToCatalog);
 document.getElementById('btnEclipseSubDec').addEventListener('click', () => { stepEclipseSubWheel(-1); commitEclipseSubWheel(); });
 document.getElementById('btnEclipseSubInc').addEventListener('click', () => { stepEclipseSubWheel(1);  commitEclipseSubWheel(); });
 _eclipseSubWheel.render();
+// Escape mirrors #btnEclipseVisExit - same "close the takeover, go back" convention as 3D Model's
+// own Escape handler (render-3d.js), scoped to Eclipse Visualization specifically so it never fires
+// while just browsing Catalog (which isn't a takeover to "exit" the same way).
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && typeof eclipseActive !== 'undefined' && eclipseActive && eclipseSubView === 'visualization') {
+    _eclipseExitVisualizationToCatalog();
+  }
+});
 
 // ── Location format (Eclipse-only): decimal degrees (2 dp, 0.01deg step) vs degrees+arc-minutes
 // (1' step). Analyzer's own #inpLat/#inpLong precision (0.1deg, .toFixed(1)) is untouched - these
@@ -1045,6 +1092,15 @@ function _eclipseLocStepDeg() {
   if (typeof eclipseActive === 'undefined' || !eclipseActive) return 0.1;   // Analyzer's own precision, unchanged
   return _eclipseLocFormat === 'dm' ? 1 / 60 : 0.01;
 }
+// The ◀/▶ Location arrow buttons (Eclipse-only) always land on the next whole degree in the
+// direction pressed, rather than nudging by _eclipseLocStepDeg()'s own fine display precision -
+// same idea as a keyboard's up/down arrow taking one full step at a time. From a fractional value
+// this is just "round to the next whole degree that way" (e.g. 42.37 -> 43 going up, -> 42 going
+// down); from an already-whole value floor/ceil no-op onto the same number, so the +/-1 below is
+// what actually advances it - one formula covers both cases without an explicit "is it whole" check.
+function _eclipseLocArrowStep(val, dir) {
+  return dir > 0 ? Math.floor(val) + 1 : Math.ceil(val) - 1;
+}
 // Renders an already-rounded/clamped decimal-degree value (applyLat/applyLong's own job) into the
 // given <input> in whichever format is active. DEC keeps the plain <input type="number"> (2 dp);
 // DM needs free text ("42°48'") since a number input can't hold degree/minute symbols, so the
@@ -1053,19 +1109,79 @@ function _eclipseFormatLocInput(inputId, deg) {
   const el = document.getElementById(inputId);
   if (!el) return;
   const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  if (eclipseIsActive && _eclipseLocFormat === 'dm') {
+  if (eclipseIsActive) {
+    // Both formats use a free-text input while Eclipse is active (not just DM) - DEC needs it too so
+    // its "." can be made a fixed, non-deletable character the same way DM's "°"/"'" are (see the
+    // coordinate-input masking block below); a native type="number" can hold neither.
     el.type = 'text';
-    const d = Math.floor(deg);
-    let m = Math.round((deg - d) * 60);
-    // A rounded 60' carries into the next whole degree (e.g. 42.999...deg -> "43°00'", not "42°60'").
-    const carry = m >= 60;
-    el.value = (carry ? d + 1 : d) + '°' + String(carry ? 0 : m).padStart(2, '0') + "'";
+    if (_eclipseLocFormat === 'dm') {
+      const d = Math.floor(deg);
+      let m = Math.round((deg - d) * 60);
+      // A rounded 60' carries into the next whole degree (e.g. 42.999...deg -> "43°00'", not "42°60'").
+      const carry = m >= 60;
+      el.value = (carry ? d + 1 : d) + '°' + String(carry ? 0 : m).padStart(2, '0') + "'";
+    } else {
+      el.value = deg.toFixed(2);
+    }
   } else {
     el.type = 'number';
-    el.step = eclipseIsActive ? '0.01' : '0.1';
-    el.value = deg.toFixed(eclipseIsActive ? 2 : 1);
+    el.step = '0.1';
+    el.value = deg.toFixed(1);
   }
 }
+
+// ── Coordinate input masking (Eclipse-only): the . / ° / ' punctuation is a fixed, non-deletable
+// part of the display format above - the user can freely edit the digit runs around it, but typing
+// or deleting can never touch the separator itself, which is what keeps free input restricted to
+// plain digits. Only meaningful now that #inpLat/#inpLong are type="text" while eclipseActive.
+const ECLIPSE_LOC_FIXED_CHARS = ['.', '°', "'"];
+function _eclipseLocSelectionHasFixedChar(el) {
+  if (el.selectionStart === el.selectionEnd) return false;
+  return [...el.value.slice(el.selectionStart, el.selectionEnd)].some((c) => ECLIPSE_LOC_FIXED_CHARS.includes(c));
+}
+function _eclipseLocInputKeydown(e) {
+  if (typeof eclipseActive === 'undefined' || !eclipseActive) return;   // Analyzer's plain number inputs are untouched
+  if (e.ctrlKey || e.metaKey) return;   // let copy/select-all/etc. shortcuts through untouched
+  const el = e.target;
+  const navKeys = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', 'Escape'];
+  if (navKeys.includes(e.key)) return;
+
+  // Up/Down steps the field by a whole degree, same _eclipseLocArrowStep() rounding as the ◀/▶
+  // Location buttons (controls.js) - one shared stepping convention regardless of which control the
+  // user actually reaches for.
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const dir = e.key === 'ArrowUp' ? 1 : -1;
+    if (el.id === 'inpLat') applyLat(_eclipseLocArrowStep(LAT, dir));
+    else if (el.id === 'inpLong') applyLong(_eclipseLocArrowStep(LONG, dir));
+    return;
+  }
+
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (_eclipseLocSelectionHasFixedChar(el)) { e.preventDefault(); return; }
+    const pos = e.key === 'Backspace' ? el.selectionStart - 1 : el.selectionStart;
+    if (pos >= 0 && pos < el.value.length && ECLIPSE_LOC_FIXED_CHARS.includes(el.value[pos])) {
+      // Skip over the fixed character instead of deleting it - a second press then reaches the digit beyond it.
+      e.preventDefault();
+      const newPos = e.key === 'Backspace' ? pos : pos + 1;
+      el.setSelectionRange(newPos, newPos);
+    }
+    return;
+  }
+  if (e.key.length === 1) {   // any single printable character - digits are the only ones let through
+    if (_eclipseLocSelectionHasFixedChar(el)) { e.preventDefault(); return; }
+    if (!/[0-9]/.test(e.key)) e.preventDefault();
+  }
+}
+document.getElementById('inpLat').addEventListener('keydown', _eclipseLocInputKeydown);
+document.getElementById('inpLong').addEventListener('keydown', _eclipseLocInputKeydown);
+// Pasted text could freely inject non-digit junk or overwrite a fixed separator - simplest safe
+// behaviour is to just block it rather than trying to sanitise+splice arbitrary pasted content.
+function _eclipseLocInputPaste(e) {
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) e.preventDefault();
+}
+document.getElementById('inpLat').addEventListener('paste', _eclipseLocInputPaste);
+document.getElementById('inpLong').addEventListener('paste', _eclipseLocInputPaste);
 // Parses whatever the user actually typed into #inpLat/#inpLong back into plain decimal degrees -
 // only meaningful in DM mode (DEC mode's <input type="number"> already only ever holds a plain
 // number, so controls.js's _parseLocValue falls back to plain parseFloat there). Lenient about the
@@ -1091,6 +1207,115 @@ function _eclipseSetLocFormat(fmt) {
 }
 document.getElementById('btnEclipseLocDec').addEventListener('click', () => _eclipseSetLocFormat('dec'));
 document.getElementById('btnEclipseLocDM').addEventListener('click', () => _eclipseSetLocFormat('dm'));
+
+// ── Distance from the path of totality (Visualization-only, TOTAL events only) ─────────────────
+// Shortest great-circle surface distance from the current Location to the umbral path, plus which
+// of 8 compass directions gets there fastest. Reuses _eclipseLocalCirc's own m/L2 (§ engine above) -
+// "inside the path" at some moment during the event is exactly the same m <= |L2| test already used
+// for C2/C3 and the totality-coloured slider band, just asked of an arbitrary candidate point
+// instead of the app's own current Location.
+const ECLIPSE_EARTH_R_KM = 6371;
+// Cheap approximation of "is this point ever inside the path": m(t) is a smooth, single-dip curve
+// across the whole event while L2(t) varies slowly, so the tightest test is right at m's own
+// minimum (the same tMax/mMin the Stats panel already reports) rather than a full fine-grained
+// sweep for m<=|L2| (which would cost ~3000 evals per candidate point - far too slow once that runs
+// for dozens of candidate points along all 8 bearings). Coarse pass then a local refine around the
+// coarse winner, mirroring _eclipseRecompute's own tMax search but far fewer steps.
+function _eclipseFindMinM() {
+  let bestT = -3, bestM = Infinity;
+  const coarseStep = 0.02;
+  for (let t = -3; t <= 3; t += coarseStep) {
+    const r = _eclipseLocalCirc(t);
+    if (r.m < bestM) { bestM = r.m; bestT = t; }
+  }
+  const lo = Math.max(-3, bestT - coarseStep), hi = Math.min(3, bestT + coarseStep);
+  const fineStep = coarseStep / 40;
+  for (let t = lo; t <= hi; t += fineStep) {
+    const r = _eclipseLocalCirc(t);
+    if (r.m < bestM) { bestM = r.m; bestT = t; }
+  }
+  return bestT;
+}
+// Swaps the app's global Location (LAT/hemisphere/LONG/lonHemisphere) to the given signed-degree
+// point (positive lat = N, positive lon = E) just long enough to run the existence check, then
+// restores it - same save/swap/restore idiom _eclipseRenderCatalogGrid() already uses per tile.
+function _eclipseTotalityExistsAt(latDeg, lonDeg) {
+  const savedLat = LAT, savedHemi = hemisphere, savedLon = LONG, savedLonHemi = lonHemisphere;
+  LAT = Math.abs(latDeg); hemisphere = latDeg < 0 ? -1 : 1;
+  LONG = Math.abs(lonDeg); lonHemisphere = lonDeg < 0 ? -1 : 1;
+  const t = _eclipseFindMinM();
+  const r = _eclipseLocalCirc(t);
+  const exists = r.m <= Math.abs(r.L2);
+  LAT = savedLat; hemisphere = savedHemi; LONG = savedLon; lonHemisphere = savedLonHemi;
+  return exists;
+}
+// Standard spherical-trig destination-point formula (bearing clockwise from true north, in degrees;
+// distKm along Earth's surface) - signed lat/lon degrees in, signed lat/lon degrees out.
+function _eclipseDestPoint(latDeg, lonDeg, bearingDeg, distKm) {
+  const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+  const lat1 = latDeg * D2R, lon1 = lonDeg * D2R, brng = bearingDeg * D2R, delta = distKm / ECLIPSE_EARTH_R_KM;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(delta) + Math.cos(lat1) * Math.sin(delta) * Math.cos(brng));
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(brng) * Math.sin(delta) * Math.cos(lat1),
+    Math.cos(delta) - Math.sin(lat1) * Math.sin(lat2)
+  );
+  return { lat: lat2 * R2D, lon: ((lon2 * R2D + 540) % 360) - 180 };   // normalise lon to [-180, 180)
+}
+const ECLIPSE_DIST_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315];   // N, NE, E, SE, S, SW, W, NW
+const ECLIPSE_DIST_ARROWS   = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+const ECLIPSE_DIST_STEP_KM  = 250, ECLIPSE_DIST_MAX_KM = 7500;   // coarse scan resolution/range per bearing
+// For one bearing: coarse-scan outward from the current Location until a candidate point falls
+// inside the path (same scan-then-bisect idiom as _eclipseScanRoots), then bisect within that
+// bracket for a tighter distance. Returns Infinity if the path isn't reached within
+// ECLIPSE_DIST_MAX_KM along this bearing (that bearing is just skipped, not an error).
+function _eclipseNearestAlongBearing(latDeg, lonDeg, bearingDeg) {
+  let prevInside = false, prevDist = 0;
+  for (let d = ECLIPSE_DIST_STEP_KM; d <= ECLIPSE_DIST_MAX_KM; d += ECLIPSE_DIST_STEP_KM) {
+    const p = _eclipseDestPoint(latDeg, lonDeg, bearingDeg, d);
+    const inside = _eclipseTotalityExistsAt(p.lat, p.lon);
+    if (inside && !prevInside) {
+      let lo = prevDist, hi = d;
+      for (let k = 0; k < 16; k++) {
+        const mid = (lo + hi) / 2;
+        const pm = _eclipseDestPoint(latDeg, lonDeg, bearingDeg, mid);
+        if (_eclipseTotalityExistsAt(pm.lat, pm.lon)) hi = mid; else lo = mid;
+      }
+      return hi;
+    }
+    prevInside = inside; prevDist = d;
+  }
+  return Infinity;
+}
+// Full result for the current Location: {distKm: 0, arrow: null} if already inside the path (☉ is
+// shown instead of an arrow by the caller), {distKm, arrow} for the nearest of the 8 bearings
+// otherwise, or {distKm: null} if none of the 8 bearings reach the path within ECLIPSE_DIST_MAX_KM.
+function _eclipseDistanceToPath() {
+  const curLat = LAT * hemisphere, curLon = LONG * lonHemisphere;
+  if (_eclipseTotalityExistsAt(curLat, curLon)) return { distKm: 0, arrow: null };
+  let bestDist = Infinity, bestArrow = null;
+  for (let i = 0; i < ECLIPSE_DIST_BEARINGS.length; i++) {
+    const d = _eclipseNearestAlongBearing(curLat, curLon, ECLIPSE_DIST_BEARINGS[i]);
+    if (d < bestDist) { bestDist = d; bestArrow = ECLIPSE_DIST_ARROWS[i]; }
+  }
+  return bestDist === Infinity ? { distKm: null, arrow: null } : { distKm: bestDist, arrow: bestArrow };
+}
+function _eclipseUpdateDistanceToPath() {
+  const row = document.getElementById('eclipseDistToPathRow');
+  const showRow = eclipseSubView === 'visualization' && _eclipseActiveEvent && _eclipseActiveEvent.type === 'total';
+  row.style.display = showRow ? 'flex' : 'none';
+  if (!showRow) return;
+  const lbl = document.getElementById('lblEclipseDistToPath');
+  const heading = document.getElementById('eclipseDistToPathLabel');
+  const { distKm, arrow } = _eclipseDistanceToPath();
+  if (distKm === null) lbl.textContent = '—';
+  else if (distKm === 0) lbl.textContent = '0 km ☉';
+  else lbl.textContent = Math.round(distKm) + ' km ' + arrow;
+  // Green instead of red once the path actually reaches this Location - same "good news" swap as
+  // the row's own colour scheme, not just the number.
+  const color = distKm === 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+  lbl.style.color = color;
+  heading.style.color = color;
+}
 
 // "FIND THE GREATEST POINT" (Visualization-only) - jumps LAT/hemisphere/LONG/lonHemisphere to the
 // active event's own Greatest Eclipse point, through the normal applyLat/applyLong path (so
@@ -1122,9 +1347,13 @@ async function _eclipseLoadGalleryData() {
     console.warn('Error loading eclipse gallery data:', e);
   }
   // Covers the (unlikely on localhost, but possible on a slow connection) case where this fetch
-  // resolves AFTER the user has already entered Visualization for an event that has a gallery -
-  // the button would otherwise stay hidden until the next unrelated re-render.
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && eclipseSubView === 'visualization') _eclipseUpdateGalleryUI();
+  // resolves AFTER the user has already entered Visualization/Catalog - the "Load gallery" button
+  // and the Catalog tiles' own gallery badges would otherwise stay stale until the next unrelated
+  // re-render.
+  if (typeof eclipseActive !== 'undefined' && eclipseActive) {
+    if (eclipseSubView === 'visualization') _eclipseUpdateGalleryUI();
+    else if (eclipseSubView === 'catalog') _eclipseRenderCatalogGrid();
+  }
 }
 _eclipseLoadGalleryData();
 // "18:08:20" -> 18.1389 (decimal hours) - the format filelist_eclipse.json stores times in.

@@ -486,10 +486,12 @@ document.getElementById('inpLat').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') applyLat(_parseLocValue(e.target.value));
 });
 document.getElementById('btnLatDec').addEventListener('click', () => {
-  applyLat(LAT - ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  applyLat((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LAT, -1) : LAT - 0.1);
 });
 document.getElementById('btnLatInc').addEventListener('click', () => {
-  applyLat(LAT + ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  applyLat((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LAT, 1) : LAT + 0.1);
 });
 document.getElementById('btnN').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -542,10 +544,12 @@ document.getElementById('inpLong').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') applyLong(_parseLocValue(e.target.value));
 });
 document.getElementById('btnLongDec').addEventListener('click', () => {
-  applyLong(LONG - ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  applyLong((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LONG, -1) : LONG - 0.1);
 });
 document.getElementById('btnLongInc').addEventListener('click', () => {
-  applyLong(LONG + ((typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1));
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  applyLong((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LONG, 1) : LONG + 0.1);
 });
 document.getElementById('btnE').addEventListener('click', () => {
   lonHemisphere = 1;

@@ -1208,10 +1208,23 @@ function setDisplaySectionEnabled(enabled, keepIds) {
   if (enabled && typeof updateLineOpacityAvailability === 'function') updateLineOpacityAvailability();
 }
 
+// Which Analyzer sub-view was on screen right before 3D Model took over ('image' | 'sungraph' |
+// 'skydome') - captured here (not reused from _lastAnalyzerSubView in controls.js, which is scoped
+// to Gallery<->Analyzer transitions only) so exitTheater3D() can put the user back where they were
+// instead of always falling back to the plain Image view.
+let _theater3DPrevSubView = 'image';
+
 function enterTheater3D() {
   // Sun Graph, Sky Dome, Eclipse and 3D theater are mutually exclusive canvas takeovers.
-  if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
-  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) {
+    _theater3DPrevSubView = 'sungraph';
+    if (typeof exitSunGraph === 'function') exitSunGraph();
+  } else if (typeof skyDomeActive !== 'undefined' && skyDomeActive) {
+    _theater3DPrevSubView = 'skydome';
+    if (typeof exitSkyDome === 'function') exitSkyDome();
+  } else {
+    _theater3DPrevSubView = 'image';
+  }
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
   const container = document.getElementById('canvasContainer');
   // The 3D model needs no scan → ensure the canvas area is visible (mirrors enterSunGraph).
@@ -1270,6 +1283,14 @@ function exitTheater3D() {
   updateSunAnimCtl();   // controls follow Analyzer rules; animation keeps running across theater
   updateSunWave();   // stop the arrow wave when leaving theater (keeps loop if still animating)
   draw3D();
+  // Return to whichever sub-view was active before 3D Model was opened, instead of always landing
+  // on plain Image - enterSunGraph()/enterSkyDome() each call updateViewButtons() themselves, which
+  // re-syncs the mode wheel, so nothing else here needs to know about that.
+  if (_theater3DPrevSubView === 'sungraph' && typeof enterSunGraph === 'function') {
+    enterSunGraph();
+  } else if (_theater3DPrevSubView === 'skydome' && typeof enterSkyDome === 'function') {
+    enterSkyDome();
+  }
   // Restore the empty-state upload zone if no scan and not switching to another canvas view.
   if (currentMode === 'analyzer' && !imgBitmap
       && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
