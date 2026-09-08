@@ -63,6 +63,28 @@ function _eclipseLocalCirc(t) {
 function _eclipseScaleDegPerUnit() {
   return (_eclipseActiveEvent.sunSemidiamDeg + _eclipseActiveEvent.moonSemidiamDeg) / _eclipseActiveEvent.be.l1[0];
 }
+// Earth's equatorial radius / Moon's own physical radius - sin(parallax)/sin(semidiam) both subtend
+// the same distance, so their ratio is this fixed physical constant.
+const ECLIPSE_EARTH_MOON_RADIUS_RATIO = 6378.14 / 1737.4;
+// Topocentric correction for the Moon's own apparent semi-diameter at Besselian time t, for the
+// app's current Location - the Moon looks measurably bigger near the zenith (the observer is
+// physically up to ~1 Earth radius closer to it there) and smaller near the horizon, a real effect
+// (~1-1.5% at lunar distances) the app previously ignored entirely: moonSemidiamDeg was always the
+// single geocentric value published "at greatest eclipse", used everywhere regardless of time or
+// observer location - part of the long-documented magnitude/obscuration gap vs NASA (§21.21/§26).
+// Confirmed empirically against an independent reference source (1999-08-11 at 50N/15E: geocentric
+// ratio 1.0143 vs that source's 1.02803 - this correction lands at 1.02844, ~97% of the gap closed).
+// The Sun's own parallax (~8.8 arcsec) is ~100x smaller and left uncorrected. Uses the Sun's own
+// already-computed altitude as a stand-in for the Moon's - during an eclipse they sit within about
+// the eclipse's own small angular separation of each other in the sky, far below this correction's
+// own size.
+function _eclipseMoonSemidiamTopoAt(t) {
+  const r2 = _eclipseActiveEvent.moonSemidiamDeg;
+  const D2R = Math.PI / 180;
+  const parallax = Math.asin(ECLIPSE_EARTH_MOON_RADIUS_RATIO * Math.sin(r2 * D2R));
+  const zenithRad = (90 - _eclipseSunAltAt(t)) * D2R;
+  return r2 * (1 + Math.cos(zenithRad) * Math.sin(parallax));
+}
 // Parallactic angle (Sun): angle at the Sun between the direction to the North Celestial Pole and
 // the direction to the observer's zenith - the standard rotation from an equatorial (RA/Dec,
 // "north-up") frame to a local horizon (zenith-up) frame. Used to spin the compass overlay so it
@@ -410,7 +432,7 @@ function _eclipseAmbientColorAt(sunElDeg) {
 // against NASA's published magnitude (§21.21/§26) remains unresolved; this only restores the
 // pre-`34_1` degree-based formula (still the least-wrong option found so far).
 function _eclipseMagnitude(t) {
-  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseMoonSemidiamTopoAt(t);
   const mDeg = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
   return (r1 + r2 - mDeg) / (2 * r1);
 }
@@ -419,7 +441,7 @@ function _eclipseObscuration(t) {
   // Same authoritative test as C2/C3 (§21.2) - check it first so Obscuration never contradicts the
   // Circumstances table/slider fill it's supposed to describe, regardless of the area formula below.
   if (circ.m <= Math.abs(circ.L2)) return 1;
-  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseMoonSemidiamTopoAt(t);
   const d = circ.m * _eclipseScaleDegPerUnit();
   if (d >= r1 + r2) return 0;                                     // no overlap at all
   if (d <= Math.abs(r1 - r2)) return Math.min(1, (Math.min(r1, r2) ** 2) / (r1 * r1));   // one disc wholly inside the other
@@ -755,10 +777,14 @@ function _eclipseUpdateStatsTable() {
   // Nothing to report if the location never sees any of this above the horizon (_eclipseAnyVisible)
   // - same "no eclipse here" standard the phase label and start/end row already apply.
   if (!c.visible || !_eclipseAnyVisible(c)) { table.innerHTML = ''; return; }
-  const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseActiveEvent.moonSemidiamDeg;
+  const r1 = _eclipseActiveEvent.sunSemidiamDeg;
   // At defaultT (the horizon-clamped landing point, §21.14), NOT the true astronomical tMax/mMin -
   // magnitude and obscuration are "how much of the Sun is covered" numbers, which should describe
   // what's actually observable from here, not a theoretical peak that might never be visible.
+  // Moon/Sun size ratio uses the SAME topocentric-corrected Moon semi-diameter as Magnitude/
+  // Obscuration below (§ _eclipseMoonSemidiamTopoAt) - varies with time/Location, not the single
+  // fixed geocentric value published "at greatest eclipse".
+  const r2 = _eclipseMoonSemidiamTopoAt(c.defaultT);
   const magnitude = Math.max(0, _eclipseMagnitude(c.defaultT));
   // Both durations clamped to the horizon-visible portion (_eclipseVisibleWindow) - same principle
   // as magnitude/obscuration above: describe what's actually observable from here, not the full
