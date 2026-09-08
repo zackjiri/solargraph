@@ -422,30 +422,35 @@
     flex-shrink: 0;   /* keep natural height so panel overflows & scrolls (Chrome/Blink) */
   }
 
-  /* Thin, themed scrollbar for the always-on side panels */
-  .sidebar, .gallery-panel, #can3dPanel {
+  /* Thin, themed scrollbar for the always-on side panels - also the Eclipse Catalog grid
+     (#eclipseCatalogPanel), the only other place in the app that scrolls vertically. */
+  .sidebar, .gallery-panel, #can3dPanel, #eclipseCatalogPanel {
     scrollbar-width: thin;                       /* Firefox */
     scrollbar-color: var(--border) transparent;  /* Firefox: thumb / track */
   }
   .sidebar::-webkit-scrollbar,
   .gallery-panel::-webkit-scrollbar,
-  #can3dPanel::-webkit-scrollbar {
+  #can3dPanel::-webkit-scrollbar,
+  #eclipseCatalogPanel::-webkit-scrollbar {
     width: 8px;
   }
   .sidebar::-webkit-scrollbar-track,
   .gallery-panel::-webkit-scrollbar-track,
-  #can3dPanel::-webkit-scrollbar-track {
+  #can3dPanel::-webkit-scrollbar-track,
+  #eclipseCatalogPanel::-webkit-scrollbar-track {
     background: transparent;
   }
   .sidebar::-webkit-scrollbar-thumb,
   .gallery-panel::-webkit-scrollbar-thumb,
-  #can3dPanel::-webkit-scrollbar-thumb {
+  #can3dPanel::-webkit-scrollbar-thumb,
+  #eclipseCatalogPanel::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 4px;
   }
   .sidebar::-webkit-scrollbar-thumb:hover,
   .gallery-panel::-webkit-scrollbar-thumb:hover,
-  #can3dPanel::-webkit-scrollbar-thumb:hover {
+  #can3dPanel::-webkit-scrollbar-thumb:hover,
+  #eclipseCatalogPanel::-webkit-scrollbar-thumb:hover {
     background: var(--dim);
   }
 
@@ -797,7 +802,7 @@
     line-height: 14px;
     padding: 0;
     text-align: center;
-    font-size: 9px;
+    font-size: 7px;
   }
   /* N/S and E/W hemisphere toggles - same fixed per-button width as DEC/DM above (22px), instead of
      each letter's own natural glyph width (which the shared .ns-btn would otherwise use, and which
@@ -1392,7 +1397,7 @@
     pointer-events: none;   /* nothing to toggle - same pattern as .calibration-locked */
   }
 
-  #btnTheaterExit {
+  #btnTheaterExit, #btnEclipseVisExit {
     position: absolute; top: 10px; right: 12.5px;
     font-family: var(--mono); font-size: 12.5px;
     color: var(--dim); background: var(--panel);
@@ -1403,7 +1408,10 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     transition: color 0.12s;
   }
-  #btnTheaterExit:hover { color: var(--text); }
+  #btnTheaterExit:hover, #btnEclipseVisExit:hover { color: var(--text); }
+  /* Eclipse Visualization's own copy sits one full button-height (20px) lower than 3D Model's -
+     the plain top:10px position overlaps the eclipse canvas's own Az/Alt axis labels up there. */
+  #btnEclipseVisExit { top: 30px; }
 
   /* Theater zoom – vertical slider under the exit button */
   #theaterZoomCtl {
@@ -1970,6 +1978,10 @@
     padding: 0 2px;
     letter-spacing: 0.08em;
   }
+  #eclipseCatalogTypeFilter .ns-btn[data-type="all"] {
+    font-weight: bold;   /* ALL reads as bold always, not just while active - sets it apart from
+                            TOTAL/PARTIAL/ANNULAR as "no filter" rather than a type of its own */
+  }
   #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
     background: #fff;
     color: #000;
@@ -2019,6 +2031,7 @@
     padding: 14px;
   }
   .eclipse-tile {
+    position: relative;   /* anchors .eclipse-tile-gallery-badge to this tile's own corner */
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -2026,6 +2039,20 @@
     background: var(--panel);
     border-radius: var(--radius-sm);
     padding: 6px;
+  }
+  /* Badge marking an event that has a real-photo gallery registered (window.ECLIPSE_GALLERY[event.id],
+     same data "Load gallery" in Visualization itself uses) - a white chip behind the icon keeps it
+     legible regardless of the tile's own preview colours or the current theme. */
+  .eclipse-tile-gallery-badge {
+    position: absolute;
+    bottom: 6px; right: 6px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.85);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    padding: 3px;
+    box-sizing: border-box;
+    pointer-events: none;   /* purely decorative - doesn't interfere with the tile's own click */
   }
   .eclipse-tile.clickable { cursor: pointer; transition: outline 0.15s; outline: 1px solid transparent; }
   .eclipse-tile.clickable:hover { outline: 1px solid var(--accent); }
@@ -2060,6 +2087,17 @@
     letter-spacing: 0.05em;
     color: var(--accent-red);
     text-align: center;
+  }
+
+  /* Light: Catalog's own background is a hardcoded dark fill (not var(--panel)), same reason
+     .canvas-container/#sunGraphCanvas/#skyDomeCanvas each need their own override above - and the
+     "no eclipse here" blank tile / the Type filter's white-on-black "ALL active" look are both
+     tuned for that dark backdrop, so they need to flip too rather than just going along for free. */
+  body.light #eclipseCatalogPanel { background: #ffffff; }
+  body.light .eclipse-tile-blank { background: #d8dee4; }
+  body.light #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
+    background: #000;
+    color: #fff;
   }
 
   /* Left info panel - replaces #can3dPanel while Eclipse is active (same base look/width). */
