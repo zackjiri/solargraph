@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?perfdebug15">
 </head>
 <body>
 
@@ -366,6 +366,8 @@
         </div>
       </div>
       <button id="btnTheaterExit" title="Exit theater mode">✕ exit</button>
+      <!-- Eclipse Visualization exit - same visual as #btnTheaterExit, returns to the Catalog grid. -->
+      <button id="btnEclipseVisExit" title="Exit to Catalog">✕ exit</button>
       <!-- Status panel – top-left (Analyzer + Theater), collapsible -->
       <div id="statusWrap">
         <div id="theaterStatus">
@@ -561,6 +563,17 @@
           <button class="ns-btn" id="btnW" title="West of Greenwich">W</button>
         </div>
       </div>
+      <!-- Eclipse-only, Visualization-only, TOTAL events only (js/render-eclipse.js). Shortest
+           great-circle surface distance from the current Location to the path of totality, plus an
+           8-direction arrow pointing which way to travel; 0 km + ☉ for a Location the path already
+           crosses. Shown/hidden by enterEclipseVisualization()/exitEclipseVisualization() and
+           _eclipseUpdateDistanceToPath(). -->
+      <div class="slider-row" id="eclipseDistToPathRow" style="display:none;margin:8px 0">
+        <div class="slider-header">
+          <span class="slider-label" style="color:var(--accent-red)" id="eclipseDistToPathLabel">Nearest totality</span>
+          <span class="slider-val" style="color:var(--accent-red)" id="lblEclipseDistToPath">—</span>
+        </div>
+      </div>
       <div class="slider-row">
         <div class="slider-header">
           <span class="slider-label" style="color:var(--accent-red)">Time zone</span>
@@ -656,15 +669,17 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js"></script>
+<script src="js/controls.js?perfdebug15"></script>
 <script src="js/render-sungraph.js"></script>
-<script src="js/render-3d.js"></script>
+<script src="js/render-3d.js?perfdebug15"></script>
 <script src="js/render-skydome.js"></script>
 <script src="js/eclipse-data/2026-08-12.js"></script>
 <script src="js/eclipse-data/2011-01-04.js"></script>
 <script src="js/eclipse-data/2015-03-20.js"></script>
 <script src="js/eclipse-data/2021-06-10.js"></script>
 <script src="js/eclipse-data/2022-10-25.js"></script>
-<script src="js/render-eclipse.js"></script>
+<script src="js/eclipse-data/2008-08-01.js"></script>
+<script src="js/eclipse-data/1999-08-11.js"></script>
+<script src="js/render-eclipse.js?perfdebug15"></script>
 </body>
 </html>
