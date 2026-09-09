@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug22">
+  <link rel="stylesheet" href="css/style.css?perfdebug32">
 </head>
 <body>
 
@@ -259,8 +259,11 @@
       <!-- Eclipse time slider - overlaid on the canvas itself (under the Sun), not in the side
            panel - same style as #rngSunTime under the 3D Model preview. Shown only in Eclipse. -->
       <div id="eclipseSliderRow">
-        <button id="btnEclipsePlay" title="Animate the eclipse (5 simulated minutes per real second), resuming from the current position">
+        <button id="btnEclipsePlay" title="Animate the eclipse, resuming from the current position">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+          <!-- Animation speed, shown only while playing (_eclipseSetPlayIcon) - click cycles
+               1x (real time) -> 10x -> 60x -> 300x -> back to 1x (_eclipseCycleAnimSpeed). -->
+          <span id="eclipseSpeedBox" title="Click to change animation speed">300x</span>
         </button>
         <div id="eclipseSliderStack">
           <!-- Photo gallery markers (Load gallery button, render-eclipse.js) - one small triangle
@@ -470,6 +473,7 @@
       <label class="chk-row" title="Label the grid axes with their real degree values, the horizon line, and the equatorial cross's N/S/E/W"><input type="checkbox" id="chkEclipseLabels" checked> Labels</label>
       <label class="chk-row" title="Overlay a cross built on the equatorial (RA/Dec) frame the Besselian elements use - N points toward the celestial pole (increasing declination), E toward increasing right ascension. NOT the same as true horizon compass N/S/E/W except at the instant the parallactic angle is exactly zero"><input type="checkbox" id="chkEclipseEquatorial" checked> Equatorial grid</label>
       <label class="chk-row" title="Overlay the horizon as a translucent black half-plane (90% opaque, 10% see-through) - shows when the Sun has actually set for this observer, even though the Sun/Moon diagram stays fixed regardless"><input type="checkbox" id="chkEclipseHorizon" checked> Horizon</label>
+      <label class="chk-row" title="Extra darkening + fade-in corona image around the moment Obscuration reaches 100% (TOTAL events only) - a couple of seconds either side of C2/C3"><input type="checkbox" id="chkEclipseCorona" checked> Corona</label>
     </div>
 
     <div class="sidebar-section" id="calibrationSection">
@@ -669,17 +673,17 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug22"></script>
+<script src="js/controls.js?perfdebug32"></script>
 <script src="js/render-sungraph.js"></script>
-<script src="js/render-3d.js?perfdebug22"></script>
+<script src="js/render-3d.js?perfdebug32"></script>
 <script src="js/render-skydome.js"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug22"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug22"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug22"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug22"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug22"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug22"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug22"></script>
-<script src="js/render-eclipse.js?perfdebug22"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug32"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug32"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug32"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug32"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug32"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug32"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug32"></script>
+<script src="js/render-eclipse.js?perfdebug32"></script>
 </body>
 </html>
