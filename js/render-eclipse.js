@@ -470,6 +470,78 @@ function _eclipseBrightnessFactor(t) {
 // disc still reads as a distinct, darker shape against the dimmed sky rather than disappearing
 // into it - darker than the original [92,92,100] (kept the same faint cool tint).
 const ECLIPSE_TOTALITY_GREY = [70, 70, 76];
+// Deeper still - an extra push beyond ECLIPSE_TOTALITY_GREY specifically around the moment
+// Obscuration reaches 100% (see _eclipseTotalityBoostFactor below), TOTAL events only. Deliberately
+// subtle/cosmetic, not a dramatic further dimming - the corona fade-in (below) carries most of the
+// visible effect here.
+const ECLIPSE_TOTALITY_GREY_DEEP = [58, 58, 63];
+// Extra darkening + corona fade-in, ramping in around C2 and back out around C3 - TOTAL events only
+// (annular's own C2/C3 mark the start/end of its central/ring phase too, via the same m<=|L2|
+// root-find, but Obscuration there never reaches 100% - §21's annular obscuration fix - so this is
+// gated on event type, not just c2/c3 existing). Deliberately ASYMMETRIC around each contact, not
+// centred on it - most of each transition happens while ALREADY inside totality (astronomically
+// real/visible there), with only a brief anticipatory/lingering nudge on the outside: ramps 0->1
+// starting PRE_SEC before C2, finishing IN_SEC after C2 (i.e. mostly during totality, not before
+// it), holds at 1 through the steady middle, ramps 1->0 starting IN_SEC before C3 (mirrored - most
+// of the down-ramp is still inside totality) and finishing PRE_SEC after C3. min(upRamp, downRamp) -
+// rather than special-casing - naturally caps below 1 for a very short totality where the two ramps
+// would otherwise overlap before either finishes, instead of overshooting or double-counting.
+const ECLIPSE_TOTALITY_BOOST_PRE_SEC = 2, ECLIPSE_TOTALITY_BOOST_IN_SEC = 10;
+function _eclipseTotalityBoostFactor(t) {
+  const c = _eclipseCircumstances;
+  if (!c || c.c2 === null || c.c3 === null || _eclipseActiveEvent.type !== 'total') return 0;
+  const preT = ECLIPSE_TOTALITY_BOOST_PRE_SEC / 3600, inT = ECLIPSE_TOTALITY_BOOST_IN_SEC / 3600;
+  const span = preT + inT;
+  const up = Math.max(0, Math.min(1, (t - (c.c2 - preT)) / span));
+  const down = Math.max(0, Math.min(1, ((c.c3 + preT) - t) / span));
+  return Math.min(up, down);
+}
+// Preloaded once at module load - drawEclipse() only draws it once .complete is true, so the very
+// first few frames (before the network fetch resolves) simply skip the corona rather than drawing
+// a broken image; same idiom as any other one-shot asset preload in the project.
+const _eclipseCoronaImg = new Image();
+_eclipseCoronaImg.src = 'img/eclipse/corona.png';
+// Calibration baked into the asset itself (600x600px, centred) - 135px from centre is where the
+// Sun's own disc edge belongs, everything beyond that is the corona rendering itself.
+const ECLIPSE_CORONA_IMG_PX = 600, ECLIPSE_CORONA_REF_RADIUS_PX = 135;
+// Radial reveal (on top of the plain opacity fade, §21.33) - at low totalityBoost only a thin ring
+// just outside the Sun/Moon disc is visible, growing outward to the asset's own full extent as
+// totalityBoost approaches 1. REVEAL_MIN_FRAC is a fraction of the corona canvas's own half-width
+// (300px) - the disc itself already covers out to 135/300 = 0.45 of that, so this starts just past
+// it (a faint trace right at the edge), not from the centre (which the disc hides anyway).
+const ECLIPSE_CORONA_REVEAL_MIN_FRAC = 0.47, ECLIPSE_CORONA_REVEAL_FEATHER_FRAC = 0.12;
+// Reused every frame (native 600x600 asset resolution, independent of on-screen zoom/sunRadiusPx -
+// that only scales the FINAL drawImage() of this onto the main canvas) rather than recreated, so
+// masking the reveal radius each frame is just one drawImage + one gradient fill, not a fresh
+// canvas allocation.
+let _eclipseCoronaMaskCanvas = null;
+function _eclipseCoronaMasked(totalityBoost) {
+  if (!_eclipseCoronaMaskCanvas) {
+    _eclipseCoronaMaskCanvas = document.createElement('canvas');
+    _eclipseCoronaMaskCanvas.width = ECLIPSE_CORONA_IMG_PX;
+    _eclipseCoronaMaskCanvas.height = ECLIPSE_CORONA_IMG_PX;
+  }
+  const off = _eclipseCoronaMaskCanvas;
+  const offCtx = off.getContext('2d');
+  const half = ECLIPSE_CORONA_IMG_PX / 2;
+  offCtx.globalCompositeOperation = 'source-over';
+  offCtx.globalAlpha = 1;
+  offCtx.clearRect(0, 0, ECLIPSE_CORONA_IMG_PX, ECLIPSE_CORONA_IMG_PX);
+  offCtx.drawImage(_eclipseCoronaImg, 0, 0, ECLIPSE_CORONA_IMG_PX, ECLIPSE_CORONA_IMG_PX);
+  const revealFrac = ECLIPSE_CORONA_REVEAL_MIN_FRAC + (1 - ECLIPSE_CORONA_REVEAL_MIN_FRAC) * totalityBoost;
+  const stop1 = Math.max(0, Math.min(1, revealFrac));
+  const stop2 = Math.max(stop1, Math.min(1, revealFrac + ECLIPSE_CORONA_REVEAL_FEATHER_FRAC));
+  const grad = offCtx.createRadialGradient(half, half, 0, half, half, half);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(stop1, 'rgba(255,255,255,1)');
+  grad.addColorStop(stop2, 'rgba(255,255,255,0)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  offCtx.globalCompositeOperation = 'destination-in';
+  offCtx.fillStyle = grad;
+  offCtx.fillRect(0, 0, ECLIPSE_CORONA_IMG_PX, ECLIPSE_CORONA_IMG_PX);
+  offCtx.globalCompositeOperation = 'source-over';
+  return off;
+}
 
 // canvasEl/updateReadout let this same renderer draw a live Catalog-tile thumbnail for some OTHER
 // event (js/render-eclipse.js's enterEclipseCatalog()) without touching the real Visualization's
@@ -499,7 +571,15 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // that, the eclipse's own phase dims the sky further (_eclipseBrightnessFactor, V=(1-O)^0.4),
   // blending toward a neutral totality grey as coverage approaches 100%.
   const bgCol = _eclipseAmbientColorAt(sunGeom.el);
-  const bgFinal = _eclipseLerp3(ECLIPSE_TOTALITY_GREY, bgCol, _eclipseBrightnessFactor(t));
+  const bgBase = _eclipseLerp3(ECLIPSE_TOTALITY_GREY, bgCol, _eclipseBrightnessFactor(t));
+  // Extra push toward an even deeper grey right around the moment Obscuration reaches 100%
+  // (_eclipseTotalityBoostFactor above) - 0 outside that window, so bgFinal === bgBase everywhere
+  // else, unchanged from before this feature existed. Display > Corona checkbox gates the WHOLE
+  // effect (both this extra darkening and the corona image below), not just the image - the two
+  // are one combined feature sharing the same trigger window, not independent toggles.
+  const chkCorona = document.getElementById('chkEclipseCorona');
+  const totalityBoost = (chkCorona && !chkCorona.checked) ? 0 : _eclipseTotalityBoostFactor(t);
+  const bgFinal = _eclipseLerp3(bgBase, ECLIPSE_TOTALITY_GREY_DEEP, totalityBoost);
   ctx.fillStyle = `rgb(${Math.round(bgFinal[0])},${Math.round(bgFinal[1])},${Math.round(bgFinal[2])})`;
   ctx.fillRect(0, 0, W, H);
 
@@ -671,7 +751,14 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // was easy to miss at low altitude (where cos(el)~1 hides it) - which is exactly how the
   // original, wrong "cross-check" note used to read here.
   const circ = _eclipseLocalCirc(t);
-  const moonRadiusPx = _eclipseActiveEvent.moonSemidiamDeg * pxPerDeg;
+  // Topocentric (parallax-corrected, §21.30), not the flat geocentric moonSemidiamDeg - without it
+  // the drawn Moon disc can end up too small (relative to the exact m<=|L2| test) to ever visually
+  // cover the Sun during genuine totality, leaving a persistent sliver even at m=0 (found the hard
+  // way: 49N/5E for 1999-08-11 is inside the path by the exact test - obscuration correctly reads
+  // 100% - but the rendered gap implied by the geocentric ratio, 0.0143, converts to a bigger m-degree
+  // margin than the true |L2| boundary allows; the topocentric ratio there, 0.0280, matches |L2|'s
+  // own boundary almost exactly instead).
+  const moonRadiusPx = _eclipseMoonSemidiamTopoAt(t) * pxPerDeg;
   const dRA = (_eclipseActiveEvent.uvSign * circ.u * scaleDeg * Math.PI / 180) / Math.cos(deltaRad);
   const decMoon = deltaRad + _eclipseActiveEvent.uvSign * circ.v * scaleDeg * Math.PI / 180;
   const moonGeom = sunPosition(hAngle - dRA, decMoon, phi);
@@ -679,6 +766,40 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   const moonAz = hemisphere >= 0 ? moonAzWorld : (moonAzWorld + 180) % 360;
   const mx = cx + (moonAz - sunAz) * Math.cos(sunGeom.el * Math.PI / 180) * pxPerDeg,
         my = cy - (moonGeom.el - sunGeom.el) * pxPerDeg;
+
+  // Corona - drawn BEFORE the Moon disc below, so the disc's own solid fill sits on top of it (a
+  // layer behind the Moon, not overlaid above it) - fades in/out with the same totalityBoost factor
+  // driving the extra sky darkening above (0 outside the ±10s windows around C2/C3, so no draw call
+  // at all most of the time). Centred on the Sun's own fixed screen position (cx,cy), not the Moon's
+  // slightly-offset one - the corona is a solar feature, not something that tracks the Moon's
+  // silhouette (the two positions are within a fraction of a pixel of each other this deep into
+  // totality anyway). Scaled so the asset's own baked-in 135px reference radius
+  // (ECLIPSE_CORONA_REF_RADIUS_PX, out of its 600px full size) lands exactly on the Sun's own drawn
+  // disc edge (sunRadiusPx).
+  //
+  // Locked to the Sun's own equatorial (celestial North-up) orientation, not the screen/zenith-up
+  // frame everything else here is calibrated to - the asset's own default artwork already assumes
+  // "north up", so it needs the SAME rotation the Equatorial grid's own axes get (rot(), same q/
+  // cosQ/sinQ above), not just a static, unrotated stamp. rot()'s matrix works out to "mirror the
+  // x-axis, then rotate by q" (determinant -1, confirmed via the same left/right check noted at
+  // rot()'s own definition) - ctx.scale(-1,1) then ctx.rotate(q), in that call order, composes onto
+  // drawImage() the same way (canvas applies the LAST-called transform to the drawn content first).
+  if (totalityBoost > 0 && _eclipseCoronaImg.complete && _eclipseCoronaImg.naturalWidth > 0) {
+    const coronaSizePx = ECLIPSE_CORONA_IMG_PX * (sunRadiusPx / ECLIPSE_CORONA_REF_RADIUS_PX);
+    // Radial reveal (§21's corona-reveal addition) masked in first, at native resolution - see
+    // _eclipseCoronaMasked() above. Opacity (globalAlpha) still separately fades with the same
+    // totalityBoost, on top of the growing reveal radius - the two effects compound, not replace
+    // one another.
+    const coronaMasked = _eclipseCoronaMasked(totalityBoost);
+    ctx.save();
+    ctx.globalAlpha = totalityBoost;
+    ctx.translate(cx, cy);
+    ctx.rotate(q);
+    ctx.scale(-1, 1);
+    ctx.drawImage(coronaMasked, -coronaSizePx / 2, -coronaSizePx / 2, coronaSizePx, coronaSizePx);
+    ctx.restore();
+  }
+
   ctx.beginPath(); ctx.arc(mx, my, moonRadiusPx, 0, Math.PI * 2);
   ctx.fillStyle = '#3a3a3e';
   ctx.fill();
@@ -1316,14 +1437,26 @@ function _eclipseDestPoint(latDeg, lonDeg, bearingDeg, distKm) {
 }
 const ECLIPSE_DIST_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315];   // N, NE, E, SE, S, SW, W, NW
 const ECLIPSE_DIST_ARROWS   = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
-const ECLIPSE_DIST_STEP_KM  = 250, ECLIPSE_DIST_MAX_KM = 7500;   // coarse scan resolution/range per bearing
-// For one bearing: coarse-scan outward from the current Location until a candidate point falls
-// inside the path (same scan-then-bisect idiom as _eclipseScanRoots), then bisect within that
-// bracket for a tighter distance. Returns Infinity if the path isn't reached within
-// ECLIPSE_DIST_MAX_KM along this bearing (that bearing is just skipped, not an error).
+const ECLIPSE_DIST_MAX_KM  = 7500;   // scan range per bearing
+// Two-tier scan step: fine near the observer, coarser further out. A single coarse step is only
+// safe when it's guaranteed smaller than the path's own width (typically 50-300km) - but the
+// "inside" zone measured ALONG AN ARBITRARY RAY (not perpendicular to the path) shrinks toward zero
+// as the ray's angle to the path approaches tangent, which happens routinely for an observer just
+// outside the path (found the hard way: 56N/0E for 1999-08-11 missed a real crossing only ~700km
+// away in 6 of 8 directions, because the true/false flip happened entirely inside one 250km-wide
+// sampling gap - both its ends read "outside", hiding the crossing between them). A flat fine step
+// over the full 7500km range would be far too expensive, so only the near range (where this failure
+// mode actually matters - farther out, a few km of extra slop hardly matters against the distance
+// itself) gets it.
+const ECLIPSE_DIST_STEP_NEAR_KM = 20, ECLIPSE_DIST_NEAR_RANGE_KM = 1500, ECLIPSE_DIST_STEP_FAR_KM = 100;
+// For one bearing: scan outward from the current Location until a candidate point falls inside the
+// path (same scan-then-bisect idiom as _eclipseScanRoots), then bisect within that bracket for a
+// tighter distance. Returns Infinity if the path isn't reached within ECLIPSE_DIST_MAX_KM along this
+// bearing (that bearing is just skipped, not an error).
 function _eclipseNearestAlongBearing(latDeg, lonDeg, bearingDeg) {
   let prevInside = false, prevDist = 0;
-  for (let d = ECLIPSE_DIST_STEP_KM; d <= ECLIPSE_DIST_MAX_KM; d += ECLIPSE_DIST_STEP_KM) {
+  for (let d = ECLIPSE_DIST_STEP_NEAR_KM; d <= ECLIPSE_DIST_MAX_KM;
+       d += (d < ECLIPSE_DIST_NEAR_RANGE_KM ? ECLIPSE_DIST_STEP_NEAR_KM : ECLIPSE_DIST_STEP_FAR_KM)) {
     const p = _eclipseDestPoint(latDeg, lonDeg, bearingDeg, d);
     const inside = _eclipseTotalityExistsAt(p.lat, p.lon);
     if (inside && !prevInside) {
@@ -1566,8 +1699,42 @@ function _eclipseRefreshDisplay() {
 // render-3d.js): resumes from wherever the slider currently sits, sweeps to the end, holds there
 // for a 2 s pause, then loops back to the start - just its own independent rAF loop (Eclipse has
 // no other reason to keep one running, unlike render-3d.js's shared wave/theater loop) and its own,
-// much slower rate (5 simulated MINUTES per real second, vs. the Analyzer's 0.5 simulated HOURS).
-const ECLIPSE_ANIM_RATE_HPS = 5 / 60;   // hours of Besselian t per real second
+// selectable rate (1x = real time, i.e. simulated seconds pass at the same rate as real ones) via
+// the #eclipseSpeedBox chip - 300x (5 simulated minutes per real second) is the original, and still
+// default, speed.
+const ECLIPSE_ANIM_SPEED_TIERS = [1, 10, 60, 300];
+let _eclipseAnimSpeedIdx = ECLIPSE_ANIM_SPEED_TIERS.length - 1;   // starts on 300x, the original default
+function _eclipseAnimRateHps() {
+  return ECLIPSE_ANIM_SPEED_TIERS[_eclipseAnimSpeedIdx] / 3600;   // hours of Besselian t per real second
+}
+function _eclipseUpdateSpeedBoxLabel() {
+  const box = document.getElementById('eclipseSpeedBox');
+  if (box) box.textContent = ECLIPSE_ANIM_SPEED_TIERS[_eclipseAnimSpeedIdx] + 'x';
+}
+// Cycles to the next speed tier (wrapping) - if the animation is currently running, re-bases the
+// running loop's own offset/start-time from the CURRENT slider position first, so the visible motion
+// continues smoothly from right where it was instead of jumping (same "resume from current position"
+// math _eclipseStartAnim already uses when resuming after a manual Stop).
+function _eclipseCycleAnimSpeed() {
+  _eclipseAnimSpeedIdx = (_eclipseAnimSpeedIdx + 1) % ECLIPSE_ANIM_SPEED_TIERS.length;
+  if (eclipseAnimActive) {
+    // Re-express "where we are" as an offset under the NEW rate (computed after switching above),
+    // so the visible motion continues from the current instant rather than jumping.
+    const slider = document.getElementById('rngEclipseTime');
+    const vis = _eclipseVisibleRange(_eclipseCircumstances);
+    const newRate = _eclipseAnimRateHps();
+    eclipseAnimOffset = Math.min(
+      Math.max(0.001, vis.end - vis.start) / newRate,
+      Math.max(0, (parseFloat(slider.value) - vis.start) / newRate)
+    );
+    eclipseAnimStart = null;   // re-captured on the next frame
+  }
+  _eclipseUpdateSpeedBoxLabel();
+}
+document.getElementById('eclipseSpeedBox').addEventListener('click', (e) => {
+  e.stopPropagation();   // independent of #btnEclipsePlay's own click (play/stop toggle)
+  _eclipseCycleAnimSpeed();
+});
 let eclipseAnimActive = false;
 let eclipseAnimStart  = null;   // ms timestamp captured on the first frame after Play
 let eclipseAnimOffset = 0;      // seconds into the cycle to resume from (Play continues from Stop)
@@ -1588,6 +1755,9 @@ function _eclipseSetPlayIcon(playing) {
   if (ic) ic.innerHTML = playing
     ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'                 // stop (square)
     : '<polygon points="2,1 11,6 2,11"/>';                              // play (triangle)
+  const speedBox = document.getElementById('eclipseSpeedBox');
+  if (speedBox) speedBox.style.display = playing ? 'block' : 'none';
+  _eclipseUpdateSpeedBoxLabel();
 }
 // Swept range is the horizon-VISIBLE window (_eclipseVisibleRange), not the slider's own full
 // min/max - looping through a stretch that's below the horizon the whole time (still manually
@@ -1597,11 +1767,12 @@ function _eclipseAdvanceAnim(ts) {
   const vis = _eclipseVisibleRange(_eclipseCircumstances);
   const min = vis.start, max = vis.end;
   const spanH = Math.max(0.001, max - min);
-  const motion = spanH / ECLIPSE_ANIM_RATE_HPS;      // seconds to sweep the visible range
+  const rate = _eclipseAnimRateHps();
+  const motion = spanH / rate;      // seconds to sweep the visible range
   if (eclipseAnimStart === null) eclipseAnimStart = ts;
   const elapsed = (ts - eclipseAnimStart) / 1000;    // seconds since Play
   const local = (eclipseAnimOffset + elapsed) % (motion + 2);   // +2 s pause before each new loop
-  const t = local <= motion ? min + local * ECLIPSE_ANIM_RATE_HPS : max;   // hold at end during pause
+  const t = local <= motion ? min + local * rate : max;   // hold at end during pause
   slider.value = t;
   drawEclipse(t);
 }
@@ -1616,7 +1787,7 @@ function _eclipseStartAnim() {
   eclipseAnimStart = null;             // captured on first frame
   const slider = document.getElementById('rngEclipseTime');
   const vis = _eclipseVisibleRange(_eclipseCircumstances);
-  const motion = Math.max(0.001, vis.end - vis.start) / ECLIPSE_ANIM_RATE_HPS;
+  const motion = Math.max(0.001, vis.end - vis.start) / _eclipseAnimRateHps();
   if (!eclipseAnimEverPlayed) {
     // First Play ever for this location: always the beginning, see the flag's own comment above.
     eclipseAnimEverPlayed = true;
@@ -1627,7 +1798,7 @@ function _eclipseStartAnim() {
     // Resume from the current slider position, not always the start - clamped into the visible
     // window in case the slider currently sits outside it (a below-horizon stretch was manually
     // scrubbed to before Play was pressed).
-    eclipseAnimOffset = Math.min(motion, Math.max(0, (parseFloat(slider.value) - vis.start) / ECLIPSE_ANIM_RATE_HPS));
+    eclipseAnimOffset = Math.min(motion, Math.max(0, (parseFloat(slider.value) - vis.start) / _eclipseAnimRateHps()));
   }
   _eclipseSetPlayIcon(true);
   if (eclipseAnimRAF === null) eclipseAnimRAF = requestAnimationFrame(_eclipseAnimFrame);
@@ -1663,6 +1834,7 @@ document.getElementById('chkEclipseGrid').addEventListener('change', _eclipseRef
 document.getElementById('chkEclipseLabels').addEventListener('change', _eclipseRefreshCurrentView);
 document.getElementById('chkEclipseEquatorial').addEventListener('change', _eclipseRefreshCurrentView);
 document.getElementById('chkEclipseHorizon').addEventListener('change', _eclipseRefreshCurrentView);
+document.getElementById('chkEclipseCorona').addEventListener('change', _eclipseRefreshCurrentView);
 window.addEventListener('resize', () => { if (eclipseActive && eclipseSubView === 'visualization') resizeEclipse(); });
 
 // Top-level mode button, a peer of Gallery/Analyzer rather than an Analyzer sub-view - it still
