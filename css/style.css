@@ -2223,6 +2223,7 @@
      render-3d.js) and the same colour states, just icon-only (no text label) to fit this compact
      canvas-overlay context instead of #btnSunPlay's full-width sidebar button. */
   #btnEclipsePlay {
+    position: relative;   /* anchors #eclipseSpeedBox above it */
     flex: 0 0 auto;
     width: 28px; height: 28px;
     margin-top: 8px;   /* #rngEclipseTime's own top padding (8px, see below) before its visible
@@ -2240,6 +2241,26 @@
   #btnEclipsePlay.playing { background: rgba(232,120,40,0.26); color: #f0a050; }
   #btnEclipsePlay.playing:hover { background: rgba(232,120,40,0.40); }
   #btnEclipsePlay svg { display: block; }
+  /* Animation speed chip - only shown while playing (JS toggles display, tied to the same
+     .playing state as the icon swap above), floats just above the button. */
+  #eclipseSpeedBox {
+    display: none;
+    position: absolute;
+    bottom: 100%; left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 4px;
+    padding: 1px 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+    color: var(--accent);
+    background: var(--panel);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+  #eclipseSpeedBox:hover { color: var(--text); }
   #rngEclipseTime {
     -webkit-appearance: none; appearance: none;
     width: 100%; height: 44px;   /* was 16px - enlarged tap target for tablets (44px is the usual
