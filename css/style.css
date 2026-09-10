@@ -2164,6 +2164,12 @@
     gap: 20px;   /* was 8px - enough clearance that the "start" label (centred on its own real
                     position, which can land close to the stack's left edge) doesn't visually run
                     into the button */
+    /* .canvas-container (the parent) sets cursor:none (Analyzer draws its own crosshair there) -
+       restore the real OS cursor for this whole row, same fix already applied to #eclipseCatalogPanel
+       above. Without it, the 20px gap between the button and the slider stack, and the start/end
+       label row below the track (neither has its own cursor rule), silently inherit cursor:none and
+       the pointer vanishes - #btnEclipsePlay/#rngEclipseTime still show their own explicit pointer. */
+    cursor: default;
   }
   /* Wraps ONLY the input + its start/end label row (not the play button) so the labels' own
      left:X% positioning (_eclipseUpdateStartEndLabels) stays relative to the SLIDER's width, not
@@ -2240,16 +2246,21 @@
                            track starts - matches that so this button's top edge and the track's
                            top edge line up, per align-items:flex-start above */
     display: flex; align-items: center; justify-content: center;
-    background: rgba(240,208,64,0.22);
-    color: var(--accent);
+    /* Idle state reads as "Play" - green fill. Icon colour fixed (not var(--accent-green)) - the
+       user liked the light theme's own darker green best and asked to unify on it in both themes,
+       same "pick one look, hardcode it" idiom as the slider thumb above. */
+    background: rgba(80,220,120,0.22);
+    color: #0e6030;
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: background 0.15s, color 0.15s;
   }
-  #btnEclipsePlay:hover { background: rgba(240,208,64,0.34); }
-  #btnEclipsePlay.playing { background: rgba(232,120,40,0.26); color: #f0a050; }
-  #btnEclipsePlay.playing:hover { background: rgba(232,120,40,0.40); }
+  #btnEclipsePlay:hover { background: rgba(80,220,120,0.34); }
+  /* .playing reads as "Stop" (icon swaps to a stop square, render-eclipse.js) - red fill, icon
+     colour likewise fixed to the light theme's own darker red in both themes. */
+  #btnEclipsePlay.playing { background: rgba(232,64,64,0.26); color: #b01818; }
+  #btnEclipsePlay.playing:hover { background: rgba(232,64,64,0.40); }
   #btnEclipsePlay svg { display: block; }
   /* Animation speed chip - only shown while playing (JS toggles display, tied to the same
      .playing state as the icon swap above), floats just above the button. */
@@ -2301,11 +2312,14 @@
                                                       20px) to keep the same 2px overhang each side,
                                                       so it still visibly crosses into the bottom
                                                       horizon strip */
-    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+    /* Fixed (not var(--text)) - the user wants the Eclipse slider to look identical in both themes,
+       taking the dark theme's own look (a pale thumb reads far better against the track's varying
+       yellow/black eclipse gradient than the light theme's near-black --text would). */
+    background: #c8d4e0; border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
   }
   #rngEclipseTime::-moz-range-thumb {
     width: 3px; height: 32px;
-    background: var(--text); border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
+    background: #c8d4e0; border: 1px solid rgba(0,0,0,0.55); border-radius: 1px;
   }
   /* Positioned (not flex/space-between) so each label sits centred exactly over the real time it
      names on the track below - the visible/effective start and end (_eclipseVisibleRange) aren't
