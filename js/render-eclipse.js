@@ -1041,7 +1041,19 @@ function exitEclipse() {
 // LAT/LONG in Greatest-Eclipse mode) - _eclipseRenderCatalogGrid() saves/restores them around the
 // whole grid so this never disturbs whatever Visualization actually has active.
 let _eclipseCatalogTypeFilter = 'all';    // 'all' | 'total' | 'partial' | 'annular' - filters on event.type
+let _eclipseCatalogShowUpcoming = false;   // false = past (default), true = upcoming - filters on the
+                                            // event's own calendar date vs. today's REAL-WORLD date
+                                            // (not the app's Day calibration), see
+                                            // _eclipseEventIsUpcoming() below
 let _eclipseCatalogUseGreatest = false;   // false = my Location, true = each event's own Greatest Eclipse point
+// Compares an event's calendar date (event.year/dayMonth/dayDay) against today's actual date - a
+// same-day event still counts as upcoming (hasn't necessarily happened yet today).
+function _eclipseEventIsUpcoming(ev) {
+  const today = new Date();
+  const todayYMD = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  const evYMD = ev.year * 10000 + ev.dayMonth * 100 + ev.dayDay;
+  return evYMD >= todayYMD;
+}
 const ECLIPSE_CATALOG_TILE_PX = 300;      // fixed render resolution - CSS scales the tile to fit the
                                            // grid; kept a step ahead of the tile's own ~210px CSS
                                            // display size (see .eclipse-tile min-width) so it stays crisp
@@ -1073,6 +1085,8 @@ function _eclipseRenderCatalogGrid() {
   const savedLat = LAT, savedHemi = hemisphere, savedLon = LONG, savedLonHemi = lonHemisphere;
   for (const ev of events) {
     if (_eclipseCatalogTypeFilter !== 'all' && ev.type !== _eclipseCatalogTypeFilter) continue;
+    const isUpcoming = _eclipseEventIsUpcoming(ev);
+    if (isUpcoming !== _eclipseCatalogShowUpcoming) continue;
     _eclipseActiveEvent = ev;
     if (_eclipseCatalogUseGreatest) {
       LAT = ev.greatestEclipse.lat; hemisphere = ev.greatestEclipse.hemisphere;
@@ -1087,6 +1101,7 @@ function _eclipseRenderCatalogGrid() {
     const dateLbl = document.createElement('div');
     dateLbl.className = 'eclipse-tile-date';
     dateLbl.textContent = MONTH_NAMES[ev.dayMonth - 1] + ' ' + ev.dayDay + ', ' + ev.year;
+    dateLbl.classList.toggle('upcoming', isUpcoming);
     tile.appendChild(dateLbl);
 
     if (_eclipseAnyVisible(circ)) {
@@ -1145,6 +1160,15 @@ document.getElementById('eclipseCatalogTypeFilter').addEventListener('click', (e
   if (!btn || !document.getElementById('eclipseCatalogTypeFilter').contains(btn)) return;
   _eclipseCatalogTypeFilter = btn.dataset.type;
   document.querySelectorAll('#eclipseCatalogTypeFilter .ns-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  _eclipseRenderCatalogGrid();
+});
+document.getElementById('btnEclipseCatalogTimeMode').addEventListener('click', () => {
+  _eclipseCatalogShowUpcoming = !_eclipseCatalogShowUpcoming;
+  const btn = document.getElementById('btnEclipseCatalogTimeMode');
+  btn.classList.toggle('on', _eclipseCatalogShowUpcoming);
+  btn.setAttribute('aria-checked', String(_eclipseCatalogShowUpcoming));
+  document.getElementById('eclipseCatalogTimeModeLabelA').classList.toggle('active-loc', !_eclipseCatalogShowUpcoming);
+  document.getElementById('eclipseCatalogTimeModeLabelB').classList.toggle('active-loc', _eclipseCatalogShowUpcoming);
   _eclipseRenderCatalogGrid();
 });
 document.getElementById('btnEclipseCatalogLocMode').addEventListener('click', () => {
