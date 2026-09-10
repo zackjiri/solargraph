@@ -60,9 +60,6 @@ function _eclipseLocalCirc(t) {
   const L1 = el.l1 - zeta * _eclipseActiveEvent.tanf1, L2 = el.l2 - zeta * _eclipseActiveEvent.tanf2;
   return { u, v, L1, L2, m: Math.hypot(u, v) };
 }
-function _eclipseScaleDegPerUnit() {
-  return (_eclipseActiveEvent.sunSemidiamDeg + _eclipseActiveEvent.moonSemidiamDeg) / _eclipseActiveEvent.be.l1[0];
-}
 // Earth's equatorial radius / Moon's own physical radius - sin(parallax)/sin(semidiam) both subtend
 // the same distance, so their ratio is this fixed physical constant.
 const ECLIPSE_EARTH_MOON_RADIUS_RATIO = 6378.14 / 1737.4;
@@ -429,11 +426,19 @@ function _eclipseAmbientColorAt(sunElDeg) {
 // confirmed ANNULAR event (physically impossible - the Moon can never appear bigger than the
 // Sun there), because L1 and L2 are scaled by DIFFERENT cone half-angles (tanf1 vs tanf2) - a bare
 // L1/L2 ratio doesn't actually cancel that mismatch the way it first appeared to. The known gap
-// against NASA's published magnitude (§21.21/§26) remains unresolved; this only restores the
-// pre-`34_1` degree-based formula (still the least-wrong option found so far).
+// against NASA's published magnitude (§21.21/§26) remains unresolved; this restores the
+// pre-`34_1` degree-based formula (still the least-wrong option found so far), but derives its own
+// Besselian-unit-to-degree scale FRESH from L1(t) each call, rather than reusing the shared
+// _eclipseScaleDegPerUnit() (frozen at t0, geocentric moonSemidiamDeg) - that frozen version,
+// compared here against the topocentric r2(t) used in (r1+r2), meant magnitude could read
+// non-zero a few seconds before/after the table's own exact m(t)=L1(t) root for C1/C4 (found via
+// real-world comparison, 2026-08-12 at 49.5N/16.2E). Anchoring the scale to L1(t) itself makes
+// magnitude hit exactly 0 at the same instant the Circumstances table does, by construction: at
+// t=C1, m(t)=L1(t) so mDeg=r1+r2 and magnitude=0 - continuously, with no separate clamp needed.
 function _eclipseMagnitude(t) {
+  const circ = _eclipseLocalCirc(t);
   const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseMoonSemidiamTopoAt(t);
-  const mDeg = _eclipseLocalCirc(t).m * _eclipseScaleDegPerUnit();
+  const mDeg = circ.m * (r1 + r2) / circ.L1;
   return (r1 + r2 - mDeg) / (2 * r1);
 }
 function _eclipseObscuration(t) {
@@ -446,7 +451,13 @@ function _eclipseObscuration(t) {
   // here (that's exactly what the "d <= |r1-r2|" branch already computes correctly on its own).
   if (circ.L2 < 0 && circ.m <= Math.abs(circ.L2)) return 1;
   const r1 = _eclipseActiveEvent.sunSemidiamDeg, r2 = _eclipseMoonSemidiamTopoAt(t);
-  const d = circ.m * _eclipseScaleDegPerUnit();
+  // Live-anchored to circ.L1, same fix and same reason as _eclipseMagnitude() (§21.40) and
+  // drawEclipse()'s own scaleDeg (§21.41) - the frozen, geocentric _eclipseScaleDegPerUnit() here
+  // meant Obscuration could read a few tenths of a percent before the table's own exact C1 (found
+  // via real-world report: 0.2% showing before a 10:23:53 first-contact time). At d=r1+r2 (the "no
+  // overlap" boundary just below) this now coincides exactly with m=L1, i.e. the table's own C1/C4
+  // root, by the same algebraic construction as Magnitude - continuous, no separate clamp needed.
+  const d = circ.m * (r1 + r2) / circ.L1;
   if (d >= r1 + r2) return 0;                                     // no overlap at all
   if (d <= Math.abs(r1 - r2)) return Math.min(1, (Math.min(r1, r2) ** 2) / (r1 * r1));   // one disc wholly inside the other
   const d1 = (d * d - r2 * r2 + r1 * r1) / (2 * d), d2 = d - d1;   // standard two-circle lens intersection
@@ -563,6 +574,10 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   const { H: hAngle, deltaRad } = _eclipseSunGeom(t);
   const phi = LAT * hemisphere * Math.PI / 180;
   const sunGeom = sunPosition(hAngle, deltaRad, phi);
+  // Moved up from just above the Moon section below (§21.40's own follow-up) - needed here now for
+  // scaleDeg's own live L1(t) anchoring, but otherwise unchanged/still just used by the Moon's own
+  // position and by the code below it.
+  const circ = _eclipseLocalCirc(t);
 
   // Twilight sky background - same palette/thresholds as Sky Map 3D's ambient sky colour
   // (_eclipseAmbientColorAt below, ported from _skyPlanetAmbientColorAt in render-skydome.js).
@@ -585,9 +600,18 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
 
   const cx = W / 2, cy = H / 2;
   const size = Math.min(W, H);
-  const scaleDeg = _eclipseScaleDegPerUnit();
   const sunRadiusPx = size * 0.24;
   const pxPerDeg = sunRadiusPx / _eclipseActiveEvent.sunSemidiamDeg;
+  // Moon's screen POSITION scale (Besselian units -> degrees), §21.40's own follow-up - used to be
+  // the shared _eclipseScaleDegPerUnit() (frozen at t0, geocentric moonSemidiamDeg; since removed -
+  // by §21.40's own follow-up in _eclipseObscuration() this was its last caller). That frozen scale,
+  // compared against the topocentric moonRadiusPx below (§21.32), made the drawn discs visually
+  // touch/part several seconds to a full minute-plus off the table's own exact C1/C4 (found via
+  // real-world comparison, 1999-08-11 at 49.5N/16.2E: discs already overlapping a full ~57s before
+  // the table's C1, and still overlapping ~65s after C4). Anchored live to circ.L1 instead - same
+  // fix already applied to _eclipseMagnitude()/_eclipseObscuration() for the identical reason - so
+  // the rendered gap hits exactly 0 at the same instant the table's C1/C4 root does, continuously.
+  const scaleDeg = (_eclipseActiveEvent.sunSemidiamDeg + _eclipseMoonSemidiamTopoAt(t)) / circ.L1;
 
   const chkGrid = document.getElementById('chkEclipseGrid');
   const chkLabels = document.getElementById('chkEclipseLabels');
@@ -746,11 +770,14 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // separation (the exact dRA*cosDec logic above, just for Az/Alt instead of RA/Dec). Verified
   // directly against the canvas's own drawn arc() calls at 42.8N/8.0W's C1 (sun at +21.8°, so
   // cos(el)=0.928, nowhere near 1): the old formula drew the discs 9.8px apart where they should
-  // exactly touch; with cos(el) included the gap is under a pixel, matching the Besselian m/L1
-  // definition of C1 to five decimal places. Left uncorrected, the error grows with altitude and
-  // was easy to miss at low altitude (where cos(el)~1 hides it) - which is exactly how the
-  // original, wrong "cross-check" note used to read here.
-  const circ = _eclipseLocalCirc(t);
+  // exactly touch; with cos(el) included the gap was under a pixel at the time.
+  // NOTE (§21.40 follow-up): that "under a pixel" match didn't survive moonRadiusPx's later switch
+  // to the topocentric radius (§21.32, a few paragraphs below) - a bigger live moon radius against
+  // this section's own scaleDeg (frozen at t0 until this same follow-up) reopened the same gap,
+  // up to ~a full minute early/late at some locations (1999-08-11 at 49.5N/16.2E). scaleDeg is now
+  // itself anchored live to circ.L1 (computed above, moved up from here) for the same reason -
+  // this cos(el) fix and that one are complementary, not redundant: this one keeps the DIRECTION of
+  // the offset correct at any altitude, that one keeps its MAGNITUDE correct at any instant.
   // Topocentric (parallax-corrected, §21.30), not the flat geocentric moonSemidiamDeg - without it
   // the drawn Moon disc can end up too small (relative to the exact m<=|L2| test) to ever visually
   // cover the Sun during genuine totality, leaving a persistent sliver even at m=0 (found the hard
