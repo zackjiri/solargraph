@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug38">
+  <link rel="stylesheet" href="css/style.css?perfdebug39">
 </head>
 <body>
 
@@ -13,6 +13,21 @@
   <header>
     <h1>Solargraphy Projection Viewer</h1>
     <span>pinhole projection definition: x = 2 r α &nbsp;•&nbsp; y = 2 r cos α tan ϕ</span>
+    <!-- Sits to the LEFT of .mode-toggle-wrap (which is flush-right via its own margin-left:auto),
+         not to its right as before - #btnTimeMode is hidden while Eclipse is active (see below), and
+         with it previously positioned AFTER .mode-toggle-wrap, that hide/show shifted how much
+         trailing content the auto-margin had to push against, visibly jumping the mode toggle itself
+         left/right whenever Eclipse was entered/exited. Only #btnTheme now follows .mode-toggle-wrap
+         (always visible), so the toggle's own flush-right position stays fixed regardless of Eclipse
+         state. -->
+    <div class="time-mode-wrap">
+      <button id="btnTimeMode" title="Time display mode">🕐</button>
+      <div id="timeModeMenu" class="time-mode-menu">
+        <button class="time-mode-item" data-mode="true" title="Time based on the sun's actual position (transit = solar noon)">Apparent solar time</button>
+        <button class="time-mode-item" data-mode="mean" title="Solar time averaged over the year (removes the equation of time)">Mean solar time</button>
+        <button class="time-mode-item active" data-mode="standard" title="Civil clock time for the selected time zone">Standard time</button>
+      </div>
+    </div>
     <div class="mode-toggle-wrap">
       <div class="mode-toggle">
         <button class="mode-btn active-gallery" id="btnModeGallery" title="Browse and compare captured solargraphs">Gallery</button>
@@ -32,14 +47,6 @@
         <button class="wheel-btn" id="btnEclipseSubDec" title="Previous view">◀</button>
         <div class="wheel-track" id="eclipseSubWheelTrack"></div>
         <button class="wheel-btn" id="btnEclipseSubInc" title="Next view">▶</button>
-      </div>
-    </div>
-    <div class="time-mode-wrap">
-      <button id="btnTimeMode" title="Time display mode">🕐</button>
-      <div id="timeModeMenu" class="time-mode-menu">
-        <button class="time-mode-item" data-mode="true" title="Time based on the sun's actual position (transit = solar noon)">Apparent solar time</button>
-        <button class="time-mode-item" data-mode="mean" title="Solar time averaged over the year (removes the equation of time)">Mean solar time</button>
-        <button class="time-mode-item active" data-mode="standard" title="Civil clock time for the selected time zone">Standard time</button>
       </div>
     </div>
     <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
@@ -678,18 +685,18 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug38"></script>
+<script src="js/controls.js?perfdebug39"></script>
 <script src="js/render-sungraph.js"></script>
-<script src="js/render-3d.js?perfdebug38"></script>
+<script src="js/render-3d.js?perfdebug39"></script>
 <script src="js/render-skydome.js"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug38"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug38"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug38"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug38"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug38"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug38"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug38"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug38"></script>
-<script src="js/render-eclipse.js?perfdebug38"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug39"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug39"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug39"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug39"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug39"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug39"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug39"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug39"></script>
+<script src="js/render-eclipse.js?perfdebug39"></script>
 </body>
 </html>
