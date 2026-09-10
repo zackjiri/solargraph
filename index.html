@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug42">
+  <link rel="stylesheet" href="css/style.css?perfdebug43">
 </head>
 <body>
 
@@ -224,7 +224,10 @@
   <!-- Eclipse info panel (Analyzer sub-view) - replaces #can3dPanel while active. Experimental,
        see js/render-eclipse.js. -->
   <div id="eclipsePanel">
-    <div class="panel-title">2026 Aug 12 Eclipse</div>
+    <!-- Text set dynamically per the active event (enterEclipseVisualization(), render-eclipse.js) -
+         this used to be a hardcoded static string, always reading "2026 Aug 12 Eclipse" regardless
+         of which catalog event was actually open. -->
+    <div class="panel-title" id="eclipsePanelTitle">2026 Aug 12 Eclipse</div>
     <div id="eclipsePhaseLabel" class="ecl-heading">—</div>
     <div id="eclipseCircTable" class="ecl-table"></div>
     <div class="ecl-heading">Stats</div>
@@ -685,18 +688,18 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug42"></script>
+<script src="js/controls.js?perfdebug43"></script>
 <script src="js/render-sungraph.js"></script>
-<script src="js/render-3d.js?perfdebug42"></script>
+<script src="js/render-3d.js?perfdebug43"></script>
 <script src="js/render-skydome.js"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug42"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug42"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug42"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug42"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug42"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug42"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug42"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug42"></script>
-<script src="js/render-eclipse.js?perfdebug42"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug43"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug43"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug43"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug43"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug43"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug43"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug43"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug43"></script>
+<script src="js/render-eclipse.js?perfdebug43"></script>
 </body>
 </html>
