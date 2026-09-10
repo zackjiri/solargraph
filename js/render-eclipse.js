@@ -625,10 +625,12 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   const chkLabels = document.getElementById('chkEclipseLabels');
   const chkEquatorial = document.getElementById('chkEclipseEquatorial');
   const chkHorizon = document.getElementById('chkEclipseHorizon');
+  const btnEQLock = document.getElementById('btnEclipseEQLock');
   const showGrid = chkGrid ? chkGrid.checked : true;
   const showLabels = chkLabels ? chkLabels.checked : false;
   const showEquatorial = chkEquatorial ? chkEquatorial.checked : true;
   const showHorizon = chkHorizon ? chkHorizon.checked : false;
+  const eqLock = btnEQLock ? btnEQLock.classList.contains('active') : false;
 
   const q = _eclipseParallacticAngle(hAngle, deltaRad);
   // Same world-azimuth/hemisphere-flip convention the top readout uses (_eclipseUpdateReadout) -
@@ -656,6 +658,43 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   const cosQ = Math.cos(q), sinQ = Math.sin(q);
   const rot = (x, y) => ({ x: -(x * cosQ + y * sinQ), y: -x * sinQ + y * cosQ });
 
+  // EQ lock (Display checkbox) - holds the WHOLE scene at a fixed equatorial (celestial North-up)
+  // orientation instead of today's default zenith-up/horizon-flat one: Az/Alt grid, Sun/Moon
+  // position and the Horizon band (everything below, currently drawn in raw/unrotated zenith
+  // coordinates) get wrapped in a plain rotation by -q, while the Equatorial grid and Corona
+  // (already equatorial-native, via their OWN rot()/ctx.rotate(q) - §21.33) instead have that
+  // individual rotation SKIPPED entirely under EQ lock, appearing in their native/unrotated form.
+  //
+  // First cut here wrapped EVERYTHING (this block included) in the exact same rotate+MIRROR
+  // transform rot() uses (`ctx.rotate(q); ctx.scale(-1,1);`), reasoning that since that transform
+  // is its own inverse, composing it with the Equatorial grid's/Corona's own unchanged call would
+  // cancel out automatically. That composition math checked out, but the RESULT still looked
+  // mirrored to the user - because rot()'s own mirror is a fix specific to the (u,v) Besselian
+  // convention's own handedness (confirmed by the "x-negation" bug-fix note above, needed to match
+  // the Equatorial grid's axes against the trusted real az/el mapping), NOT a general property of
+  // converting zenith-up content to an equatorial-locked view. Verified this directly: computed
+  // where celestial North actually lands on screen via the SAME trusted real-astronomy pipeline the
+  // Moon itself uses (a tiny declination-only offset run through sunPosition() and the ordinary
+  // az/el->screen mapping, bypassing rot()/the (u,v) convention entirely) - that screen angle came
+  // out equal to q itself, to within rounding (23.818° vs 23.817°, checked at 2026-08-12/65.2N/
+  // 25.2W mid-totality) - so a PLAIN rotation by -q (no mirror) is the correct, exact fix; verified
+  // via DOMMatrix that ctx.rotate(-q) puts that same North-ward test point at (0, -r), i.e. straight
+  // up, exactly.
+  // Southern-hemisphere observers get an extra 180° added to the lock target - "North straight up"
+  // isn't the natural reference down there (matches the app's existing hemisphere-flip convention
+  // elsewhere, e.g. sunAzWorld above) - so EQ lock instead holds North at the BOTTOM. Added only to
+  // the outer wrap's own angle (below), NOT to the Equatorial grid's/Corona's own +q compensation
+  // (rotPureQ/ctx.rotate(q) - unchanged) - that compensation only needs to cancel the -q part; the
+  // extra 180° then carries straight through to them too (they end up rotated by northFlip alone,
+  // not q-dependent), flipping their native "North+" orientation upside down exactly as intended.
+  const northFlip = (eqLock && hemisphere < 0) ? Math.PI : 0;
+  ctx.save();
+  if (eqLock) {
+    ctx.translate(cx, cy);
+    ctx.rotate(-q + northFlip);
+    ctx.translate(-cx, -cy);
+  }
+
   // Az/Alt grid - same idea and colours as the app's own main grid (Azimuth = gold #E8A020,
   // Altitude = blue #20A0E8, see index.html's legend). Stepped every 0.5° - the field of view here
   // is only about a degree across (the Sun's real ~0.26° radius is deliberately stretched to fill
@@ -675,6 +714,31 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // above), so a plain horizontal/vertical grid IS an azimuth/altitude grid here, directly - no
   // further transform needed, unlike the equatorial cross (a genuinely different, rotating frame).
   const gridStepDeg = 0.5;
+  // Each line below only needs to span 0..W/0..H when the scene is drawn unrotated (its own bounds
+  // already cover the canvas) - but under EQ lock the whole thing gets rotated around (cx,cy), and
+  // an unpadded line that only reaches the canvas's own straight edges would swing short of the
+  // now-rotated corners, leaving visible gaps there. Padding by the canvas diagonal comfortably
+  // covers every corner at any rotation angle; 0 when EQ lock is off, so no change there.
+  const gridLinePad = eqLock ? Math.hypot(W, H) : 0;
+  // Grid labels stay pinned to the true screen edges (top/left), same as the default zenith-up
+  // view - NOT just upright text at a rotated position, per the user's own follow-up ("locked to
+  // the edge like without EQ lock"). Since (x,y) below are the same raw, pre-rotation local
+  // coordinates used regardless of EQ lock, drawing them under a plain RES-only transform (skipping
+  // the outer wrap's translate/rotate entirely, not just cancelling the rotation) reproduces the
+  // exact non-EQ-lock position and orientation - a no-op when EQ lock is off (already the active
+  // transform in that case).
+  function drawHorizLabel(text, x, y, textAlign, fillStyle, bgStyle) {
+    ctx.save();
+    ctx.setTransform(RES, 0, 0, RES, 0, 0);
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.textBaseline = 'middle';
+    ctx.translate(x, y);
+    ctx.textAlign = textAlign;
+    _eclipseLabelBg(ctx, text, 0, 0, bgStyle);
+    ctx.fillStyle = fillStyle;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
   if (showGrid) {
     const viewSpanDeg = Math.hypot(W, H) / 2 / pxPerDeg + gridStepDeg;
     ctx.font = "10px 'Share Tech Mono', monospace";
@@ -688,13 +752,10 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
       const isHorizon = i === 0;
       ctx.lineWidth = isHorizon ? 1.5 : 1;
       ctx.strokeStyle = isHorizon ? '#000' : 'rgba(32,160,232,0.65)';
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-gridLinePad, y); ctx.lineTo(W + gridLinePad, y); ctx.stroke();
       if (showLabels) {
-        ctx.textAlign = 'left';
         const label = isHorizon ? 'horizon' : altVal.toFixed(1) + '°';
-        _eclipseLabelBg(ctx, label, 4, y - 6, isHorizon ? 'rgba(255,255,255,0.6)' : undefined);
-        ctx.fillStyle = isHorizon ? '#000' : 'rgba(140,205,245,0.95)';
-        ctx.fillText(label, 4, y - 6);
+        drawHorizLabel(label, 4, y - 6, 'left', isHorizon ? '#000' : 'rgba(140,205,245,0.95)', isHorizon ? 'rgba(255,255,255,0.6)' : undefined);
       }
     }
 
@@ -712,18 +773,19 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
       const x = cx + (azVal - sunAz) * cosSunEl * pxPerDeg;
       ctx.lineWidth = 1;
       ctx.strokeStyle = 'rgba(232,160,32,0.65)';
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, -gridLinePad); ctx.lineTo(x, H + gridLinePad); ctx.stroke();
       if (showLabels) {
-        ctx.textAlign = 'center';
         const label = azVal.toFixed(1) + '°';
-        _eclipseLabelBg(ctx, label, x, 12);
-        ctx.fillStyle = 'rgba(255,210,90,0.95)';
-        ctx.fillText(label, x, 12);
+        drawHorizLabel(label, x, 12, 'center', 'rgba(255,210,90,0.95)');
       }
     }
   }
 
-  const gridR = size * 0.46;
+  // Shortened from 0.46 on the user's own request - at 0.46 the "N" label (gridR+14 further out,
+  // see below) sat only ~17px from the canvas's own shorter edge, close enough to visibly collide
+  // with the Az/Alt grid's own edge-pinned labels (§21.46, always at the true top/left edge now,
+  // regardless of EQ lock). 0.38 opens that up to ~80px of clearance.
+  const gridR = size * 0.38;
   if (showEquatorial) {
     // N-S and E-W are always mutually perpendicular (true for any observer, at any time) - so the
     // cross itself rotates as one rigid unit with its labels, exactly like the ORIGINAL ctx.rotate
@@ -735,7 +797,18 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
     // only coincide when the parallactic angle happens to be 0). Renamed from "Compass grid" - it's
     // built on the equatorial (RA/Dec-like) frame the Besselian elements themselves use, converted
     // to true horizon bearings only via this rotation - "equatorial grid" names what it actually is.
-    const axisN = rot(0, -gridR), axisS = rot(0, gridR), axisE = rot(gridR, 0), axisW = rot(-gridR, 0);
+    // Under EQ lock (§21.44's own follow-up), this cross instead holds still on screen. NOTE: the
+    // OUTER wrap's ctx.rotate(-q) is still active while this section draws (never excluded via its
+    // own save/restore) - so plain identity here is WRONG (found the hard way: the cross still
+    // visibly rotated with time even with this "skipped", since the outer -q was still being
+    // applied on top of it) - what actually cancels the outer wrap and holds this cross fixed is a
+    // PURE +q rotation (no mirror) applied locally, exactly undoing the outer -q (verified via
+    // DOMMatrix: identity landed the N tip q-dependently off its expected constant screen spot;
+    // rotating by +q first landed it exactly on that constant spot, matching "north straight up"
+    // regardless of q).
+    const rotPureQ = (x, y) => ({ x: x * cosQ - y * sinQ, y: x * sinQ + y * cosQ });
+    const eqRot = eqLock ? rotPureQ : rot;
+    const axisN = eqRot(0, -gridR), axisS = eqRot(0, gridR), axisE = eqRot(gridR, 0), axisW = eqRot(-gridR, 0);
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx + axisW.x, cy + axisW.y); ctx.lineTo(cx + axisE.x, cy + axisE.y); ctx.stroke();
@@ -750,8 +823,30 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
       // point is enough to read the cross's orientation, and it sidesteps having to spell out
       // "not the same as horizon N/S/E/W" (see the checkbox's own tooltip) four times over.
       const labelR = gridR + 14;
-      const nTip = rot(0, -labelR);
-      ctx.fillText('N', cx + nTip.x, cy + nTip.y);
+      const nTip = eqRot(0, -labelR);
+      // The glyph itself must NOT rotate (user's own follow-up request) even though its POSITION
+      // is meant to track the outer wrap's own rotation (that's how it stays "locked" under EQ
+      // lock - see eqRot/rotPureQ above). So: let the still-active transform place the point (via
+      // getTransform(), matching whatever's currently active - identity outside EQ lock), then
+      // draw the actual glyph under a plain rotation-free transform at that resolved position,
+      // bypassing any rotation for the glyph itself. Bug found afterwards: drawing under a bare
+      // ctx.setTransform(1,0,0,1,0,0) (true 1:1 device pixels) shrank the glyph by a factor of RES
+      // (e.g. 2x too small on a RES=2 canvas) - a "13px" font is always 13 device pixels tall under
+      // an identity transform, but everywhere ELSE in this function draws under the RES-scaled base
+      // transform, where the same "13px" renders at RES*13 device pixels. Fixed by resetting to
+      // that same RES-scaled base (ctx.setTransform(RES,0,0,RES,0,0), matching drawEclipse()'s own
+      // very first line) instead of a bare identity, and dividing the resolved device-pixel point by
+      // RES to convert it back into that base's own coordinate space.
+      const m = ctx.getTransform();
+      const nDevX = m.a * (cx + nTip.x) + m.c * (cy + nTip.y) + m.e;
+      const nDevY = m.b * (cx + nTip.x) + m.d * (cy + nTip.y) + m.f;
+      ctx.save();
+      ctx.setTransform(RES, 0, 0, RES, 0, 0);
+      ctx.font = "bold 13px 'Share Tech Mono', monospace";
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('N', nDevX / RES, nDevY / RES);
+      ctx.restore();
     }
   }
 
@@ -829,8 +924,14 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
     ctx.save();
     ctx.globalAlpha = totalityBoost;
     ctx.translate(cx, cy);
+    // Under EQ lock (§21.44's own follow-up): the outer wrap's ctx.rotate(-q) is still active here
+    // (this block never escapes it via its own save/restore) - so ALWAYS rotating by +q is what
+    // exactly cancels that outer -q, holding the corona fixed regardless of q (same eqRot()/rotPureQ
+    // fix as the Equatorial grid above - skipping the rotation entirely was wrong, it still left the
+    // corona rotating with the outer wrap). Only the mirror is conditional: it's specific to the
+    // (u,v) convention's own handedness (§21.44), wanted in the default zenith-up frame but not here.
     ctx.rotate(q);
-    ctx.scale(-1, 1);
+    if (!eqLock) { ctx.scale(-1, 1); }
     ctx.drawImage(coronaMasked, -coronaSizePx / 2, -coronaSizePx / 2, coronaSizePx, coronaSizePx);
     ctx.restore();
   }
@@ -862,6 +963,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
     ctx.fillStyle = 'rgba(0,0,0,0.9)';
     ctx.fillRect(-BIG, horizonY, BIG * 2, BIG);
   }
+  ctx.restore();   // closes the EQ lock wrap opened above (a no-op restore when eqLock was off)
 
   // Date/time + Sun coordinates go to the shared top readout bar (valAz/valAlt/valDay/valTime/
   // valDir), not a canvas-local label - see _eclipseUpdateReadout. Phase stays in the left panel
@@ -1233,6 +1335,7 @@ function enterEclipseVisualization() {
 
   document.getElementById('eclipseCanvas').style.display = 'block';
   document.getElementById('eclipseSliderRow').style.display = 'flex';
+  document.getElementById('btnEclipseEQLock').style.display = 'flex';
   document.getElementById('eclipsePanel').classList.add('visible');
   // Was a hardcoded "2026 Aug 12 Eclipse" string, so opening any OTHER catalog event kept showing
   // 2026's own date here - noticed during earlier §21.41 testing, now fixed for real.
@@ -1272,6 +1375,7 @@ function exitEclipseVisualization() {
   _eclipseStopAnim();   // don't keep the rAF loop running once the canvas is hidden
   document.getElementById('eclipseCanvas').style.display = 'none';
   document.getElementById('eclipseSliderRow').style.display = 'none';
+  document.getElementById('btnEclipseEQLock').style.display = 'none';
   document.getElementById('eclipsePanel').classList.remove('visible');
   document.getElementById('btnEclipseVisExit').style.display = 'none';
   document.getElementById('btnEclipseMaxPhase').style.display = 'none';
@@ -1898,6 +2002,10 @@ document.getElementById('chkEclipseLabels').addEventListener('change', _eclipseR
 document.getElementById('chkEclipseEquatorial').addEventListener('change', _eclipseRefreshCurrentView);
 document.getElementById('chkEclipseHorizon').addEventListener('change', _eclipseRefreshCurrentView);
 document.getElementById('chkEclipseCorona').addEventListener('change', _eclipseRefreshCurrentView);
+document.getElementById('btnEclipseEQLock').addEventListener('click', () => {
+  document.getElementById('btnEclipseEQLock').classList.toggle('active');
+  _eclipseRefreshCurrentView();
+});
 window.addEventListener('resize', () => { if (eclipseActive && eclipseSubView === 'visualization') resizeEclipse(); });
 
 // Top-level mode button, a peer of Gallery/Analyzer rather than an Analyzer sub-view - it still
