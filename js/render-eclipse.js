@@ -417,9 +417,9 @@ function _eclipseAmbientColorAt(sunElDeg) {
 // Sun's disc AREA actually covered (proper circle-circle overlap, not the linear 1-m/L1 proxy the
 // slider fill uses - that one only needs to be roughly phase-shaped, this one drives an actual
 // colour so the real covered area matters). V = perceived relative brightness, following the eye's
-// non-linear response to dimming light: V=(1-O)^0.4 - brightness barely drops until the last ~10%
-// of the disc is covered, then falls away fast, matching how a 90%-covered Sun still looks almost
-// like a normal day.
+// non-linear response to dimming light: V=(1-O)^ECLIPSE_BRIGHTNESS_EXP - brightness barely drops
+// until well past mid-coverage, then falls away fast, matching how even a 90%-covered Sun still
+// looks close to a normal day - most of the actual darkening happens in the eclipse's final stretch.
 // Eclipse magnitude (fraction of the Sun's DIAMETER covered along the line of centers) - the
 // standard (r1+r2-d)/(2*r1) formula in degrees. A from-Besselian-units-only shortcut was tried
 // (using L1/L2/m directly, no degree conversion) but abandoned: it gave a magnitude >1 for a
@@ -466,14 +466,22 @@ function _eclipseObscuration(t) {
              + r2 * r2 * Math.acos(a2) - d2 * Math.sqrt(Math.max(0, r2 * r2 - d2 * d2));
   return Math.max(0, Math.min(1, area / (Math.PI * r1 * r1)));
 }
-// Last 1% of coverage (O=0,99->1,00) darkens faster than the base curve's own local slope would
-// give - the base V=(1-O)^0.4 already falls quickly there, but the very final approach to totality
-// gets an extra, deliberate push toward black, landing exactly on V=0 at O=1 (full totality grey,
-// see ECLIPSE_TOTALITY_GREY below).
+// Exponent for the base V=(1-O)^p curve below - the smaller p is, the longer brightness stays
+// close to 1 through low/mid Obscuration (slower darkening early on) and the more of the total
+// drop gets pushed into the last stretch before totality (more dynamic range spent near O=1).
+// Lowered from the original 0.4 on the user's request - e.g. at O=90% brightness is now 56%
+// (was 40%), at O=95% it's 47% (was 30%): noticeably slower through the low/mid phase, with more
+// of the actual darkening now happening beyond that, right up to totality.
+const ECLIPSE_BRIGHTNESS_EXP = 0.25;
+// Last 1% of coverage (O=0.99->1.00) darkens faster than the base curve's own local slope would
+// give - the base V=(1-O)^ECLIPSE_BRIGHTNESS_EXP already falls quickly there, but the very final
+// approach to totality gets an extra, deliberate push toward black, landing exactly on V=0 at O=1
+// (full totality grey, see ECLIPSE_TOTALITY_GREY below) - this milestone (the 99% breakpoint, and
+// landing exactly at V=0 at O=1) is kept as-is; only the exponent above changed.
 function _eclipseBrightnessFactor(t) {
   const O = _eclipseObscuration(t);
-  if (O < 0.99) return Math.pow(1 - O, 0.4);
-  const vAt99 = Math.pow(0.01, 0.4);
+  if (O < 0.99) return Math.pow(1 - O, ECLIPSE_BRIGHTNESS_EXP);
+  const vAt99 = Math.pow(0.01, ECLIPSE_BRIGHTNESS_EXP);
   const localT = (O - 0.99) / 0.01;
   return vAt99 * (1 - localT) ** 2;
 }
@@ -583,8 +591,8 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // (_eclipseAmbientColorAt below, ported from _skyPlanetAmbientColorAt in render-skydome.js).
   // Blue stays blue through the day and only tunes into the dusk palette near the horizon - the
   // Sun's own glow/halo is deliberately NOT reproduced here, just the sky colour itself. On top of
-  // that, the eclipse's own phase dims the sky further (_eclipseBrightnessFactor, V=(1-O)^0.4),
-  // blending toward a neutral totality grey as coverage approaches 100%.
+  // that, the eclipse's own phase dims the sky further (_eclipseBrightnessFactor), blending toward
+  // a neutral totality grey as coverage approaches 100%.
   const bgCol = _eclipseAmbientColorAt(sunGeom.el);
   const bgBase = _eclipseLerp3(ECLIPSE_TOTALITY_GREY, bgCol, _eclipseBrightnessFactor(t));
   // Extra push toward an even deeper grey right around the moment Obscuration reaches 100%
@@ -1226,6 +1234,10 @@ function enterEclipseVisualization() {
   document.getElementById('eclipseCanvas').style.display = 'block';
   document.getElementById('eclipseSliderRow').style.display = 'flex';
   document.getElementById('eclipsePanel').classList.add('visible');
+  // Was a hardcoded "2026 Aug 12 Eclipse" string, so opening any OTHER catalog event kept showing
+  // 2026's own date here - noticed during earlier §21.41 testing, now fixed for real.
+  document.getElementById('eclipsePanelTitle').textContent =
+    _eclipseActiveEvent.year + ' ' + MONTH_NAMES[_eclipseActiveEvent.dayMonth - 1] + ' ' + _eclipseActiveEvent.dayDay + ' Eclipse';
   document.getElementById('btnEclipseVisExit').style.display = 'block';
   document.getElementById('btnEclipseMaxPhase').style.display = '';
   document.getElementById('btnEclipseGreatestPoint').style.display = '';
