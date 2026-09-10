@@ -2345,6 +2345,44 @@
     paint-order: stroke fill;
   }
 
+  /* EQ lock toggle (§21.44's own follow-up) - moved off the Display sidebar onto the canvas itself,
+     bottom-left, level with #eclipseSliderRow above it (same bottom:2px). Plain on/off button, not
+     a checkbox - toggled via .active (same idiom as #btnEclipseCatalogLocMode's own .on class). */
+  #btnEclipseEQLock {
+    position: absolute;
+    left: 44px; bottom: 32px;   /* left was 12px then 32px, moved further still on the user's own
+                                   follow-up request; bottom was 2px, same as #eclipseSliderRow's own
+                                   bottom - but that row's OWN height (66px) extends well below
+                                   #btnEclipsePlay (28px), to fit the start/end label row under the
+                                   slider, so matching the row's bottom put this button visibly lower
+                                   than Play. 32px lines this button's own bottom edge up with Play's
+                                   (measured: row bottom 860px, Play's own bottom 830px, i.e. 30px
+                                   higher - plus this box's own 2px from the row's bottom:2px). */
+    height: 28px;                 /* same height as #btnEclipsePlay - width now auto-fits icon+label */
+    display: none;   /* JS toggles to 'flex' alongside #eclipseSliderRow, Visualization-only */
+    align-items: center; justify-content: center;
+    gap: 6px;   /* icon + "EQ lock" label side by side, vertically centred together (was icon-only,
+                   width:28px square - re-added the label on the user's own follow-up request) */
+    padding: 0 10px;
+    color: var(--dim);
+    background: var(--control-fill);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    z-index: 11;
+  }
+  #btnEclipseEQLock svg { display: block; flex: 0 0 auto; }
+  #btnEclipseEQLock span {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  #btnEclipseEQLock:hover { background: var(--control-fill-hover); }
+  #btnEclipseEQLock.active { background: var(--accent); color: #000; }
+
   /* Calibration: everything but Location, hidden while Eclipse is active (js/render-eclipse.js) -
      own flex/column/gap so the rows inside keep their normal spacing despite being one extra
      level of nesting deep (see index.html's #calibNonLocationGroup). */
