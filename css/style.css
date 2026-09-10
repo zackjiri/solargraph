@@ -1999,6 +1999,12 @@
     transition: color 0.15s;
   }
   .eclipse-catalog-locmode-label.active-loc { color: var(--text); font-weight: bold; }
+  /* Past/Upcoming switch reuses the same pill component above, but its two labels get their own
+     colour when active instead of the generic --text - matching the colour their own filtered
+     tiles' date labels use (.eclipse-tile-date / .eclipse-tile-date.upcoming), so the switch itself
+     previews which colour you're about to see in the grid. */
+  #eclipseCatalogTimeModeLabelA.active-loc { color: var(--accent); }
+  #eclipseCatalogTimeModeLabelB.active-loc { color: var(--accent-green); }
   .eclipse-catalog-locmode-switch {
     position: relative;
     flex: 0 0 auto;
@@ -2063,6 +2069,10 @@
     color: var(--accent);
     text-align: center;
   }
+  /* Upcoming events (calendar date still ahead of today) get a green date label instead of the
+     default yellow - a quick "already happened vs. still to come" visual cue on the tile itself,
+     independent of which side of the Past/Upcoming filter is currently active. */
+  .eclipse-tile-date.upcoming { color: var(--accent-green); }
   .eclipse-tile-canvas {
     width: 100%;
     aspect-ratio: 1;
