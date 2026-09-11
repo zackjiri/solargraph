@@ -1113,13 +1113,9 @@ function enterEclipse() {
   document.getElementById('btnModeEclipse').classList.add('active-eclipse');
 
   eclipseActive = true;
-  // Switch #inpLat/#inpLong to Eclipse's own format (2 dp text, masked - see _eclipseFormatLocInput)
-  // right away, rather than leaving them as Analyzer's plain type="number" until the first +/- click
-  // or DEC/DM toggle happens to trigger a reformat.
-  _eclipseFormatLocInput('inpLat', LAT);
-  _eclipseFormatLocInput('inpLong', LONG);
+  // #inpLat/#inpLong's format (DEC/DM, masked) is a shared, app-wide setting now (js/controls.js,
+  // build 36_1) - no longer something Eclipse needs to switch on entry/exit.
   document.getElementById('eclipseSubRow').style.display = 'flex';
-  document.getElementById('eclipseLocFormatRow').style.display = 'flex';
   // Apparent/Mean/Standard only ever affects the general app's own displayHour()/EoT pipeline -
   // Eclipse's own time formatting (_eclipseFmtUTC/_eclipseFmtHM) is always plain UTC+offset and
   // never consults timeDisplayMode at all, so this switcher would have zero effect here anyway.
@@ -1136,13 +1132,9 @@ function enterEclipse() {
 function exitEclipse() {
   if (eclipseSubView === 'visualization') exitEclipseVisualization(); else exitEclipseCatalog();
   document.getElementById('eclipseSubRow').style.display = 'none';
-  document.getElementById('eclipseLocFormatRow').style.display = 'none';
   document.getElementById('btnTimeMode').style.display = '';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   eclipseActive = false;
-  _eclipseSetLocFormat('dec');   // Analyzer's own Location fields never inherit DM mode - order
-                                  // matters: eclipseActive must already be false so this reformats
-                                  // #inpLat/#inpLong back to Analyzer's own plain 0.1deg display.
 
   document.getElementById('can3dPanel').classList.add('visible');
   document.getElementById('displaySection').style.display = '';
@@ -1424,130 +1416,11 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ── Location format (Eclipse-only): decimal degrees (2 dp, 0.01deg step) vs degrees+arc-minutes
-// (1' step). Analyzer's own #inpLat/#inpLong precision (0.1deg, .toFixed(1)) is untouched - these
-// only take effect while eclipseActive (see applyLat/applyLong, controls.js), and the format resets
-// to 'dec' whenever Eclipse is exited (exitEclipse() below) so Analyzer never inherits DM mode.
-let _eclipseLocFormat = 'dec';   // 'dec' | 'dm'
-function _eclipseLocStepDeg() {
-  if (typeof eclipseActive === 'undefined' || !eclipseActive) return 0.1;   // Analyzer's own precision, unchanged
-  return _eclipseLocFormat === 'dm' ? 1 / 60 : 0.01;
-}
-// The ◀/▶ Location arrow buttons (Eclipse-only) always land on the next whole degree in the
-// direction pressed, rather than nudging by _eclipseLocStepDeg()'s own fine display precision -
-// same idea as a keyboard's up/down arrow taking one full step at a time. From a fractional value
-// this is just "round to the next whole degree that way" (e.g. 42.37 -> 43 going up, -> 42 going
-// down); from an already-whole value floor/ceil no-op onto the same number, so the +/-1 below is
-// what actually advances it - one formula covers both cases without an explicit "is it whole" check.
-function _eclipseLocArrowStep(val, dir) {
-  return dir > 0 ? Math.floor(val) + 1 : Math.ceil(val) - 1;
-}
-// Renders an already-rounded/clamped decimal-degree value (applyLat/applyLong's own job) into the
-// given <input> in whichever format is active. DEC keeps the plain <input type="number"> (2 dp);
-// DM needs free text ("42°48'") since a number input can't hold degree/minute symbols, so the
-// input's own type is switched too.
-function _eclipseFormatLocInput(inputId, deg) {
-  const el = document.getElementById(inputId);
-  if (!el) return;
-  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  if (eclipseIsActive) {
-    // Both formats use a free-text input while Eclipse is active (not just DM) - DEC needs it too so
-    // its "." can be made a fixed, non-deletable character the same way DM's "°"/"'" are (see the
-    // coordinate-input masking block below); a native type="number" can hold neither.
-    el.type = 'text';
-    if (_eclipseLocFormat === 'dm') {
-      const d = Math.floor(deg);
-      let m = Math.round((deg - d) * 60);
-      // A rounded 60' carries into the next whole degree (e.g. 42.999...deg -> "43°00'", not "42°60'").
-      const carry = m >= 60;
-      el.value = (carry ? d + 1 : d) + '°' + String(carry ? 0 : m).padStart(2, '0') + "'";
-    } else {
-      el.value = deg.toFixed(2);
-    }
-  } else {
-    el.type = 'number';
-    el.step = '0.1';
-    el.value = deg.toFixed(1);
-  }
-}
-
-// ── Coordinate input masking (Eclipse-only): the . / ° / ' punctuation is a fixed, non-deletable
-// part of the display format above - the user can freely edit the digit runs around it, but typing
-// or deleting can never touch the separator itself, which is what keeps free input restricted to
-// plain digits. Only meaningful now that #inpLat/#inpLong are type="text" while eclipseActive.
-const ECLIPSE_LOC_FIXED_CHARS = ['.', '°', "'"];
-function _eclipseLocSelectionHasFixedChar(el) {
-  if (el.selectionStart === el.selectionEnd) return false;
-  return [...el.value.slice(el.selectionStart, el.selectionEnd)].some((c) => ECLIPSE_LOC_FIXED_CHARS.includes(c));
-}
-function _eclipseLocInputKeydown(e) {
-  if (typeof eclipseActive === 'undefined' || !eclipseActive) return;   // Analyzer's plain number inputs are untouched
-  if (e.ctrlKey || e.metaKey) return;   // let copy/select-all/etc. shortcuts through untouched
-  const el = e.target;
-  const navKeys = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', 'Escape'];
-  if (navKeys.includes(e.key)) return;
-
-  // Up/Down steps the field by a whole degree, same _eclipseLocArrowStep() rounding as the ◀/▶
-  // Location buttons (controls.js) - one shared stepping convention regardless of which control the
-  // user actually reaches for.
-  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    e.preventDefault();
-    const dir = e.key === 'ArrowUp' ? 1 : -1;
-    if (el.id === 'inpLat') applyLat(_eclipseLocArrowStep(LAT, dir));
-    else if (el.id === 'inpLong') applyLong(_eclipseLocArrowStep(LONG, dir));
-    return;
-  }
-
-  if (e.key === 'Backspace' || e.key === 'Delete') {
-    if (_eclipseLocSelectionHasFixedChar(el)) { e.preventDefault(); return; }
-    const pos = e.key === 'Backspace' ? el.selectionStart - 1 : el.selectionStart;
-    if (pos >= 0 && pos < el.value.length && ECLIPSE_LOC_FIXED_CHARS.includes(el.value[pos])) {
-      // Skip over the fixed character instead of deleting it - a second press then reaches the digit beyond it.
-      e.preventDefault();
-      const newPos = e.key === 'Backspace' ? pos : pos + 1;
-      el.setSelectionRange(newPos, newPos);
-    }
-    return;
-  }
-  if (e.key.length === 1) {   // any single printable character - digits are the only ones let through
-    if (_eclipseLocSelectionHasFixedChar(el)) { e.preventDefault(); return; }
-    if (!/[0-9]/.test(e.key)) e.preventDefault();
-  }
-}
-document.getElementById('inpLat').addEventListener('keydown', _eclipseLocInputKeydown);
-document.getElementById('inpLong').addEventListener('keydown', _eclipseLocInputKeydown);
-// Pasted text could freely inject non-digit junk or overwrite a fixed separator - simplest safe
-// behaviour is to just block it rather than trying to sanitise+splice arbitrary pasted content.
-function _eclipseLocInputPaste(e) {
-  if (typeof eclipseActive !== 'undefined' && eclipseActive) e.preventDefault();
-}
-document.getElementById('inpLat').addEventListener('paste', _eclipseLocInputPaste);
-document.getElementById('inpLong').addEventListener('paste', _eclipseLocInputPaste);
-// Parses whatever the user actually typed into #inpLat/#inpLong back into plain decimal degrees -
-// only meaningful in DM mode (DEC mode's <input type="number"> already only ever holds a plain
-// number, so controls.js's _parseLocValue falls back to plain parseFloat there). Lenient about the
-// exact separators typed: "42°48'", "42 48", "42:48" and a bare "42.8" are all accepted.
-function _eclipseParseLocInput(text) {
-  if (typeof eclipseActive === 'undefined' || !eclipseActive || _eclipseLocFormat !== 'dm') return NaN;
-  const m = String(text).trim().match(/^(\d+(?:\.\d+)?)\s*[°:\s]?\s*(\d+(?:\.\d+)?)?\s*['′]?\s*$/);
-  if (!m) return NaN;
-  const deg = parseFloat(m[1]);
-  const min = m[2] !== undefined ? parseFloat(m[2]) : 0;
-  return deg + min / 60;
-}
-function _eclipseParseLocValue(raw) {
-  const v = _eclipseParseLocInput(raw);
-  return isNaN(v) ? (parseFloat(raw) || 0) : v;
-}
-function _eclipseSetLocFormat(fmt) {
-  _eclipseLocFormat = fmt;
-  document.getElementById('btnEclipseLocDec').className = 'ns-btn' + (fmt === 'dec' ? ' active' : '');
-  document.getElementById('btnEclipseLocDM').className = 'ns-btn' + (fmt === 'dm' ? ' active' : '');
-  _eclipseFormatLocInput('inpLat', LAT);
-  _eclipseFormatLocInput('inpLong', LONG);
-}
-document.getElementById('btnEclipseLocDec').addEventListener('click', () => _eclipseSetLocFormat('dec'));
-document.getElementById('btnEclipseLocDM').addEventListener('click', () => _eclipseSetLocFormat('dm'));
+// Location display format (DEC/DM) used to live here (Eclipse-only) - promoted to a shared,
+// app-wide subsystem in js/controls.js (build 36_1, see _locFormatInput()/_locParseValue()/
+// _setLocFormat() there) so Analyzer's own #inpLat/#inpLong get the same masked input, 2 dp
+// precision and whole-degree arrow stepping Eclipse mode already had, instead of it being an
+// Eclipse-only special case.
 
 // ── Distance from the path of totality (Visualization-only, TOTAL events only) ─────────────────
 // Shortest great-circle surface distance from the current Location to the umbral path, plus which

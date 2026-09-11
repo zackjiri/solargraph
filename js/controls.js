@@ -313,12 +313,12 @@ function doCalibReset() {
   document.getElementById('lblRoll').textContent    = '+0.0°';
   document.getElementById('lblHScale').textContent  = '33.0 mm';
   document.getElementById('lblHorizon').textContent = '+0.0 mm';
-  document.getElementById('inpLat').value       = '50.0';
+  _locFormatInput('inpLat', LAT);
   document.getElementById('btnN').disabled = false;
   document.getElementById('btnS').disabled = false;
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
-  document.getElementById('inpLong').value = '15.0';
+  _locFormatInput('inpLong', LONG);
   document.getElementById('btnE').className = 'ns-btn active';
   document.getElementById('btnW').className = 'ns-btn';
   document.getElementById('inpTimeZone').value = 1;
@@ -442,20 +442,129 @@ document.getElementById('presetFileInput').addEventListener('change', (e) => {
   e.target.value = ''; // reset so same file can be re-imported
 });
 
+// ─── Location display format (DEC/DM) ──────────────────────────────────────
+// Originally an Eclipse-only refinement (js/render-eclipse.js, build 34_1-35_1) - promoted to a
+// shared, app-wide setting (build 36_1, user's own request) so Analyzer's #inpLat/#inpLong get
+// the same masked-text input, 2 dp decimal precision (was 1 dp plain), whole-degree arrow
+// stepping, and DEC/DM toggle that Eclipse mode already had. No more eclipseActive branching -
+// #inpLat/#inpLong behave identically regardless of which mode is showing them.
+let _locFormat = 'dec';   // 'dec' | 'dm'
+function _locStepDeg() {
+  return _locFormat === 'dm' ? 1 / 60 : 0.01;
+}
+// The ◀/▶ Location arrow buttons always land on the next whole degree in the direction pressed,
+// rather than nudging by _locStepDeg()'s own fine display precision - same idea as a keyboard's
+// up/down arrow taking one full step at a time. From a fractional value this is just "round to
+// the next whole degree that way" (e.g. 42.37 -> 43 going up, -> 42 going down); from an already-
+// whole value floor/ceil no-op onto the same number, so the +/-1 below is what actually advances
+// it - one formula covers both cases without an explicit "is it whole" check.
+function _locArrowStep(val, dir) {
+  return dir > 0 ? Math.floor(val) + 1 : Math.ceil(val) - 1;
+}
+// Renders an already-rounded/clamped decimal-degree value (applyLat/applyLong's own job) into the
+// given <input> in whichever format is active. Both formats use a free-text input (not a native
+// type="number") so the "." (DEC) or "°"/"'" (DM) can be made fixed, non-deletable characters the
+// same way - see the masking block below.
+function _locFormatInput(inputId, deg) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.type = 'text';
+  if (_locFormat === 'dm') {
+    const d = Math.floor(deg);
+    let m = Math.round((deg - d) * 60);
+    // A rounded 60' carries into the next whole degree (e.g. 42.999...deg -> "43°00'", not "42°60'").
+    const carry = m >= 60;
+    el.value = (carry ? d + 1 : d) + '°' + String(carry ? 0 : m).padStart(2, '0') + "'";
+  } else {
+    el.value = deg.toFixed(2);
+  }
+}
+
+// ── Coordinate input masking: the . / ° / ' punctuation is a fixed, non-deletable part of the
+// display format above - the user can freely edit the digit runs around it, but typing or
+// deleting can never touch the separator itself, which is what keeps free input restricted to
+// plain digits.
+const LOC_FIXED_CHARS = ['.', '°', "'"];
+function _locSelectionHasFixedChar(el) {
+  if (el.selectionStart === el.selectionEnd) return false;
+  return [...el.value.slice(el.selectionStart, el.selectionEnd)].some((c) => LOC_FIXED_CHARS.includes(c));
+}
+function _locInputKeydown(e) {
+  if (e.ctrlKey || e.metaKey) return;   // let copy/select-all/etc. shortcuts through untouched
+  const el = e.target;
+  const navKeys = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', 'Escape'];
+  if (navKeys.includes(e.key)) return;
+
+  // Up/Down steps the field by a whole degree, same _locArrowStep() rounding as the ◀/▶ Location
+  // buttons below - one shared stepping convention regardless of which control the user reaches for.
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const dir = e.key === 'ArrowUp' ? 1 : -1;
+    if (el.id === 'inpLat') applyLat(_locArrowStep(LAT, dir));
+    else if (el.id === 'inpLong') applyLong(_locArrowStep(LONG, dir));
+    return;
+  }
+
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    if (_locSelectionHasFixedChar(el)) { e.preventDefault(); return; }
+    const pos = e.key === 'Backspace' ? el.selectionStart - 1 : el.selectionStart;
+    if (pos >= 0 && pos < el.value.length && LOC_FIXED_CHARS.includes(el.value[pos])) {
+      // Skip over the fixed character instead of deleting it - a second press then reaches the digit beyond it.
+      e.preventDefault();
+      const newPos = e.key === 'Backspace' ? pos : pos + 1;
+      el.setSelectionRange(newPos, newPos);
+    }
+    return;
+  }
+  if (e.key.length === 1) {   // any single printable character - digits are the only ones let through
+    if (_locSelectionHasFixedChar(el)) { e.preventDefault(); return; }
+    if (!/[0-9]/.test(e.key)) e.preventDefault();
+  }
+}
+document.getElementById('inpLat').addEventListener('keydown', _locInputKeydown);
+document.getElementById('inpLong').addEventListener('keydown', _locInputKeydown);
+// Pasted text could freely inject non-digit junk or overwrite a fixed separator - simplest safe
+// behaviour is to just block it rather than trying to sanitise+splice arbitrary pasted content.
+function _locInputPaste(e) { e.preventDefault(); }
+document.getElementById('inpLat').addEventListener('paste', _locInputPaste);
+document.getElementById('inpLong').addEventListener('paste', _locInputPaste);
+// Parses whatever the user actually typed into #inpLat/#inpLong back into plain decimal degrees -
+// only meaningful in DM mode (DEC mode's text is already just digits + one fixed "."). Lenient
+// about the exact separators typed: "42°48'", "42 48", "42:48" and a bare "42.8" are all accepted.
+function _locParseInput(text) {
+  if (_locFormat !== 'dm') return NaN;
+  const m = String(text).trim().match(/^(\d+(?:\.\d+)?)\s*[°:\s]?\s*(\d+(?:\.\d+)?)?\s*['′]?\s*$/);
+  if (!m) return NaN;
+  const deg = parseFloat(m[1]);
+  const min = m[2] !== undefined ? parseFloat(m[2]) : 0;
+  return deg + min / 60;
+}
+function _locParseValue(raw) {
+  const v = _locParseInput(raw);
+  return isNaN(v) ? (parseFloat(raw) || 0) : v;
+}
+function _setLocFormat(fmt) {
+  _locFormat = fmt;
+  document.getElementById('btnLocDec').className = 'ns-btn' + (fmt === 'dec' ? ' active' : '');
+  document.getElementById('btnLocDM').className = 'ns-btn' + (fmt === 'dm' ? ' active' : '');
+  _locFormatInput('inpLat', LAT);
+  _locFormatInput('inpLong', LONG);
+}
+document.getElementById('btnLocDec').addEventListener('click', () => _setLocFormat('dec'));
+document.getElementById('btnLocDM').addEventListener('click', () => _setLocFormat('dm'));
+// Applies the masked format to the two fields' own initial HTML values (plain type="number",
+// 1 dp) right away, so the very first paint already matches every later reformat instead of
+// briefly showing the old unmasked style until the first edit/mode-switch triggers one.
+_locFormatInput('inpLat', LAT);
+_locFormatInput('inpLong', LONG);
+
 // ─── Latitude control ──────────────────────────────────────────────────────
-// Precision/display format is normally a flat 0.1deg step (.toFixed(1)) - Eclipse's own DEC/DM
-// location-format toggle (js/render-eclipse.js) overrides both, ONLY while Eclipse is active, via
-// _eclipseLocStepDeg()/_eclipseFormatLocInput(); Analyzer itself never sees a behaviour change.
 function applyLat(val) {
-  const step = (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1;
+  const step = _locStepDeg();
   // Clamp 0-90, then round to the active step - the extra 1e6 rounding just clears float noise
   // (e.g. 42.849999999999994) that Math.round(x/step)*step can otherwise leave behind.
   LAT = Math.round(Math.round(Math.max(0, Math.min(90, val)) / step) * step * 1e6) / 1e6;
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseFormatLocInput === 'function') {
-    _eclipseFormatLocInput('inpLat', LAT);
-  } else {
-    document.getElementById('inpLat').value = LAT.toFixed(1);
-  }
+  _locFormatInput('inpLat', LAT);
 
   const atEquator = LAT === 0;
   document.getElementById('btnN').disabled = atEquator;
@@ -471,27 +580,20 @@ function applyLat(val) {
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
 }
 
-// _eclipseParseLocValue reads DM-format text ("42°48'") back into decimal degrees while Eclipse's
-// DM mode is active; otherwise it's just parseFloat, same as before this existed.
-function _parseLocValue(raw) {
-  return (typeof _eclipseParseLocValue === 'function') ? _eclipseParseLocValue(raw) : (parseFloat(raw) || 0);
-}
 document.getElementById('inpLat').addEventListener('change', (e) => {
-  applyLat(_parseLocValue(e.target.value));
+  applyLat(_locParseValue(e.target.value));
 });
 document.getElementById('inpLat').addEventListener('blur', (e) => {
-  applyLat(_parseLocValue(e.target.value));
+  applyLat(_locParseValue(e.target.value));
 });
 document.getElementById('inpLat').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLat(_parseLocValue(e.target.value));
+  if (e.key === 'Enter') applyLat(_locParseValue(e.target.value));
 });
 document.getElementById('btnLatDec').addEventListener('click', () => {
-  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  applyLat((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LAT, -1) : LAT - 0.1);
+  applyLat(_locArrowStep(LAT, -1));
 });
 document.getElementById('btnLatInc').addEventListener('click', () => {
-  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  applyLat((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LAT, 1) : LAT + 0.1);
+  applyLat(_locArrowStep(LAT, 1));
 });
 document.getElementById('btnN').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -518,13 +620,9 @@ document.getElementById('btnS').addEventListener('click', () => {
 // Mirrors latitude exactly: UI edits a 0-180 magnitude + E/W state (lonHemisphere); only the
 // signed combination (lonHemisphere * LONG) ever gets serialized to presets.json.
 function applyLong(val) {
-  const step = (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseLocStepDeg === 'function') ? _eclipseLocStepDeg() : 0.1;
+  const step = _locStepDeg();
   LONG = Math.round(Math.round(Math.max(0, Math.min(180, val)) / step) * step * 1e6) / 1e6;
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseFormatLocInput === 'function') {
-    _eclipseFormatLocInput('inpLong', LONG);
-  } else {
-    document.getElementById('inpLong').value = LONG.toFixed(1);
-  }
+  _locFormatInput('inpLong', LONG);
   // LONG doesn't move the "enters the can" interval (sunRayState/sunDayRange are longitude-
   // independent), only the displayed time-of-day text (standard/mean mode) - so just resync the
   // slider's own labels, no need to re-clamp sunTimeHours or rebuild its track fill.
@@ -535,21 +633,19 @@ function applyLong(val) {
 }
 
 document.getElementById('inpLong').addEventListener('change', (e) => {
-  applyLong(_parseLocValue(e.target.value));
+  applyLong(_locParseValue(e.target.value));
 });
 document.getElementById('inpLong').addEventListener('blur', (e) => {
-  applyLong(_parseLocValue(e.target.value));
+  applyLong(_locParseValue(e.target.value));
 });
 document.getElementById('inpLong').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLong(_parseLocValue(e.target.value));
+  if (e.key === 'Enter') applyLong(_locParseValue(e.target.value));
 });
 document.getElementById('btnLongDec').addEventListener('click', () => {
-  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  applyLong((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LONG, -1) : LONG - 0.1);
+  applyLong(_locArrowStep(LONG, -1));
 });
 document.getElementById('btnLongInc').addEventListener('click', () => {
-  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
-  applyLong((eclipseIsActive && typeof _eclipseLocArrowStep === 'function') ? _eclipseLocArrowStep(LONG, 1) : LONG + 0.1);
+  applyLong(_locArrowStep(LONG, 1));
 });
 document.getElementById('btnE').addEventListener('click', () => {
   lonHemisphere = 1;
