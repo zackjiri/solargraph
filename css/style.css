@@ -788,15 +788,16 @@
   .ns-btn.active-s { background: var(--accent2); color: #000; font-weight: bold; }
   .ns-btn:disabled { opacity: 0.3; cursor: default; }
 
-  /* Eclipse's own Location-format toggle (DEC/DM) - its own row below the "Location" heading,
-     flush-left like every other row in this section (no alignment trick needed against N/S/E/W
-     below it). Shorter than the shared .ns-toggle default, and both halves the same fixed width
-     instead of following each label's own text length ("DEC" vs "DM"). width:fit-content because,
-     unlike N/S/E/W (flex children of their own .lat-row, naturally shrink-to-fit), this is now a
-     standalone block-level div - without it, .ns-toggle's plain display:flex would stretch it to
-     the sidebar's full width instead of hugging its own two buttons. */
-  #eclipseLocFormatRow { width: fit-content; }
-  #eclipseLocFormatRow .ns-btn {
+  /* Location-format toggle (DEC/DM), shared by every mode (originally Eclipse-only, promoted
+     build 36_1) - its own row below the "Location" heading, flush-left like every other row in
+     this section (no alignment trick needed against N/S/E/W below it). Shorter than the shared
+     .ns-toggle default, and both halves the same fixed width instead of following each label's
+     own text length ("DEC" vs "DM"). width:fit-content because, unlike N/S/E/W (flex children of
+     their own .lat-row, naturally shrink-to-fit), this is now a standalone block-level div -
+     without it, .ns-toggle's plain display:flex would stretch it to the sidebar's full width
+     instead of hugging its own two buttons. */
+  #locFormatRow { width: fit-content; }
+  #locFormatRow .ns-btn {
     width: 22px;
     height: 14px;
     line-height: 14px;
