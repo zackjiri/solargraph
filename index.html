@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug51">
+  <link rel="stylesheet" href="css/style.css?perfdebug52">
 </head>
 <body>
 
@@ -564,14 +564,14 @@
           <span class="slider-label" style="color:var(--accent-red)">Location</span>
         </div>
       </div>
-      <!-- Eclipse-only - shown/hidden by enterEclipse()/exitEclipse() (render-eclipse.js). Decimal
-           degrees (2 dp) vs degrees+arc-minutes for #inpLat/#inpLong; resets to DEC whenever
-           Eclipse is exited so Analyzer's own Location fields are never affected. Own row (not
-           inline with the "Location" heading) so it just sits flush-left like every other row here
-           - no alignment trick needed against N/S/E/W below it. -->
-      <div class="ns-toggle" id="eclipseLocFormatRow" style="display:none;margin-top:2px" title="Location display format">
-        <button class="ns-btn active" id="btnEclipseLocDec" title="Decimal degrees">DEC</button>
-        <button class="ns-btn" id="btnEclipseLocDM" title="Degrees + arc-minutes">DM</button>
+      <!-- Shared across every mode (originally Eclipse-only, promoted build 36_1 - js/controls.js
+           owns the format state/masking/parsing now, see _locFormatInput() and friends). Decimal
+           degrees (2 dp) vs degrees+arc-minutes for #inpLat/#inpLong. Own row (not inline with the
+           "Location" heading) so it just sits flush-left like every other row here - no alignment
+           trick needed against N/S/E/W below it. -->
+      <div class="ns-toggle" id="locFormatRow" style="margin-top:2px" title="Location display format">
+        <button class="ns-btn active" id="btnLocDec" title="Decimal degrees">DEC</button>
+        <button class="ns-btn" id="btnLocDM" title="Degrees + arc-minutes">DM</button>
       </div>
       <div class="lat-row" style="margin-top:2px" title="Observation latitude">
         <button class="lat-btn" id="btnLatDec">◀</button>
@@ -699,18 +699,18 @@
 
 <script src="js/core.js"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug51"></script>
+<script src="js/controls.js?perfdebug52"></script>
 <script src="js/render-sungraph.js"></script>
-<script src="js/render-3d.js?perfdebug51"></script>
+<script src="js/render-3d.js?perfdebug52"></script>
 <script src="js/render-skydome.js"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug51"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug51"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug51"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug51"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug51"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug51"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug51"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug51"></script>
-<script src="js/render-eclipse.js?perfdebug51"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug52"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug52"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug52"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug52"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug52"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug52"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug52"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug52"></script>
+<script src="js/render-eclipse.js?perfdebug52"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@
     "horizon_mm":  -6.0,
     "radius_mm":   33.0,
     "scan_w_mm":  178,
-    "latitude":    49.2,
+    "latitude":    49.3,
     "hemisphere":  "N",
     "longitude":   16.6,
     "time_zone":   1
@@ -54,7 +54,7 @@
     "horizon_mm":   3.0,
     "radius_mm":   36.5,
     "scan_w_mm":  178,
-    "latitude":    49.2,
+    "latitude":    49.3,
     "hemisphere":  "N",
     "longitude":   16.6,
     "time_zone":   1
@@ -90,7 +90,7 @@
     "horizon_mm":  -2.9,
     "radius_mm":   33.0,
     "scan_w_mm":  178,
-    "latitude":    49.0,
+    "latitude":    49.2,
     "hemisphere":  "N",
     "longitude":   16.6,
     "time_zone":   1
@@ -114,7 +114,7 @@
     "horizon_mm":  -2.9,
     "radius_mm":   33.0,
     "scan_w_mm":  178,
-    "latitude":    49.0,
+    "latitude":    49.2,
     "hemisphere":  "N",
     "longitude":   16.6,
     "time_zone":   1
@@ -126,7 +126,7 @@
     "horizon_mm":   1.0,
     "radius_mm":   32.0,
     "scan_w_mm":  178,
-    "latitude":    49.3,
+    "latitude":    49.2,
     "hemisphere":  "N",
     "longitude":   16.6,
     "time_zone":   1
@@ -150,7 +150,7 @@
     "horizon_mm":   -1.0,
     "radius_mm":   33.0,
     "scan_w_mm":  178,
-    "latitude":    49.6,
+    "latitude":    49.5,
     "hemisphere":  "N",
     "longitude":   16.3,
     "time_zone":   1
