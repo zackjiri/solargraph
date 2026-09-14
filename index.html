@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug59">
+  <link rel="stylesheet" href="css/style.css?perfdebug60">
 </head>
 <body>
 
@@ -151,63 +151,71 @@
 
   <!-- 3D Can orientation panel (Analyzer mode) -->
   <div id="can3dPanel">
-    <div class="panel-title">3D Visualisation</div>
-    <div id="can3dWrap">
-      <canvas id="can3d" width="205" height="250"></canvas>
-      <div id="theaterPlaceholder">
-        <span>[theater mode]</span>
-      </div>
-      <button id="btn3DTheater" title="Theater mode">
-        <svg id="theaterIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <!-- expand: arrows pointing outward -->
-          <polyline points="1,4 1,1 4,1"/><line x1="1" y1="1" x2="4.5" y2="4.5"/>
-          <polyline points="11,8 11,11 8,11"/><line x1="11" y1="11" x2="7.5" y2="7.5"/>
-        </svg>
-      </button>
-    </div>
-    <div id="can3dLegend">
-      <div class="leg-row"><span class="leg-sym" style="color:#e8a020">●</span><span>pinhole</span></div>
-      <div class="leg-row" id="legAxisRow"><span class="leg-sym" id="legAxisSym" style="color:#d8e8f8">→</span><span id="legAxisLbl">optical axis</span></div>
-      <div class="leg-row"><span class="leg-line dashed" style="border-color:#88ccaa"></span><span>pinhole level</span></div>
-      <div class="leg-row"><span class="leg-line" style="border-color:#5aaad0"></span><span id="legPaperSpan">photopaper</span></div>
-      <div class="leg-row"><span class="leg-line dashed" style="border-color:#e8a020"></span><span>pinhole zone</span></div>
-      <div class="leg-row"><span class="leg-sym" style="color:#4080e8">Z</span><span>zenith axis</span></div>
-      <div class="leg-row" style="gap:3px">
-        <span class="leg-sym" id="legS" style="color:#e84040;flex:0 0 14px">S</span>
-        <span class="leg-sym" id="legN" style="color:#e87070;flex:0 0 14px">N</span>
-        <span class="leg-sym" style="color:#50dc78;flex:0 0 14px">W</span>
-        <span class="leg-sym" style="color:#78c878;flex:0 0 14px">E</span>
-        <span>compass rose</span>
-      </div>
-      <label id="claddingRow" title="Toggle cylinder cladding on/off">
-        <input type="checkbox" id="chkCladding" checked>
-        <span>cladding</span>
-      </label>
-      <button id="btnNoon" title="Show the sun path for the custom date">
-        <span id="noonChkIcon">☐</span>
-        <span>SUN PATH (CUSTOM DATE)</span>
-        <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
-      </button>
-      <div id="sunAnimCtl" style="display:none">
-        <button id="btnSunPlay" title="Animate the sunlight across the day (sunrise → sunset)">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
-          <span>ANIMATE SUNLIGHT</span>
+    <!-- Wrapped in its own collapsible-section (not a bare sibling group like before) so the
+         "3D Visualisation" triangle can hide exactly #can3dWrap + #can3dLegend without also
+         reaching into #can3dButtons ("Preset") right below it - same collapse mechanism as the
+         right-hand .sidebar-section panels, just under a shared .collapsible-section marker since
+         this panel's own spacing (title margin-bottom, #can3dButtons margin-top, etc.) is already
+         hand-tuned and shouldn't inherit .sidebar-section's own padding/gap. -->
+    <div class="collapsible-section" id="can3dVisSection">
+      <div class="panel-title"><span>3D Visualisation</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
+      <div id="can3dWrap">
+        <canvas id="can3d" width="205" height="250"></canvas>
+        <div id="theaterPlaceholder">
+          <span>[theater mode]</span>
+        </div>
+        <button id="btn3DTheater" title="Theater mode">
+          <svg id="theaterIcon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <!-- expand: arrows pointing outward -->
+            <polyline points="1,4 1,1 4,1"/><line x1="1" y1="1" x2="4.5" y2="4.5"/>
+            <polyline points="11,8 11,11 8,11"/><line x1="11" y1="11" x2="7.5" y2="7.5"/>
+          </svg>
         </button>
-        <div class="slider-row" style="margin-top:16px">
-          <div class="slider-header">
-            <span class="slider-label" style="color:#f0d040">Time</span>
-            <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
-          </div>
-          <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%" title="Scrub the sun's position across the selected day">
-          <div class="sun-rise-set">
-            <span>RISE <span id="lblSunRise">—</span></span>
-            <span>SET <span id="lblSunSet">—</span></span>
+      </div>
+      <div id="can3dLegend">
+        <div class="leg-row"><span class="leg-sym" style="color:#e8a020">●</span><span>pinhole</span></div>
+        <div class="leg-row" id="legAxisRow"><span class="leg-sym" id="legAxisSym" style="color:#d8e8f8">→</span><span id="legAxisLbl">optical axis</span></div>
+        <div class="leg-row"><span class="leg-line dashed" style="border-color:#88ccaa"></span><span>pinhole level</span></div>
+        <div class="leg-row"><span class="leg-line" style="border-color:#5aaad0"></span><span id="legPaperSpan">photopaper</span></div>
+        <div class="leg-row"><span class="leg-line dashed" style="border-color:#e8a020"></span><span>pinhole zone</span></div>
+        <div class="leg-row"><span class="leg-sym" style="color:#4080e8">Z</span><span>zenith axis</span></div>
+        <div class="leg-row" style="gap:3px">
+          <span class="leg-sym" id="legS" style="color:#e84040;flex:0 0 14px">S</span>
+          <span class="leg-sym" id="legN" style="color:#e87070;flex:0 0 14px">N</span>
+          <span class="leg-sym" style="color:#50dc78;flex:0 0 14px">W</span>
+          <span class="leg-sym" style="color:#78c878;flex:0 0 14px">E</span>
+          <span>compass rose</span>
+        </div>
+        <label id="claddingRow" title="Toggle cylinder cladding on/off">
+          <input type="checkbox" id="chkCladding" checked>
+          <span>cladding</span>
+        </label>
+        <button id="btnNoon" title="Show the sun path for the custom date">
+          <span id="noonChkIcon">☐</span>
+          <span>SUN PATH (CUSTOM DATE)</span>
+          <input type="checkbox" id="chk3DCulmination" style="display:none;pointer-events:none" tabindex="-1">
+        </button>
+        <div id="sunAnimCtl" style="display:none">
+          <button id="btnSunPlay" title="Animate the sunlight across the day (sunrise → sunset)">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+            <span>ANIMATE SUNLIGHT</span>
+          </button>
+          <div class="slider-row" style="margin-top:16px">
+            <div class="slider-header">
+              <span class="slider-label" style="color:#f0d040">Time</span>
+              <span class="slider-val" style="color:#f0d040" id="lblSunTime">12:00</span>
+            </div>
+            <input type="range" id="rngSunTime" min="6" max="18" step="0.01" value="12" style="width:100%" title="Scrub the sun's position across the selected day">
+            <div class="sun-rise-set">
+              <span>RISE <span id="lblSunRise">—</span></span>
+              <span>SET <span id="lblSunSet">—</span></span>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div id="can3dButtons">
-      <div class="panel-title" style="align-self:flex-start;margin-bottom:3px">Preset</div>
+    <div class="collapsible-section" id="can3dButtons">
+      <div class="panel-title" style="align-self:flex-start;margin-bottom:3px"><span>Preset</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <div class="can3d-btn-row">
         <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35" title="Load a saved calibration file">Import</button>
         <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35" title="Save the current calibration to a file">Export</button>
@@ -707,20 +715,20 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.9.11
 </div>
 
-<script src="js/core.js?perfdebug59"></script>
+<script src="js/core.js?perfdebug60"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug59"></script>
-<script src="js/render-sungraph.js?perfdebug59"></script>
-<script src="js/render-3d.js?perfdebug59"></script>
-<script src="js/render-skydome.js?perfdebug59"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug59"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug59"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug59"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug59"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug59"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug59"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug59"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug59"></script>
-<script src="js/render-eclipse.js?perfdebug59"></script>
+<script src="js/controls.js?perfdebug60"></script>
+<script src="js/render-sungraph.js?perfdebug60"></script>
+<script src="js/render-3d.js?perfdebug60"></script>
+<script src="js/render-skydome.js?perfdebug60"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug60"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug60"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug60"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug60"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug60"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug60"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug60"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug60"></script>
+<script src="js/render-eclipse.js?perfdebug60"></script>
 </body>
 </html>
