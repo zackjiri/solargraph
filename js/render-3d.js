@@ -1190,6 +1190,11 @@ function setDisplaySectionEnabled(enabled, keepIds) {
   const keep = (keepIds || []).concat('btnChmiInfo');
   section.style.opacity = ''; section.style.pointerEvents = '';   // control per-row now
   section.querySelectorAll('input, button').forEach(el => {
+    // The collapse triangle (.section-toggle) stays clickable regardless of lock state, same
+    // reasoning as btnChmiInfo above - collapsing the section is a layout action, not one of the
+    // Display controls this lock is actually about, so 3D Model/Sun Graph/Sky Dome disabling this
+    // section shouldn't also disable the ability to collapse it out of the way.
+    if (el.classList.contains('section-toggle')) return;
     el.disabled = !(enabled || keep.includes(el.id));
   });
   section.querySelectorAll('.chk-row, .slider-row, #btnHeatmap').forEach(row => {

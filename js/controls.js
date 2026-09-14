@@ -2057,12 +2057,15 @@ document.addEventListener('click', (e) => {
 
 // ─── Collapsible sidebar sections ────────────────────────────────────────────
 // One shared handler for every .section-toggle triangle (Generation/Image/View in the left
-// Gallery panel, Display/Calibration in the right sidebar - see .sidebar-title in index.html) -
-// no per-section wiring needed since they're all the same toggle-the-parent-section behavior.
+// Gallery panel, Display/Calibration in the right sidebar, 3D Visualisation/Preset in #can3dPanel -
+// see .sidebar-title/.collapsible-section in index.html) - no per-section wiring needed since
+// they're all the same toggle-the-parent-section behavior. .sidebar-section and .collapsible-section
+// are two different marker classes (not one, see css/style.css) because the latter's containers
+// already have their own hand-tuned spacing that .sidebar-section's padding/gap would disturb.
 document.querySelectorAll('.section-toggle').forEach((btn) => {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const section = btn.closest('.sidebar-section');
+    const section = btn.closest('.sidebar-section, .collapsible-section');
     if (!section) return;
     const collapsed = section.classList.toggle('collapsed');
     btn.textContent = collapsed ? '▶' : '▼';
