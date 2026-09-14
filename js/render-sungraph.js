@@ -39,14 +39,19 @@ function updateViewButtons() {
 
   // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome/Eclipse).
   const imgLeg = document.getElementById('imgLegendWrap');
-  if (imgLeg) {
-    const showImgLeg = currentMode === 'analyzer'
-      && !(typeof theaterMode3D !== 'undefined' && theaterMode3D)
-      && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
-      && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
-      && !eclipseIsActive;
-    imgLeg.style.display = showImgLeg ? 'flex' : 'none';
-  }
+  const showImgLeg = currentMode === 'analyzer'
+    && !(typeof theaterMode3D !== 'undefined' && theaterMode3D)
+    && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
+    && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
+    && !eclipseIsActive;
+  if (imgLeg) imgLeg.style.display = showImgLeg ? 'flex' : 'none';
+
+  // Image metadata "i" (top-right canvas corner, see #btnMeta in index.html) - shown in Gallery
+  // (any image there may carry metadata) and in the plain Analyzer Image sub-view (same condition
+  // as the Image-mode legend above), hidden everywhere else (3D Model/Sun Graph/Sky Dome/Eclipse -
+  // none of those are "looking at one photo" in the sense metadata applies to).
+  const btnMeta = document.getElementById('btnMeta');
+  if (btnMeta) btnMeta.style.display = (currentMode === 'gallery' || showImgLeg) ? 'flex' : 'none';
 
   // Single chokepoint for every sub-view enter/exit (3D Model, Sun Graph, Sky Dome, Image, Gallery
   // via setMode()) - SSV10M/T (controls.js) are Image-mode-only, same scope as imgLeg just above,

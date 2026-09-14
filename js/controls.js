@@ -2055,3 +2055,17 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// ─── Collapsible sidebar sections ────────────────────────────────────────────
+// One shared handler for every .section-toggle triangle (Generation/Image/View in the left
+// Gallery panel, Display/Calibration in the right sidebar - see .sidebar-title in index.html) -
+// no per-section wiring needed since they're all the same toggle-the-parent-section behavior.
+document.querySelectorAll('.section-toggle').forEach((btn) => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const section = btn.closest('.sidebar-section');
+    if (!section) return;
+    const collapsed = section.classList.toggle('collapsed');
+    btn.textContent = collapsed ? '▶' : '▼';
+  });
+});
+

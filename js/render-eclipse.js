@@ -1255,7 +1255,7 @@ function _eclipseRenderCatalogGrid() {
       if (window.ECLIPSE_GALLERY && window.ECLIPSE_GALLERY[ev.id]) {
         const badge = document.createElement('img');
         badge.className = 'eclipse-tile-gallery-badge';
-        badge.src = 'icon_gallery.png';
+        badge.src = 'img/eclipse/icon_gallery.png';
         badge.alt = 'Photo gallery available';
         tile.appendChild(badge);
       }
