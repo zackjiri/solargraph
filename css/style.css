@@ -1236,7 +1236,13 @@
     align-items: flex-start;
     padding: 8px 10px 4px 10px;          /* right padding 10px – prevents clipping of can3dWrap */
     gap: 0;
-    overflow-y: auto;                    /* scrollbar only when needed → doesn't waste width */
+    /* Always-on, not auto ("only when needed") - matches .sidebar/.gallery-panel (both already
+       overflow-y:scroll, "deterministic across browsers"). With collapsible sections (§16.5/§16.6)
+       this panel can now go from needing to scroll to not needing to, same as those two - auto's
+       "don't waste width" would then un-reserve the scrollbar's width right as content shrinks,
+       reflowing the whole panel (including the now-differently-positioned collapse triangles) out
+       from under the user's cursor. Fixed cost, same as the other two panels already pay. */
+    overflow-y: scroll;
     overflow-x: hidden;
     min-height: 0;
     -webkit-overflow-scrolling: touch;
@@ -1246,6 +1252,14 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    /* Explicit, not relying on the parent's align-items to stretch this row: #can3dVisSection sets
+       align-items:flex-start (needed for #can3dWrap's own fixed-width canvas box), which would
+       otherwise shrink-wrap this row to its text instead of spanning full width - leaving the
+       collapse triangle stranded right next to the label instead of flush with the panel edge. An
+       explicit width wins over align-self's sizing regardless of the container's align-items or any
+       stray align-self on the title itself (Preset's had a leftover align-self:flex-start from
+       before this row carried a toggle button - see below). */
+    width: 100%;
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.18em;
@@ -1548,16 +1562,23 @@
     flex-direction: column;
     gap: 4px;
     margin-top: 36px;
-    padding: 2px 10px 0 0;     /* right 10px mirrors panel left padding */
+    padding: 2px 0 0 0;
   }
+  /* The 10px right inset ("mirrors panel left padding") used to live on #can3dButtons itself, which
+     pulled the "Preset" title in along with the button rows below it, stranding its collapse
+     triangle short of the panel's true edge (unlike every other section's, flush to it). Moved onto
+     just the rows that actually want the inset, so the title can span the full width like its
+     siblings while Import/Export/Load new image keep their existing look untouched. */
   .can3d-btn-row {
     display: flex;
     gap: 4px;
+    margin-right: 10px;
   }
   .can3d-btn-row .sidebar-btn { flex: 1; }
   .can3d-sep {
-    margin: 6px 0;
+    margin: 6px 10px 6px 0;
   }
+  #can3dButtons #btnReset { margin-right: 10px; }
 
   /* Mobile: stack vertically */
   @media (max-width: 640px) {
