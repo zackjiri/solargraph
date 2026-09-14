@@ -943,10 +943,18 @@ function updateSunWave() {
 }
 
 // ─── Day animation: sun ray sweeping sunrise → sunset (custom date) ───────────
-// Solar time string "H:MM"
+// Solar time string "H:MM" - callers pass values already reprojected through displayHour()
+// (True/Mean/Standard), which is a straight UTC-offset/equation-of-time addition with no day-
+// rollover awareness of its own, so the result routinely lands outside [0,24) - e.g. Standard
+// time near the North Pole with a timezone far from the local longitude previously showed things
+// like "SET 35:00" instead of wrapping into the next day's "11:00" (found via a real-world
+// report). Wrapping must happen AFTER rounding to the minute, not before - a value like
+// 23.99999999 is correctly < 24 going in, but ROUNDS to a whole 24; wrapping first would leave
+// that unwrapped and printed as "24:00" instead of "00:00".
 function fmtSolarTime(t) {
   let h = Math.floor(t), m = Math.round((t - h) * 60);
   if (m === 60) { h += 1; m = 0; }
+  h = ((h % 24) + 24) % 24;
   return h + ':' + String(m).padStart(2, '0');
 }
 // Sunrise/sunset solar times for the current custom date (symmetric around noon).

@@ -589,7 +589,12 @@ function _skyDomeHourDots(ctx, layout, month, day, color, withLabels) {
   const doy   = dayOfYear(month, day);
   const delta = sunDeclination(doy);
   const phi   = effectiveLat() * hemisphere;   // true-compass calculation - see _skyDomeArcPoints
-  for (let hDeg = -180; hDeg <= 180; hDeg += 15) {
+  // hDeg spans a full circle of hour angle (-180..+180 = -12h..+12h); -180 and +180 are the SAME
+  // hour angle modulo 360 (sunPosition() gives identical az/el for both), so the loop must stop
+  // short of +180 - otherwise the 0h/24h point gets drawn (dot + label) twice, right on top of
+  // itself. Most visible at the poles, where a date's whole curve sits above the horizon and every
+  // hour dot renders (same fix as core.js's equinox hour dots, §21.51).
+  for (let hDeg = -180; hDeg < 180; hDeg += 15) {
     const s = sunPosition(hDeg * Math.PI / 180, delta, phi);
     if (s.el < 0) continue;
     const p = _skyDomeProject(layout, s.az, s.el);
@@ -608,7 +613,13 @@ function _skyDomeHourDots(ctx, layout, month, day, color, withLabels) {
       // hemisphere image convention (not applicable to this true-compass view).
       const trueHour  = 12 + hDeg / 15;
       const shownHour = displayHour(trueHour, doy);
-      const hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
+      // displayHour() is a pure additive shift (timezone + equation of time) with no day-rollover
+      // awareness, so shownHour routinely lands outside [0,24) - wrap AFTER rounding to the minute
+      // (not before - a value like 23.9999999 is validly <24 going in but rounds to a literal 24),
+      // same fix and same reasoning as fmtSolarTime()/_sgHM()/core.js's equinox hour dots (§21.50/§21.51).
+      let hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
+      if (mm === 60) { hh += 1; mm = 0; }
+      hh = ((hh % 24) + 24) % 24;
       const label = hh + ':' + String(mm).padStart(2, '0');
       ctx.font = "bold 10px 'Share Tech Mono'";
       ctx.fillStyle = _sd3WithAlpha(color.replace(/rgba\(([^,]+,[^,]+,[^,]+),[^)]+\)/, 'rgba($1,1)'), dim);

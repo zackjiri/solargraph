@@ -693,7 +693,12 @@ function drawSunArc(W, H, month, day, style) {
 
   // Hourly dots and labels (equinox only)
   if (style.showHourDots) {
-    for (let hDeg = -12 * 15; hDeg <= 12 * 15; hDeg += 15) {
+    // hDeg spans a full circle of hour angle (-180..+180 = -12h..+12h); -180 and +180 are the
+    // SAME hour angle modulo 360 (sunPosition() gives identical el/beta for both), so the loop
+    // must stop short of +180 - otherwise the 0h/24h point is plotted and labeled twice, right on
+    // top of itself (most visible at extreme latitudes like the poles, where the whole circle sits
+    // above the horizon and every hour dot is drawn).
+    for (let hDeg = -12 * 15; hDeg < 12 * 15; hDeg += 15) {
       const Hrad = hDeg * Math.PI / 180;
       const { el, beta } = sunPosition(Hrad, delta, phi);
       if (el < 0) continue;
@@ -701,10 +706,16 @@ function drawSunArc(W, H, month, day, style) {
       if (!pos) continue;
       if (pos.px < 0 || pos.px > W || pos.py < 0 || pos.py > H) continue;
 
-      // Solar hour label: mirror for southern hemisphere, then convert to the selected display mode
+      // Solar hour label: mirror for southern hemisphere, then convert to the selected display mode.
+      // displayHour() is a pure additive shift (timezone + equation of time) with no day-rollover
+      // awareness, so shownHour routinely lands outside [0,24) - wrap AFTER rounding to the minute
+      // (not before - a value like 23.9999999 is validly <24 going in but rounds to a literal 24),
+      // same fix and same reasoning as fmtSolarTime()/_sgHM() (render-3d.js/render-sungraph.js).
       const trueHour = 12 + (hemisphere >= 0 ? hDeg : -hDeg) / 15;
       const shownHour = displayHour(trueHour, doy);
-      const hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
+      let hh = Math.floor(shownHour), mm = Math.round((shownHour - hh) * 60);
+      if (mm === 60) { hh += 1; mm = 0; }
+      hh = ((hh % 24) + 24) % 24;
       const label = hh + ':' + String(mm).padStart(2, '0');
 
       ctx.beginPath();
