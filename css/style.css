@@ -358,18 +358,22 @@
     box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   }
 
-  /* Invert button – in the corner of the canvas container.
-     +25% size baked directly (was zoom: 1.25 in 24_6 → blurred its backdrop-filter). */
+  /* Invert button – in the corner of the canvas container. Top-LEFT (not right) - the opposite
+     corner now belongs to #btnMeta (image metadata "i"), see below.
+     48px - matches #splitHandle::after, the circular drag-handle with arrows on both sides that
+     sits on the split divider itself, so the two "swap/resize the split" affordances read as the
+     same size (font-size scaled down with it, same ~0.458 ratio - which happens to land on
+     #splitHandle::after's own 22px exactly). */
   #btnSplitInvert {
     position: absolute;
-    top: 12.5px; right: 12.5px;
-    width: 60px; height: 60px;
+    top: 12.5px; left: 12.5px;
+    width: 48px; height: 48px;
     border-radius: 50%;
     border: 1.5px solid var(--accent2);
     background: rgba(32,160,232,0.18);
     color: var(--accent2);
     font-family: var(--mono);
-    font-size: 27.5px;
+    font-size: 22px;
     cursor: pointer;
     display: none;
     align-items: center; justify-content: center;
@@ -455,6 +459,9 @@
   }
 
   .sidebar-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.18em;
@@ -462,6 +469,36 @@
     text-transform: uppercase;
     margin-bottom: 2px;
   }
+
+  /* Collapse / expand triangle - one per .sidebar-title, same green as the heading text it sits
+     next to. Toggles .collapsed on the enclosing .sidebar-section (delegated click handler,
+     controls.js); text stays uppercase/letter-spaced via the parent, so reset that on the glyph. */
+  .section-toggle {
+    background: none;
+    border: none;
+    color: var(--accent-green);
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: normal;
+    text-transform: none;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.75;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .section-toggle:hover { opacity: 1; }
+
+  /* Collapsed section: hide everything but the title row (which stays, so it can be expanded
+     again). Instant, not animated - matches most of this app's own show/hide toggles (the
+     transition-based collapse used by #sgLegend/#imgLegend is reserved for those two).
+     !important is deliberate, not a shortcut: several direct children have their OWN unconditional
+     "shown" rule that would otherwise win on specificity/origin regardless of source order -
+     #calibNonLocationGroup's `display:flex` is an ID selector (beats this plain two-class one),
+     and some sub-rows (e.g. #customDateSubrow, #chmiElemRow) are shown via a JS-set inline style,
+     which beats any non-!important stylesheet rule outright. "Collapsed hides everything inside"
+     needs to win over both cases uniformly, not just the one a bug report happens to have caught. */
+  .sidebar-section.collapsed > :not(.sidebar-title) { display: none !important; }
 
   /* Checkboxes */
   .chk-row {
@@ -1081,22 +1118,33 @@
     opacity: 0.35;
   }
 
-  /* ── Metadata "i" button ── */
+  /* ── Metadata "i" button – top-right corner of the canvas (same floating-badge language as
+     #btnSplitInvert's opposite corner). Shown in Gallery and the plain Analyzer Image sub-view
+     (updateViewButtons(), render-sungraph.js) - display:none is the "not applicable here" state,
+     not the collapsed one. 24px diameter - midway between the button's original 32px circle and
+     the ⓘ character's own built-in ~16px circle it used to draw around (see index.html's SVG,
+     which replaced that character to avoid the two rings stacking). */
   #btnMeta {
-    background: none;
-    border: none;
+    position: absolute;
+    top: 12.5px; right: 12.5px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent2);
+    background: rgba(32,160,232,0.18);
     color: var(--accent2);
     cursor: pointer;
-    font-size: 18px;
     padding: 0;
     line-height: 1;
-    font-family: var(--sans);
-    transition: color 0.15s, transform 0.1s;
-    flex-shrink: 0;
-    opacity: 0.75;
+    display: none;              /* flex, shown by JS */
+    align-items: center; justify-content: center;
+    z-index: 20;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
   }
-  #btnMeta:hover { opacity: 1; transform: scale(1.15); }
-  #btnMeta.active { opacity: 1; color: var(--accent); }
+  #btnMeta:hover { background: rgba(32,160,232,0.32); color: #fff; transform: scale(1.08); }
+  #btnMeta.active { background: rgba(32,160,232,0.40); border-color: #fff; color: #fff; }
 
   /* ── Anchored info popup (metadata "i", CHMI license "i") ── */
   .info-popup {
