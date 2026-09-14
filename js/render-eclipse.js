@@ -1410,8 +1410,15 @@ _eclipseSubWheel.render();
 // Escape mirrors #btnEclipseVisExit - same "close the takeover, go back" convention as 3D Model's
 // own Escape handler (render-3d.js), scoped to Eclipse Visualization specifically so it never fires
 // while just browsing Catalog (which isn't a takeover to "exit" the same way).
+// Skipped while the gallery photo modal (#eclipseGalleryModal, opened from a slider marker) is open -
+// that modal has its own Escape handler below, registered later in the file, so without this guard
+// a single Escape while a photo is open would fire BOTH handlers at once (close the photo AND leave
+// Visualization for the Catalog in the same keypress). The photo is its own, smaller takeover on top
+// of Visualization - Escape should peel that off first, leaving a second Escape (modal now closed)
+// to actually leave Visualization, not skip straight past it.
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && typeof eclipseActive !== 'undefined' && eclipseActive && eclipseSubView === 'visualization') {
+  if (e.key === 'Escape' && typeof eclipseActive !== 'undefined' && eclipseActive && eclipseSubView === 'visualization'
+      && !document.getElementById('eclipseGalleryModal').classList.contains('visible')) {
     _eclipseExitVisualizationToCatalog();
   }
 });
@@ -1556,6 +1563,15 @@ document.getElementById('btnEclipseGreatestPoint').addEventListener('click', () 
   document.getElementById('btnW').className = g.lonHemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
   applyLat(g.lat);
   applyLong(g.lon);
+  // Gallery markers are calibrated to the photos' own shooting location (see _eclipseUpdateGalleryUI
+  // below) - once Location jumps away to the astronomical Greatest Eclipse point, those markers'
+  // times no longer mean anything for where we're now looking, so hide them rather than leave a
+  // stale, no-longer-relevant gallery showing. Same "already showing -> hide again" path the Load
+  // gallery button itself uses when toggled off.
+  if (_eclipseLoadedGallery) {
+    _eclipseLoadedGallery = null;
+    _eclipseUpdateGalleryUI();
+  }
 });
 
 // ── Photo gallery (Load/Hide gallery button) - Visualization-only, and only for an event that has
