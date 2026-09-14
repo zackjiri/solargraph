@@ -497,8 +497,14 @@
      #calibNonLocationGroup's `display:flex` is an ID selector (beats this plain two-class one),
      and some sub-rows (e.g. #customDateSubrow, #chmiElemRow) are shown via a JS-set inline style,
      which beats any non-!important stylesheet rule outright. "Collapsed hides everything inside"
-     needs to win over both cases uniformly, not just the one a bug report happens to have caught. */
-  .sidebar-section.collapsed > :not(.sidebar-title) { display: none !important; }
+     needs to win over both cases uniformly, not just the one a bug report happens to have caught.
+     .collapsible-section (#can3dVisSection/#can3dButtons in #can3dPanel - the left panel's own
+     "3D Visualisation"/"Preset" sections, titled with .panel-title instead of .sidebar-title) gets
+     the identical treatment via its own selector, kept separate rather than merged into
+     .sidebar-section itself so this panel's hand-tuned spacing (title margin-bottom, #can3dButtons'
+     own margin-top, etc.) doesn't inherit .sidebar-section's padding/gap. */
+  .sidebar-section.collapsed > :not(.sidebar-title),
+  .collapsible-section.collapsed > :not(.panel-title) { display: none !important; }
 
   /* Checkboxes */
   .chk-row {
@@ -1237,12 +1243,26 @@
   }
   #can3dPanel.visible { display: flex; }
   #can3dPanel .panel-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.18em;
     color: var(--accent-green);
     text-transform: uppercase;
     margin-bottom: 6px;
+  }
+  /* Transparent flex passthrough - #can3dWrap/#can3dLegend used to be direct children of
+     #can3dPanel itself; wrapping them so the "3D Visualisation" collapse triangle can hide just
+     this pair (not #can3dButtons/"Preset" below it too) needs to reproduce #can3dPanel's own
+     column/flex-start/full-width layout exactly, or their existing width:100%/align-self rules
+     resolve against the wrong parent. */
+  #can3dVisSection {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
   }
   /* CSS box pinned to 164×200; backing store is 205×250 (×1.25) so under the panel's zoom the
      bitmap renders 1:1 with device pixels – the model stays crisp instead of being upscaled. */
