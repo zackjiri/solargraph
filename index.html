@@ -4,14 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug66">
+  <link rel="stylesheet" href="css/style.css?perfdebug68">
 </head>
 <body>
 
 <!-- Top strip: header + readout -->
 <div class="top-strip">
   <header>
-    <h1>Solargraphy Projection Viewer</h1>
+    <!-- Title + tagline stack as ONE flex item, so the header's height keeps coming from the mode
+         toggle (the tallest child), not from this two-line column. -->
+    <div class="app-title">
+      <h1>Solargraphy Viewer</h1>
+      <div class="app-tagline">where captured light becomes science</div>
+    </div>
     <span>pinhole projection definition: x = 2 r α &nbsp;•&nbsp; y = 2 r cos α tan ϕ</span>
     <!-- Sits to the LEFT of .mode-toggle-wrap (which is flush-right via its own margin-left:auto),
          not to its right as before - #btnTimeMode is hidden while Eclipse is active (see below), and
@@ -715,20 +720,20 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.9.11
 </div>
 
-<script src="js/core.js?perfdebug66"></script>
+<script src="js/core.js?perfdebug68"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug66"></script>
-<script src="js/render-sungraph.js?perfdebug66"></script>
-<script src="js/render-3d.js?perfdebug66"></script>
-<script src="js/render-skydome.js?perfdebug66"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug66"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug66"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug66"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug66"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug66"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug66"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug66"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug66"></script>
-<script src="js/render-eclipse.js?perfdebug66"></script>
+<script src="js/controls.js?perfdebug68"></script>
+<script src="js/render-sungraph.js?perfdebug68"></script>
+<script src="js/render-3d.js?perfdebug68"></script>
+<script src="js/render-skydome.js?perfdebug68"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug68"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug68"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug68"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug68"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug68"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug68"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug68"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug68"></script>
+<script src="js/render-eclipse.js?perfdebug68"></script>
 </body>
 </html>
