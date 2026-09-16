@@ -1374,7 +1374,7 @@ function exitEclipseVisualization() {
   document.getElementById('btnEclipseGreatestPoint').style.display = 'none';
   document.getElementById('eclipseDistToPathRow').style.display = 'none';
   document.getElementById('btnEclipseLoadGallery').style.display = 'none';
-  document.getElementById('valDay').style.minWidth = '110px';   // restore the general app's width (day1/day2 pairs)
+  document.getElementById('valDay').style.minWidth = '';   // back to #valDay's own rule (day1/day2 pairs)
 }
 
 // Catalog/Visualization sub-view switcher - same wheel-picker widget as the Analyzer sub-view

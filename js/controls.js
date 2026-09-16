@@ -110,18 +110,19 @@ container.addEventListener('mouseleave', () => {
 //    show3DCulmination) - without an active custom date/time there's no well-defined point in time
 //    to look CHMI up at, so both fields show '—' in that case (still visible, just idle).
 function updateInfoReadout() {
-  // Eclipse drives the same five top-bar fields itself (_eclipseUpdateReadout in
-  // render-eclipse.js, called from drawEclipse() on every slider move/resize) - leave them alone
-  // here rather than blanking them to '—', since this function gets called from plenty of places
-  // that have nothing to do with Eclipse (e.g. the time-display-mode menu).
-  if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
+  const inEclipse = typeof eclipseActive !== 'undefined' && eclipseActive;
   const inImageMode = currentMode === 'analyzer' && !theaterMode3D
     && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
     && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
-    && !(typeof eclipseActive !== 'undefined' && eclipseActive);
+    && !inEclipse;
 
   // ── 1. Az/Alt/Day/Time/Dir fallback ─────────────────────────────────────────────────────────
-  if (mouseX < 0) {
+  // Eclipse drives the same five top-bar fields itself (_eclipseUpdateReadout in
+  // render-eclipse.js, called from drawEclipse() on every slider move/resize) - leave them alone
+  // here rather than blanking them to '—', since this function gets called from plenty of places
+  // that have nothing to do with Eclipse (e.g. the time-display-mode menu). Section 2 below still
+  // runs in Eclipse: inImageMode is false there, which is exactly what hides SSV10M/T.
+  if (!inEclipse && mouseX < 0) {
     if (inImageMode && showCustomArc) {
       const sp = _readoutFallbackSunPos();
       const displayAz = hemisphere >= 0 ? sp.az : (sp.az + 180) % 360;
