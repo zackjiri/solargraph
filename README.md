@@ -146,7 +146,9 @@ Modified or redistributed versions stay under these same terms - no relicensing,
 
 The software is provided as-is, with no warranty of any kind. Breaking these terms ends your rights under the license automatically.
 
-CHMI weather data shown in the app is licensed separately, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs) by the Czech Hydrometeorological Institute.
+All photographs published with the app - both the solargraphs in the Gallery and the eclipse images in the Eclipse photo galleries - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
+
+Sunshine duration and air temperature measurements shown in the app come from the **open data** of the Czech Hydrometeorological Institute, licensed separately under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs).
 
 ---
 
