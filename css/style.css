@@ -241,9 +241,12 @@
      Eclipse-only Mag/Obsc pair (§21.13) or CHMI's SSV10M/T - actually fits on one line; on a
      narrow/tablet width that's a second, shorter line rather than fields silently disappearing off
      the clipped right edge (the previous nowrap+overflow:hidden behaviour). */
+  /* Gaps, separator size and every min-width below are cut as tight as the widest real value of
+     each field allows (measured, not guessed), so the whole bar still fits on one line at tablet
+     width instead of wrapping to a second row. */
   .readout {
     display: flex;
-    gap: 8px;
+    gap: 3px;
     row-gap: 4px;
     align-items: center;
     font-family: var(--mono);
@@ -254,24 +257,31 @@
   .readout-item {
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: 3px;
     white-space: nowrap;
   }
 
   .readout-label {
     color: var(--dim);
     font-size: 9px;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
   }
 
   .readout-value {
     color: var(--accent);
     font-size: 13px;
-    min-width: 62px;
+    min-width: 44px;   /* widest Az/Alt value ("359.9°" / "-90.0°") is 42px at this font */
   }
 
   .readout-value.blue { color: var(--accent2); }
+
+  /* Day and Time both switch between a one-value form (Custom date fallback) and a two-value
+     day1/day2 form (hovering the scan) - both reserve the wider two-value width at all times, so
+     moving the cursor onto the image can't shift the rest of the bar sideways. Day's lives here
+     rather than inline because Eclipse narrows it to 50px and restores it by clearing its own
+     inline override (render-eclipse.js). */
+  #valDay { min-width: 92px; }
 
   /* SSV10M/T (controls.js's updateInfoReadout()) - T's colour tracks the live CHMI temperature
      gradient (_chmiTempColor, core.js), so a thin black outline keeps it legible against light
@@ -283,7 +293,7 @@
 
   .readout-sep {
     color: var(--border);
-    font-size: 16px;
+    font-size: 11px;
   }
 
   /* ── Main area: canvas + sidebar ── */
