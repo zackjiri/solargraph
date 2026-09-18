@@ -96,15 +96,19 @@
     background: rgba(0,0,0,0.20) !important;
   }
 
-  /* ── Theme toggle button (+ time-mode toggle, same round style) ── */
-  #btnTheme, #btnTimeMode {
+  /* ── Theme toggle button (+ time-mode toggle and the README link, same shape) ── */
+  #btnTheme, #btnTimeMode, #btnInfo {
     background: rgb(218 236 255 / 90%);  /* dark mode: sun icon on light bg */
-    border: none;
+    border: 1px solid #8a8a8a;           /* mid grey, same in both themes */
     color: var(--dim);
     font-family: var(--mono);
     font-size: 13px;
     width: 28px; height: 28px;
-    border-radius: 50%;
+    /* macOS-style squircle: the corner curve runs continuously into the straight edges instead of
+       meeting them at a tangent, which is what reads as the slight barrel. Browsers without
+       corner-shape fall back to a plain rounded square of the same radius. */
+    border-radius: 9px;
+    corner-shape: squircle;
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
@@ -112,13 +116,33 @@
     margin-left: 8px;
     line-height: 1;
   }
-  #btnTheme:hover, #btnTimeMode:hover {
-    color: var(--accent);
-    background: rgb(218 236 255 / 100%);
+  /* Green and ringed in both themes, hover included - the clock and moon are emoji that carry
+     their own colours, so only this drawn glyph needs saying. The mid-green is picked to sit
+     between the two fills this button takes (pale at rest in dark theme, near-black hovered /
+     in light theme) rather than to suit either one of them. */
+  #btnInfo {
+    text-decoration: none;
+    color: #2a8f45;
   }
+  /* Hover repaints the fill to what light theme uses at rest (the light-theme hover rule below
+     overrides this with its own, so this is effectively the dark-theme hover). */
+  #btnTheme:hover, #btnTimeMode:hover, #btnInfo:hover {
+    color: var(--accent);
+    background: rgba(18,22,28,0.82);
+  }
+  #btnInfo:hover { color: #2a8f45; }
 
   /* ── Time display mode (True/Mean/Standard solar time) ── */
-  .time-mode-wrap { position: relative; }
+  /* Sits immediately left of the mode toggle, mirroring #btnTheme's own 8px + header gap on the
+     right. The auto margin lives HERE (not on .mode-toggle-wrap) so clock + toggle + theme travel
+     as one flush-right group; Eclipse therefore hides the clock with visibility, never display,
+     or losing its box would drag the toggle sideways. */
+  .time-mode-wrap {
+    position: relative;
+    margin-left: auto;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
   .time-mode-menu {
     display: none;
     position: absolute; top: calc(100% + 6px); right: 0;
@@ -213,12 +237,15 @@
 
   /* Light: almost black – moon icon stands out on dark background */
   body.light #btnTheme,
-  body.light #btnTimeMode {
+  body.light #btnTimeMode,
+  body.light #btnInfo {
     background: rgba(18,22,28,0.82);
   }
+  body.light #btnInfo, body.light #btnInfo:hover { color: #2a8f45; }
   /* Light hover: blends with the top-strip bg */
   body.light #btnTheme:hover,
-  body.light #btnTimeMode:hover {
+  body.light #btnTimeMode:hover,
+  body.light #btnInfo:hover {
     background: #e2e7ec !important;
     color: var(--dim);
   }
@@ -228,13 +255,18 @@
     color: var(--dim);
     letter-spacing: 0.08em;
   }
-  /* Purely decorative (the "pinhole projection definition: x = 2r..." reminder) - the first thing
-     to drop when header is tight, so the mode toggle + its Analyzer sub-view wheel (which the user
-     actually needs to operate) get the room instead of being squeezed off the right edge on
-     tablet-width screens. header's only <span> (verified: .readout's own spans are a sibling of
-     <header>, not a descendant), so this selector can't catch anything else by accident. */
+  /* Eclipse shows its own note here instead of the projection formula (render-eclipse.js swaps
+     them on enter/exit); hidden by default so the swap only ever has to reveal it. */
+  #headerEclipseNote { display: none; }
+
+  /* Both header notes are purely informational - the first thing to drop when the header is tight,
+     so the mode toggle + its sub-view wheel (which the user actually needs to operate) get the room
+     instead of being squeezed off the right edge on tablet-width screens. The header's only <span>s
+     (verified: .readout's own spans are a sibling of <header>, not a descendant), so this selector
+     can't catch anything else by accident. !important because the swap above sets display inline,
+     which would otherwise keep the Eclipse note on screen at widths where the formula hides. */
   @media (max-width: 1000px) {
-    header span { display: none; }
+    header span { display: none !important; }
   }
 
   /* Readout bar. Wraps (not hidden via overflow) below the width where every field - including the
@@ -1022,7 +1054,6 @@
      affecting header height (it is absolutely positioned). */
   .mode-toggle-wrap {
     position: relative;
-    margin-left: auto;        /* push the whole toggle group to the right of the header */
     flex-shrink: 0;
   }
 
