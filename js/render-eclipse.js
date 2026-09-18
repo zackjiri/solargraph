@@ -1119,8 +1119,14 @@ function enterEclipse() {
   // Apparent/Mean/Standard only ever affects the general app's own displayHour()/EoT pipeline -
   // Eclipse's own time formatting (_eclipseFmtUTC/_eclipseFmtHM) is always plain UTC+offset and
   // never consults timeDisplayMode at all, so this switcher would have zero effect here anyway.
-  document.getElementById('btnTimeMode').style.display = 'none';
+  // visibility, not display: the clock's box is what holds the flush-right group's left edge in
+  // place (see .time-mode-wrap in css/style.css) - removing it would shove the mode toggle sideways.
+  document.getElementById('btnTimeMode').style.visibility = 'hidden';
   document.getElementById('timeModeMenu').classList.remove('open');
+  // The header formula describes the pinhole projection (§3) - nothing in Eclipse is drawn through
+  // it, so the slot carries the catalogue's own caveat instead.
+  document.getElementById('headerFormula').style.display = 'none';
+  document.getElementById('headerEclipseNote').style.display = 'inline';
   // Always land on Catalog first, regardless of which sub-view was showing last time Eclipse was
   // active - Visualization only loads once a specific event tile is picked.
   _eclipseSubIndex = 0;
@@ -1132,7 +1138,11 @@ function enterEclipse() {
 function exitEclipse() {
   if (eclipseSubView === 'visualization') exitEclipseVisualization(); else exitEclipseCatalog();
   document.getElementById('eclipseSubRow').style.display = 'none';
-  document.getElementById('btnTimeMode').style.display = '';
+  document.getElementById('btnTimeMode').style.visibility = '';
+  // Cleared, not set to a literal display value - the narrow-screen rule that hides it under
+  // 1000px (css/style.css) has to keep winning after Eclipse hands it back.
+  document.getElementById('headerFormula').style.display = '';
+  document.getElementById('headerEclipseNote').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   eclipseActive = false;
 
