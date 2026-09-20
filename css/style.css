@@ -2598,6 +2598,13 @@
      flip this to 'flex' only while the Eclipse mode is actually active; without this default it
      inherits .sidebar-section's display:flex and shows year-round, stacked under #displaySection. */
   #eclipseDisplaySection { display: none; }
+  /* Same missing-default bug as #eclipseDisplaySection just above, just never given the same fix
+     when Night Sky was built: enterNightSky()/exitNightSky() (render-nightsky.js) only ever flip
+     this to 'flex'/'none' in response to actually entering/leaving Night Sky - with no CSS default
+     of its own, it inherited .sidebar-section's plain display:flex and showed on every page load
+     (Gallery is the default landing mode, so this read as "Display shows twice in Gallery" - the
+     user's own report - even though Night Sky itself was never entered). */
+  #nightSkyDisplaySection { display: none; }
   /* Shared by #eclipsePhaseLabel and the "Stats" heading below it - and by #eclipseCircTable and
      #eclipseStatsTable, the two rowed data blocks under each heading. */
   .ecl-heading {
