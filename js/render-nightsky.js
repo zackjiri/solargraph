@@ -998,9 +998,9 @@ function _nightSkyEclipticPoints(stepDeg) {
 // Fainter/thinner than the Equatorial grid's own reddish tint (rgba(224,120,120,...)) and more
 // saturated, so the two stay visually distinguishable rather than reading as the same red - per the
 // user's own request ("vykreslena slabší, červenou čarou"); line width bumped from an initial 0.75
-// to 1.25 right after, per the user's own immediate follow-up ("trochu silnější").
+// to 1.25 ("trochu silnější"), then to 2 (own follow-up round, new v39_1 copy).
 const NIGHTSKY_ECLIPTIC_COLOR = 'rgba(214,64,64,0.5)';
-const NIGHTSKY_ECLIPTIC_WIDTH = 1.25;
+const NIGHTSKY_ECLIPTIC_WIDTH = 2;
 function _nightSkyDrawEcliptic(ctx, layout) {
   ctx.save();
   ctx.beginPath();
