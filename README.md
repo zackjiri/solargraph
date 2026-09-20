@@ -142,13 +142,15 @@ Solargraphy Viewer is released under a non-commercial, attribution-required lice
 
 You're free to use, copy, modify and share it, as long as it's not for commercial advantage or monetary gain, and you credit Jiri Zach as the original author in any copy or derivative you distribute.
 
-Modified or redistributed versions stay under these same terms - no relicensing, no dropping the non-commercial restriction. Commercial use requires separate written permission from [Jiri Zach](mailto:zach.jiri@email.cz).
+Modified or redistributed versions stay under these same terms - no relicensing, no dropping the non-commercial restriction. Commercial use requires separate written permission from [the author](mailto:zach.jiri@email.cz).
 
 The software is provided as-is, with no warranty of any kind. Breaking these terms ends your rights under the license automatically.
 
 All photographs published with the app - both the solargraphs in the Gallery and the eclipse images in the Eclipse photo galleries - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
 
 Sunshine duration and air temperature measurements shown in the app come from the **open data** of the Czech Hydrometeorological Institute, licensed separately under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs).
+
+Star and constellation data in the Sky Map mode are vendored from [D3-Celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, licensed separately under **BSD-3-Clause** — see [`data/celestial/NOTICE.md`](data/celestial/NOTICE.md) for the full license text and original catalog sources.
 
 ---
 
