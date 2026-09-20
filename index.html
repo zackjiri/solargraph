@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Viewer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug83">
+  <link rel="stylesheet" href="css/style.css?perfdebug126">
 </head>
 <body>
 
@@ -45,6 +45,7 @@
         <button class="mode-btn active-gallery" id="btnModeGallery" title="Browse and compare captured solargraphs">Gallery</button>
         <button class="mode-btn" id="btnModeAnalyzer" title="Simulate and calibrate the pinhole projection">Analyzer</button>
         <button class="mode-btn mode-btn-eclipse" id="btnModeEclipse" title="2026-08-12 total solar eclipse, computed from Besselian elements for the current Calibration location - experimental">Eclipse</button>
+        <button class="mode-btn mode-btn-night-sky" id="btnModeNightSky" title="Real star map (constellations) for the current Calibration location and date/time - experimental">Night Sky</button>
       </div>
       <!-- Sub-toggles, shown only in Analyzer; sit flush under the toggle (widths matched in JS) -->
       <div class="mode-subrow wheel-row" title="Analyzer sub-view – drag, tap a side value, or use the arrows">
@@ -264,6 +265,73 @@
       <canvas id="sunGraphCanvas"></canvas>
       <canvas id="skyDomeCanvas"></canvas>
       <canvas id="eclipseCanvas"></canvas>
+      <canvas id="nightSkyCanvas"></canvas>
+      <!-- Night Sky sub-mode switch (top-right of the canvas) - same widget/positioning idiom as
+           Sky Dome's own projection switch (.skydome-proj-row/#skyDomeProjRow, render-skydome.js) -
+           Night Sky gets its own family of sub-modes the same way. Only one entry exists so far
+           ("Sky Map" - the star chart already built); more land here later, same pattern as Sky
+           Dome's own Sky Map/Az-El Chart/Planetarium trio. -->
+      <div class="nightsky-submode-row wheel-row" id="nightSkySubmodeRow" title="Night Sky sub-mode – drag, tap a side value, or use the arrows">
+        <button class="wheel-btn" id="btnNightSkySubmodeDec" title="Previous sub-mode">◀</button>
+        <div class="wheel-track" id="nightSkySubmodeWheelTrack"></div>
+        <button class="wheel-btn" id="btnNightSkySubmodeInc" title="Next sub-mode">▶</button>
+      </div>
+      <!-- Planetarium zoom – vertical slider, same control/range/step as Sky Dome's own Planetarium
+           zoom (#skyMap3DZoom/#skyMap3DZoomCtl above), shown only while Night Sky's own Planetarium
+           sub-mode is selected (render-nightsky.js: _nightSkyUpdatePlanetControlsVisibility()). -->
+      <div id="nightSkyPlanetZoomCtl" title="Zoom the Planetarium view">
+        <input type="range" id="nightSkyPlanetZoom" min="0.5" max="2" step="0.1" value="1" title="Zoom the Planetarium view">
+        <span id="nightSkyPlanetZoomVal">1.0×</span>
+      </div>
+      <!-- Night Sky's own time-of-day control - collapsible corner box (same collapse idiom as
+           #sgLegendWrap/#imgLegendWrap), bottom-LEFT, look inspired by Eclipse's own time slider
+           (#rngEclipseTime) but a genuinely different control: an infinite drag-the-BELT scrubber
+           (same interaction idiom as the month/day wheel-pickers, just continuous instead of
+           discrete-item) rather than a bounded thumb-on-a-track range input - the visible window
+           of sky-brightness colour scrolls under a FIXED centre marker as you drag, and dragging
+           across a UTC midnight just rolls the date over (the date wheels above stay in sync, see
+           _nightSkySyncControls() in render-nightsky.js). Shown only while Night Sky is active. -->
+      <div id="nightSkyTimeWrap">
+        <button id="nightSkyTimeToggle" title="Hide / show the time control">▼</button>
+        <div id="nightSkyTimeBox">
+          <!-- No "Date / Time" label - self-explanatory from the value alone, per the user's own
+               request; kept as a .slider-header row (not a bare span) so the value still sits flush
+               with the box's own left/right padding, same box model as every other slider-header. -->
+          <div class="slider-header">
+            <span class="slider-val" style="color:var(--accent)" id="lblNightSkyHour">—</span>
+          </div>
+          <div id="nightSkyTimeSliderRow">
+            <button id="btnNightSkyPlay" title="Animate time forward, resuming from the current position">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+              <!-- Nested INSIDE the button, same as Eclipse's own #eclipseSpeedBox inside
+                   #btnEclipsePlay - its CSS floats it via bottom:100% relative to the button
+                   (position:relative), which only works with the button as its actual containing
+                   block. A stray earlier cut had this as a sibling instead, which silently mispositioned
+                   it (the CSS's positioned ancestor ended up being #nightSkyTimeWrap several levels up,
+                   not the button) - looked fine in the CSS, wrong on screen ("mimo" - off to the side/
+                   clipped by the box's own overflow:hidden). -->
+              <span id="nightSkySpeedBox" title="Click to change animation speed">300x</span>
+            </button>
+            <div id="nightSkyStripWrap">
+              <div id="nightSkyTimeStrip" title="Drag to scrub through time - crossing midnight changes the date too">
+                <!-- Discrete day/civil/nautical/astronomical-twilight/night band, hard-edged, exact
+                     Sun Graph palette (_nightSkyBuildTwilightBand(), render-nightsky.js). -->
+                <div id="nightSkyTwilightBand"></div>
+                <!-- Fixed centre marker - the belt scrolls under this. Flanking arrows are a pure
+                     drag-affordance hint (decorative, pointer-events:none). -->
+                <div id="nightSkyTimeMarker">
+                  <span class="nightsky-marker-arrow nightsky-marker-arrow-l">◀</span>
+                  <span class="nightsky-marker-arrow nightsky-marker-arrow-r">▶</span>
+                </div>
+              </div>
+              <!-- Hour scale, local time (Time zone-aware - see _nightSkyBuildTimeScale(),
+                   render-nightsky.js) - 0/6/12/18 bolded, built/positioned by JS same as
+                   #eclipseStartEndRow's own per-label left%. -->
+              <div id="nightSkyTimeScale"></div>
+            </div>
+          </div>
+        </div>
+      </div>
       <!-- Eclipse Catalog sub-view - grid of registered events to choose from (js/eclipse-data/*.js),
            the landing sub-view every time Eclipse is entered. Tiles built/rendered by JS
            (_eclipseRenderCatalogGrid, js/render-eclipse.js) - live canvas preview per event. -->
@@ -532,8 +600,73 @@
       <label class="chk-row" title="Extra darkening + fade-in corona image around the moment Obscuration reaches 100% (TOTAL events only) - a couple of seconds either side of C2/C3"><input type="checkbox" id="chkEclipseCorona" checked> Corona</label>
     </div>
 
+    <!-- Night Sky's own Display section - replaces #displaySection/#eclipseDisplaySection while
+         Night Sky is active (js/render-nightsky.js). Same structure as Eclipse's Display section,
+         different content. -->
+    <div class="sidebar-section" id="nightSkyDisplaySection">
+      <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
+      <label class="chk-row" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
+      <label class="chk-row" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
+      <label class="chk-row" title="Label each constellation with its 3-letter IAU designator"><input type="checkbox" id="chkNightSkyNames" checked> Constellation names</label>
+      <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
+      <!-- Off by default (unlike every other Night Sky Display checkbox) - a genuinely different
+           coordinate frame (RA/Dec) overlaid on top of the Az/Alt one, useful but not something you'd
+           want cluttering the view every time. -->
+      <label class="chk-row" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
+      <label class="chk-row" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
+      <label class="chk-row" title="Overlay the horizon"><input type="checkbox" id="chkNightSkyHorizon" checked> Horizon</label>
+      <label class="chk-row" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
+      <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
+        <span class="nightsky-sun-label">Sun's path</span>
+        <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
+          title="Overlay the Sun's path across the selected date"></button>
+      </div>
+    </div>
+
     <div class="sidebar-section" id="calibrationSection">
       <div class="sidebar-title"><span>Calibration</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
+      <!-- Night Sky-only - shown/hidden by enterNightSky()/exitNightSky() (render-nightsky.js),
+           first thing in Calibration while Night Sky is active. A REAL calendar date, unlike the
+           rest of the app's day-of-year-only Custom Date (customYear/customMonth/customDay below
+           are a separate, app-wide state - Night Sky needs its own year, which nothing else in the
+           app does, see render-nightsky.js's own Phase 1 comment on why). -->
+      <div id="nightSkyDateGroup" style="display:none">
+        <div class="slider-row">
+          <div class="slider-header">
+            <span class="slider-label" style="color:var(--accent)">Date</span>
+          </div>
+        </div>
+        <!-- SET NOW - resets year/month/day/hour AND the shared Time zone field to the real current
+             moment/system offset (also the default state on first load, see the
+             nightSkyYear/Month/Day/HourUT + applyTimeZone() init in render-nightsky.js). Same exact
+             pill/height/font as the DEC|DM location-format toggle (#locFormatRow .ns-btn's own
+             height:14px/font-size:7px, mirrored for #nightSkyDateGroup .ns-btn in css/style.css) -
+             a single button in that same .ns-toggle wrapper, not a real two-way toggle, just auto-
+             width instead of DEC|DM's fixed 22px since "SET NOW" needs more room than one letter.
+             justify-content:space-between (nightsky-year-row) pushes the year stepper to the right,
+             flush with the wheel rows/Location rows below it, instead of the left-started default
+             every other .lat-row in this panel uses. -->
+        <div class="lat-row nightsky-year-row" style="margin-top:2px">
+          <div class="ns-toggle" title="Reset to the real current date, time and time zone">
+            <button class="ns-btn active" id="btnNightSkySetToday">SET NOW</button>
+          </div>
+          <div class="nightsky-year-controls" title="Calendar year">
+            <button class="lat-btn" id="btnNightSkyYearDec">◀</button>
+            <input type="number" class="lat-input" id="inpNightSkyYear" min="1" max="9999" step="1" value="2026">
+            <button class="lat-btn" id="btnNightSkyYearInc">▶</button>
+          </div>
+        </div>
+        <div class="wheel-row" style="margin-top:5px" title="Month – drag or tap a side value, or use the arrows">
+          <button class="wheel-btn" id="btnNightSkyMonDec">◀</button>
+          <div class="wheel-track" id="wheelNightSkyMonth"></div>
+          <button class="wheel-btn" id="btnNightSkyMonInc">▶</button>
+        </div>
+        <div class="wheel-row" style="margin-top:5px" title="Day – drag or tap a side value, or use the arrows">
+          <button class="wheel-btn" id="btnNightSkyDayDec">◀</button>
+          <div class="wheel-track" id="wheelNightSkyDay"></div>
+          <button class="wheel-btn" id="btnNightSkyDayInc">▶</button>
+        </div>
+      </div>
       <!-- Everything but Location - hidden while the Eclipse sub-view is active (js/render-eclipse.js:
            the pinhole calibration sliders don't apply there, only the observer's location does).
            Own display:flex/column/gap so hiding this one wrapper doesn't collapse the row spacing
@@ -724,23 +857,24 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.9.11
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Viewer ver. 6.9.20
 </div>
 
-<script src="js/core.js?perfdebug83"></script>
+<script src="js/core.js?perfdebug126"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug83"></script>
-<script src="js/render-sungraph.js?perfdebug83"></script>
-<script src="js/render-3d.js?perfdebug83"></script>
-<script src="js/render-skydome.js?perfdebug83"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug83"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug83"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug83"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug83"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug83"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug83"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug83"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug83"></script>
-<script src="js/render-eclipse.js?perfdebug83"></script>
+<script src="js/controls.js?perfdebug126"></script>
+<script src="js/render-sungraph.js?perfdebug126"></script>
+<script src="js/render-3d.js?perfdebug126"></script>
+<script src="js/render-skydome.js?perfdebug126"></script>
+<script src="js/render-nightsky.js?perfdebug126"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug126"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug126"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug126"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug126"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug126"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug126"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug126"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug126"></script>
+<script src="js/render-eclipse.js?perfdebug126"></script>
 </body>
 </html>
