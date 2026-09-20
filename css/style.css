@@ -768,6 +768,50 @@
   .analemma-switch.on { background: #af52de; }   /* same purple as the curve itself */
   .analemma-switch.on::after { left: 11.5px; }   /* ON - thumb right */
 
+  /* Night Sky's own "Sun's path" - sub-option of "Sun" (chkNightSkySun) above, own copy of
+     .analemma-subrow/.analemma-switch's exact structure/mechanic (same show/hide-by-parent-state
+     pattern, wired in render-nightsky.js) rather than sharing those classes directly - Night Sky's
+     own widgets are kept self-contained from Sky Dome/Analyzer's, same reasoning as
+     .nightsky-submode-row duplicating .skydome-proj-row above. Accent colour is the Sun's path
+     line's own green (#50dc78, same token as the Analyzer's own "Custom date" path) instead of the
+     Analemma curve's purple. */
+  .nightsky-sun-subrow {
+    display: none;   /* flex, set by JS */
+    align-items: center;
+    justify-content: space-between;
+    padding-left: 19px;
+  }
+  .nightsky-sun-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text);
+  }
+  .nightsky-sun-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 12px;
+    border-radius: 6px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: var(--dim);   /* OFF */
+    transition: background 0.18s;
+  }
+  .nightsky-sun-switch::after {
+    content: '';
+    position: absolute;
+    top: 1.5px; left: 1.5px;   /* OFF - thumb left */
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  .nightsky-sun-switch.on { background: #50dc78; }   /* same green as the Sun's path line itself (rgba(80,220,120,...)) */
+  .nightsky-sun-switch.on::after { left: 11.5px; }   /* ON - thumb right */
+
   /* Custom date's month/day wheel pickers - sub-controls of the "Custom date" checkbox above
      (Display section), same show/hide-by-parent-state pattern as the CHMI sub-rows just below.
      No margin/space of its own when hidden - toggled by JS (updateCustomDateSubrow() in
@@ -1039,6 +1083,28 @@
       #3a3a3e 5px,
       #f5c518 5px,
       #f5c518 10px
+    );
+    color: #fff;
+    font-weight: bold;
+    text-shadow:
+      -1px -1px 0 #000,
+       1px -1px 0 #000,
+      -1px  1px 0 #000,
+       1px  1px 0 #000,
+       0    2px 4px rgba(0,0,0,0.9);
+  }
+
+  /* Night Sky - top-level mode toggle, peer to Gallery/Analyzer/Eclipse (not an Analyzer sub-view -
+     its own thing, with its own canvas/panels, see js/render-nightsky.js). Named "Night Sky", not
+     "Sky Map", to avoid colliding with the Sky Dome projection already called "Sky Map"
+     internally. */
+  .mode-btn.active-night-sky {
+    background: repeating-linear-gradient(
+      45deg,
+      #10142c,
+      #10142c 5px,
+      #5a7fd6 5px,
+      #5a7fd6 10px
     );
     color: #fff;
     font-weight: bold;
@@ -1501,6 +1567,188 @@
   }
   #imgLegendToggle:hover { color: var(--text); }
 
+  /* Night Sky time-of-day control - bottom-LEFT corner (mirrors #imgLegendWrap's fixed-corner
+     placement, just the other side), same collapse idiom, but the collapsible content is a slider
+     instead of a legend list. Shown only by JS in Night Sky (render-nightsky.js). */
+  #nightSkyTimeWrap {
+    position: absolute; left: 12px; bottom: 12px;
+    z-index: 11; display: none;          /* flex, shown by JS in Night Sky */
+    flex-direction: column; align-items: flex-start; gap: 5px;
+    cursor: default;   /* .canvas-container itself sets cursor:none (Analyzer draws its own
+                           crosshair) - inherited down through every gap/padding area in this whole
+                           corner box (toggle button, box padding, the 20px gap before the strip,
+                           the hour-scale row) that doesn't have its own more specific cursor rule;
+                           #nightSkyTimeStrip's own grab/grabbing and the buttons' own pointer still
+                           win where they're set, same reasoning as .skydome-proj-row/
+                           .nightsky-submode-row above. */
+  }
+  #nightSkyTimeBox {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 8px 10px;
+    width: 400px;   /* wide enough that the date/time value never wraps to a second line */
+    background: rgba(7,9,13,0.72);
+    overflow: hidden;
+    max-height: 106px;
+    transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
+  }
+  body.light #nightSkyTimeBox { background: rgba(245,247,249,0.82); }
+  #nightSkyTimeWrap.collapsed #nightSkyTimeBox {
+    max-height: 0; opacity: 0;
+    padding-top: 0; padding-bottom: 0;
+  }
+  #nightSkyTimeToggle {
+    background: var(--panel);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--dim); cursor: pointer;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1;
+    padding: 2.5px 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    transition: color 0.15s;
+  }
+  #nightSkyTimeToggle:hover { color: var(--text); }
+
+  /* Night Sky's time strip row - play button + speed chip + the draggable belt (with its own hour
+     scale underneath), same layout idiom as #eclipseSliderRow/#btnEclipsePlay/#rngEclipseTime
+     (render-eclipse.js), styled to match. */
+  /* align-items:flex-start (not center) - the button's height (28px) exactly matches the strip's
+     own height (28px), so flex-start lines their tops up exactly; align-items:center previously
+     centred the button against the whole #nightSkyStripWrap (strip + hour scale below it combined),
+     which visibly sat the button ~9-10px LOWER than the strip's own true centre. gap widened
+     6px -> 20px, per the user's own request for more breathing room between button and strip - the
+     strip (flex:1) narrows automatically to make room, no separate width rule needed. */
+  #nightSkyTimeSliderRow { display: flex; align-items: flex-start; gap: 20px; }
+  #btnNightSkyPlay {
+    position: relative;   /* anchors #nightSkySpeedBox above it, back to Eclipse's own layout */
+    flex: 0 0 auto;
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(80,220,120,0.22);
+    color: #0e6030;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  #btnNightSkyPlay:hover { background: rgba(80,220,120,0.34); }
+  #btnNightSkyPlay.playing { background: rgba(232,64,64,0.26); color: #b01818; }
+  #btnNightSkyPlay.playing:hover { background: rgba(232,64,64,0.40); }
+  #btnNightSkyPlay svg { display: block; }
+  /* Speed chip - back to floating above the button (Eclipse's own layout) now that the header row
+     above it is indented to the strip's own left edge (see .slider-header rule below) and no longer
+     collides with it. Always visible (unlike Eclipse's ORIGINAL behaviour before its own matching
+     fix), same reasoning as #eclipseSpeedBox. */
+  #nightSkySpeedBox {
+    position: absolute;
+    bottom: 100%; left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 4px;
+    padding: 1px 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+    color: var(--accent);
+    background: var(--panel);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+  #nightSkySpeedBox:hover { color: var(--text); }
+  /* Date/time value label indented to start at the STRIP's own left edge, not the box's - i.e.
+     past the play button (28px) + row gap (6px) that sit to the strip's left. */
+  /* 28px play button + 20px row gap (widened from 6px in a later round, this margin never got
+     updated to match - the label drifted back to starting over the gap/button area instead of the
+     strip, "running off" to the left of where it visually belongs) = 48px to line up with the
+     strip's own left edge exactly, +6px more on top of that as a deliberate small indent so the
+     label doesn't sit flush against the strip's edge. */
+  #nightSkyTimeBox .slider-header { margin-left: 54px; }
+
+  #nightSkyStripWrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+  /* The draggable "belt" itself - a plain div (not an <input type=range>: this is a continuous,
+     unbounded scrubber where dragging pans the BELT under a fixed centre marker, not a thumb along
+     a fixed track - see render-nightsky.js's own comment on why). Background gradient (day-blue ->
+     dusk-dark-blue -> night-black, plus UTC-midnight tick marks) is rebuilt in JS on every change,
+     same multi-layer-gradient technique as --eclipse-fill. */
+  #nightSkyTimeStrip {
+    position: relative;
+    min-width: 0;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: pan-y;
+    background: #05070d;   /* fallback only - _nightSkyBuildTimeStripFill() (render-nightsky.js)
+                               overwrites this with an inline gradient on every sync, practically
+                               immediately; kept in case that hasn't run yet for some reason. */
+  }
+  body.light #nightSkyTimeStrip { background: #ffffff; }
+  #nightSkyTimeStrip.dragging { cursor: grabbing; }
+  /* Discrete twilight-phase band along the strip's own bottom edge - day/civil/nautical/
+     astronomical twilight/night, hard-edged (not blended like the strip's own smooth background
+     above it), exact Sun Graph palette (_SG_BANDS, render-sungraph.js) plus yellow for daylight
+     (the Sun disc's own #e8a020) - built by _nightSkyBuildTwilightBand() (render-nightsky.js), same
+     rebuild triggers as the strip's own main gradient. Own bottom-corner rounding to match the
+     strip's, since it isn't clipped by the strip itself (that would also clip the time marker's
+     own deliberate 2px top/bottom overshoot, see #nightSkyTimeMarker below). */
+  #nightSkyTwilightBand {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 4px;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    pointer-events: none;
+  }
+  /* Fixed centre marker - the belt scrolls under this, this never moves. Colours are FIXED hex
+     (not var(--accent)/var(--dim), which differ between themes) - same "pick one look, hardcode it
+     everywhere" idiom already used for Eclipse's own slider thumb/play-icon colours, per the user's
+     explicit request that this look identical in light and dark. Yellow marker, GREY arrows (the
+     reverse of the first cut, which had both yellow). */
+  #nightSkyTimeMarker {
+    position: absolute;
+    left: 50%; top: -2px; bottom: -2px;
+    width: 2px;
+    margin-left: -1px;
+    background: #e8a020;
+    border: 1px solid rgba(0,0,0,0.55);
+    pointer-events: none;
+  }
+  /* Drag-affordance arrow hint, flanking the marker - decorative only. */
+  .nightsky-marker-arrow {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    font-size: 9px;
+    line-height: 1;
+    color: #c8d4e0;
+    text-shadow: 0 0 2px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9);
+  }
+  .nightsky-marker-arrow-l { right: 100%; margin-right: 3px; }
+  .nightsky-marker-arrow-r { left: 100%; margin-left: 3px; }
+
+  /* Hour scale under the strip - a ruler: a tick line per mark (taller/brighter at local hours
+     0/6/12/18) above its own local-time number (Time zone-aware, _nightSkyBuildTimeScale in
+     render-nightsky.js), positioned per-mark by JS same as #eclipseStartEndRow's own left%. */
+  #nightSkyTimeScale {
+    position: relative;
+    height: 17px;
+    font-family: var(--mono);
+    font-size: 8px;
+    color: var(--dim);
+  }
+  .nightsky-scale-mark {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .nightsky-scale-tick { width: 1px; height: 3px; background: var(--dim); }
+  .nightsky-scale-num { margin-top: 1px; }
+  .nightsky-scale-mark.major .nightsky-scale-tick { height: 6px; background: var(--text); }
+  .nightsky-scale-mark.major .nightsky-scale-num { color: var(--text); font-weight: bold; }
+
   .sg-leg-item {
     display: flex; align-items: center; gap: 7px;
     white-space: nowrap; cursor: default;
@@ -1787,9 +2035,64 @@
     background: rgba(7,9,13,0.55);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    cursor: default;   /* .canvas-container itself sets cursor:none (Analyzer draws its own
+                           crosshair) - this panel's own padding/gaps aren't part of that crosshair
+                           surface, so the OS cursor needs restoring here too (same reasoning as
+                           #eclipseCatalogPanel); .wheel-track/.wheel-btn below still get their own
+                           grab/pointer cursors, which win over this inherited default. */
   }
   body.light .skydome-proj-row {
     background: rgba(220,228,236,0.82);
+  }
+
+  /* Night Sky's own sub-mode switch - same panel treatment/position as .skydome-proj-row above,
+     shown only by JS in enterNightSky()/exitNightSky() (render-nightsky.js). */
+  .nightsky-submode-row {
+    position: absolute; top: 10px; right: 12.5px;
+    width: 230px;
+    z-index: 12; display: none;
+    padding: 5px 8px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    cursor: default;   /* same reasoning as .skydome-proj-row just above */
+  }
+  body.light .nightsky-submode-row {
+    background: rgba(220,228,236,0.82);
+  }
+
+  /* Night Sky's own Planetarium zoom - same control/mechanic/styling as #skyMap3DZoomCtl below,
+     shown only by JS while the Planetarium sub-mode is selected
+     (_nightSkyUpdatePlanetControlsVisibility(), render-nightsky.js). */
+  #nightSkyPlanetZoomCtl {
+    position: absolute; top: 48px; right: 12.5px;
+    z-index: 12; display: none;
+    flex-direction: column; align-items: center; gap: 7.5px;
+    padding: 10px 5px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    overflow: hidden;
+    width: 35px;
+    cursor: default;
+  }
+  body.light #nightSkyPlanetZoomCtl {
+    background: rgba(220,228,236,0.82);
+  }
+  #nightSkyPlanetZoom {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    -webkit-appearance: slider-vertical;
+    appearance: slider-vertical;
+    width: 10px; height: 162.5px;
+    max-width: 25px;
+    accent-color: var(--accent2);
+    cursor: pointer;
+    touch-action: none;
+  }
+  #nightSkyPlanetZoomVal {
+    font-family: var(--mono); font-size: 11.25px;
+    color: var(--accent2); letter-spacing: 0.04em;
   }
 
   /* Sky Map's "3D" ON/OFF toggle – small pill switch, same panel treatment as .skydome-proj-row */
@@ -2069,6 +2372,20 @@
     cursor: default;
   }
 
+  /* Night Sky view - full-canvas real star map, same takeover pattern as the other four (see
+     js/render-nightsky.js: enterNightSky/exitNightSky). The sky circle drawn INSIDE the canvas
+     (_nightSkyDrawSkyMap's own #001538 fill) always reads as night regardless of theme - but the
+     canvas's own OUTER margin (outside that circle) now follows the theme, same as Sky Dome/Sun
+     Graph's own canvases (#skyDomeCanvas/#sunGraphCanvas below), per the user's own request. */
+  #nightSkyCanvas {
+    position: absolute; inset: 0;
+    display: none;
+    background: #05070d;
+    z-index: 10;
+    cursor: default;
+  }
+  body.light #nightSkyCanvas { background: #ffffff; }
+
   /* Eclipse Catalog sub-view - grid of registered events, the landing sub-view every time Eclipse
      is entered (enterEclipseCatalog(), js/render-eclipse.js). Same takeover slot as #eclipseCanvas,
      shown instead of it while browsing rather than animating one event. */
@@ -2105,6 +2422,7 @@
     min-width: 260px;   /* the toggle's own shrink-to-fit width would otherwise collapse well below
                            this once its children can shrink to 0 (see min-width:0 below) - fixing
                            a floor here is what actually keeps the four segments legible/equal. */
+    border: 1px solid #fff;   /* flipped to black in light theme, same as the ALL segment below */
   }
   #eclipseCatalogTypeFilter .ns-btn {
     flex: 1 1 0;
@@ -2255,6 +2573,7 @@
      tuned for that dark backdrop, so they need to flip too rather than just going along for free. */
   body.light #eclipseCatalogPanel { background: #ffffff; }
   body.light .eclipse-tile-blank { background: #d8dee4; }
+  body.light #eclipseCatalogTypeFilter { border-color: #000; }
   body.light #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
     background: #000;
     color: #fff;
@@ -2412,10 +2731,11 @@
   #btnEclipsePlay.playing { background: rgba(232,64,64,0.26); color: #b01818; }
   #btnEclipsePlay.playing:hover { background: rgba(232,64,64,0.40); }
   #btnEclipsePlay svg { display: block; }
-  /* Animation speed chip - only shown while playing (JS toggles display, tied to the same
-     .playing state as the icon swap above), floats just above the button. */
+  /* Animation speed chip - always visible (not just while playing, see _eclipseSetPlayIcon) so the
+     speed can be set before the first Play, not only adjusted mid-animation - floats just above
+     the button regardless of play state. */
   #eclipseSpeedBox {
-    display: none;
+    display: block;
     position: absolute;
     bottom: 100%; left: 50%;
     transform: translateX(-50%);
@@ -2538,3 +2858,25 @@
      level of nesting deep (see index.html's #calibNonLocationGroup). */
   #calibNonLocationGroup { display: flex; flex-direction: column; gap: 8px; }
   #calibNonLocationGroup.hidden, #btnCalibReset.hidden { display: none; }
+
+  /* Night Sky's own Date block, prepended to Calibration (render-nightsky.js: enterNightSky/
+     exitNightSky toggle display:flex/none directly) - same "own column/gap" reasoning as
+     #calibNonLocationGroup just above: without flex-direction:column here, the JS's plain
+     style.display='flex' would default to a row and collapse the wheel-tracks' flex:1 width. */
+  #nightSkyDateGroup { flex-direction: column; gap: 8px; }
+  /* SET NOW + year stepper row - SET NOW hugs the left edge, the year stepper the right edge
+     (flush with the wheel rows/Location rows below, unlike every other .lat-row's left start). */
+  .nightsky-year-row { justify-content: space-between; }
+  .nightsky-year-controls { display: flex; align-items: center; gap: 4px; }
+  /* SET NOW matched to DEC/DM's own exact dimensions (#locFormatRow .ns-btn just above) - same
+     height/line-height/font-size/text-align, just auto-width with a little horizontal padding
+     instead of DEC/DM's fixed 22px-per-letter box, since "SET NOW" needs far more room than one
+     letter. */
+  #nightSkyDateGroup .ns-btn {
+    height: 14px;
+    line-height: 14px;
+    padding: 0 6px;
+    text-align: center;
+    font-size: 7px;
+    white-space: nowrap;
+  }
