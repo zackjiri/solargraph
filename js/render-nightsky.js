@@ -307,18 +307,35 @@ function exitNightSky() {
   }
 }
 
-// Canvas backing-store setup mirrors resizeSkyDome()/resizeEclipse() - full parent size, scaled by
-// devicePixelRatio so text/lines stay crisp on HiDPI (see core.js's canvasLW/canvasLH/canvasRES
-// header comment for the same convention applied to the main scan canvas).
+// Canvas backing-store setup - was CLAIMED to mirror resizeSkyDome()/resizeEclipse() but actually
+// diverged from them in two ways that matter on iPad specifically: it never set the canvas's own
+// CSS box size (cv.style.width/height), relying entirely on the #nightSkyCanvas CSS rule
+// (position:absolute; inset:0) to happen to compute the SAME size as the clientWidth/clientHeight
+// read here - normally true, but iPadOS Safari is known to briefly report a stale/wrong
+// clientWidth right after a display:none -> block flip (enterNightSky() does exactly that just
+// before calling this), and a backing store sized from that stale reading then gets non-uniformly
+// STRETCHED by the browser to fill the canvas's real (correct, CSS-driven) on-screen box - exactly
+// the reported symptom (content shifted right, Sky Map's centre pulled down: a smaller-than-actual
+// backing store stretched to a bigger box, non-uniformly since width/height are rarely off by the
+// same ratio). It also recomputed window.devicePixelRatio independently at draw/hover time instead
+// of reusing the exact scale factor the backing store was actually built at, a second, smaller
+// desync risk. Both fixed by copying resizeSkyDome()/resizeEclipse()'s own pattern exactly: measure
+// #canvasContainer (not cv.parentElement - the same element in practice, but named explicitly to
+// match the reference implementation with nothing left implicit), force the CSS box to that exact
+// same measurement instead of trusting inset:0 to agree with it independently, and stash the actual
+// scale factor used (cv._res) so drawNightSky()/the cursor-readout handler read that back instead
+// of re-deriving devicePixelRatio themselves.
 function resizeNightSky() {
+  const container = document.getElementById('canvasContainer');
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
-  const wrap = cv.parentElement;
-  const w = wrap.clientWidth || 600;
-  const h = wrap.clientHeight || w;
-  const dpr = window.devicePixelRatio || 1;
-  cv.width = Math.round(w * dpr);
-  cv.height = Math.round(h * dpr);
+  const RES = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+  const cw = container.clientWidth || 600, ch = container.clientHeight || cw;
+  cv._res = RES;
+  cv.width = Math.round(cw * RES);
+  cv.height = Math.round(ch * RES);
+  cv.style.width = cw + 'px';
+  cv.style.height = ch + 'px';
   if (nightSkyActive) drawNightSky();
 }
 window.addEventListener('resize', () => { if (nightSkyActive) resizeNightSky(); });
@@ -1849,7 +1866,7 @@ function _nightSkyClearReadout() {
   const cv = document.getElementById('nightSkyCanvas');
   cv.addEventListener('pointermove', (e) => {
     if (!nightSkyActive) return;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = cv._res || 1;
     const rect = cv.getBoundingClientRect();
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const w = cv.width / dpr, h = cv.height / dpr;
@@ -1872,7 +1889,7 @@ function drawNightSky() {
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
   const ctx = cv.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = cv._res || 1;
   const w = cv.width / dpr, h = cv.height / dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
