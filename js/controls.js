@@ -16,6 +16,12 @@ container.addEventListener('mousemove', (e) => {
   // instead (driven by the time slider, see _eclipseUpdateReadout in render-eclipse.js), same as
   // theater/Sun Graph above.
   if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
+  // Night Sky: its own hover readout (a pointermove listener directly on #nightSkyCanvas, see
+  // render-nightsky.js) drives valAz/valAlt/valDir instead - this handler would otherwise still run
+  // (mainCanvas gets pointer-events:none while Night Sky is active, but the move event still
+  // bubbles up to this shared container from whatever's actually on top) and stomp those values
+  // with pixelToAzEl() results from the flat scan's own, entirely unrelated, pinhole geometry.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive) return;
 
   // Canvas is CSS 100% × 100% with object-fit: contain, so the bitmap is
   // letterboxed inside the element – map through the real image bounds.
@@ -76,6 +82,7 @@ container.addEventListener('mouseleave', () => {
   if (splitActive) return;
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) { handleSkyDomeMouseLeave(); return; }
   if (typeof eclipseActive !== 'undefined' && eclipseActive) return;
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive) return;   // own pointerleave handler, render-nightsky.js
   mouseX = -1; mouseY = -1;
   document.getElementById('valAz').textContent  = '—';
   document.getElementById('valAlt').textContent  = '—';
@@ -111,18 +118,22 @@ container.addEventListener('mouseleave', () => {
 //    to look CHMI up at, so both fields show '—' in that case (still visible, just idle).
 function updateInfoReadout() {
   const inEclipse = typeof eclipseActive !== 'undefined' && eclipseActive;
+  const inNightSky = typeof nightSkyActive !== 'undefined' && nightSkyActive;
   const inImageMode = currentMode === 'analyzer' && !theaterMode3D
     && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
     && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
-    && !inEclipse;
+    && !inEclipse
+    && !inNightSky;
 
   // ── 1. Az/Alt/Day/Time/Dir fallback ─────────────────────────────────────────────────────────
   // Eclipse drives the same five top-bar fields itself (_eclipseUpdateReadout in
   // render-eclipse.js, called from drawEclipse() on every slider move/resize) - leave them alone
   // here rather than blanking them to '—', since this function gets called from plenty of places
-  // that have nothing to do with Eclipse (e.g. the time-display-mode menu). Section 2 below still
-  // runs in Eclipse: inImageMode is false there, which is exactly what hides SSV10M/T.
-  if (!inEclipse && mouseX < 0) {
+  // that have nothing to do with Eclipse (e.g. the time-display-mode menu). Night Sky's own
+  // pointermove/pointerleave listeners (render-nightsky.js) drive valAz/valAlt/valDir the same
+  // way - same exclusion, same reason. Section 2 below still runs in both: inImageMode is false
+  // there either way, which is exactly what hides SSV10M/T.
+  if (!inEclipse && !inNightSky && mouseX < 0) {
     if (inImageMode && showCustomArc) {
       const sp = _readoutFallbackSunPos();
       const displayAz = hemisphere >= 0 ? sp.az : (sp.az + 180) % 360;
@@ -579,6 +590,15 @@ function applyLat(val) {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
+  // Night Sky's own time-strip gradient (day/dusk/night, _nightSkyBuildTimeStripFill) is a function
+  // of Sun ALTITUDE at this LAT/LONG (_nightSkySunAltApprox), not just of the canvas star positions
+  // drawNightSky() alone redraws - a bare drawNightSky() here left the strip showing dusk/night bands
+  // computed for whatever location was active when it was last built, silently stale after a Location
+  // change (found via the user's own report that dusk didn't line up with the strip's own colours;
+  // confirmed by moving LAT to a very different value and finding the strip's background genuinely
+  // unchanged). _nightSkySyncControls() is applyTimeZone()'s own fix for the exact same class of
+  // problem (see its own comment below) - rebuilds the strip AND the hour scale, then redraws.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
 
 document.getElementById('inpLat').addEventListener('change', (e) => {
@@ -605,6 +625,9 @@ document.getElementById('btnN').addEventListener('click', () => {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
+  // Hemisphere flip changes Sun altitude at every hour just like a LAT change does - same
+  // stale-time-strip fix as applyLat() above, same reasoning.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 });
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
@@ -615,6 +638,8 @@ document.getElementById('btnS').addEventListener('click', () => {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
+  // Same stale-time-strip fix as applyLat()/btnN above.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 });
 
 // ─── Longitude control ──────────────────────────────────────────────────────
@@ -631,6 +656,10 @@ function applyLong(val) {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // longitude shifts the whole eclipse geometry - recompute from scratch
+  // Longitude shifts the UT-to-mean-solar-hour offset the strip's gradient is built from
+  // (_nightSkySunAltApprox) just as much as LAT/hemisphere do - same stale-time-strip fix as
+  // applyLat() above.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
 
 document.getElementById('inpLong').addEventListener('change', (e) => {
@@ -656,6 +685,8 @@ document.getElementById('btnE').addEventListener('click', () => {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
+  // Same stale-time-strip fix as applyLat()/applyLong() above.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 });
 document.getElementById('btnW').addEventListener('click', () => {
   lonHemisphere = -1;
@@ -665,6 +696,8 @@ document.getElementById('btnW').addEventListener('click', () => {
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();
+  // Same stale-time-strip fix as applyLat()/applyLong() above.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 });
 
 // ─── Time zone offset control ───────────────────────────────────────────────
@@ -687,6 +720,10 @@ function applyTimeZone(val) {
   // ("UTC+N"), both in the top readout and the left panel's circumstance table, so those still
   // need a redraw - just a lighter one than enterEclipse()'s full recompute+slider-reset.
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshDisplay === 'function') _eclipseRefreshDisplay();
+  // Night Sky's own time strip/label show LOCAL time alongside UTC (_nightSkyLocalHour,
+  // render-nightsky.js) - the one place its otherwise-strictly-UTC state reads timeZoneHours at
+  // all, display-only, never fed back into the actual astronomy.
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
 
 document.getElementById('inpTimeZone').addEventListener('change', (e) => {
@@ -1810,6 +1847,7 @@ function setMode(mode) {
     if (typeof sunGraphActive !== 'undefined' && sunGraphActive) exitSunGraph();   // ...and Sun Graph
     if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();   // ...and Sky Dome
     if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();   // ...and Eclipse
+    if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof exitNightSky === 'function') exitNightSky();   // ...and Night Sky
     if (typeof updateViewButtons === 'function') updateViewButtons();              // hide the sub-toggles
     stopSunAnim();                // leaving Analyzer for Gallery stops the day animation
     document.getElementById('statusWrap').style.display = 'none';   // hidden in Gallery
@@ -1853,17 +1891,20 @@ function enterImageView() {
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof exitNightSky === 'function') exitNightSky();
   if (typeof updateViewButtons === 'function') updateViewButtons();   // also refreshes SSV10M/T visibility
 }
 
 // Already in Analyzer (incl. Sun Graph / 3D Model sub-views) → no-op; the graph is part of Analyzer.
-// Eclipse is the one exception: currentMode stays 'analyzer' the whole time it's active (it's just
-// a canvas takeover layered on top, same as 3D Model/Sun Graph/Sky Dome), so the plain mode-switch
-// above would no-op right past it. Clicking ANALYZER while Eclipse is showing should fall back to
-// the plain Image sub-view instead of doing nothing.
+// Eclipse and Night Sky are the exceptions: currentMode stays 'analyzer' the whole time either is
+// active (each is just a canvas takeover layered on top, same as 3D Model/Sun Graph/Sky Dome), so
+// the plain mode-switch above would no-op right past them. Clicking ANALYZER while either is
+// showing should fall back to the plain Image sub-view instead of doing nothing.
 document.getElementById('btnModeAnalyzer').addEventListener('click', () => {
   if (currentMode !== 'analyzer') { setMode('analyzer'); return; }
-  if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof enterImageView === 'function') enterImageView();
+  const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  const nightSkyIsActive = typeof nightSkyActive !== 'undefined' && nightSkyActive;
+  if ((eclipseIsActive || nightSkyIsActive) && typeof enterImageView === 'function') enterImageView();
 });
 document.getElementById('btnModeGallery').addEventListener('click', () => {
   if (currentMode === 'gallery') return;
@@ -1896,6 +1937,11 @@ document.getElementById('btnModeGallery').addEventListener('click', () => {
     // (other views happen to get redrawn via other interactions; this one otherwise wouldn't
     // until something else - e.g. a calibration slider - triggered its own redraw).
     if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof drawSkyDome === 'function') drawSkyDome();
+    // Night Sky's own horizon line/N-E-S-W labels also pick their colour (white vs black) from the
+    // theme at draw time (_nightSkyDrawHorizon) - same "force a repaint now" reasoning as Sky Dome
+    // just above, otherwise they'd stay stale until the next unrelated redraw (e.g. leaving and
+    // re-entering the mode, which is what actually happened before this fix).
+    if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof drawNightSky === 'function') drawNightSky();
   });
 })();
 

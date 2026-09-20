@@ -26,10 +26,12 @@ let _sgShowRed   = true;    // legend toggle: show enters-but-misses (red) overl
 // resolves there, never left ambiguous.
 function updateViewButtons() {
   const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
+  const nightSkyIsActive = typeof nightSkyActive !== 'undefined' && nightSkyActive;
   const sub = document.querySelector('.mode-subrow');
-  // Eclipse isn't part of the wheel (it's a top-level mode, see #btnModeEclipse) - hide the
-  // sub-view wheel while it's showing, same as it's hidden outside Analyzer entirely.
-  if (sub) sub.style.display = (currentMode === 'analyzer' && !eclipseIsActive) ? 'flex' : 'none';
+  // Eclipse and Night Sky aren't part of the wheel (each is a top-level mode, see #btnModeEclipse/
+  // #btnModeNightSky) - hide the sub-view wheel while either is showing, same as it's hidden outside
+  // Analyzer entirely.
+  if (sub) sub.style.display = (currentMode === 'analyzer' && !eclipseIsActive && !nightSkyIsActive) ? 'flex' : 'none';
 
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) _modeWheelIndex = 0;
   else if (typeof sunGraphActive !== 'undefined' && sunGraphActive) _modeWheelIndex = 2;
@@ -37,19 +39,20 @@ function updateViewButtons() {
   else _modeWheelIndex = 1;   // Image – the neutral base view, and the default on entering Analyzer
   if (typeof _modeWheel !== 'undefined' && _modeWheel) _modeWheel.render();
 
-  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome/Eclipse).
+  // Image-mode legend: only in the plain Analyzer view (not Gallery, not theater/3D/Sun Graph/Sky Dome/Eclipse/Night Sky).
   const imgLeg = document.getElementById('imgLegendWrap');
   const showImgLeg = currentMode === 'analyzer'
     && !(typeof theaterMode3D !== 'undefined' && theaterMode3D)
     && !(typeof sunGraphActive !== 'undefined' && sunGraphActive)
     && !(typeof skyDomeActive !== 'undefined' && skyDomeActive)
-    && !eclipseIsActive;
+    && !eclipseIsActive
+    && !nightSkyIsActive;
   if (imgLeg) imgLeg.style.display = showImgLeg ? 'flex' : 'none';
 
   // Image metadata "i" (top-right canvas corner, see #btnMeta in index.html) - shown in Gallery
   // (any image there may carry metadata) and in the plain Analyzer Image sub-view (same condition
-  // as the Image-mode legend above), hidden everywhere else (3D Model/Sun Graph/Sky Dome/Eclipse -
-  // none of those are "looking at one photo" in the sense metadata applies to).
+  // as the Image-mode legend above), hidden everywhere else (3D Model/Sun Graph/Sky Dome/Eclipse/
+  // Night Sky - none of those are "looking at one photo" in the sense metadata applies to).
   const btnMeta = document.getElementById('btnMeta');
   if (btnMeta) btnMeta.style.display = (currentMode === 'gallery' || showImgLeg) ? 'flex' : 'none';
 
@@ -63,6 +66,7 @@ function enterSunGraph() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) exitTheater3D();  // mutually exclusive takeovers
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof exitNightSky === 'function') exitNightSky();
 
   const container  = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');

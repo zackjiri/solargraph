@@ -1090,6 +1090,7 @@ function enterEclipse() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof exitSkyDome === 'function') exitSkyDome();
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof exitNightSky === 'function') exitNightSky();
 
   const container = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');
@@ -1821,8 +1822,8 @@ function _eclipseSetPlayIcon(playing) {
   if (ic) ic.innerHTML = playing
     ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'                 // stop (square)
     : '<polygon points="2,1 11,6 2,11"/>';                              // play (triangle)
-  const speedBox = document.getElementById('eclipseSpeedBox');
-  if (speedBox) speedBox.style.display = playing ? 'block' : 'none';
+  // Always visible now (CSS default), not just while playing - lets the speed be set before the
+  // first Play too, not only adjusted mid-animation.
   _eclipseUpdateSpeedBoxLabel();
 }
 // Swept range is the horizon-VISIBLE window (_eclipseVisibleRange), not the slider's own full

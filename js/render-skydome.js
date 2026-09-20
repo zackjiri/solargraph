@@ -80,6 +80,7 @@ function enterSkyDome() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D && typeof exitTheater3D === 'function') exitTheater3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive && typeof exitSunGraph === 'function') exitSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof exitEclipse === 'function') exitEclipse();
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof exitNightSky === 'function') exitNightSky();
 
   const container  = document.getElementById('canvasContainer');
   const uploadZone = document.getElementById('uploadZone');
