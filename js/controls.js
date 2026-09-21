@@ -1528,6 +1528,28 @@ async function loadFilelist() {
   }
 }
 
+// Location + time zone portion of a preset (latitude/hemisphere/longitude/time_zone) - split out
+// of applyGalleryPreset() so _analyzerRefreshLocationFromPreset() below can reuse just this part on
+// every main-menu entry into Analyzer, without also overwriting the pinhole calibration sliders
+// (yaw/pitch/roll/horizon/radius/scan_w) a user may be mid-way through adjusting there.
+function _applyPresetLocation(preset) {
+  if (preset.latitude !== undefined) applyLat(preset.latitude);
+  if (preset.hemisphere) {
+    hemisphere = preset.hemisphere === 'S' ? -1 : 1;
+    document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+  }
+  // Longitude is stored as one signed field (no separate hemisphere key) - decompose into the
+  // magnitude (LONG) + E/W state the UI actually edits, mirroring latitude's own split.
+  if (typeof preset.longitude === 'number') {
+    lonHemisphere = preset.longitude < 0 ? -1 : 1;
+    applyLong(Math.abs(preset.longitude));
+    document.getElementById('btnE').className = lonHemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
+    document.getElementById('btnW').className = lonHemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
+  }
+  if (typeof preset.time_zone === 'number') applyTimeZone(preset.time_zone);
+}
+
 function applyGalleryPreset(genId, imageIndex) {
   const key = `GEN-${genId}_${imageIndex}`;
   const preset = PRESETS ? PRESETS[key] : null;
@@ -1552,25 +1574,25 @@ function applyGalleryPreset(genId, imageIndex) {
   document.getElementById('lblHorizon').textContent = (horizonMm >= 0 ? '+' : '') + horizonMm.toFixed(1) + ' mm';
   document.getElementById('lblHScale').textContent     = radius.toFixed(1) + ' mm';
 
-  if (preset.latitude !== undefined) applyLat(preset.latitude);
-  if (preset.hemisphere) {
-    hemisphere = preset.hemisphere === 'S' ? -1 : 1;
-    document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
-    document.getElementById('btnS').className = hemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
-  }
-  // Longitude is stored as one signed field (no separate hemisphere key) - decompose into the
-  // magnitude (LONG) + E/W state the UI actually edits, mirroring latitude's own split.
-  if (typeof preset.longitude === 'number') {
-    lonHemisphere = preset.longitude < 0 ? -1 : 1;
-    applyLong(Math.abs(preset.longitude));
-    document.getElementById('btnE').className = lonHemisphere >= 0 ? 'ns-btn active'   : 'ns-btn';
-    document.getElementById('btnW').className = lonHemisphere <  0 ? 'ns-btn active-s' : 'ns-btn';
-  }
-  if (typeof preset.time_zone === 'number') applyTimeZone(preset.time_zone);
+  _applyPresetLocation(preset);
   refreshCalibLimits();
   // Sky Dome Planetarium's "RENDER PANO" split button only makes sense for the one pair of images
   // shot from the same physical site (GEN-1_5/GEN-2_6) - re-evaluate on every image switch.
   if (typeof _skyDomeUpdatePanoRowSplit === 'function') _skyDomeUpdatePanoRowSplit(genId, imageIndex);
+}
+
+// Refreshes just Location/Time zone (not the pinhole calibration sliders) from the currently
+// selected Gallery image's own preset - called on every main-menu entry into Analyzer (see the
+// #btnModeAnalyzer click handler below), so Analyzer's observer location/time zone always tracks
+// whichever image Gallery has selected, the same way Gallery itself already refreshes on re-entry,
+// without silently discarding any manual yaw/pitch/roll/horizon/radius calibration work in Analyzer.
+function _analyzerRefreshLocationFromPreset() {
+  if (galleryState.genId === null || galleryState.imageIndex === null) return;
+  const key = `GEN-${galleryState.genId}_${galleryState.imageIndex}`;
+  const preset = PRESETS ? PRESETS[key] : null;
+  if (!preset) return;
+  _applyPresetLocation(preset);
+  refreshCalibLimits();
 }
 
 // Build generation radio buttons
@@ -1904,6 +1926,10 @@ function enterImageView() {
 // the plain mode-switch above would no-op right past them. Clicking ANALYZER while either is
 // showing should fall back to the plain Image sub-view instead of doing nothing.
 document.getElementById('btnModeAnalyzer').addEventListener('click', () => {
+  // Location/Time zone refresh from the current Gallery selection's preset - every genuine
+  // main-menu entry into Analyzer, whichever of the two branches below actually runs (fresh
+  // transition from Gallery, or falling back from Eclipse/Night Sky to plain Image).
+  _analyzerRefreshLocationFromPreset();
   if (currentMode !== 'analyzer') { setMode('analyzer'); return; }
   const eclipseIsActive = typeof eclipseActive !== 'undefined' && eclipseActive;
   const nightSkyIsActive = typeof nightSkyActive !== 'undefined' && nightSkyActive;

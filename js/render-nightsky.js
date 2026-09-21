@@ -184,10 +184,6 @@ function _skyLoadData() {
 // Analyzer entirely. This mirrors enterEclipse()/exitEclipse() call-for-call; see that function's
 // own comments for why each line is there.
 let nightSkyActive = false;
-// Guards the one-time re-sync of Time zone to the system's own current offset on first entry (see
-// enterNightSky() below) - only ever true->false once, so a Time zone the user deliberately changes
-// on a later visit isn't silently overwritten again.
-let _nightSkyTzInitDone = false;
 
 function enterNightSky() {
   // Mutually exclusive canvas takeovers: 3D Model, Sun Graph, Sky Dome, Eclipse, Night Sky.
@@ -237,19 +233,15 @@ function enterNightSky() {
   _nightSkyUpdatePlanetControlsVisibility();
   if (typeof updateViewButtons === 'function') updateViewButtons();
 
-  // The module-load system-timezone default (applyTimeZone() near the top of this file) can be
-  // clobbered before the user ever gets here: Gallery's own default image loads asynchronously
-  // (filelist.json/presets.json fetch) and applies ITS OWN stored preset.time_zone on top, often
-  // finishing well after this file's synchronous top-level init already ran (confirmed via direct
-  // logging - timeZoneHours read back as the SYSTEM offset immediately after that init call, then
-  // silently reverted to the preset's own value within the same page load, before any user action).
-  // Re-applying it here too, but ONLY the very first time Night Sky is actually entered, fixes that
-  // race for good (guaranteed to run after any such initial async load has long finished) without
-  // stomping on a Time zone the user deliberately changed on a LATER visit to this mode.
-  if (!_nightSkyTzInitDone) {
-    _nightSkyTzInitDone = true;
-    applyTimeZone(_nightSkySystemTzHours(new Date()));
-  }
+  // Every entry from the main menu (this function only ever runs from the #btnModeNightSky click
+  // handler - see below) re-syncs date/time/time zone to the real current moment, the same effect
+  // as the SET NOW button - Night Sky is a live star map, so landing back on "now" on every visit
+  // is the expected baseline, not just a one-time async-race workaround (which this used to be:
+  // the module-load system-timezone default could get clobbered before the user ever gets here, by
+  // Gallery's own async filelist.json/presets.json fetch applying its stored preset.time_zone on
+  // top afterwards - re-running the full "now" reset here fixes that race too, incidentally, same
+  // as it always did).
+  _nightSkySetNow();
 
   // Date/time controls only just became visible/measurable - sync their displayed values and
   // re-measure the wheel widths (same reasoning as _eclipseSubWheel.render() on Eclipse entry).
