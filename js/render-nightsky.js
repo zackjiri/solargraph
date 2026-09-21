@@ -487,9 +487,20 @@ function _nightSkyTzPhaseDays() {
   const tz = typeof timeZoneHours !== 'undefined' ? timeZoneHours : 0;
   return 0.5 - tz / 24;
 }
+// Rounds the WHOLE fractional-hour value to the nearest minute as one quantity, THEN splits into
+// hh/mm - not hour and minute rounded separately, which is what the previous version did
+// (`Math.floor(h)` for hh, `Math.round(fractional part * 60) % 60` for mm) and which had a real,
+// user-reported bug: near the top of an hour (e.g. h=12.9917, 12:59:30) the fractional part rounds
+// UP to 60 minutes, and `% 60` wraps that back to 0 WITHOUT carrying the extra hour - showing
+// "12:00" for a few seconds before the underlying value actually reaches 13.0 and the label
+// correctly flips to "13:00". Rounding the total minute count first (780, not 779.5) and deriving
+// hh/mm from THAT avoids the carry entirely - there's only one rounding step, so there's nothing
+// left to desync. The extra double-mod also keeps a negative or >=24h input wrapping correctly,
+// though callers shouldn't normally pass one.
 function _nightSkyFmtHM(h) {
-  const hh = Math.floor(h) % 24;
-  const mm = Math.round((h - Math.floor(h)) * 60) % 60;
+  const totalMin = ((Math.round(h * 60) % 1440) + 1440) % 1440;
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
   return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
 }
 // The date/time this label used to carry now lives on the shared top info bar instead
