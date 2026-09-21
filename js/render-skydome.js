@@ -56,6 +56,8 @@ let skyDomeProjection = 'planet3d';   // 'dome' | 'matrix' | 'planet3d' - set by
 let skyMap3DOn = false;           // Sky Map's own 3D ON/OFF toggle - only relevant when 'dome' -
                                    // defaults OFF/2D (index.html's pill markup must agree, see #btnSkyMap3DToggle)
 let skyDomePlanetImageOn = false; // Planetarium's "render image" toggle (pilot) - see _skyDomePlanet3DDrawImage
+let skyDomePanoOn = false;        // Planetarium's "render pano" toggle - see _skyDomePlanet3DDrawPano
+let skyDomePanoEligible = false;  // true only while the active gallery image is GEN-1_5 or GEN-2_6
 let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomePixelToAzEl
 
 // Which Display checkboxes stay live in Sky Dome - varies by projection, enabled one at a time as
@@ -1408,7 +1410,26 @@ function updateSkyMap3DControlsVisibility() {
   const showZoom = skyDomeActive && ((skyDomeProjection === 'dome' && skyMap3DOn) || skyDomeProjection === 'planet3d');
   if (zoomCtl) zoomCtl.style.display = showZoom ? 'flex' : 'none';
   const imgRow = document.getElementById('skyDomePlanetImgToggleRow');
-  if (imgRow) imgRow.style.display = (skyDomeActive && skyDomeProjection === 'planet3d') ? 'flex' : 'none';
+  if (imgRow) {
+    imgRow.style.display = (skyDomeActive && skyDomeProjection === 'planet3d') ? 'flex' : 'none';
+    imgRow.classList.toggle('split', skyDomePanoEligible);   // re-applied defensively - see _skyDomeUpdatePanoRowSplit
+  }
+}
+// Called whenever the active gallery image changes (hooked into applyGalleryPreset(), controls.js)
+// - GEN-1_5/GEN-2_6 are the one pair shot from the same physical site (see this file's own
+// _skyDomePanoPaintOne comment), so RENDER PANO only ever makes sense while one of them is active.
+function _skyDomeUpdatePanoRowSplit(genId, imageIndex) {
+  skyDomePanoEligible = SKY_DOME_PANO_KEYS.includes(`GEN-${genId}_${imageIndex}`);
+  const row = document.getElementById('skyDomePlanetImgToggleRow');
+  if (row) row.classList.toggle('split', skyDomePanoEligible);
+  if (!skyDomePanoEligible && skyDomePanoOn) {
+    // Switched to a different image while Pano was on - turn it off, same as clicking it off
+    // directly, rather than leaving it "on" for a pair of photos that's no longer even showing.
+    _skyDomePanoSetOn(false);
+    _skyDomePlanetHDCancel();
+    _skyDomeIndicatorHide();
+    if (skyDomeActive) drawSkyDome();
+  }
 }
 function stepSkyDomeProjWheel(dir) {
   _skyDomeProjIndex = ((_skyDomeProjIndex + dir) % SKY_DOME_PROJ_N + SKY_DOME_PROJ_N) % SKY_DOME_PROJ_N;
@@ -1454,10 +1475,44 @@ document.getElementById('btnSkyDomePlanetImgToggle').addEventListener('click', (
   const btn = document.getElementById('btnSkyDomePlanetImgToggle');
   btn.classList.toggle('on', skyDomePlanetImageOn);
   btn.querySelector('span').textContent = skyDomePlanetImageOn ? 'HIDE IMAGE' : 'RENDER IMAGE';
+  // Mutually exclusive with RENDER PANO (the split row's other half, when shown) - turning this on
+  // turns that off first, same as a segmented control, rather than compositing three warps at once.
+  if (skyDomePlanetImageOn && skyDomePanoOn) _skyDomePanoSetOn(false);
   _skyDomePlanetHDCancel();   // turning the photo off (or back on) invalidates any pending HD wait
   _skyDomeIndicatorHide();
   drawSkyDome();
   if (skyDomePlanetImageOn) _skyDomePlanetHDSchedule();   // freshly on and untouched - worth arming
+});
+
+// ── Planetarium "render pano" toggle - GEN-1_5 + GEN-2_6 composited together ────────────────────
+// Only ever shown (see _skyDomeUpdatePanoRowSplit below) while the active gallery image IS one of
+// that pair, so this can unconditionally assume both presets exist once clicked.
+function _skyDomePanoSetOn(on) {
+  skyDomePanoOn = on;
+  const btn = document.getElementById('btnSkyDomePano');
+  btn.classList.toggle('on', skyDomePanoOn);
+  btn.querySelector('span').textContent = skyDomePanoOn ? 'HIDE PANO' : 'RENDER PANO';
+}
+document.getElementById('btnSkyDomePano').addEventListener('click', () => {
+  _skyDomePanoSetOn(!skyDomePanoOn);
+  // Mutually exclusive with RENDER IMAGE, same reasoning as that button's own handler above.
+  if (skyDomePanoOn && skyDomePlanetImageOn) {
+    skyDomePlanetImageOn = false;
+    const otherBtn = document.getElementById('btnSkyDomePlanetImgToggle');
+    otherBtn.classList.remove('on');
+    otherBtn.querySelector('span').textContent = 'RENDER IMAGE';
+  }
+  _skyDomePlanetHDCancel();
+  _skyDomeIndicatorHide();
+  if (skyDomePanoOn) {
+    // Both photos load lazily, on first use - most sessions never touch this pair, so there's no
+    // reason to fetch either up front. drawSkyDome() runs again once loading actually settles;
+    // until then _skyDomePanoPaintOne's own per-layer bitmap check just skips whichever isn't
+    // ready yet, same "degrade gracefully, never throw" approach the rest of this feature uses.
+    _skyDomePanoEnsureBitmaps().then(() => { if (skyDomeActive) drawSkyDome(); });
+  }
+  drawSkyDome();
+  if (skyDomePanoOn) _skyDomePlanetHDSchedule();
 });
 
 // ── Sky Map 3D zoom slider ─────────────────────────────────────────────────────────────────────
@@ -2123,17 +2178,31 @@ function _sdPlanetImgAffine(s0, s1, s2, d0, d1, d2) {
 // texture mapping slightly past its own edge - not a different one - and the overlap is small
 // enough to be imperceptible on its own.
 const SD_PLANET_IMG_SEAM_PAD = 0.75;   // logical px
-function _sdPlanetImgDrawTriangle(ctx, img, s0, s1, s2, d0, d1, d2, alpha) {
-  const m = _sdPlanetImgAffine(s0, s1, s2, d0, d1, d2);
-  if (!m) return;
+// Shared by every triangle drawn onto either the photo or the mask layer (see below) - inflates a
+// destination triangle a hair outward from its own centroid, so neighbouring mesh triangles overlap
+// by a sub-pixel amount instead of exactly abutting, avoiding a canvas AA rasterization gap at their
+// shared edge (invisible at the coarse 4° mesh, a dense visible zigzag at the finer 1° HD mesh -
+// see _sdPlanetImgFillMaskTriangle). The affine transform for a textured triangle is still built
+// from the ORIGINAL (unexpanded) points elsewhere - this only extrapolates the same mapping/fill
+// slightly past its own edge, not a different one.
+function _sdPlanetImgInflateTri(d0, d1, d2) {
   const cx = (d0[0] + d1[0] + d2[0]) / 3, cy = (d0[1] + d1[1] + d2[1]) / 3;
   const inflate = (p) => {
     const dx = p[0] - cx, dy = p[1] - cy, len = Math.hypot(dx, dy) || 1;
     return [p[0] + dx / len * SD_PLANET_IMG_SEAM_PAD, p[1] + dy / len * SD_PLANET_IMG_SEAM_PAD];
   };
-  const e0 = inflate(d0), e1 = inflate(d1), e2 = inflate(d2);
+  return [inflate(d0), inflate(d1), inflate(d2)];
+}
+// Always opaque - the inflate/overlap trick above is only safe at alpha=1: drawing the SAME opaque
+// pixels twice in the overlap band looks identical to drawing them once, so the sub-pixel overlap
+// is genuinely free. Any partial transparency (the feather rim, the pano blend gradient) is instead
+// applied by a SEPARATE mask pass below (_sdPlanetImgFillMaskTriangle) - see the comment on
+// _skyDomePlanet3DPaintImage for why splitting the two was necessary.
+function _sdPlanetImgDrawTriangleOpaque(ctx, img, s0, s1, s2, d0, d1, d2) {
+  const m = _sdPlanetImgAffine(s0, s1, s2, d0, d1, d2);
+  if (!m) return;
+  const [e0, e1, e2] = _sdPlanetImgInflateTri(d0, d1, d2);
   ctx.save();
-  ctx.globalAlpha = alpha;
   ctx.beginPath();
   ctx.moveTo(e0[0], e0[1]); ctx.lineTo(e1[0], e1[1]); ctx.lineTo(e2[0], e2[1]);
   ctx.closePath();
@@ -2141,6 +2210,52 @@ function _sdPlanetImgDrawTriangle(ctx, img, s0, s1, s2, d0, d1, d2, alpha) {
   ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
   ctx.drawImage(img, 0, 0);
   ctx.restore();
+}
+// Cheap mask fill, used only while actively dragging/pinching (interacting): INFLATED destination
+// triangle (same geometry as the photo layer - needed even here, see below) at a flat alpha,
+// accumulated the ordinary way (no 'lighten', no luminance→alpha conversion - the correct/slow path
+// below's extra cost isn't worth paying every dragged frame). Earlier version of this function used
+// the EXACT (non-inflated) triangle instead, reasoning that alpha is ~1 for the vast majority of a
+// drag (feather/rim-fade gradient itself is skipped while interacting, see the alpha calc below) -
+// but that reasoning only excuses the OVERLAP side of inflating (opaque-over-opaque accumulation is
+// harmless), and missed that skipping the inflate brings back the exact AA coverage-GAP problem
+// _sdPlanetImgInflateTri exists to avoid - at alpha=1 a gap in the mask directly punches a hole in
+// the otherwise-opaque photo, i.e. the mesh's own triangle edges become visible WHILE dragging (the
+// user's own report: "když se sférou pohybuju, tak se během toho ty trojúhelníky zobrazují, ale jak
+// zastavím ..., tak se to vykreslí správně" - correct only once interaction ends and the correct/
+// slow mask path takes over). Fixed by inflating here too; the only remaining imperfection is a
+// minor double-composite brightness blip in the (rare) case alpha<1 during a drag - e.g. the pano
+// blend band - which plain accumulation still slightly over-composites in the overlap sliver, same
+// as the original single-pass code always did during interaction, before any of this two-pass
+// split existed - not a regression, and far less visible than a whole visible mesh outline.
+function _sdPlanetImgFillMaskTriangleFast(ctx, d0, d1, d2, alpha) {
+  const [e0, e1, e2] = _sdPlanetImgInflateTri(d0, d1, d2);
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(e0[0], e0[1]); ctx.lineTo(e1[0], e1[1]); ctx.lineTo(e2[0], e2[1]);
+  ctx.closePath();
+  ctx.fill();
+}
+// Correct mask fill, used for every settled frame (idle repaint and the explicit HD pass). Needs
+// the same inflate as the photo layer (a canvas AA coverage gap between two independently-filled,
+// exactly-abutting triangles shows regardless of how similar their alphas are - even when they're
+// EXACTLY equal, e.g. the two triangles of the same mesh patch, which always share one flat alpha).
+// Naively inflating-and-accumulating the mask via plain globalAlpha (as the fast path above does)
+// would reintroduce the ORIGINAL excess-alpha bug in the mask channel instead of the photo channel
+// - not acceptable here, since this path is exactly the one meant to render CORRECTLY. Fix: paint
+// alpha as a GRAYSCALE COLOR (not the alpha channel) using the same inflate as the photo,
+// composited with 'lighten' - a per-channel MAX, not Porter-Duff "over" accumulation - so an overlap
+// takes the larger of the two triangles' values instead of stacking them. Alpha itself stays
+// meaningless (always ~1 wherever painted) until _skyDomePlanet3DPaintImage's one-pass
+// luminance→alpha conversion afterwards.
+function _sdPlanetImgFillMaskTriangle(ctx, d0, d1, d2, alpha) {
+  const [e0, e1, e2] = _sdPlanetImgInflateTri(d0, d1, d2);
+  const v = Math.round(Math.max(0, Math.min(1, alpha)) * 255);
+  ctx.fillStyle = `rgb(${v},${v},${v})`;
+  ctx.beginPath();
+  ctx.moveTo(e0[0], e0[1]); ctx.lineTo(e1[0], e1[1]); ctx.lineTo(e2[0], e2[1]);
+  ctx.closePath();
+  ctx.fill();
 }
 
 const SD_PLANET_IMG_AZ_STEP = 4, SD_PLANET_IMG_EL_STEP = 4;   // same mesh density as the shell
@@ -2204,10 +2319,17 @@ function _skyDomePlanetHDCancel() {
 }
 // Call once the view has just finished settling (after a real drag/pinch/zoom's own redraw) -
 // arms the idle wait. Any further touch (see _setSkyDomePlanet3DInteracting/setSkyDomePlanet3DZoom)
-// cancels it before it can fire, same as leaving Planetarium or turning the photo off.
+// cancels it before it can fire, same as leaving Planetarium or turning either render mode off.
+// Shared by RENDER IMAGE and RENDER PANO (whichever is actually on) - originally gated on
+// skyDomePlanetImageOn alone, which silently no-op'd this whole idle->countdown->HD pass for pano
+// (the user's own follow-up: "chtěl bych i tady nastavit to HD renderování s časovačem"). Since the
+// two are mutually exclusive (see their own click handlers), "either" never means "both".
 function _skyDomePlanetHDSchedule() {
   _skyDomePlanetHDCancel();
-  if (!skyDomePlanetImageOn || skyDomeProjection !== 'planet3d' || !imgBitmap) return;
+  if (skyDomeProjection !== 'planet3d') return;
+  const imageReady = skyDomePlanetImageOn && !!imgBitmap;
+  const panoReady = skyDomePanoOn;
+  if (!imageReady && !panoReady) return;
   _skyDomePlanetHDTimer = setTimeout(() => _skyDomePlanetHDCountdownTick(3), SD_PLANET_IMG_HD_IDLE_MS);
 }
 function _skyDomePlanetHDCountdownTick(n) {
@@ -2216,22 +2338,42 @@ function _skyDomePlanetHDCountdownTick(n) {
   _skyDomePlanetHDTimer = setTimeout(() => _skyDomePlanetHDCountdownTick(n - 1), SD_PLANET_IMG_HD_TICK_MS);
 }
 function _skyDomePlanetHDRender() {
-  if (!skyDomePlanetImageOn || skyDomeProjection !== 'planet3d') return;
+  if (skyDomeProjection !== 'planet3d' || (!skyDomePlanetImageOn && !skyDomePanoOn)) return;
   _skyDomeIndicatorShow('RENDERING', true);
-  // The actual pass (~110ms at 1°, see SD_PLANET_IMG_HD_STEP_MUL) is one long synchronous block -
-  // calling it right here would never let the browser paint the switch to "RENDERING" first, so
-  // it'd look like nothing happened until the whole thing was already done. Two nested rAF calls
-  // is the standard guarantee that a DOM change has actually reached the screen before continuing:
-  // the outer one fires before this frame paints, the inner one only after that paint has landed.
+  // The actual pass (~110ms at 1°, see SD_PLANET_IMG_HD_STEP_MUL - roughly double that for pano,
+  // two photos instead of one) is one long synchronous block - calling it right here would never
+  // let the browser paint the switch to "RENDERING" first, so it'd look like nothing happened
+  // until the whole thing was already done. Two nested rAF calls is the standard guarantee that a
+  // DOM change has actually reached the screen before continuing: the outer one fires before this
+  // frame paints, the inner one only after that paint has landed.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       _skyDomePlanet3DHDPending = true;
-      _skyDomePlanetImgCache.key = '';   // force _skyDomePlanet3DDrawImage to repaint, not re-blit
+      // Force a repaint, not a re-blit - only whichever cache the active mode actually uses.
+      if (skyDomePlanetImageOn) _skyDomePlanetImgCache.key = '';
+      if (skyDomePanoOn) _skyDomePanoCache.key = '';
       drawSkyDome();
       _skyDomePlanet3DHDPending = false;
       _skyDomeIndicatorHide();
     });
   });
+}
+
+// Scratch canvases for _skyDomePlanet3DPaintImage's two-pass render (photo + alpha mask) - reused
+// unless the size/resolution actually changes, same convention as _skyDomePlanetImgCache/
+// _skyDomePanoCache above (avoids allocating two fresh canvases on every single paint call).
+let _sdPlanetImgLayerScratch = { photo: null, photoCtx: null, mask: null, maskCtx: null, W: 0, H: 0, RES: 0 };
+function _sdPlanetImgEnsureScratch(W, H, RES) {
+  const s = _sdPlanetImgLayerScratch;
+  if (s.photo && s.W === W && s.H === H && s.RES === RES) return s;
+  s.photo = document.createElement('canvas');
+  s.photo.width = Math.round(W * RES); s.photo.height = Math.round(H * RES);
+  s.photoCtx = s.photo.getContext('2d');
+  s.mask = document.createElement('canvas');
+  s.mask.width = Math.round(W * RES); s.mask.height = Math.round(H * RES);
+  s.maskCtx = s.mask.getContext('2d');
+  s.W = W; s.H = H; s.RES = RES;
+  return s;
 }
 
 // Paints the photo warp onto ctx, patch by patch (two triangles each), same mesh shape as
@@ -2242,13 +2384,47 @@ function _skyDomePlanetHDRender() {
 // _skyDomePlanetImagePixel) instead of a hard cut, and respects the dome's own outer rim fade
 // (centerP.alpha) for consistency with everything else. Factored out from
 // _skyDomePlanet3DDrawImage below so it can target either the live canvas or the offscreen cache.
-function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
+// blendFn is optional (undefined for the single-image path and for a pano's own base layer) - when
+// given, it's called with each patch's own source midpoint (sMid, the same {px,py} the feather calc
+// already samples) and must return an EXTRA multiplier in [0,1], applied on top of the existing
+// feather/rim-fade alpha rather than replacing it. Used by the pano composite to fade GEN-1_5's own
+// right edge into GEN-2_6 beneath it - see _skyDomePanoTopBlendAlpha.
+//
+// Two-pass render (photo layer + alpha mask, composited via destination-in) instead of drawing each
+// triangle directly at its own alpha: the seam-pad inflate (SD_PLANET_IMG_SEAM_PAD) makes adjacent
+// triangles overlap by design, and Porter-Duff "source-over" compositing two overlapping layers of
+// alpha a each does NOT sum to a - it composites to 1-(1-a)^2, always MORE than a. Invisible at
+// alpha=1 (opaque-over-opaque looks the same as opaque once), but wherever alpha<1 (the feather rim,
+// and now the much wider pano blend gradient) every triangle-edge overlap band comes out visibly too
+// opaque/bright - exactly the mesh-shaped seam the user spotted. Fix: paint the texture fully OPAQUE
+// with the existing inflate/overlap trick (safe at alpha=1, see _sdPlanetImgDrawTriangleOpaque), and
+// apply the actual alpha as a SEPARATE flat mask pass, composited together with one destination-in
+// (multiplies the photo layer's alpha by the mask's, no accumulation), then blitted onto ctx. The
+// mask itself needs the SAME seam-pad inflate as the photo (a canvas AA coverage gap between two
+// exactly-abutting triangles shows regardless of how similar their alphas are - see
+// _sdPlanetImgFillMaskTriangle) but painted so overlaps take the larger value instead of stacking,
+// to avoid reintroducing the excess-alpha bug in the mask channel instead of the photo channel.
+function _skyDomePlanet3DPaintImage(ctx, layout, tex, blendFn, W, H, RES) {
+  const scratch = _sdPlanetImgEnsureScratch(W, H, RES);
+  const photoCtx = scratch.photoCtx, maskCtx = scratch.maskCtx;
+  photoCtx.setTransform(RES, 0, 0, RES, 0, 0);
+  photoCtx.clearRect(0, 0, W, H);
+  maskCtx.setTransform(RES, 0, 0, RES, 0, 0);
+  maskCtx.clearRect(0, 0, W, H);
+
   const featherPx = SD_PLANET_IMG_FEATHER_FRAC * Math.min(canvasLW, canvasLH);
   const interacting = _skyDomePlanet3DInteracting;
+  // See _sdPlanetImgFillMaskTriangle/_sdPlanetImgFillMaskTriangleFast: the correct (inflated,
+  // 'lighten'-composited) mask needs a one-time luminance→alpha conversion afterwards, so it's only
+  // worth its cost for a settled frame - while actively dragging/pinching, fall back to the cheap
+  // uninflated flat-alpha fill (matches the mesh's own existing interaction-LOD quality tradeoff).
+  if (interacting) { maskCtx.globalCompositeOperation = 'source-over'; maskCtx.fillStyle = '#fff'; }
+  else { maskCtx.globalCompositeOperation = 'lighten'; maskCtx.globalAlpha = 1; }
   const stepMul = interacting ? SD_PLANET_IMG_INTERACT_STEP_MUL
     : _skyDomePlanet3DHDPending ? SD_PLANET_IMG_HD_STEP_MUL : 1;
   const AZ_STEP = SD_PLANET_IMG_AZ_STEP * stepMul, EL_STEP = SD_PLANET_IMG_EL_STEP * stepMul;
 
+  let anyPainted = false;
   for (let az = 0; az < 360; az += AZ_STEP) {
     for (let el = -90; el < 90; el += EL_STEP) {
       const az2 = az + AZ_STEP, el2 = Math.min(90, el + EL_STEP);
@@ -2276,15 +2452,49 @@ function _skyDomePlanet3DPaintImage(ctx, layout, tex) {
       // smooth alpha ramp just reads as a handful of unevenly-transparent blocky squares, which
       // looks worse than a plain hard edge. Full opacity while interacting (still respects the
       // boundary itself - patches beyond it are already culled above); the real gradient returns
-      // the instant the mesh snaps back to full resolution on release.
-      const alpha = interacting ? 1 : featherAlpha * pMid.alpha;
+      // the instant the mesh snaps back to full resolution on release. blendFn, unlike the feather,
+      // is never skipped while interacting - it's compositionally load-bearing (which of the two
+      // pano photos shows here), not a cosmetic edge softener, so skipping it would flash the
+      // "wrong" photo fully opaque for the duration of every drag.
+      let alpha = interacting ? 1 : featherAlpha * pMid.alpha;
+      if (blendFn) alpha *= blendFn(sMid);
+      if (alpha <= 0.02) continue;
 
-      _sdPlanetImgDrawTriangle(ctx, tex, [sTL.px,sTL.py], [sTR.px,sTR.py], [sBL.px,sBL.py],
-                                          [pTL.x,pTL.y],   [pTR.x,pTR.y],   [pBL.x,pBL.y], alpha);
-      _sdPlanetImgDrawTriangle(ctx, tex, [sTR.px,sTR.py], [sBR.px,sBR.py], [sBL.px,sBL.py],
-                                          [pTR.x,pTR.y],   [pBR.x,pBR.y],   [pBL.x,pBL.y], alpha);
+      anyPainted = true;
+      _sdPlanetImgDrawTriangleOpaque(photoCtx, tex, [sTL.px,sTL.py], [sTR.px,sTR.py], [sBL.px,sBL.py],
+                                                     [pTL.x,pTL.y],   [pTR.x,pTR.y],   [pBL.x,pBL.y]);
+      _sdPlanetImgDrawTriangleOpaque(photoCtx, tex, [sTR.px,sTR.py], [sBR.px,sBR.py], [sBL.px,sBL.py],
+                                                     [pTR.x,pTR.y],   [pBR.x,pBR.y],   [pBL.x,pBL.y]);
+      const maskFill = interacting ? _sdPlanetImgFillMaskTriangleFast : _sdPlanetImgFillMaskTriangle;
+      maskFill(maskCtx, [pTL.x,pTL.y], [pTR.x,pTR.y], [pBL.x,pBL.y], alpha);
+      maskFill(maskCtx, [pTR.x,pTR.y], [pBR.x,pBR.y], [pBL.x,pBL.y], alpha);
     }
   }
+
+  if (!anyPainted) return;
+  if (!interacting) {
+    // The correct mask pass above painted alpha as grayscale LUMINANCE, not the alpha channel
+    // itself (see _sdPlanetImgFillMaskTriangle) - one raw-pixel pass to copy R into A turns it into
+    // a real alpha mask. Runs once per settled frame, not per triangle, so the O(W*H) cost here is
+    // negligible next to the mesh's own draw-call count.
+    const raw = scratch.mask;
+    const maskImg = maskCtx.getImageData(0, 0, raw.width, raw.height);
+    const md = maskImg.data;
+    for (let i = 0; i < md.length; i += 4) md[i + 3] = md[i];
+    maskCtx.putImageData(maskImg, 0, 0);
+  }
+  // destination-in: keeps the photo layer's RGB, multiplies its alpha by the mask's - one clean
+  // pass, no accumulation. Both scratch canvases share the same physical backing-store size, so the
+  // mask must be drawn 1:1 in raw device pixels (identity transform), not through the RES-scaled
+  // logical transform used above - otherwise the RES scale would be applied a second time.
+  photoCtx.globalAlpha = 1;
+  photoCtx.globalCompositeOperation = 'destination-in';
+  photoCtx.setTransform(1, 0, 0, 1, 0, 0);
+  photoCtx.drawImage(scratch.mask, 0, 0);
+  photoCtx.globalCompositeOperation = 'source-over';
+  photoCtx.setTransform(RES, 0, 0, RES, 0, 0);
+
+  ctx.drawImage(scratch.photo, 0, 0, W, H);
 }
 
 // Memoized: rebuilding the mesh above (a few thousand clipped/transformed drawImage calls,
@@ -2331,9 +2541,156 @@ function _skyDomePlanet3DDrawImage(ctx, layout) {
   if (cache.key !== key || cache.tex !== tex) {
     cache.cctx.setTransform(RES, 0, 0, RES, 0, 0);
     cache.cctx.clearRect(0, 0, W, H);
-    _skyDomePlanet3DPaintImage(cache.cctx, layout, tex);
+    _skyDomePlanet3DPaintImage(cache.cctx, layout, tex, undefined, W, H, RES);
     cache.key = key;
     cache.tex = tex;
+  }
+
+  ctx.drawImage(cache.canvas, 0, 0, W, H);
+}
+
+// ── Planetarium "render pano": GEN-1_5 + GEN-2_6 composited, GEN-1_5 always on top ──────────────
+// Both photos were shot from the SAME physical pinhole site (confirmed via presets.json: identical
+// latitude/longitude/hemisphere/time_zone) but at different yaw - and, it turns out, slightly
+// different pitch/roll/horizon/radius too, not just yaw - so each needs to be warped through its
+// OWN calibration, not the app's single currently-active one. Rather than forking a parameterized
+// copy of the whole single-image warp pipeline, _skyDomePanoPaintOne below temporarily swaps just
+// the six calibration globals _skyDomePlanetImagePixel/_rotCanInvWorld actually read
+// (yawDeg/pitchDeg/rollDeg/horizonMm/radius/hScale), calls the EXISTING, unmodified
+// _skyDomePlanet3DPaintImage() once per photo, and restores them in a finally block - reusing the
+// exact same, already-tuned warp/feather/mesh-LOD math rather than duplicating it. Nothing else
+// needs swapping: canvasLW/canvasLH/cx/cy are the fixed normalised scan size + its centre (the
+// photo is always stretched to fill it, not sized from its own pixel dimensions), and scale only
+// depends on scanWmm, which is identical (178mm) for both these two presets.
+const SKY_DOME_PANO_KEYS = ['GEN-1_5', 'GEN-2_6'];   // the eligible pair (order-independent use, e.g. eligibility/preload)
+// Paint order, base layer first: briefly made dynamic ("whichever is selected paints on top"), then
+// reverted the very next round to a fixed GEN-1_5-always-on-top per the user's own explicit choice,
+// now paired with GEN-1_5's own hand-tuned edge blend below - "shodně u obou obrázků, takže
+// dostaneme stejný výstup" (the SAME composite regardless of which of the two is the active gallery
+// selection), which a fixed order guarantees and the earlier dynamic one didn't.
+const SKY_DOME_PANO_PAINT_ORDER = ['GEN-2_6', 'GEN-1_5'];
+
+// GEN-1_5's own right-edge feather blend into GEN-2_6 beneath it - a classic panorama-stitch seam
+// blend, defined in GEN-1_5's OWN calibrated source-photo pixel space (0..canvasLW), not screen
+// space: fully opaque from its own left edge out to 75% of its width, then fading LINEARLY to fully
+// transparent by its own right edge (100% width) - "zleva 100 procent až do 75 procent šířky, poté
+// začne prosvítat". Deliberately hand-tuned for this ONE specific pair, not a generic reusable
+// blending system - the user's own note: "každé takové panorama je unikátní a je potřeba to
+// prolnutí odladit individuálně" (every such panorama is unique, this blend needs tuning per pair).
+const SKY_DOME_PANO_BLEND_START_FRAC = 0.75;   // fraction of canvasLW where the fade begins
+function _skyDomePanoTopBlendAlpha(sMid) {
+  const frac = sMid.px / canvasLW;
+  if (frac <= SKY_DOME_PANO_BLEND_START_FRAC) return 1;
+  if (frac >= 1) return 0;
+  return 1 - (frac - SKY_DOME_PANO_BLEND_START_FRAC) / (1 - SKY_DOME_PANO_BLEND_START_FRAC);
+}
+
+// Loaded lazily (only once RENDER PANO is actually clicked) and kept for the rest of the session -
+// same "fire a real Image element, wrap the result in an ImageBitmap" pattern as core.js's own
+// loadSplitImage(), just generalised to an arbitrary GEN/image key and returning a Promise instead
+// of poking a single shared global, since this needs to track TWO photos independently.
+let _skyDomePanoBitmaps = {};
+function _skyDomePanoLoadBitmap(key) {
+  if (_skyDomePanoBitmaps[key]) return Promise.resolve(_skyDomePanoBitmaps[key]);
+  const [genId, imageIndex] = key.slice(4).split('_');
+  return new Promise((resolve) => {
+    const imgEl = new Image();
+    imgEl.onload = () => {
+      createImageBitmap(imgEl).then(bm => { _skyDomePanoBitmaps[key] = bm; resolve(bm); })
+        .catch(() => resolve(null));
+    };
+    imgEl.onerror = () => resolve(null);
+    // L1 = "ENHANCED" (index.html's own View radio group) - the processed solargraph, per the
+    // user's own explicit correction ("myslel jsem pano jen ze snímků L1, tedy upravených
+    // solargrafů"), NOT L2 (the separate file core.js's own loadSplitImage() fetches for the
+    // Raw/Enhanced split-screen COMPARISON view - a different feature, unrelated to this one).
+    imgEl.src = `img/GEN-${genId}_${imageIndex}_L1.jpg`;
+  });
+}
+function _skyDomePanoEnsureBitmaps() {
+  return Promise.all(SKY_DOME_PANO_KEYS.map(_skyDomePanoLoadBitmap));
+}
+
+// Own texture cache, one slot per photo (keyed by the GEN id, not shared with
+// _skyDomePlanetImageTexture's single slot) - painting both photos every frame would otherwise
+// evict and rebuild that shared slot twice per frame, since it can only ever hold one bitmap at a
+// time. Same pre-stretch-to-canvasLW×canvasLH technique, same reasoning, just its own dict.
+let _skyDomePanoTexCache = {};
+function _skyDomePanoTexture(key, bitmap) {
+  const dims = canvasLW + 'x' + canvasLH;
+  const cached = _skyDomePanoTexCache[key];
+  if (cached && cached.src === bitmap && cached.dims === dims) return cached.canvas;
+  const c = document.createElement('canvas');
+  c.width = canvasLW; c.height = canvasLH;
+  c.getContext('2d').drawImage(bitmap, 0, 0, canvasLW, canvasLH);
+  _skyDomePanoTexCache[key] = { canvas: c, src: bitmap, dims };
+  return c;
+}
+
+function _skyDomePanoPaintOne(ctx, layout, key, W, H, RES) {
+  const preset = PRESETS ? PRESETS[key] : null;
+  const bitmap = _skyDomePanoBitmaps[key];
+  if (!preset || !bitmap) return;   // not loaded (yet) - skip this layer, don't block the other one
+  const tex = _skyDomePanoTexture(key, bitmap);
+  const blendFn = key === 'GEN-1_5' ? _skyDomePanoTopBlendAlpha : null;   // only the top layer fades
+  const savedYaw = yawDeg, savedPitch = pitchDeg, savedRoll = rollDeg,
+        savedHorizon = horizonMm, savedRadius = radius, savedHScale = hScale;
+  try {
+    yawDeg    = preset.yaw_deg    ?? 0;
+    pitchDeg  = preset.pitch_deg  ?? 0;
+    rollDeg   = preset.roll_deg   ?? 0;
+    horizonMm = preset.horizon_mm ?? 0;
+    radius    = preset.radius_mm  ?? 33;
+    hScale    = radius / R;
+    _skyDomePlanet3DPaintImage(ctx, layout, tex, blendFn, W, H, RES);
+  } finally {
+    // Always restore, even if the paint pass above throws - the app's own live calibration state
+    // (the ACTUAL active image's yaw/pitch/roll/etc, editable via the sliders) must never be left
+    // pointing at one of these two presets by an interrupted pano render.
+    yawDeg = savedYaw; pitchDeg = savedPitch; rollDeg = savedRoll;
+    horizonMm = savedHorizon; radius = savedRadius; hScale = savedHScale;
+  }
+}
+
+// Own offscreen composite cache, mirroring _skyDomePlanetImgCache/_skyDomePlanetImgCacheKey above -
+// camera/canvas-size/interaction-state only (not yaw/pitch/roll/etc, which are fixed per preset
+// here, not live-editable the way the single active image's own calibration is - and, since the
+// paint order/blend are fixed again too, not the active gallery selection either any more), plus
+// whether each bitmap has actually finished loading, so the very first frame after either photo
+// arrives forces a repaint instead of waiting for some unrelated cache-key field to change first.
+let _skyDomePanoCache = { canvas: null, cctx: null, key: '', W: 0, H: 0, RES: 0 };
+function _skyDomePanoCacheKey(layout) {
+  const p = _skyDomePlanet3D;
+  return [
+    p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
+    layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
+    canvasLW, canvasLH, _skyDomePlanet3DInteracting,
+    !!_skyDomePanoBitmaps['GEN-1_5'], !!_skyDomePanoBitmaps['GEN-2_6'],
+  ].join('|');
+}
+function _skyDomePlanet3DDrawPano(ctx, layout) {
+  if (!skyDomePanoOn) return;
+  const cv = document.getElementById('skyDomeCanvas');
+  const RES = cv._res || 1;
+  const W = cv.width / RES, H = cv.height / RES;
+  const cache = _skyDomePanoCache;
+  const sizeChanged = cache.W !== W || cache.H !== H || cache.RES !== RES;
+
+  if (!cache.canvas || sizeChanged) {
+    cache.canvas = document.createElement('canvas');
+    cache.canvas.width = Math.round(W * RES);
+    cache.canvas.height = Math.round(H * RES);
+    cache.cctx = cache.canvas.getContext('2d');
+    cache.W = W; cache.H = H; cache.RES = RES;
+    cache.key = '';
+  }
+
+  const key = _skyDomePanoCacheKey(layout);
+  if (cache.key !== key) {
+    cache.cctx.setTransform(RES, 0, 0, RES, 0, 0);
+    cache.cctx.clearRect(0, 0, W, H);
+    for (const k of SKY_DOME_PANO_PAINT_ORDER) _skyDomePanoPaintOne(cache.cctx, layout, k, W, H, RES);
+    cache.key = key;
   }
 
   ctx.drawImage(cache.canvas, 0, 0, W, H);
@@ -2359,6 +2716,7 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
   const _sunNow   = sunPosition((sunTimeHours - 12) * 15 * Math.PI / 180, _sunDelta, _sunPhi);
   _skyDomePlanet3DDrawShell(ctx, layout, _sunNow.az, _sunNow.el);
   _skyDomePlanet3DDrawImage(ctx, layout);
+  _skyDomePlanet3DDrawPano(ctx, layout);
 
   // Az/Alt grid checkbox (§Display) - meridians/rings plus their own cardinal/degree labels,
   // same two-tier structure as the main 2D view's drawGrid(): the whole grid is gated on showGrid,
