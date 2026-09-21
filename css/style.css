@@ -2173,9 +2173,13 @@
   }
   /* Planetarium "render image" toggle – same panel treatment as .skydome-proj-row, sitting in the
      same slot as #skyMap3DToggleRow (the two projections are mutually exclusive, so they never
-     show at once): between the projection wheel above and the zoom slider below. Single button
-     whose own label flips RENDER IMAGE ↔ HIDE IMAGE (styled like #btnSunPlay's play/stop toggle)
-     rather than a separate switch + label. */
+     show at once): between the projection wheel above and the zoom slider below. Normally a single
+     button whose own label flips RENDER IMAGE ↔ HIDE IMAGE (styled like #btnSunPlay's play/stop
+     toggle) rather than a separate switch + label - but the row becomes a two-button split (own
+     "split" class, toggled by _skyDomeUpdatePanoRowSplit() in render-skydome.js) whenever the
+     active image is GEN-1_5 or GEN-2_6, adding "RENDER PANO" as a second half alongside it. Both
+     buttons are flex:1 (not width:100%) precisely so this works unmodified in EITHER state - with
+     one child, flex:1 fills the row exactly like width:100% used to; with two, they split evenly. */
   #skyDomePlanetImgToggleRow {
     position: absolute; top: 48px; right: 12.5px;
     width: 230px;
@@ -2184,6 +2188,7 @@
     background: rgba(7,9,13,0.55);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    gap: 0;   /* the two halves touch directly - a shared straight edge, not a gap */
   }
   body.light #skyDomePlanetImgToggleRow {
     background: rgba(220,228,236,0.82);
@@ -2194,9 +2199,10 @@
      over the static sidebar can. Measured a real case: canvas pixel rgb(126,148,206) behind the
      button gave the old translucent-tint version only ~2.3:1 contrast - well under WCAG AA
      (4.5:1). Solid dark fill + bright, high-luminance text keeps contrast reliable regardless of
-     what's rendered behind it. */
-  #btnSkyDomePlanetImgToggle {
-    width: 100%;
+     what's rendered behind it. Shared by both halves of the split row (#btnSkyDomePano below
+     reuses this same block) - only the idle text colour and the row-split corner rounding differ. */
+  #btnSkyDomePlanetImgToggle, #btnSkyDomePano {
+    flex: 1;
     height: 24px;
     display: flex;
     align-items: center;
@@ -2212,12 +2218,27 @@
     text-transform: uppercase;
     transition: background 0.15s, color 0.15s;
   }
-  #btnSkyDomePlanetImgToggle:hover { background: rgba(10,18,26,0.95); }
-  #btnSkyDomePlanetImgToggle.on {
+  #btnSkyDomePlanetImgToggle:hover, #btnSkyDomePano:hover { background: rgba(10,18,26,0.95); }
+  #btnSkyDomePlanetImgToggle.on, #btnSkyDomePano.on {
     background: rgba(8,22,15,0.85);
     color: #7cf0a2;
   }
-  #btnSkyDomePlanetImgToggle.on:hover { background: rgba(8,22,15,0.95); }
+  #btnSkyDomePlanetImgToggle.on:hover, #btnSkyDomePano.on:hover { background: rgba(8,22,15,0.95); }
+  /* RENDER PANO's own idle label colour - yellow, per the user's own request ("stejný styl, ale
+     žlutý popisek") - everything else (background, hover, .on green-active state) stays identical
+     to RENDER IMAGE's own rules just above. Hidden outside the split state; the split rules below
+     also square off the edge where the two buttons meet, leaving only the OUTER corners rounded. */
+  #btnSkyDomePano {
+    display: none;
+    color: #e8a020;
+  }
+  #skyDomePlanetImgToggleRow.split #btnSkyDomePlanetImgToggle {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  }
+  #skyDomePlanetImgToggleRow.split #btnSkyDomePano {
+    display: flex;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
 
   /* Rendering-in-progress indicator (pulsing dot + label) - a fixed yellow, not the theme-varying
      --accent (which turns dark orange-brown in light mode for contrast on the light SIDEBAR
