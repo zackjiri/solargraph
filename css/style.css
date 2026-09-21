@@ -209,7 +209,7 @@
 
   header h1 {
     font-family: var(--mono);
-    font-size: 14px;
+    font-size: 13px;
     letter-spacing: 0.2em;
     color: #e8a020;          /* yellow kept in both themes */
     text-transform: uppercase;
@@ -231,6 +231,11 @@
     line-height: 1.1;
     color: #af52de;          /* same purple as the analemma curve */
     white-space: nowrap;
+    /* .app-title is a column flex container with no explicit align-items, so its default
+       (stretch) already makes this line's own box exactly as wide as the h1 above it - centering
+       the TEXT within that shared-width box is enough to centre it against the heading, per the
+       user's own request, without needing any extra wrapper or width math. */
+    text-align: center;
   }
   /* Light: the dark-theme purple drops to ~3:1 on the near-white panel. */
   body.light .app-tagline { color: #7b2ba8; }
