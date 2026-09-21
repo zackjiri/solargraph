@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug131">
+  <link rel="stylesheet" href="css/style.css?perfdebug138">
 </head>
 <body>
 
@@ -409,10 +409,16 @@
         <span id="skyMap3DZoomVal">1.0×</span>
       </div>
       <!-- Planetarium "render image" toggle (pilot) – warps the calibrated photo onto the fisheye
-           dome via the shared az/el the two projections agree on. Shown only in Planetarium. -->
+           dome via the shared az/el the two projections agree on. Shown only in Planetarium. Splits
+           into two side-by-side halves (own "split" class on the row, render-skydome.js) only while
+           the active image is GEN-1_5 or GEN-2_6 - the one pair shot from the same physical site at
+           different yaw, which "RENDER PANO" composites together. -->
       <div id="skyDomePlanetImgToggleRow">
         <button id="btnSkyDomePlanetImgToggle" title="Warp the calibrated photo onto the sky dome">
           <span>RENDER IMAGE</span>
+        </button>
+        <button id="btnSkyDomePano" title="Warp GEN-1_5 and GEN-2_6 (same site, different yaw) onto the sky dome together, GEN-1_5 on top">
+          <span>RENDER PANO</span>
         </button>
       </div>
       <!-- Rendering-in-progress indicator (Planetarium image warp) - pulsing dot + label, shown
@@ -860,21 +866,21 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.9.20
 </div>
 
-<script src="js/core.js?perfdebug131"></script>
+<script src="js/core.js?perfdebug138"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug131"></script>
-<script src="js/render-sungraph.js?perfdebug131"></script>
-<script src="js/render-3d.js?perfdebug131"></script>
-<script src="js/render-skydome.js?perfdebug131"></script>
-<script src="js/render-nightsky.js?perfdebug131"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug131"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug131"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug131"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug131"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug131"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug131"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug131"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug131"></script>
-<script src="js/render-eclipse.js?perfdebug131"></script>
+<script src="js/controls.js?perfdebug138"></script>
+<script src="js/render-sungraph.js?perfdebug138"></script>
+<script src="js/render-3d.js?perfdebug138"></script>
+<script src="js/render-skydome.js?perfdebug138"></script>
+<script src="js/render-nightsky.js?perfdebug138"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug138"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug138"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug138"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug138"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug138"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug138"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug138"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug138"></script>
+<script src="js/render-eclipse.js?perfdebug138"></script>
 </body>
 </html>
