@@ -2913,3 +2913,6 @@
     font-size: 7px;
     white-space: nowrap;
   }
+  /* SET NOW - red instead of the shared .ns-btn.active gold, so it reads as its own distinct
+     action rather than blending in with DEC/DM/N/S/E/W's "currently selected option" styling. */
+  #btnNightSkySetToday.active { background: var(--accent-red); color: #000; }
