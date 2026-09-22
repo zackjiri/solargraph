@@ -1237,9 +1237,9 @@ function _eclipseRenderCatalogGrid() {
     const circ = _eclipseRecompute();
 
     const tile = document.createElement('div');
-    tile.className = 'eclipse-tile';
+    tile.className = 'catalog-tile';
     const dateLbl = document.createElement('div');
-    dateLbl.className = 'eclipse-tile-date';
+    dateLbl.className = 'catalog-tile-date';
     dateLbl.textContent = MONTH_NAMES[ev.dayMonth - 1] + ' ' + ev.dayDay + ', ' + ev.year;
     dateLbl.classList.toggle('upcoming', isUpcoming);
     tile.appendChild(dateLbl);

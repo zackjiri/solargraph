@@ -113,6 +113,75 @@ function _skyStarAzEl(raDeg, decDeg, year, month, day, hourUT) {
   return _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned);
 }
 
+// ─── Astro Catalog frame geometry (build 40_1) ─────────────────────────────────────────────────
+// Local East/North unit tangent vectors at a given point on the celestial sphere (RA/Dec, degrees)
+// - "East" is the direction of increasing RA, "North" the direction of increasing Dec, at that
+// exact point. Standard orthonormal basis for the gnomonic (tangent-plane) construction below.
+function _skyRaDecTangentBasis(raDeg, decDeg) {
+  const ra = raDeg * Math.PI / 180, dec = decDeg * Math.PI / 180;
+  const v0 = [Math.cos(dec) * Math.cos(ra), Math.cos(dec) * Math.sin(ra), Math.sin(dec)];
+  const east = [-Math.sin(ra), Math.cos(ra), 0];
+  const north = [-Math.sin(dec) * Math.cos(ra), -Math.sin(dec) * Math.sin(ra), Math.cos(dec)];
+  return { v0, east, north };
+}
+// Offsets a field centre (raDeg, decDeg) by (uRad, vRad) - u along local East, v along local
+// North, both RADIANS - via an EXACT gnomonic (tangent-plane) construction: build the 3D point
+// v0 + u*east + v*north (a point on the plane tangent to the sphere at v0) and re-normalize it
+// back onto the unit sphere - a central projection from the sphere's own centre, exact for any
+// offset (not a small-angle approximation), the standard technique for framing a telescope/camera
+// field. Same family of spherical-astronomy math as the rest of this section (sidereal time,
+// RA/Dec->Az/El above) - not a flat-plane shortcut. Returns {raDeg, decDeg}.
+function _skyOffsetRaDec(raDeg, decDeg, uRad, vRad) {
+  const { v0, east, north } = _skyRaDecTangentBasis(raDeg, decDeg);
+  const px = v0[0] + uRad * east[0] + vRad * north[0];
+  const py = v0[1] + uRad * east[1] + vRad * north[1];
+  const pz = v0[2] + uRad * east[2] + vRad * north[2];
+  const len = Math.hypot(px, py, pz) || 1;
+  const decOut = Math.asin(Math.max(-1, Math.min(1, pz / len)));
+  let raOut = Math.atan2(py / len, px / len);
+  if (raOut < 0) raOut += 2 * Math.PI;
+  return { raDeg: raOut * 180 / Math.PI, decDeg: decOut * 180 / Math.PI };
+}
+// The 4 corners (order: TL, TR, BR, BL) of a rectangular photo frame - centre RA/Dec + field of
+// view width/height (degrees, full extent) + rotation (Position Angle, degrees, standard
+// astronomical convention: 0 = frame's "up" points North, positive rotates that "up" direction
+// toward East) - plus, for each corner, its two short "L" bracket-arm endpoints (toward its two
+// neighbouring corners, NIGHTSKY_FRAME_L_FRAC of the way there) for _nightSkyDrawCatalogFrame
+// below. Built entirely in the same local (east, north) tangent-plane offsets as
+// _skyOffsetRaDec above - not a naive RA/Dec lerp, which would distort badly near the poles.
+const NIGHTSKY_FRAME_L_FRAC = 0.22;
+function _nightSkyFrameCorners(raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg) {
+  const D2R = Math.PI / 180;
+  // _skyOffsetRaDec's (u, v) are TANGENT-PLANE distances (the gnomonic/rectilinear mapping a real
+  // camera lens follows: a point at field angle theta from the optical axis lands tan(theta) from
+  // centre on the sensor/tangent plane, not theta itself) - halfW/halfH must be tan(half-FOV), not
+  // the half-FOV angle in radians. Using the angle directly (an earlier version of this function
+  // did) is only the small-angle approximation tan(x)~=x, invisible for a narrow FOV (a few degrees
+  // - where the two are equal to several decimal places) but a large, real undersizing for a wide
+  // one: found via the user's own wide-angle aurora shot (A2024-05-11_AUR06, 104x63.2 deg) - the
+  // frame's true corner-to-centre angular distance came out ~46.7 deg instead of the correct
+  // ~54.8 deg (verified via proper spherical angular separation, not a flat Pythagorean estimate,
+  // which itself isn't exactly right either at this FOV - only the full tan()-then-atan() round
+  // trip is).
+  const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
+  const rot = rotationDeg * D2R;
+  // "up"/"right" as (east, north) components - pre-rotation up=North/right=East; PA rotates "up"
+  // toward East by `rot`, "right" turns the same way (stays perpendicular to "up").
+  const upE = Math.sin(rot), upN = Math.cos(rot);
+  const rightE = Math.cos(rot), rightN = -Math.sin(rot);
+  const toOffset = ([rx, ry]) => _skyOffsetRaDec(raDeg, decDeg, rx * rightE + ry * upE, rx * rightN + ry * upN);
+
+  const cornersLocal = [[-halfW, halfH], [halfW, halfH], [halfW, -halfH], [-halfW, -halfH]];   // TL,TR,BR,BL
+  const corners = cornersLocal.map(toOffset);
+  const arms = cornersLocal.map(([rx, ry], i) => {
+    const prev = cornersLocal[(i + 3) % 4], next = cornersLocal[(i + 1) % 4];
+    const toPrev = [rx + (prev[0] - rx) * NIGHTSKY_FRAME_L_FRAC, ry + (prev[1] - ry) * NIGHTSKY_FRAME_L_FRAC];
+    const toNext = [rx + (next[0] - rx) * NIGHTSKY_FRAME_L_FRAC, ry + (next[1] - ry) * NIGHTSKY_FRAME_L_FRAC];
+    return [toOffset(toPrev), toOffset(toNext)];
+  });
+  return { corners, arms };
+}
+
 // The Sun's own real Az/El for a real civil UT date/time - unlike a catalog star, the Sun has no
 // fixed RA/Dec to look up, so this goes through the app's own existing Hour-Angle route instead
 // (core.js's sunPosition(H,delta,phi), the same "for the Sun the app computes H from apparent solar
@@ -183,7 +252,16 @@ function _skyLoadData() {
 // Analyzer, then take over the canvas". Toggles back off to the plain Image sub-view, not out of
 // Analyzer entirely. This mirrors enterEclipse()/exitEclipse() call-for-call; see that function's
 // own comments for why each line is there.
+//
+// Build 40_1 gave Night Sky a second-level split of its own, Catalog | Visualization, mirroring
+// Eclipse's identical split (eclipseSubView/enterEclipseCatalog/enterEclipseVisualization,
+// js/render-eclipse.js) - Catalog (a tile grid of astrophotography shots, filelist_astro.json) is
+// the landing sub-view every time Night Sky is entered; Visualization is everything this whole
+// section used to do directly, unchanged underneath (the actual Sky Map/Planetarium star-map
+// canvas, still switched via its own separate, lower-level wheel, NIGHTSKY_SUBMODE_VALUES below -
+// that split was NOT replaced, just nested one level deeper).
 let nightSkyActive = false;
+let nightSkyTopView = 'catalog';   // 'catalog' | 'visualization'
 
 function enterNightSky() {
   // Mutually exclusive canvas takeovers: 3D Model, Sun Graph, Sky Dome, Eclipse, Night Sky.
@@ -197,30 +275,22 @@ function enterNightSky() {
   container.classList.remove('hidden');
   if (uploadZone) uploadZone.classList.add('hidden');
 
-  document.getElementById('nightSkyCanvas').style.display = 'block';
   document.getElementById('mainCanvas').style.pointerEvents = 'none';
   document.getElementById('statusWrap').style.display = 'none';
   document.getElementById('can3dPanel').classList.remove('visible');
   document.getElementById('displaySection').style.display = 'none';
   document.getElementById('eclipseDisplaySection').style.display = 'none';
+  // Shown for BOTH sub-views (not just Visualization) - same reasoning as Eclipse's own
+  // eclipseDisplaySection: Az/Alt/Labels/Equatorial/Horizon apply to Catalog too in principle
+  // (harmless to leave visible even though Catalog's own tiles are static thumbnails, not live
+  // renders that would actually respect them).
   document.getElementById('nightSkyDisplaySection').style.display = 'flex';
   // Calibration panel: same "Location/Time zone stay, pinhole sliders don't apply" split as
-  // Eclipse (_eclipseLocalCirc's own comment), but Night Sky ALSO prepends a real calendar Date
-  // block - Location alone isn't enough here, unlike Eclipse (which gets its date from the active
-  // registered event, not from the user).
-  document.getElementById('nightSkyDateGroup').style.display = 'flex';
+  // Eclipse (_eclipseLocalCirc's own comment) - the Date block's own show/hide moved to
+  // enterNightSkyVisualization()/exitNightSkyVisualization() below, since Catalog doesn't drive a
+  // single current date/time the way Visualization does.
   document.getElementById('calibNonLocationGroup').classList.add('hidden');
   document.getElementById('btnCalibReset').classList.add('hidden');
-  document.getElementById('nightSkyTimeWrap').style.display = 'flex';
-  document.getElementById('nightSkySubmodeRow').style.display = 'flex';
-  _nightSkySubmodeWheel.render();   // just became visible/measurable - re-measure its own width
-  // The top Az/Alt/Dir readout now tracks the cursor over the sky (see the pointermove listener
-  // further down this file) - stays visible, just reset to placeholders (no hover yet) instead of
-  // left showing stale values from whatever view was active before. Day/Time show the currently
-  // SELECTED date/time instead (same "driven by the current view, not the cursor" pattern as
-  // Eclipse's own _eclipseUpdateReadout) - _nightSkySyncControls() below populates those for real,
-  // so they're not blanked here.
-  _nightSkyClearReadout();
   // The header formula ("pinhole projection definition...") is Solargraph/Analyzer-specific and has
   // no meaning for a real star map - hidden the same way Eclipse already hides it for its own
   // duration (enterEclipse/exitEclipse, render-eclipse.js), restored on exit below.
@@ -230,58 +300,37 @@ function enterNightSky() {
   document.getElementById('btnModeNightSky').classList.add('active-night-sky');
 
   nightSkyActive = true;
-  _nightSkyUpdatePlanetControlsVisibility();
-  if (typeof updateViewButtons === 'function') updateViewButtons();
+  document.getElementById('nightSkyTopRow').style.display = 'flex';
+  _nightSkyTopWheel.render();   // just became visible/measurable - re-measure its own width
 
   // Every entry from the main menu (this function only ever runs from the #btnModeNightSky click
   // handler - see below) re-syncs date/time/time zone to the real current moment, the same effect
-  // as the SET NOW button - Night Sky is a live star map, so landing back on "now" on every visit
-  // is the expected baseline, not just a one-time async-race workaround (which this used to be:
-  // the module-load system-timezone default could get clobbered before the user ever gets here, by
-  // Gallery's own async filelist.json/presets.json fetch applying its stored preset.time_zone on
-  // top afterwards - re-running the full "now" reset here fixes that race too, incidentally, same
-  // as it always did).
+  // as the SET NOW button (§13.3, build 39_1) - Night Sky is a live star map, so landing back on
+  // "now" on every visit is the expected baseline; also a sane Catalog-browsing default even
+  // before any tile is picked, and Visualization's own baseline if entered without picking one.
   _nightSkySetNow();
 
-  // Date/time controls only just became visible/measurable - sync their displayed values and
-  // re-measure the wheel widths (same reasoning as _eclipseSubWheel.render() on Eclipse entry).
-  _nightSkySyncControls();
+  // Always land on Catalog first, regardless of which sub-view was showing last time Night Sky was
+  // active - same convention as Eclipse's own enterEclipse()/_eclipseSubIndex.
+  _nightSkyTopIndex = 0;
+  _nightSkyTopWheel.render();
+  enterNightSkyCatalog();
 
-  resizeNightSky();
-  // Data only needs fetching once - the promise re-fires drawNightSky() when it resolves, so a
-  // second entry into Night Sky (already loaded) draws immediately instead of waiting again.
-  if (!_skyDataLoaded) {
-    _skyLoadData().then(() => { if (nightSkyActive) drawNightSky(); })
-      .catch(err => console.warn('Night Sky: failed to load celestial data', err));
-  } else {
-    drawNightSky();
-  }
+  if (typeof updateViewButtons === 'function') updateViewButtons();
 }
 
 function exitNightSky() {
-  // Stop the animation loop, if running - it has no reason to keep advancing time (and burning a
-  // rAF callback) once the canvas showing it is hidden.
-  if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive && typeof _nightSkyStopAnim === 'function') _nightSkyStopAnim();
-  document.getElementById('nightSkyCanvas').style.display = 'none';
+  if (nightSkyTopView === 'visualization') exitNightSkyVisualization(); else exitNightSkyCatalog();
+  document.getElementById('nightSkyTopRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   document.getElementById('headerFormula').style.display = '';
-  // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
-  // _nightSkyUpdateReadout via _nightSkySyncControls) don't belong to whatever view comes next -
-  // clear them here rather than leaving them to whatever the next mode's own trigger happens to be.
-  _nightSkyClearReadout();
-  document.getElementById('valDay').textContent = '—';
-  document.getElementById('valTime').textContent = '—';
   nightSkyActive = false;
 
   document.getElementById('can3dPanel').classList.add('visible');
   document.getElementById('displaySection').style.display = '';
   document.getElementById('nightSkyDisplaySection').style.display = 'none';
-  document.getElementById('nightSkyDateGroup').style.display = 'none';
   document.getElementById('calibNonLocationGroup').classList.remove('hidden');
   document.getElementById('btnCalibReset').classList.remove('hidden');
-  document.getElementById('nightSkyTimeWrap').style.display = 'none';
-  document.getElementById('nightSkySubmodeRow').style.display = 'none';
-  _nightSkyUpdatePlanetControlsVisibility();
   document.getElementById('btnModeNightSky').classList.remove('active-night-sky');
   // Restore Analyzer's own active look, since it was suppressed above while Night Sky had the
   // spotlight - only when actually staying in Analyzer (leaving for Gallery sets both buttons'
@@ -297,6 +346,254 @@ function exitNightSky() {
       document.getElementById('canvasContainer').classList.add('hidden');
     }
   }
+}
+
+// ── Catalog / Visualization second-level split (build 40_1) - same wheel-picker widget as the
+// Analyzer sub-view switcher, Sky Dome's projection switch, and Eclipse's own identical split
+// (makeWheelPicker(), js/controls.js). ────────────────────────────────────────────────────────────
+const NIGHTSKY_TOP_VALUES = ['catalog', 'visualization'];
+const NIGHTSKY_TOP_LABELS = ['CATALOG', 'VISUALIZATION'];
+const NIGHTSKY_TOP_N = NIGHTSKY_TOP_VALUES.length;
+let _nightSkyTopIndex = 0;
+function _nightSkyStepTop(dir) {
+  _nightSkyTopIndex = ((_nightSkyTopIndex + dir) % NIGHTSKY_TOP_N + NIGHTSKY_TOP_N) % NIGHTSKY_TOP_N;
+}
+function _nightSkyCommitTop() {
+  const target = NIGHTSKY_TOP_VALUES[_nightSkyTopIndex];
+  if (target === 'catalog') enterNightSkyCatalog(); else enterNightSkyVisualization();
+  _nightSkyTopWheel.render();
+}
+const _nightSkyTopWheel = makeWheelPicker(document.getElementById('nightSkyTopWheelTrack'), {
+  labelAt: (off) => NIGHTSKY_TOP_LABELS[((_nightSkyTopIndex + off) % NIGHTSKY_TOP_N + NIGHTSKY_TOP_N) % NIGHTSKY_TOP_N],
+  step: _nightSkyStepTop,
+  itemW: 104,
+  onCommit: _nightSkyCommitTop,
+});
+document.getElementById('btnNightSkyTopDec').addEventListener('click', () => { _nightSkyStepTop(-1); _nightSkyCommitTop(); });
+document.getElementById('btnNightSkyTopInc').addEventListener('click', () => { _nightSkyStepTop(1);  _nightSkyCommitTop(); });
+
+function enterNightSkyCatalog() {
+  nightSkyTopView = 'catalog';
+  exitNightSkyVisualization();
+  document.getElementById('nightSkyCatalogPanel').style.display = 'flex';
+  // The top Az/Alt/Day/Time/Dir readout describes one instant of one view - meaningless while just
+  // browsing the grid (there's no single "current" position/time here). visibility (not display)
+  // so the row's own space stays reserved - same as Eclipse's own enterEclipseCatalog().
+  document.getElementById('readout').style.visibility = 'hidden';
+  _nightSkyRenderCatalogGrid();
+}
+function exitNightSkyCatalog() {
+  document.getElementById('nightSkyCatalogPanel').style.display = 'none';
+  document.getElementById('readout').style.visibility = '';
+}
+
+function enterNightSkyVisualization() {
+  nightSkyTopView = 'visualization';
+  exitNightSkyCatalog();
+
+  document.getElementById('nightSkyCanvas').style.display = 'block';
+  document.getElementById('nightSkyDateGroup').style.display = 'flex';
+  document.getElementById('nightSkyTimeWrap').style.display = 'flex';
+  document.getElementById('nightSkySubmodeRow').style.display = 'flex';
+  _nightSkySubmodeWheel.render();   // just became visible/measurable - re-measure its own width
+  // The top Az/Alt/Dir readout now tracks the cursor over the sky (see the pointermove listener
+  // further down this file) - stays visible, just reset to placeholders (no hover yet) instead of
+  // left showing stale values from whatever view was active before. Day/Time show the currently
+  // SELECTED date/time instead (same "driven by the current view, not the cursor" pattern as
+  // Eclipse's own _eclipseUpdateReadout) - _nightSkySyncControls() below populates those for real,
+  // so they're not blanked here.
+  _nightSkyClearReadout();
+  _nightSkyUpdatePlanetControlsVisibility();
+  _nightSkyUpdatePresentationLock();
+
+  // Date/time controls only just became visible/measurable - sync their displayed values and
+  // re-measure the wheel widths (same reasoning as _eclipseSubWheel.render() on Eclipse entry).
+  _nightSkySyncControls();
+
+  resizeNightSky();
+  // Data only needs fetching once - the promise re-fires drawNightSky() when it resolves, so a
+  // second entry into Night Sky (already loaded) draws immediately instead of waiting again.
+  if (!_skyDataLoaded) {
+    _skyLoadData().then(() => { if (nightSkyActive && nightSkyTopView === 'visualization') drawNightSky(); })
+      .catch(err => console.warn('Night Sky: failed to load celestial data', err));
+  } else {
+    drawNightSky();
+  }
+}
+function exitNightSkyVisualization() {
+  // A catalog photo's frame is only ever loadable via the Catalog tile that set it (user's own
+  // requirement) - it never persists across leaving Visualization, whether to Catalog, to Sky Map
+  // (see _nightSkyCommitSubmode's own clear, the other half of this), or out of Night Sky entirely
+  // (exitNightSky() calls this same function while in Visualization). Returning to Planetarium
+  // later always starts from a clean slate, not a stale photo from a previous visit.
+  _nightSkyActiveFrame = null;
+  // Stop the animation loop, if running - it has no reason to keep advancing time (and burning a
+  // rAF callback) once the canvas showing it is hidden.
+  if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive && typeof _nightSkyStopAnim === 'function') _nightSkyStopAnim();
+  document.getElementById('nightSkyCanvas').style.display = 'none';
+  document.getElementById('nightSkyDateGroup').style.display = 'none';
+  document.getElementById('nightSkyTimeWrap').style.display = 'none';
+  document.getElementById('nightSkySubmodeRow').style.display = 'none';
+  _nightSkyUpdatePlanetControlsVisibility();
+  _nightSkyUpdatePresentationLock();
+  // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
+  // _nightSkyUpdateReadout via _nightSkySyncControls) don't belong to whatever view comes next -
+  // clear them here rather than leaving them to whatever the next mode's own trigger happens to be.
+  _nightSkyClearReadout();
+  document.getElementById('valDay').textContent = '—';
+  document.getElementById('valTime').textContent = '—';
+  document.getElementById('nightSkyFrameThumb').style.display = 'none';
+}
+
+// ─── Astro Catalog (build 40_1) - tile grid of astrophotography shots (filelist_astro.json),
+// mirroring Eclipse's own Catalog/photo-gallery pattern (js/render-eclipse.js). Clicking a tile
+// applies its EXIF date/time/location, centers the Planetarium camera on the shot's own target
+// RA/Dec, and draws a 4-corner "L" bracket frame there (_nightSkyDrawCatalogFrame, near the other
+// Planetarium draw functions further down) - purely an orientation aid, not warped/scaled to the
+// photo itself. The floating square thumbnail and fullscreen photo modal live there too, next to
+// where the frame itself gets drawn/positioned on every redraw.
+
+// Parses "10h41m00s" -> hours (decimal), "+41°16'00\"" -> degrees (decimal, sign-aware) - the
+// traditional sexagesimal notation any planetarium tool displays, easiest to hand-transcribe into
+// filelist_astro.json (same "author by hand" workflow as filelist_eclipse.json's own timeUtc
+// strings - no live EXIF parsing in the browser).
+function _nightSkyParseRaHours(str) {
+  const m = /(-?\d+)h\s*(\d+)m\s*([\d.]+)s/.exec(str || '');
+  if (!m) return 0;
+  return parseFloat(m[1]) + parseFloat(m[2]) / 60 + parseFloat(m[3]) / 3600;
+}
+function _nightSkyParseDecDeg(str) {
+  const m = /([+-]?)(\d+)°\s*(\d+)'\s*([\d.]+)"/.exec(str || '');
+  if (!m) return 0;
+  const mag = parseFloat(m[2]) + parseFloat(m[3]) / 60 + parseFloat(m[4]) / 3600;
+  return m[1] === '-' ? -mag : mag;
+}
+
+let _nightSkyAstroCatalog = [];   // filelist_astro.json, fetched once at module load
+let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky'
+async function _nightSkyLoadAstroCatalog() {
+  try {
+    const res = await fetch('filelist_astro.json');
+    _nightSkyAstroCatalog = await res.json();
+  } catch (e) { console.warn('Night Sky: failed to load astro catalog', e); }
+  if (nightSkyActive && nightSkyTopView === 'catalog') _nightSkyRenderCatalogGrid();
+}
+_nightSkyLoadAstroCatalog();
+
+function _nightSkyRenderCatalogGrid() {
+  const grid = document.getElementById('nightSkyCatalogGrid');
+  if (!grid) return;
+  // Newest first (top-left), same reasoning as Eclipse's own catalog sort (registration/array
+  // order doesn't imply chronological order) - date_utc is "YYYY-MM-DD", so a plain string compare
+  // already sorts chronologically.
+  const entries = (_nightSkyAstroCatalog || []).slice()
+    .sort((a, b) => (b.date_utc || '').localeCompare(a.date_utc || ''));
+  grid.innerHTML = '';
+  for (const entry of entries) {
+    if (_nightSkyCatalogTypeFilter !== 'all' && entry.category !== _nightSkyCatalogTypeFilter) continue;
+
+    const tile = document.createElement('div');
+    tile.className = 'catalog-tile clickable';
+    tile.title = 'Open ' + (entry.object_name || entry.id);
+
+    const thumb = document.createElement('img');
+    thumb.className = 'catalog-tile-thumb';
+    thumb.src = entry.thumbnail;
+    thumb.alt = entry.object_name || entry.id;
+    tile.appendChild(thumb);
+
+    const dateLbl = document.createElement('div');
+    dateLbl.className = 'catalog-tile-date';
+    dateLbl.textContent = entry.date_utc || '';
+    tile.appendChild(dateLbl);
+
+    const captionLbl = document.createElement('div');
+    captionLbl.className = 'catalog-tile-caption';
+    captionLbl.textContent = entry.object_name || entry.id;
+    tile.appendChild(captionLbl);
+
+    tile.addEventListener('click', () => {
+      _nightSkyApplyCatalogTile(entry);
+      _nightSkyTopIndex = 1;
+      _nightSkyTopWheel.render();
+      enterNightSkyVisualization();
+    });
+    grid.appendChild(tile);
+  }
+}
+document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (e) => {
+  const filterEl = document.getElementById('nightSkyCatalogTypeFilter');
+  const btn = e.target.closest('.ns-btn');
+  if (!btn || !filterEl.contains(btn)) return;
+  _nightSkyCatalogTypeFilter = btn.dataset.type;
+  filterEl.querySelectorAll('.ns-btn').forEach((b) => b.classList.toggle('active', b === btn));
+  _nightSkyRenderCatalogGrid();
+});
+
+// Applies one catalog tile's date/time/location (mirrors _nightSkySetNow()'s own shape - state
+// assignment + applyLat/Long/TimeZone + _nightSkySyncControls, just sourced from the tile instead
+// of Date.now()), stores its frame definition for _nightSkyDrawCatalogFrame, and centers the
+// Planetarium camera on the frame's own target Az/El - the only "center camera on Az/El" logic
+// anywhere in this file (the existing camera is otherwise only ever moved by the drag handler).
+// Chooses a zoom (up to the 2x max, see setNightSkyPlanetZoom's own clamp) that frames the photo's
+// own boundary with a comfortable reserve, rather than leaving zoom at whatever it was before this
+// tile was picked - the user's own spec: "přiblížení bude až 2x, pokud se hranice obrazu vejdou do
+// záběru i s rezervou" (zoom in up to 2x, as long as the frame's own boundary still fits in view
+// with margin to spare). The equidistant fisheye's screen radius from the view direction is
+// exactly proportional to zoom * (angle from that direction) - see _nightSkyPlanetProjectRaw's own
+// r = FOCAL*theta identity - so the zoom that lands the frame's farthest corner at a given fraction
+// of layout.scale (empirically, the shorter canvas dimension's half-width, reached at theta~54° at
+// the default zoom=1x/FOCAL=1.15 calibration) can be solved directly, no trial-and-error/binary
+// search needed - and layout.scale itself cancels out of the formula entirely, so this doesn't
+// even need to know the canvas's current on-screen size.
+const NIGHTSKY_FRAME_ZOOM_MARGIN = 0.85;   // corners land 85% of the way to the visible edge - reserve, not flush against it
+function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
+  const D2R = Math.PI / 180;
+  const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
+  // Corner-to-centre angle - all 4 corners are equidistant from centre by construction (see
+  // _nightSkyFrameCorners/the gnomonic tangent-plane build), so any one of them gives thetaMax.
+  const thetaMax = Math.atan(Math.hypot(halfW, halfH));
+  return NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax);   // setNightSkyPlanetZoom clamps to [0.5, 2] itself
+}
+let _nightSkyActiveFrame = null;   // {raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg, thumbnail, full} | null
+function _nightSkyApplyCatalogTile(entry) {
+  const [y, mo, d] = (entry.date_utc || '1970-01-01').split('-').map(Number);
+  const [hh, mm, ss] = (entry.time_utc || '00:00:00').split(':').map(Number);
+  nightSkyYear = y; nightSkyMonth = mo; nightSkyDay = d;
+  nightSkyHourUT = hh + mm / 60 + (ss || 0) / 3600;
+
+  // Hemisphere flags are separate globals from LAT/LONG's own magnitude (core.js) - set directly,
+  // same as the N/S/E/W button handlers (js/controls.js), which also sync these button classes.
+  hemisphere = entry.lat_hemisphere === 'S' ? -1 : 1;
+  document.getElementById('btnN').className = hemisphere >= 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnS').className = hemisphere < 0 ? 'ns-btn active-s' : 'ns-btn';
+  lonHemisphere = entry.lon_hemisphere === 'W' ? -1 : 1;
+  document.getElementById('btnE').className = lonHemisphere >= 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnW').className = lonHemisphere < 0 ? 'ns-btn active-s' : 'ns-btn';
+  applyLat(entry.lat);
+  applyLong(entry.lon);
+  applyTimeZone(entry.timezone);
+
+  const raDeg = _nightSkyParseRaHours(entry.ra) * 15;
+  const decDeg = _nightSkyParseDecDeg(entry.dec);
+  _nightSkyActiveFrame = {
+    raDeg, decDeg,
+    fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0,
+    thumbnail: entry.thumbnail, full: entry.full,
+  };
+
+  nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = 1;
+  _nightSkySubmodeWheel.render();
+  _nightSkyUpdatePlanetControlsVisibility();
+  _nightSkyUpdatePresentationLock();
+
+  const target = _skyStarAzEl(raDeg, decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  _nightSkyPlanet3D.camAz = target.az * Math.PI / 180;
+  _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, target.el * Math.PI / 180));   // same clamp as the drag handler below
+  setNightSkyPlanetZoom(_nightSkyFitZoomForFrame(entry.fov_w_deg, entry.fov_h_deg));
+  _nightSkyUpdatePlanetCamera();
+
+  _nightSkySyncControls();
 }
 
 // Canvas backing-store setup - was CLAIMED to mirror resizeSkyDome()/resizeEclipse() but actually
@@ -519,9 +816,21 @@ function _nightSkyUpdateTimeLabel() {
 function _nightSkyUpdateReadout() {
   const valDay = document.getElementById('valDay'), valTime = document.getElementById('valTime');
   if (!valDay || !valTime) return;
-  const localH = _nightSkyLocalHour(nightSkyHourUT);
-  valDay.textContent = MONTHS[nightSkyMonth - 1] + ' ' + nightSkyDay + ', ' + nightSkyYear;
-  valTime.textContent = _nightSkyFmtHM(localH) + ' local';
+  // Local DATE, not just local hour - a local offset can push the displayed time across a UTC day
+  // boundary (user's own report: "pokud se čas v UTC a místním čase láme přes půlnoc, je potřeba
+  // korigovat i to datum"). _nightSkyLocalHour's plain %24 wrap alone paired with the raw UTC
+  // nightSkyMonth/Day/Year was correct only when the local offset didn't actually cross midnight -
+  // e.g. 23:30 UTC at +2:00 correctly reads "01:30 local" but on the WRONG (previous) calendar day
+  // if nightSkyDay is shown as-is. Fixed the same way _nightSkyBuildTimeScale() already handles
+  // this exact case (its own comment: "a drag that crosses midnight rolls the date automatically")
+  // - apply the tz offset in Julian-Date space, where calendar rollover (including month/year
+  // boundaries and leap years) is handled once, correctly, by _skyFromJulianDateUT itself, not
+  // re-derived here.
+  const tz = typeof timeZoneHours !== 'undefined' ? timeZoneHours : 0;
+  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const local = _skyFromJulianDateUT(jd + tz / 24);
+  valDay.textContent = MONTHS[local.month - 1] + ' ' + local.day + ', ' + local.year;
+  valTime.textContent = _nightSkyFmtHM(local.hourUT) + ' local';
 }
 
 // ─── Time strip: infinite drag-the-belt scrubber ────────────────────────────────────────────────
@@ -1220,8 +1529,14 @@ function _nightSkyStepSubmode(dir) {
 }
 function _nightSkyCommitSubmode() {
   nightSkySubmode = NIGHTSKY_SUBMODE_VALUES[_nightSkySubmodeIndex];
+  // Same "only loadable via Catalog" rule as exitNightSkyVisualization()'s own clear - switching
+  // AWAY from Planetarium to Sky Map, while staying in Visualization, is still "leaving" the
+  // photo's presentation (user's own "kamkoliv" - anywhere), so it clears here too, not just on a
+  // full Visualization exit.
+  if (nightSkySubmode !== 'planetarium') _nightSkyActiveFrame = null;
   _nightSkySubmodeWheel.render();
   _nightSkyUpdatePlanetControlsVisibility();
+  _nightSkyUpdatePresentationLock();
   if (nightSkyActive) drawNightSky();
 }
 const _nightSkySubmodeWheel = makeWheelPicker(document.getElementById('nightSkySubmodeWheelTrack'), {
@@ -1346,6 +1661,23 @@ if (_nightSkyPlanetZoomEl) {
 function _nightSkyUpdatePlanetControlsVisibility() {
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
   if (ctl) ctl.style.display = (nightSkyActive && nightSkySubmode === 'planetarium') ? 'flex' : 'none';
+}
+
+// Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
+// panel (Date/Location/Time zone, including SET NOW) while a catalog photo's frame is actually
+// being presented in Planetarium (build 40_1, user's own request) - changing any of them out from
+// under a displayed photo would silently invalidate the very calibration the frame is shown
+// against. Unlocked the instant the presentation ends (switching to Sky Map, back to Catalog, or
+// leaving Night Sky) - called from the same 4 sites as _nightSkyUpdatePlanetControlsVisibility()
+// just above, since "is the frame actually on screen" is exactly the condition that function's own
+// visibility already depends on. Reuses the app's existing `.calibration-locked` class/CSS
+// (already used by Gallery mode for the same "don't edit the calibration a displayed thing is
+// shown against" reasoning) rather than inventing a new one for the sidebar half of this.
+function _nightSkyUpdatePresentationLock() {
+  const presenting = nightSkyActive && nightSkyTopView === 'visualization'
+    && nightSkySubmode === 'planetarium' && !!_nightSkyActiveFrame;
+  document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting);
+  document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting);
 }
 
 // Fisheye (equidistant) projection - screen radius proportional to the angle theta from the view
@@ -1738,6 +2070,192 @@ function _nightSkyDrawPlanetSun(ctx, layout) {
   ctx.restore();
 }
 
+// Astro-catalog "L" corner-bracket frame (build 40_1) - purely an orientation aid marking a
+// catalog photo's true field on the sky (see _nightSkyFrameCorners above for the geometry), NOT
+// warped/scaled to the photo itself. Reuses _nightSkyPlanetStrokeRaDecRun (same RA/Dec-in,
+// rim-fade/horizon-aware stroking already used for the Equatorial grid/ecliptic/constellation
+// lines) for each of the 8 short bracket-arm segments, so the frame fades at the dome's own rim
+// and clips at the horizon exactly like everything else drawn here.
+const NIGHTSKY_FRAME_COLOR = 'rgba(255,80,80,0.9)';   // matches #nightSkyFrameThumb's own red border (#ff5050)
+// Strokes one short frame-bracket segment (two RA/Dec endpoints). Unlike
+// _nightSkyPlanetStrokeRaDecRun (used for stars/constellation lines, which are genuinely not
+// visible below the real horizon, and clips accordingly) - the astro-catalog frame is an
+// orientation aid that should stay visible even where part of the photographed field dips below
+// the horizon (the user's own request: "chci, aby byly vidět hranice snímku i pod horizontem" - a
+// wide-angle/landscape shot often does dip below it). So this only respects the camera's own
+// behind-view/rim-fade cutoff (proj.visible/proj.alpha, from the SAME projection everything else
+// uses), never the horizon - the equidistant fisheye projection is continuous across el=0 anyway
+// (drawn over the existing ground fill, _nightSkyDrawPlanetSkyGround, so it reads as "on the
+// ground" there, not floating in empty space).
+function _nightSkyDrawFrameSegment(ctx, layout, ra0, dec0, ra1, dec1, color) {
+  const azel0 = _skyStarAzEl(ra0, dec0, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const azel1 = _skyStarAzEl(ra1, dec1, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const p0 = _nightSkyPlanetProject(layout, azel0.az, azel0.el);
+  const p1 = _nightSkyPlanetProject(layout, azel1.az, azel1.el);
+  if (!p0.visible || !p1.visible) return;
+  const baseAlpha = _sd3AlphaOf(color);
+  ctx.strokeStyle = _sd3WithAlpha(color, baseAlpha * Math.min(p0.alpha, p1.alpha));
+  ctx.beginPath();
+  ctx.moveTo(p0.x, p0.y);
+  ctx.lineTo(p1.x, p1.y);
+  ctx.stroke();
+}
+function _nightSkyDrawCatalogFrame(ctx, layout) {
+  if (!_nightSkyActiveFrame) return;
+  const f = _nightSkyActiveFrame;
+  const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
+  ctx.save();
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    const c = corners[i], [aPrev, aNext] = arms[i];
+    _nightSkyDrawFrameSegment(ctx, layout, c.raDeg, c.decDeg, aPrev.raDeg, aPrev.decDeg, NIGHTSKY_FRAME_COLOR);
+    _nightSkyDrawFrameSegment(ctx, layout, c.raDeg, c.decDeg, aNext.raDeg, aNext.decDeg, NIGHTSKY_FRAME_COLOR);
+  }
+  ctx.restore();
+}
+
+// Floating square thumbnail (#nightSkyFrameThumb, index.html/css/style.css) next to the frame -
+// shown at its own native size (250px - the user's own thumbnail files are generated at that
+// size, not scaled down), positioned every redraw so it NEVER overlaps the frame's own "L"
+// bracket rectangle (the user's own explicit requirement) - not just a simple quadrant-flip
+// around the centre point (fine at the old 64px size, but a 250px box needs to actually reason
+// about the frame's on-screen extent, which can itself span most of the canvas for a wide-FOV
+// shot like AUR06). Tries each of the 4 sides (right/left/below/above the frame's own projected
+// bounding box) in order of how much on-screen room each one actually has, picks the first that
+// fits the thumbnail fully on-screen; if none do (an extremely wide/tall frame leaves no side with
+// enough room), falls back to whichever side has the most room - still placed OUTSIDE the frame's
+// bounding box either way, just possibly clipped by the canvas edge in that rare case, which is
+// the lesser of the two problems here. proj.x/proj.y are already in the same logical/CSS-pixel
+// space #nightSkyFrameThumb's own left/top need (drawNightSky()'s w/h, both canvas and this
+// element share #canvasContainer's top-left origin - see #nightSkyCanvas/#nightSkyFrameThumb,
+// both position:absolute;inset-anchored there).
+const NIGHTSKY_FRAME_THUMB_SIZE = 250, NIGHTSKY_FRAME_THUMB_GAP = 14;
+// Liang-Barsky line-clipping test, reused here just for its "does this segment touch this box"
+// boolean - standard, exact (not an approximation) for whether a finite segment intersects an
+// axis-aligned box, including the segment ending up fully inside it.
+function _segIntersectsBox(x0, y0, x1, y1, bx0, by0, bx1, by1) {
+  let tmin = 0, tmax = 1;
+  const dx = x1 - x0, dy = y1 - y0;
+  const p = [-dx, dx, -dy, dy], q = [x0 - bx0, bx1 - x0, y0 - by0, by1 - y0];
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] < 0) return false; }
+    else {
+      const r = q[i] / p[i];
+      if (p[i] < 0) { if (r > tmax) return false; if (r > tmin) tmin = r; }
+      else { if (r < tmin) return false; if (r < tmax) tmax = r; }
+    }
+  }
+  return true;
+}
+function _nightSkyUpdateFrameThumb(layout, w, h) {
+  const el = document.getElementById('nightSkyFrameThumb');
+  const f = _nightSkyActiveFrame;
+  if (!f) { el.style.display = 'none'; return; }
+  // No horizon check here either (see _nightSkyDrawFrameSegment's own comment) - the thumbnail
+  // should stay put next to the frame even while its centre is below the horizon, only actually
+  // disappearing once the camera itself can't see that direction at all (proj.visible).
+  const centerAzEl = _skyStarAzEl(f.raDeg, f.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const centerProj = _nightSkyPlanetProject(layout, centerAzEl.az, centerAzEl.el);
+  if (!centerProj.visible) { el.style.display = 'none'; return; }
+
+  // The frame's own on-screen bounding box, from whichever of its 4 corners are actually visible
+  // (a corner can legitimately fall behind the camera for a very wide FOV even while the centre
+  // itself is visible) - falls back to just the centre point if none are (degenerate, shouldn't
+  // normally happen). Also the 8 short "L" bracket segments themselves, in screen space - the
+  // frame's REAL boundary (only near its 4 corners, not a full outline - see
+  // _nightSkyFrameCorners/NIGHTSKY_FRAME_L_FRAC), needed for the inside-the-frame placement below.
+  const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
+  const projOf = (pt) => {
+    const azel = _skyStarAzEl(pt.raDeg, pt.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    return _nightSkyPlanetProject(layout, azel.az, azel.el);
+  };
+  const cornerProjs = corners.map(projOf);
+  const bracketSegments = [];
+  const footprintPts = [];   // every point that can actually appear as part of a drawn bracket -
+                              // corners AND arm endpoints, needed below for a bbox that genuinely
+                              // contains the whole frame (see the comment on that bbox use)
+  for (let i = 0; i < 4; i++) {
+    if (!cornerProjs[i].visible) continue;
+    footprintPts.push(cornerProjs[i]);
+    for (const armPt of arms[i]) {
+      const ap = projOf(armPt);
+      if (ap.visible) { bracketSegments.push([cornerProjs[i].x, cornerProjs[i].y, ap.x, ap.y]); footprintPts.push(ap); }
+    }
+  }
+  // The frame's own on-screen bounding box - deliberately built from EVERY footprint point (corners
+  // AND arm endpoints), not just the 4 corners: the arms are their own independent RA/Dec->Az/El->
+  // screen projection, not a screen-space interpolation between corners, so under extreme rotation/
+  // near-pole geometry an arm point CAN land outside the convex hull of the 4 corners alone - a
+  // corners-only bbox found this way (a real "outside" placement that turned out to still clip a
+  // bracket segment, caught via a multi-camera-angle stress test) understates the frame's true
+  // extent in exactly that case.
+  const pts = footprintPts.length ? footprintPts : [centerProj];
+  const bx0 = Math.min(...pts.map((p) => p.x)), bx1 = Math.max(...pts.map((p) => p.x));
+  const by0 = Math.min(...pts.map((p) => p.y)), by1 = Math.max(...pts.map((p) => p.y));
+
+  if (el.src.indexOf(f.thumbnail) === -1) el.src = f.thumbnail;   // avoid re-decoding on every redraw
+
+  const S = NIGHTSKY_FRAME_THUMB_SIZE, G = NIGHTSKY_FRAME_THUMB_GAP;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const vCenter = clamp((by0 + by1) / 2 - S / 2, 0, h - S);   // kept on-screen; never moved past the frame's own edge
+  const hCenter = clamp((bx0 + bx1) / 2 - S / 2, 0, w - S);
+  const outsideSides = [
+    { left: bx1 + G,     top: vCenter,     room: w - bx1, fits: bx1 + G + S <= w },
+    { left: bx0 - G - S, top: vCenter,     room: bx0,     fits: bx0 - G - S >= 0 },
+    { left: hCenter,     top: by1 + G,     room: h - by1, fits: by1 + G + S <= h },
+    { left: hCenter,     top: by0 - G - S, room: by0,     fits: by0 - G - S >= 0 },
+  ];
+  let chosen = outsideSides.find((s) => s.fits);
+  if (!chosen) {
+    // No side has room OUTSIDE the frame (a wide-FOV shot's bbox can span most of the canvas) -
+    // the user's own explicit allowance: "u širokoúhlých fotek může být náhled i uvnitř rámu, jen
+    // nesmí překrývat hranice" (may sit INSIDE the frame there, as long as it doesn't overlap the
+    // boundary itself). Centred on the frame's own true centre point - maximally far from all 4
+    // corner brackets for a reasonably-proportioned wide frame - kept on-screen, then checked
+    // against every bracket segment via exact line-vs-box intersection, not just assumed clear.
+    const insideLeft = clamp(centerProj.x - S / 2, 0, w - S);
+    const insideTop = clamp(centerProj.y - S / 2, 0, h - S);
+    const insideRight = insideLeft + S, insideBottom = insideTop + S;
+    const hitsABracket = bracketSegments.some(([x0, y0, x1, y1]) =>
+      _segIntersectsBox(x0, y0, x1, y1, insideLeft, insideTop, insideRight, insideBottom));
+    if (!hitsABracket) chosen = { left: insideLeft, top: insideTop };
+  }
+  if (!chosen) {
+    // Last resort - neither an outside side nor the centred-inside placement worked (frame too
+    // small/narrow even for that, or an odd enough shape that the centre still clips a bracket) -
+    // still placed outside the bbox on whichever side has the most room, just possibly clipped by
+    // the canvas edge in this rare case - the same trade-off this whole fallback chain has always
+    // made: never re-overlap the frame's own boundary to force an on-screen fit.
+    chosen = outsideSides.reduce((a, b) => (b.room > a.room ? b : a));
+  }
+  el.style.left = chosen.left + 'px';
+  el.style.top = chosen.top + 'px';
+  el.style.display = 'block';
+}
+document.getElementById('nightSkyFrameThumb').addEventListener('click', () => {
+  if (_nightSkyActiveFrame) _nightSkyOpenPhotoModal(_nightSkyActiveFrame.full);
+});
+
+// Fullscreen photo modal - same pattern/CSS as Eclipse's own gallery modal
+// (_eclipseOpenGalleryModal/_eclipseCloseGalleryModal, js/render-eclipse.js), sharing the
+// .photo-modal/.photo-modal-body/.photo-modal-img/.photo-modal-close CSS classes but with its own
+// #nightSkyGalleryModal id/DOM (index.html) for this file's own JS to target independently.
+function _nightSkyOpenPhotoModal(src) {
+  document.getElementById('nightSkyGalleryModalImg').src = src;
+  document.getElementById('nightSkyGalleryModal').classList.add('visible');
+}
+function _nightSkyClosePhotoModal() {
+  document.getElementById('nightSkyGalleryModal').classList.remove('visible');
+  document.getElementById('nightSkyGalleryModalImg').src = '';   // release the (possibly large) image once closed
+}
+document.getElementById('btnNightSkyGalleryModalClose').addEventListener('click', _nightSkyClosePhotoModal);
+document.getElementById('nightSkyGalleryModal').addEventListener('click', (e) => {
+  if (e.target.id === 'nightSkyGalleryModal') _nightSkyClosePhotoModal();   // backdrop click only
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('nightSkyGalleryModal').classList.contains('visible')) _nightSkyClosePhotoModal();
+});
+
 function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (!_skyDataLoaded) {
     ctx.fillStyle = '#8899aa';
@@ -1745,6 +2263,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('Night Sky – loading data…', w / 2, h / 2);
+    document.getElementById('nightSkyFrameThumb').style.display = 'none';
     return;
   }
 
@@ -1769,6 +2288,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
   if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
   if (showHorizon) _nightSkyDrawPlanetHorizon(ctx, layout);
+  _nightSkyDrawCatalogFrame(ctx, layout);
+  _nightSkyUpdateFrameThumb(layout, w, h);
 }
 
 // Drag-to-look-around (mouse + touch, via Pointer Events - same setPointerCapture pattern as the
@@ -1897,8 +2418,15 @@ function drawNightSky() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  if (nightSkySubmode === 'skymap') _nightSkyDrawSkyMap(ctx, w, h);
-  else if (nightSkySubmode === 'planetarium') _nightSkyDrawPlanetarium(ctx, w, h);
+  if (nightSkySubmode === 'skymap') {
+    // The catalog frame/thumbnail are Planetarium-only (Sky Map has no equivalent "camera looking
+    // in one direction" concept to center on) - hide the thumbnail rather than leave it stuck
+    // showing a stale position from the last Planetarium draw.
+    document.getElementById('nightSkyFrameThumb').style.display = 'none';
+    _nightSkyDrawSkyMap(ctx, w, h);
+  } else if (nightSkySubmode === 'planetarium') {
+    _nightSkyDrawPlanetarium(ctx, w, h);
+  }
 }
 
 // Top-level mode button, a peer of Gallery/Analyzer/Eclipse rather than an Analyzer sub-view -
