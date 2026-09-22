@@ -1145,9 +1145,10 @@
     z-index: 6;
   }
 
-  /* Eclipse sub-view switcher (Catalog / Visualization) - same slot/position as .mode-subrow
-     above (mutually exclusive - only one of the two is ever visible, display set by JS). */
-  .eclipse-subrow {
+  /* Second-level sub-view switcher (Eclipse's Catalog/Visualization, Night Sky's own Catalog/
+     Visualization, build 40_1) - same slot/position as .mode-subrow above (mutually exclusive with
+     it and with each other - only one of the three is ever visible at a time, display set by JS). */
+  .subrow-wheel {
     position: absolute;
     top: 100%; left: 0; right: 0;
     display: none;                    /* flex, set by JS while Eclipse is active */
@@ -1237,11 +1238,24 @@
     background: rgba(32,160,232,0.16);
   }
 
-  /* Gallery mode – calibration locked */
+  /* Gallery mode – calibration locked. Also reused for Night Sky's own Planetarium photo
+     presentation (build 40_1, _nightSkyUpdatePresentationLock()) - .wheel-btn/.wheel-track cover
+     its Date group's Year/Month/Day wheel pickers, which Gallery's own calibration section never
+     had one of, so the original selector list never needed them. .lat-input (Lat/Long/Time zone/
+     Year number fields) moved into this pointer-events list too, found missing while verifying the
+     Night Sky lock - #inpLat/#inpLong in particular are declared type="number" in the HTML but
+     switched to type="text" at runtime by the DEC/DM masking feature (js/controls.js's
+     _locFormatInput()), so the input[type=number] rule above never actually matched them; they
+     were only ever dimmed (the .lat-input opacity rule below), not genuinely non-interactive - a
+     real click+type could still change the value while "locked". Same gap, same fix, for Gallery's
+     own pre-existing lock too, not just Night Sky's new one. */
   .calibration-locked input[type=range],
   .calibration-locked input[type=number],
   .calibration-locked .lat-btn,
   .calibration-locked .ns-btn,
+  .calibration-locked .wheel-btn,
+  .calibration-locked .wheel-track,
+  .calibration-locked .lat-input,
   .calibration-locked #btnCalibReset,
   .calibration-locked #btnImportPreset,
   .calibration-locked #btnExportPreset {
@@ -1250,8 +1264,16 @@
   }
 
   .calibration-locked .slider-label,
-  .calibration-locked .slider-val,
-  .calibration-locked .lat-input {
+  .calibration-locked .slider-val {
+    opacity: 0.35;
+  }
+
+  /* Night Sky's own time-shift controls (drag-the-belt strip + animate Play), locked alongside
+     Calibration while a catalog photo's frame is being presented in Planetarium - same reasoning,
+     different DOM subtree (#nightSkyTimeWrap sits over the canvas, not in the sidebar). */
+  .nightsky-time-locked #btnNightSkyPlay,
+  .nightsky-time-locked #nightSkyTimeStrip {
+    pointer-events: none;
     opacity: 0.35;
   }
 
@@ -1301,10 +1323,13 @@
   }
   .info-popup.visible { display: block; }
 
-  /* Eclipse gallery photo modal (Load gallery button, render-eclipse.js) - centred, dimmed
-     backdrop; a new pattern (no prior modal in this project), but reuses the same display:none /
-     .visible{display:...} toggle idiom as .info-popup above, and sits above its z-index:200. */
-  #eclipseGalleryModal {
+  /* Fullscreen photo modal - shared by Eclipse's gallery (Load gallery button, render-eclipse.js)
+     and Night Sky's astro-catalog thumbnail (render-nightsky.js, build 40_1) - centred, dimmed
+     backdrop; a new pattern when Eclipse introduced it (no prior modal in this project), reusing
+     the same display:none / .visible{display:...} toggle idiom as .info-popup above, and sitting
+     above its z-index:200. Each mode keeps its own #id pair for its own JS to target/open/close
+     independently - only the CSS (this class) is shared. */
+  .photo-modal {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.75);
     z-index: 300;
@@ -1312,18 +1337,18 @@
     align-items: center;
     justify-content: center;
   }
-  #eclipseGalleryModal.visible { display: flex; }
-  #eclipseGalleryModalBody {
+  .photo-modal.visible { display: flex; }
+  .photo-modal-body {
     position: relative;
     max-width: 92vw; max-height: 92vh;
   }
-  #eclipseGalleryModalImg {
+  .photo-modal-img {
     display: block;
     max-width: 92vw; max-height: 92vh;
     border-radius: var(--radius-md);
     box-shadow: 0 8px 40px rgba(0,0,0,0.8);
   }
-  #btnEclipseGalleryModalClose {
+  .photo-modal-close {
     position: absolute; top: -14px; right: -14px;
     width: 32px; height: 32px;
     border-radius: 50%;
@@ -1334,7 +1359,7 @@
     cursor: pointer;
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   }
-  #btnEclipseGalleryModalClose:hover { color: var(--accent); }
+  .photo-modal-close:hover { color: var(--accent); }
 
   .meta-row {
     display: flex;
@@ -2412,12 +2437,39 @@
   }
   body.light #nightSkyCanvas { background: #ffffff; }
 
+  /* Astro-catalog floating thumbnail (build 40_1) - a small square preview positioned next to the
+     "L" corner-bracket frame in Planetarium (_nightSkyDrawCatalogFrame/its own per-redraw
+     positioning logic, js/render-nightsky.js), NOT scaled/warped to the frame's own true angular
+     size - deliberately just a plain clickable reference thumbnail. top/left set in JS on every
+     redraw (adaptive side, keeps it on-screen); display toggled the same way. Sits above the
+     canvas (z-index 10) so it's always visible over the star field. */
+  #nightSkyFrameThumb {
+    position: absolute;
+    display: none;
+    width: 250px; height: 250px;   /* the user's own thumbnail files' native size - shown as-is, not scaled down */
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 2px solid #ff5050;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.6);
+    cursor: pointer;
+    z-index: 11;
+    transition: none;   /* snap to the new position immediately - the camera itself already eases */
+  }
+
   /* Eclipse Catalog sub-view - grid of registered events, the landing sub-view every time Eclipse
      is entered (enterEclipseCatalog(), js/render-eclipse.js). Same takeover slot as #eclipseCanvas,
      shown instead of it while browsing rather than animating one event. */
-  #eclipseCatalogPanel {
+  /* Shared by every top-level catalog (Eclipse's own event catalog, Night Sky's astro catalog,
+     §21/§13.3 build 40_1) - the panel shell, filter row, and grid/tile layout are identical
+     browsing-UI chrome regardless of what each catalog's tiles actually contain, so they carry a
+     shared class (applied alongside each catalog's own #id for its JS to target) instead of being
+     duplicated per catalog. Content that's genuinely specific to one catalog (Eclipse's live tile
+     preview canvas, type badge, "NO ECLIPSE" state, gallery badge) stays under its own
+     .eclipse-tile-* class names below, unshared. */
+  .catalog-panel {
     position: absolute; inset: 0;
-    display: none;                    /* flex, set by JS - enterEclipseCatalog()/exitEclipseCatalog() */
+    display: none;                    /* flex, set by JS - enterEclipseCatalog()/exitEclipseCatalog(),
+                                          enterNightSkyCatalog()/exitNightSkyCatalog() */
     flex-direction: column;
     background: #050608;
     z-index: 10;
@@ -2425,13 +2477,13 @@
     overflow-x: hidden;
     cursor: default;   /* .canvas-container itself sets cursor:none (Analyzer draws its own crosshair)
                           - Catalog is a plain browsing UI, so restore the real cursor everywhere in
-                          it; .eclipse-tile.clickable below still gets its own pointer on hover. */
+                          it; .catalog-tile.clickable below still gets its own pointer on hover. */
   }
 
   /* Filter row - Type (segmented pill, same .ns-toggle/.ns-btn component as the N/S/E/W hemisphere
-     buttons) + the "my Location vs. this event's own Greatest Eclipse" switch (same iOS-pill
-     mechanic as .analemma-switch, own accent colour). */
-  #eclipseCatalogFilters {
+     buttons) +, for Eclipse specifically, the "my Location vs. this event's own Greatest Eclipse"
+     switch (same iOS-pill mechanic as .analemma-switch, own accent colour). */
+  .catalog-filters {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2441,20 +2493,25 @@
     flex-shrink: 0;
     border-bottom: 1px solid var(--border);
   }
-  /* Type filter - same .ns-toggle/.ns-btn pill as elsewhere, but all four segments equal-width
-     (ALL/TOTAL/PARTIAL/ANNULAR differ a lot in label length) and ALL gets a white active state
-     (not the shared gold .ns-btn.active) to read as "no filter" rather than as a type of its own. */
-  #eclipseCatalogTypeFilter {
+  /* Type filter - same .ns-toggle/.ns-btn pill as elsewhere, all segments equal-width (labels can
+     differ a lot in length - ALL/TOTAL/PARTIAL/ANNULAR for Eclipse, ALL/DEEP SKY/LANDSCAPE for
+     Night Sky) and ALL gets a white active state (not the shared gold .ns-btn.active) to read as
+     "no filter" rather than as a category of its own. */
+  .catalog-type-filter {
     min-width: 260px;   /* the toggle's own shrink-to-fit width would otherwise collapse well below
                            this once its children can shrink to 0 (see min-width:0 below) - fixing
-                           a floor here is what actually keeps the four segments legible/equal. */
+                           a floor here is what actually keeps the segments legible/equal. */
     border: 1px solid #fff;   /* flipped to black in light theme, same as the ALL segment below */
   }
-  #eclipseCatalogTypeFilter .ns-btn {
+  /* Night Sky's own 4 segments (ALL/LANDSCAPE/SOLAR SYSTEM/DEEP SKY) need more room than Eclipse's
+     260px default - "SOLAR SYSTEM" alone measured ~84px at this font/padding, clipped at the
+     shared floor's 65px-per-segment share. */
+  #nightSkyCatalogTypeFilter { min-width: 410px; }
+  .catalog-type-filter .ns-btn {
     flex: 1 1 0;
-    min-width: 0;      /* without this, flex:1 alone still yields content-driven widths (ANNULAR
-                          wider than ALL) - a flex item's min-width defaults to its content's own
-                          width, which overrides an equal flex-basis unless explicitly zeroed. */
+    min-width: 0;      /* without this, flex:1 alone still yields content-driven widths (the longest
+                          label wider than ALL) - a flex item's min-width defaults to its content's
+                          own width, which overrides an equal flex-basis unless explicitly zeroed. */
     box-sizing: border-box;
     height: 24px;      /* matches the N/S/E/W hemisphere buttons' own rendered height - unlike those
                           (inside the zoomed .sidebar), the Catalog panel isn't under the app's 1.25
@@ -2472,11 +2529,11 @@
     padding: 0 2px;
     letter-spacing: 0.08em;
   }
-  #eclipseCatalogTypeFilter .ns-btn[data-type="all"] {
+  .catalog-type-filter .ns-btn[data-type="all"] {
     font-weight: bold;   /* ALL reads as bold always, not just while active - sets it apart from
-                            TOTAL/PARTIAL/ANNULAR as "no filter" rather than a type of its own */
+                            the other categories as "no filter" rather than a category of its own */
   }
-  #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
+  .catalog-type-filter .ns-btn[data-type="all"].active {
     background: #fff;
     color: #000;
   }
@@ -2523,14 +2580,15 @@
   .eclipse-catalog-locmode-switch.on { background: var(--accent); }
   .eclipse-catalog-locmode-switch.on::after { left: 15px; }
 
-  /* Tile grid - one square tile per registered event (window.ECLIPSE_EVENTS). 210px = 140px + 50%. */
-  #eclipseCatalogGrid {
+  /* Tile grid - one square tile per catalog entry (Eclipse: window.ECLIPSE_EVENTS; Night Sky:
+     window.NIGHTSKY_ASTRO_CATALOG). 210px = 140px + 50%. */
+  .catalog-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: 14px;
     padding: 14px;
   }
-  .eclipse-tile {
+  .catalog-tile {
     position: relative;   /* anchors .eclipse-tile-gallery-badge to this tile's own corner */
     display: flex;
     flex-direction: column;
@@ -2540,9 +2598,12 @@
     border-radius: var(--radius-sm);
     padding: 6px;
   }
-  /* Badge marking an event that has a real-photo gallery registered (window.ECLIPSE_GALLERY[event.id],
-     same data "Load gallery" in Visualization itself uses) - a white chip behind the icon keeps it
-     legible regardless of the tile's own preview colours or the current theme. */
+  /* Badge marking an Eclipse event that has a real-photo gallery registered
+     (window.ECLIPSE_GALLERY[event.id], same data "Load gallery" in Visualization itself uses) - a
+     white chip behind the icon keeps it legible regardless of the tile's own preview colours or
+     the current theme. Eclipse-only: every Night Sky astro-catalog tile always has a photo (the
+     tile IS the photo, unlike an Eclipse event which may or may not have a registered gallery), so
+     there's no "available/not" distinction to badge there. */
   .eclipse-tile-gallery-badge {
     position: absolute;
     bottom: 6px; right: 6px;
@@ -2554,29 +2615,53 @@
     box-sizing: border-box;
     pointer-events: none;   /* purely decorative - doesn't interfere with the tile's own click */
   }
-  .eclipse-tile.clickable { cursor: pointer; transition: outline 0.15s; outline: 1px solid transparent; }
-  .eclipse-tile.clickable:hover { outline: 1px solid var(--accent); }
-  .eclipse-tile-date {
+  .catalog-tile.clickable { cursor: pointer; transition: outline 0.15s; outline: 1px solid transparent; }
+  .catalog-tile.clickable:hover { outline: 1px solid var(--accent); }
+  .catalog-tile-date {
     font-family: var(--mono);
     font-size: 11px;
     font-weight: bold;
     color: var(--accent);
     text-align: center;
   }
-  /* Upcoming events (calendar date still ahead of today) get a green date label instead of the
-     default yellow - a quick "already happened vs. still to come" visual cue on the tile itself,
-     independent of which side of the Past/Upcoming filter is currently active. */
-  .eclipse-tile-date.upcoming { color: var(--accent-green); }
+  /* Upcoming Eclipse events (calendar date still ahead of today) get a green date label instead of
+     the default yellow - a quick "already happened vs. still to come" visual cue on the tile
+     itself, independent of which side of the Past/Upcoming filter is currently active. Night Sky's
+     astro-catalog tiles are all past captures, so this variant is unused there - harmless. */
+  .catalog-tile-date.upcoming { color: var(--accent-green); }
+  /* Bottom label - Night Sky's own object-name caption (e.g. "M31 - Andromeda Galaxy"), same
+     position/weight as Eclipse's .eclipse-tile-type but a free-text caption instead of a computed
+     eclipse type, so it gets its own class rather than reusing that Eclipse-specific one. */
+  .catalog-tile-caption {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: bold;
+    color: var(--text);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .eclipse-tile-canvas {
     width: 100%;
     aspect-ratio: 1;
     border-radius: var(--radius-sm);
     display: block;
   }
+  /* Night Sky's own tile preview - a pre-made square JPG (js/render-nightsky.js), not a live
+     render like Eclipse's canvas above (no simulation to render for a real photo) - object-fit
+     guards against a thumbnail that isn't quite perfectly square. */
+  .catalog-tile-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+    display: block;
+    object-fit: cover;
+  }
   /* No canvas render for a location that never sees this event (§ perf note in
      _eclipseRenderCatalogGrid) - a flat grey square stands in for it instead. */
   .eclipse-tile-blank { background: #1c1e22; }
-  .eclipse-tile.no-eclipse { opacity: 0.5; }
+  .catalog-tile.no-eclipse { opacity: 0.5; }
   .eclipse-tile-type {
     font-family: var(--mono);
     font-size: 11px;
@@ -2597,10 +2682,10 @@
      .canvas-container/#sunGraphCanvas/#skyDomeCanvas each need their own override above - and the
      "no eclipse here" blank tile / the Type filter's white-on-black "ALL active" look are both
      tuned for that dark backdrop, so they need to flip too rather than just going along for free. */
-  body.light #eclipseCatalogPanel { background: #ffffff; }
+  body.light .catalog-panel { background: #ffffff; }
   body.light .eclipse-tile-blank { background: #d8dee4; }
-  body.light #eclipseCatalogTypeFilter { border-color: #000; }
-  body.light #eclipseCatalogTypeFilter .ns-btn[data-type="all"].active {
+  body.light .catalog-type-filter { border-color: #000; }
+  body.light .catalog-type-filter .ns-btn[data-type="all"].active {
     background: #000;
     color: #fff;
   }
