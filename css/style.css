@@ -2495,13 +2495,14 @@
   }
   /* Type filter - same .ns-toggle/.ns-btn pill as elsewhere, all segments equal-width (labels can
      differ a lot in length - ALL/TOTAL/PARTIAL/ANNULAR for Eclipse, ALL/DEEP SKY/LANDSCAPE for
-     Night Sky) and ALL gets a white active state (not the shared gold .ns-btn.active) to read as
+     Night Sky) and ALL gets a light grey active state (not the shared gold .ns-btn.active) to read as
      "no filter" rather than as a category of its own. */
   .catalog-type-filter {
     min-width: 260px;   /* the toggle's own shrink-to-fit width would otherwise collapse well below
                            this once its children can shrink to 0 (see min-width:0 below) - fixing
                            a floor here is what actually keeps the segments legible/equal. */
-    border: 1px solid #fff;   /* flipped to black in light theme, same as the ALL segment below */
+    --catalog-filter-grey: #c0c0c0;   /* border + ALL's active fill, one shared value */
+    border: 1px solid var(--catalog-filter-grey);   /* flipped to black in light theme, same as the ALL segment below */
   }
   /* Night Sky's own 4 segments (ALL/LANDSCAPE/SOLAR SYSTEM/DEEP SKY) need more room than Eclipse's
      260px default - "SOLAR SYSTEM" alone measured ~84px at this font/padding, clipped at the
@@ -2534,7 +2535,7 @@
                             the other categories as "no filter" rather than a category of its own */
   }
   .catalog-type-filter .ns-btn[data-type="all"].active {
-    background: #fff;
+    background: var(--catalog-filter-grey);
     color: #000;
   }
   .eclipse-catalog-locmode {
@@ -2680,7 +2681,7 @@
 
   /* Light: Catalog's own background is a hardcoded dark fill (not var(--panel)), same reason
      .canvas-container/#sunGraphCanvas/#skyDomeCanvas each need their own override above - and the
-     "no eclipse here" blank tile / the Type filter's white-on-black "ALL active" look are both
+     "no eclipse here" blank tile / the Type filter's grey-on-black "ALL active" look are both
      tuned for that dark backdrop, so they need to flip too rather than just going along for free. */
   body.light .catalog-panel { background: #ffffff; }
   body.light .eclipse-tile-blank { background: #d8dee4; }
