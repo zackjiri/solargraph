@@ -434,7 +434,10 @@ function exitNightSkyVisualization() {
   document.getElementById('nightSkyDateGroup').style.display = 'none';
   document.getElementById('nightSkyTimeWrap').style.display = 'none';
   document.getElementById('nightSkySubmodeRow').style.display = 'none';
-  _nightSkyUpdatePlanetControlsVisibility();
+  // Hidden directly, not via _nightSkyUpdatePlanetControlsVisibility(): exitNightSky() calls this
+  // while nightSkyTopView is still 'visualization' and nightSkyActive still true, so that
+  // function's own condition would keep the slider on screen.
+  document.getElementById('nightSkyPlanetZoomCtl').style.display = 'none';
   _nightSkyUpdatePresentationLock();
   // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
   // _nightSkyUpdateReadout via _nightSkySyncControls) don't belong to whatever view comes next -
@@ -1660,7 +1663,8 @@ if (_nightSkyPlanetZoomEl) {
 // enterNightSky()/exitNightSky() below.
 function _nightSkyUpdatePlanetControlsVisibility() {
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
-  if (ctl) ctl.style.display = (nightSkyActive && nightSkySubmode === 'planetarium') ? 'flex' : 'none';
+  if (ctl) ctl.style.display = (nightSkyActive && nightSkyTopView === 'visualization'
+    && nightSkySubmode === 'planetarium') ? 'flex' : 'none';
 }
 
 // Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
