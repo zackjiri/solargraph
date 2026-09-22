@@ -4,7 +4,7 @@
 
 A solargraph is a photograph of the sky exposed for months at a time. The camera is a can with a pinhole instead of a lens and a sheet of photographic paper curved around the inside; day after day, the Sun burns its own arc into the paper.
 
-**Solargraphy Viewer reads that image back as data.** It reconstructs the coordinate system hidden in the scan and assigns azimuth, elevation, day of year and solar time to every pixel - then lets you explore the same scene as a 3D model of the can, a year-long sun chart, a sky dome, or a comparison against measured sunshine data. A separate mode simulates real solar eclipses from published astronomical elements.
+**Solargraphy Viewer reads that image back as data.** It reconstructs the coordinate system hidden in the scan and assigns azimuth, elevation, day of year and solar time to every pixel - then lets you explore the same scene as a 3D model of the can, a year-long sun chart, a sky dome, or a comparison against measured sunshine data. A separate mode simulates real solar eclipses from published astronomical elements, and another shows the real night sky with the author's own astrophotographs placed on it.
 
 **See it live! Check out Solargraphy Viewer at [zackjiri.github.io/solargraph](https://zackjiri.github.io/solargraph/).**
 
@@ -103,6 +103,10 @@ Near the horizon, real traces therefore sit slightly *above* the prediction, and
 
 🌑 **Eclipse mode** *(experimental)* - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements.
 
+🌠 **Night Sky mode** *(experimental)* - the real starry sky for the chosen location, date and time: 5,044 stars down to magnitude 6 and the 88 IAU constellations, as a flat polar Sky Map or an all-sky Planetarium you can look around in. Unlike the rest of the app it needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next. Star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). Optional overlays add an equatorial grid, the ecliptic, and the Sun with its daily path.
+
+- **Catalog** - the author's own astrophotography gallery of landscapes, Solar System objects and deep-sky targets, filterable by category. Clicking a photo restores the date, time and place it was taken, turns the Planetarium towards the target and marks the photographed field on the sky with red corner brackets, next to a thumbnail that opens the full-size image. The field is placed from the photo's centre (RA/Dec), field of view and position angle through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs, including the part below the horizon.
+
 💾 **Presets** - export a full calibration as JSON and reload it later.
 
 Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
@@ -111,7 +115,7 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 
 ## 📖 How to use
 
-1. **Pick a mode** - `Gallery`, `Analyzer` or `Eclipse`.
+1. **Pick a mode** - `Gallery`, `Analyzer`, `Eclipse` or `Night Sky`.
 2. **Gallery** - choose a Generation and an Image, then a view: Raw scan, Enhanced, or Split screen (drag the divider, swap sides with the corner button).
 3. **Analyzer** - load a scan, then switch sub-views with the wheel picker: `3D Model` / `Image` / `Sun Graph` / `Sky Dome`.
    - Adjust the Calibration sliders until the projected grid lines up with the arcs in the photo.
@@ -120,7 +124,10 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 4. **Eclipse** - the Catalog grid opens first; click a tile for the Visualization, then scrub the time slider or press play.
    - While the animation runs, a small label above the play button shows its speed. Click the label to cycle 1x, 10x, 60x and 300x real time - playback keeps running as the rate changes.
    - `Load gallery` marks the exact moments of real photographs on the slider; `Find the greatest point` jumps your location to where the eclipse was deepest.
-5. **Save your work** with `Export` under Preset, and reload it later with `Import`.
+5. **Night Sky** - the Catalog opens first; narrow it with `ALL` / `LANDSCAPE` / `SOLAR SYSTEM` / `DEEP SKY` and click a photo to see where on the sky it was taken. Click the thumbnail beside the frame for the full-size photo.
+   - `Visualization` shows the star map on its own; switch between `Sky Map` and `Planetarium` with the wheel picker, and drag to look around in Planetarium.
+   - `SET NOW` jumps to the current date and time; the play button animates time forward.
+6. **Save your work** with `Export` under Preset, and reload it later with `Import`.
 
 ---
 
@@ -131,6 +138,7 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 - **`CHMI data` is greyed out** - measured data exists only for images with a matching station extract; not every solargraph has one.
 - **`Split screen` is disabled** - it needs both a Raw and an Enhanced layer for the selected image.
 - **A section disappeared** - click the ▼ / ▶ triangle by its heading; sections collapse their contents, never themselves.
+- **Date, location or time won't change in Night Sky** - they are locked while a Catalog photo is shown, so the frame stays true to it. Switch to `Sky Map` or go back to the Catalog to unlock them.
 - **On a phone** - the layout stacks below ~640 px, but fine calibration is much easier on a tablet or desktop.
 - **Changes don't show up** - this is static HTML and JavaScript with no build step; a hard refresh clears most stale state.
 
@@ -146,11 +154,11 @@ Modified or redistributed versions stay under these same terms - no relicensing,
 
 The software is provided as-is, with no warranty of any kind. Breaking these terms ends your rights under the license automatically.
 
-All photographs published with the app - both the solargraphs in the Gallery and the eclipse images in the Eclipse photo galleries - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
+All photographs published with the app - the solargraphs in the Gallery, the eclipse images in the Eclipse photo galleries and the astrophotographs in the Night Sky Catalog - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
 
 Sunshine duration and air temperature measurements shown in the app come from the **open data** of the Czech Hydrometeorological Institute, licensed separately under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs).
 
-Star and constellation data in the Sky Map mode are vendored from [D3-Celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, licensed separately under **BSD-3-Clause** — see [`data/celestial/NOTICE.md`](data/celestial/NOTICE.md) for the full license text and original catalog sources.
+Star and constellation data in the Night Sky mode are vendored from [D3-Celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, licensed separately under **BSD-3-Clause** - see [`data/celestial/NOTICE.md`](data/celestial/NOTICE.md) for the full license text and original catalog sources.
 
 ---
 
