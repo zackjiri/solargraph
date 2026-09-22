@@ -49,7 +49,7 @@
     "rotation_deg": 15,
     "thumbnail": "img/astro/A2025-12-25_M31_T.jpg",
     "full": "img/astro/A2025-12-25_M31.jpg"
-  }   ,
+  },
   {
     "id": "A2025-12-26_M42",
     "object_name": "Orion Nebula",
@@ -66,5 +66,22 @@
     "rotation_deg": 5,
     "thumbnail": "img/astro/A2025-12-26_M42_T.jpg",
     "full": "img/astro/A2025-12-26_M42.jpg"
-  }   
+  },
+  {
+    "id": "A2026-08-12_PSE02",
+    "object_name": "Partial Solar Eclipse",
+    "category": "solar_system",
+    "date_utc": "2026-08-12",
+    "time_utc": "18:09:00",
+    "timezone": 2,
+    "lat": 49.5, "lat_hemisphere": "N",
+    "lon": 16.3, "lon_hemisphere": "E",
+    "ra": "9h14m00s",
+    "dec": "17°44'8\"",
+    "fov_w_deg": 15,
+    "fov_h_deg": 10,
+    "rotation_deg": 37,
+    "thumbnail": "img/eclipse/A2026-08-12_PSE02_T.jpg",
+    "full": "img/eclipse/A2026-08-12_PSE02.jpg"
+  }    
 ]
