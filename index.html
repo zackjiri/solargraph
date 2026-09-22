@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug140">
+  <link rel="stylesheet" href="css/style.css?perfdebug156">
 </head>
 <body>
 
@@ -56,10 +56,20 @@
       <!-- Eclipse sub-view switcher (Catalog / Visualization) - shown only while Eclipse is active
            (mutually exclusive with the Analyzer sub-row above, display set by JS in
            render-eclipse.js), same wheel-picker widget. -->
-      <div class="eclipse-subrow wheel-row" id="eclipseSubRow" title="Eclipse sub-view – drag, tap a side value, or use the arrows">
+      <div class="subrow-wheel wheel-row" id="eclipseSubRow" title="Eclipse sub-view – drag, tap a side value, or use the arrows">
         <button class="wheel-btn" id="btnEclipseSubDec" title="Previous view">◀</button>
         <div class="wheel-track" id="eclipseSubWheelTrack"></div>
         <button class="wheel-btn" id="btnEclipseSubInc" title="Next view">▶</button>
+      </div>
+      <!-- Night Sky top-level sub-view switcher (Catalog / Visualization) - same wheel-picker
+           widget, shown only while Night Sky is active (render-nightsky.js), mutually exclusive
+           with the two rows above. Visualization itself still has its own separate Sky Map /
+           Planetarium switch (#nightSkySubmodeRow, inside the canvas area) underneath, unchanged -
+           this is a level above that, not a replacement for it. -->
+      <div class="subrow-wheel wheel-row" id="nightSkyTopRow" title="Night Sky sub-view – drag, tap a side value, or use the arrows">
+        <button class="wheel-btn" id="btnNightSkyTopDec" title="Previous view">◀</button>
+        <div class="wheel-track" id="nightSkyTopWheelTrack"></div>
+        <button class="wheel-btn" id="btnNightSkyTopInc" title="Next view">▶</button>
       </div>
     </div>
     <button id="btnTheme" title="Toggle light / dark theme">🌙</button>
@@ -332,12 +342,35 @@
           </div>
         </div>
       </div>
+      <!-- Night Sky Catalog sub-view - grid of astrophotography shots (filelist_astro.json), the
+           landing sub-view every time Night Sky is entered. Tiles built/rendered by JS
+           (_nightSkyRenderCatalogGrid, js/render-nightsky.js) - pre-made square thumbnail per shot
+           (not a live render - there's no simulation to render for a real photo, unlike Eclipse's
+           own catalog tiles). -->
+      <div id="nightSkyCatalogPanel" class="catalog-panel">
+        <div id="nightSkyCatalogFilters" class="catalog-filters">
+          <div class="ns-toggle catalog-type-filter" id="nightSkyCatalogTypeFilter" title="Filter by category">
+            <button class="ns-btn active" data-type="all">ALL</button>
+            <button class="ns-btn" data-type="landscape">LANDSCAPE</button>
+            <button class="ns-btn" data-type="solar_system">SOLAR SYSTEM</button>
+            <button class="ns-btn" data-type="deep_sky">DEEP SKY</button>
+          </div>
+        </div>
+        <div id="nightSkyCatalogGrid" class="catalog-grid"></div>
+      </div>
+      <!-- Floating square thumbnail next to the "L" corner-bracket frame in Planetarium
+           (js/render-nightsky.js: _nightSkyDrawCatalogFrame/its own positioning logic each redraw)
+           - a separate, pre-made square JPG (not algorithmically derived from the frame/photo),
+           positioned adaptively (whichever side keeps it on-screen) near the frame's own centre.
+           Click opens the full photo fullscreen (#nightSkyGalleryModal below). Hidden by default -
+           only shown while a catalog tile's frame is active and its centre is on-screen. -->
+      <img id="nightSkyFrameThumb" alt="Astrophoto thumbnail" title="Open full photo">
       <!-- Eclipse Catalog sub-view - grid of registered events to choose from (js/eclipse-data/*.js),
            the landing sub-view every time Eclipse is entered. Tiles built/rendered by JS
            (_eclipseRenderCatalogGrid, js/render-eclipse.js) - live canvas preview per event. -->
-      <div id="eclipseCatalogPanel">
-        <div id="eclipseCatalogFilters">
-          <div class="ns-toggle" id="eclipseCatalogTypeFilter" title="Filter by eclipse type">
+      <div id="eclipseCatalogPanel" class="catalog-panel">
+        <div id="eclipseCatalogFilters" class="catalog-filters">
+          <div class="ns-toggle catalog-type-filter" id="eclipseCatalogTypeFilter" title="Filter by eclipse type">
             <button class="ns-btn active" data-type="all">ALL</button>
             <button class="ns-btn" data-type="total">TOTAL</button>
             <button class="ns-btn" data-type="partial">PARTIAL</button>
@@ -354,7 +387,7 @@
             <span class="eclipse-catalog-locmode-label" id="eclipseCatalogLocModeLabelB">GREATEST ECLIPSE</span>
           </div>
         </div>
-        <div id="eclipseCatalogGrid"></div>
+        <div id="eclipseCatalogGrid" class="catalog-grid"></div>
       </div>
       <!-- Eclipse time slider - overlaid on the canvas itself (under the Sun), not in the side
            panel - same style as #rngSunTime under the 3D Model preview. Shown only in Eclipse. -->
@@ -832,10 +865,20 @@
      project to reuse (only the small anchored .info-popup above) - centred, dimmed backdrop is a
      new pattern here, but keeps the same .visible show/hide idiom and sits above .info-popup's own
      z-index:200. -->
-<div id="eclipseGalleryModal">
-  <div id="eclipseGalleryModalBody">
-    <button id="btnEclipseGalleryModalClose" title="Close">✕</button>
-    <img id="eclipseGalleryModalImg" alt="Eclipse photo">
+<div id="eclipseGalleryModal" class="photo-modal">
+  <div id="eclipseGalleryModalBody" class="photo-modal-body">
+    <button id="btnEclipseGalleryModalClose" class="photo-modal-close" title="Close">✕</button>
+    <img id="eclipseGalleryModalImg" class="photo-modal-img" alt="Eclipse photo">
+  </div>
+</div>
+
+<!-- Night Sky astro-catalog photo modal - same pattern as the Eclipse gallery modal just above
+     (shares .photo-modal/.photo-modal-body/.photo-modal-close CSS), opened by clicking the
+     floating square thumbnail next to a catalog frame in Planetarium (js/render-nightsky.js). -->
+<div id="nightSkyGalleryModal" class="photo-modal">
+  <div id="nightSkyGalleryModalBody" class="photo-modal-body">
+    <button id="btnNightSkyGalleryModalClose" class="photo-modal-close" title="Close">✕</button>
+    <img id="nightSkyGalleryModalImg" class="photo-modal-img" alt="Astrophoto">
   </div>
 </div>
 
@@ -863,24 +906,24 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.9.20
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.9.22
 </div>
 
-<script src="js/core.js?perfdebug140"></script>
+<script src="js/core.js?perfdebug156"></script>
 <script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug140"></script>
-<script src="js/render-sungraph.js?perfdebug140"></script>
-<script src="js/render-3d.js?perfdebug140"></script>
-<script src="js/render-skydome.js?perfdebug140"></script>
-<script src="js/render-nightsky.js?perfdebug140"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug140"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug140"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug140"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug140"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug140"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug140"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug140"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug140"></script>
-<script src="js/render-eclipse.js?perfdebug140"></script>
+<script src="js/controls.js?perfdebug156"></script>
+<script src="js/render-sungraph.js?perfdebug156"></script>
+<script src="js/render-3d.js?perfdebug156"></script>
+<script src="js/render-skydome.js?perfdebug156"></script>
+<script src="js/render-nightsky.js?perfdebug156"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug156"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug156"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug156"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug156"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug156"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug156"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug156"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug156"></script>
+<script src="js/render-eclipse.js?perfdebug156"></script>
 </body>
 </html>
