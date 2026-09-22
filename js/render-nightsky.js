@@ -806,7 +806,7 @@ const NIGHTSKY_TWILIGHT_NAMES = ['Daylight', 'Civil twilight', 'Nautical twiligh
 function _nightSkyUpdateTimeLabel() {
   const el = document.getElementById('lblNightSkyHour');
   if (!el) return;
-  const alt = _nightSkySunAltApprox(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const alt = _nightSkySunAlt(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   el.textContent = NIGHTSKY_TWILIGHT_NAMES[_nightSkyTwilightBandIndex(alt)];
 }
 // Shared top info bar (Az/Alt/Dir from the cursor listener further down this file; Day/Time here) -
@@ -844,18 +844,13 @@ function _nightSkyUpdateReadout() {
 // _skyFromJulianDateUT above) so crossing a UTC midnight rolls the calendar date over for free,
 // with no separate day-boundary special-casing in the drag math itself.
 const NIGHTSKY_STRIP_HOURS_SPAN = 6;   // total visible window width, in hours (centre ± 3h)
-// Approximate Sun altitude for the strip's OWN background colouring only - not the precision the
-// rest of this file holds RA/Dec/Az/El to (Phase 1-2 above are exact). Skips the equation-of-time
-// correction (up to ~16 min) entirely: at this scale (a gradient a couple hundred pixels wide) that
-// error is imperceptible, and reusing the app's existing generic sunDeclination()/sunPosition()
-// (core.js) avoids a second, parallel Sun model just for a decorative fill.
-function _nightSkySunAltApprox(year, month, day, hourUT) {
-  const doy = dayOfYear(month, day);
-  const delta = sunDeclination(doy);
-  const lonDegEast = lonHemisphere * LONG;
-  const H = ((hourUT + lonDegEast / 15 - 12) * 15) * Math.PI / 180;
-  const phi = hemisphere * LAT * Math.PI / 180;
-  return sunPosition(H, delta, phi).el;
+// Sun altitude for the time strip (gradient, discrete twilight band, phase label). Same model as the
+// Sun disc itself (_nightSkySunAzEl, including the equation of time), so the strip never disagrees
+// with the disc drawn on the sky: near the horizon the equation of time alone (up to ~16 min) shifts
+// the altitude by up to ~2 deg, enough to put a Sun still visibly above the horizon into
+// "Civil twilight".
+function _nightSkySunAlt(year, month, day, hourUT) {
+  return _nightSkySunAzEl(year, month, day, hourUT).el;
 }
 // Day (Sun above horizon) -> dusk -> night. The dusk band originally spanned the FULL
 // astronomical twilight range (civil+nautical+astronomical lumped together, DUSK peak at the -9°
@@ -910,7 +905,7 @@ function _nightSkyBuildTimeStripFill() {
   for (let i = 0; i <= N; i++) {
     const jd = jdMin + span * i / N;
     const r = _skyFromJulianDateUT(jd);
-    const alt = _nightSkySunAltApprox(r.year, r.month, r.day, r.hourUT);
+    const alt = _nightSkySunAlt(r.year, r.month, r.day, r.hourUT);
     stops.push(_nightSkyColorAt(alt) + ' ' + (i / N * 100).toFixed(2) + '%');
   }
   const colorGrad = 'linear-gradient(to right, ' + stops.join(',') + ')';
@@ -973,17 +968,16 @@ function _nightSkyTwilightBandIndex(alt) {
   }
   return NIGHTSKY_TWILIGHT_THRESHOLDS.length;
 }
-// Bisects for the exact JD where the (approximate, strip-only) Sun altitude crosses a given
-// threshold between two already-sampled points straddling it - same idea as _nightSkyBisectHorizon
+// Bisects for the exact JD where the Sun altitude (_nightSkySunAlt) crosses a given threshold
+// between two already-sampled points straddling it - same idea as _nightSkyBisectHorizon
 // (Planetarium's own horizon-crossing interpolation) but against an arbitrary threshold instead of
-// a fixed 0, and against the strip's cheaper approximate altitude (this is a decorative
-// classification band, not exact astronomy - matches what the rest of the strip already uses).
+// a fixed 0.
 function _nightSkyAltCrossingJD(jd0, jd1, alt0, alt1, threshold) {
   let lo = jd0, hi = jd1, aLo = alt0, aHi = alt1;
   for (let i = 0; i < 24; i++) {
     const mid = lo + (hi - lo) * ((aLo - threshold) / (aLo - aHi));
     const r = _skyFromJulianDateUT(mid);
-    const a = _nightSkySunAltApprox(r.year, r.month, r.day, r.hourUT);
+    const a = _nightSkySunAlt(r.year, r.month, r.day, r.hourUT);
     if (Math.abs(a - threshold) < 0.001) return mid;
     if ((a >= threshold) === (aLo >= threshold)) { lo = mid; aLo = a; } else { hi = mid; aHi = a; }
   }
@@ -998,7 +992,7 @@ function _nightSkyBuildTwilightBand() {
   const span = jdMax - jdMin;
   const altAt = (jd) => {
     const r = _skyFromJulianDateUT(jd);
-    return _nightSkySunAltApprox(r.year, r.month, r.day, r.hourUT);
+    return _nightSkySunAlt(r.year, r.month, r.day, r.hourUT);
   };
 
   // Coarse sweep (~3-min steps - fine enough to catch every crossing in a 6h window) to find every

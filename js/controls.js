@@ -591,7 +591,7 @@ function applyLat(val) {
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // LAT/hemisphere shifts the whole eclipse geometry - recompute from scratch
   // Night Sky's own time-strip gradient (day/dusk/night, _nightSkyBuildTimeStripFill) is a function
-  // of Sun ALTITUDE at this LAT/LONG (_nightSkySunAltApprox), not just of the canvas star positions
+  // of Sun ALTITUDE at this LAT/LONG (_nightSkySunAlt), not just of the canvas star positions
   // drawNightSky() alone redraws - a bare drawNightSky() here left the strip showing dusk/night bands
   // computed for whatever location was active when it was last built, silently stale after a Location
   // change (found via the user's own report that dusk didn't line up with the strip's own colours;
@@ -657,7 +657,7 @@ function applyLong(val) {
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   if (typeof eclipseActive !== 'undefined' && eclipseActive && typeof _eclipseRefreshForLocationChange === 'function') _eclipseRefreshForLocationChange();   // longitude shifts the whole eclipse geometry - recompute from scratch
   // Longitude shifts the UT-to-mean-solar-hour offset the strip's gradient is built from
-  // (_nightSkySunAltApprox) just as much as LAT/hemisphere do - same stale-time-strip fix as
+  // (_nightSkySunAlt) just as much as LAT/hemisphere do - same stale-time-strip fix as
   // applyLat() above.
   if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
