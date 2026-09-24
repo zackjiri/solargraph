@@ -182,31 +182,24 @@ function _nightSkyFrameCorners(raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg) {
   return { corners, arms };
 }
 
-// The Sun's own real Az/El for a real civil UT date/time - unlike a catalog star, the Sun has no
-// fixed RA/Dec to look up, so this goes through the app's own existing Hour-Angle route instead
-// (core.js's sunPosition(H,delta,phi), the same "for the Sun the app computes H from apparent solar
-// time" path _skyRaDecToAzEl's own comment already calls out, just fed from Night Sky's real UT
-// clock rather than the app's sunTimeHours slider). Mean solar time at this LONGITUDE = UT +
-// longitude/15h; apparent (true) solar time = that + the equation of time (core.js's own
-// trueFromMean, already used everywhere else time-display-mode conversion is needed) - then H =
-// (apparent solar hour - 12) x 15 deg, normalized to (-180,180] the same way _skyRaDecToAzEl
-// normalizes its own hour angle. REAL signed latitude/declination throughout (LAT*hemisphere,
-// sunDeclination) - NOT the flat 2D scan's "path" convention (pathDeclination/effectiveLat, always
-// positive latitude to keep pinhole framing fixed regardless of hemisphere), since Night Sky wants
-// the Sun's true position in the real sky, exactly like every star here. Same LAT===0/90 pole/
-// equator clamp as _skyStarAzEl, for the same reason (sunPosition's own azimuth formula divides by
-// cos(latitude)).
+// The Sun's own real Az/El for a real civil UT date/time, in the same J2000 frame as the star
+// catalog and the Moon (render-moon.js): geocentric ecliptic longitude of date from Meeus ch. 25
+// (_skySunEclipticOfDate, ~0.01 deg, the Sun's own latitude taken as 0), rotated to equatorial with
+// the mean obliquity of date, precessed to J2000, then the same _skyRaDecToAzEl() as every star.
+// The app applies no precession to the stars, so a Sun left in "of date" coordinates (as the
+// hour-angle model used elsewhere in the app effectively is) would sit ~0.3 deg (2026) off the
+// stars and the Moon it is drawn among - visible as a misplaced eclipse. Solar parallax (8.8") and
+// nutation (~17") are left out. REAL signed latitude (LAT*hemisphere), not the flat scan's "path"
+// convention; same LAT===0/90 clamp as _skyStarAzEl, since sunPosition's azimuth formula divides by
+// cos(latitude).
 function _nightSkySunAzEl(year, month, day, hourUT) {
-  const doy = dayOfYear(month, day);
-  const lonDegEast = lonHemisphere * LONG;
-  const meanSolarHour = hourUT + lonDegEast / 15;
-  const trueSolarHour = trueFromMean(meanSolarHour, doy);
-  let hDeg = (trueSolarHour - 12) * 15;
-  hDeg = ((hDeg + 180) % 360 + 360) % 360 - 180;
-  const latMagClamped = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
-  const phi = hemisphere * latMagClamped * Math.PI / 180;
-  const delta = sunDeclination(doy);
-  return sunPosition(hDeg * Math.PI / 180, delta, phi);
+  const jde = _moonJDE(year, month, day, hourUT);
+  const sun = _skySunEclipticOfDate(jde);
+  const eqDate = _moonEclToEq(sun.lambda, 0, _moonMeanObliquityDeg(jde));
+  const eq = _moonPrecessToJ2000(eqDate.ra, eqDate.dec, jde);
+  const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
+  const lst = _skySiderealTimeHours(year, month, day, hourUT, lonHemisphere * LONG);
+  return _skyRaDecToAzEl(eq.ra, eq.dec, lst, hemisphere * latMag);
 }
 
 // ─── Phase 3: load the vendored catalog data ───────────────────────────────────────────────────
@@ -395,6 +388,7 @@ function enterNightSkyVisualization() {
   document.getElementById('nightSkyDateGroup').style.display = 'flex';
   document.getElementById('nightSkyTimeWrap').style.display = 'flex';
   document.getElementById('nightSkySubmodeRow').style.display = 'flex';
+  document.getElementById('nightSkyStatusWrap').style.display = 'flex';
   _nightSkySubmodeWheel.render();   // just became visible/measurable - re-measure its own width
   // The top Az/Alt/Dir readout now tracks the cursor over the sky (see the pointermove listener
   // further down this file) - stays visible, just reset to placeholders (no hover yet) instead of
@@ -434,6 +428,7 @@ function exitNightSkyVisualization() {
   document.getElementById('nightSkyDateGroup').style.display = 'none';
   document.getElementById('nightSkyTimeWrap').style.display = 'none';
   document.getElementById('nightSkySubmodeRow').style.display = 'none';
+  document.getElementById('nightSkyStatusWrap').style.display = 'none';
   // Hidden directly, not via _nightSkyUpdatePlanetControlsVisibility(): exitNightSky() calls this
   // while nightSkyTopView is still 'visualization' and nightSkyActive still true, so that
   // function's own condition would keep the slider on screen.
@@ -538,11 +533,10 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // of Date.now()), stores its frame definition for _nightSkyDrawCatalogFrame, and centers the
 // Planetarium camera on the frame's own target Az/El - the only "center camera on Az/El" logic
 // anywhere in this file (the existing camera is otherwise only ever moved by the drag handler).
-// Chooses a zoom (up to the 2x max, see setNightSkyPlanetZoom's own clamp) that frames the photo's
+// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, the slider's own maximum) that frames the photo's
 // own boundary with a comfortable reserve, rather than leaving zoom at whatever it was before this
-// tile was picked - the user's own spec: "přiblížení bude až 2x, pokud se hranice obrazu vejdou do
-// záběru i s rezervou" (zoom in up to 2x, as long as the frame's own boundary still fits in view
-// with margin to spare). The equidistant fisheye's screen radius from the view direction is
+// tile was picked - zoom in as far as the cap allows, as long as the frame's own boundary still fits
+// in view with margin to spare. The equidistant fisheye's screen radius from the view direction is
 // exactly proportional to zoom * (angle from that direction) - see _nightSkyPlanetProjectRaw's own
 // r = FOCAL*theta identity - so the zoom that lands the frame's farthest corner at a given fraction
 // of layout.scale (empirically, the shorter canvas dimension's half-width, reached at theta~54° at
@@ -550,13 +544,14 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // search needed - and layout.scale itself cancels out of the formula entirely, so this doesn't
 // even need to know the canvas's current on-screen size.
 const NIGHTSKY_FRAME_ZOOM_MARGIN = 0.85;   // corners land 85% of the way to the visible edge - reserve, not flush against it
+const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // raised from the original 2x with the slider's 8x range (user's choice)
 function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const D2R = Math.PI / 180;
   const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
   // Corner-to-centre angle - all 4 corners are equidistant from centre by construction (see
   // _nightSkyFrameCorners/the gnomonic tangent-plane build), so any one of them gives thetaMax.
   const thetaMax = Math.atan(Math.hypot(halfW, halfH));
-  return NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax);   // setNightSkyPlanetZoom clamps to [0.5, 2] itself
+  return Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax));   // lower bound: setNightSkyPlanetZoom's own 0.5x clamp
 }
 let _nightSkyActiveFrame = null;   // {raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg, thumbnail, full} | null
 function _nightSkyApplyCatalogTile(entry) {
@@ -845,7 +840,7 @@ function _nightSkyUpdateReadout() {
 // with no separate day-boundary special-casing in the drag math itself.
 const NIGHTSKY_STRIP_HOURS_SPAN = 6;   // total visible window width, in hours (centre ± 3h)
 // Sun altitude for the time strip (gradient, discrete twilight band, phase label). Same model as the
-// Sun disc itself (_nightSkySunAzEl, including the equation of time), so the strip never disagrees
+// Sun disc itself (_nightSkySunAzEl), so the strip never disagrees
 // with the disc drawn on the sky: near the horizon the equation of time alone (up to ~16 min) shifts
 // the altitude by up to ~2 deg, enough to put a Sun still visibly above the horizon into
 // "Civil twilight".
@@ -1305,11 +1300,11 @@ function _nightSkyDrawEquatorialGrid(ctx, layout) {
 // converted to RA/Dec via the standard obliquity rotation, which at beta=0 simplifies to:
 //   dec = asin(sin(epsilon)*sin(lambda))
 //   RA  = atan2(cos(epsilon)*sin(lambda), cos(lambda))
-// Uses the EXACT SAME obliquity (23.45deg) as core.js's own sunDeclination() - not a separately
-// re-tuned "more precise" value - so this curve stays geometrically consistent with the Sun's own
-// real position (the twentieth round's Sun feature): with Sun's path also on, the green path should
-// visibly trace right along this red line, not a slightly-off parallel curve.
-const NIGHTSKY_OBLIQUITY_DEG = 23.45;
+// The J2000 ecliptic (obliquity 23.4392911 deg, Meeus 22.2 at T=0) - the same frame the Sun
+// (_nightSkySunAzEl), the Moon and the stars are drawn in, so with Sun's path on, the green path
+// traces right along this line rather than a slightly-off parallel curve (the Sun's own ecliptic of
+// date, precessed to J2000, stays within ~0.001 deg of it for decades either side of 2000).
+const NIGHTSKY_OBLIQUITY_DEG = 23.4392911;
 function _nightSkyEclipticPoints(stepDeg) {
   const epsRad = NIGHTSKY_OBLIQUITY_DEG * Math.PI / 180;
   const pts = [];
@@ -1445,7 +1440,7 @@ function _nightSkyDrawConstellations(ctx, layout, drawLines, drawNames) {
 // solid #e8a020 dot with a thin black outline) so it reads as "the same Sun" across the app rather
 // than a new symbol. "Sun's path" (#btnNightSkySunPath) is a sub-option of that, same show/hide-by-
 // parent-state pattern as the main Display section's own Analemma switch (chkSunArc/btnAnalemma) -
-// draws the Sun's track across the currently-selected Night Sky date, black outline + green fill,
+// draws the Sun's track across its current pass (rise to set), black outline + green fill,
 // same exact style/colours as the Analyzer's own "Custom date" path (render-2d.js) so this reads as
 // the same kind of curve, not a new convention.
 let showNightSkySunPath = false;
@@ -1466,9 +1461,37 @@ document.getElementById('btnNightSkySunPath').addEventListener('click', () => {
   if (nightSkyActive) drawNightSky();
 });
 
+// Disc radius: a small fixed symbol in Sky Map, the true angular size in Planetarium (both rules
+// shared with the Moon - NIGHTSKY_SKYMAP_DISC_R/_nightSkyPlanetDiscRadiusPx, render-moon.js, loaded
+// first). The glow scales with the disc, so at high zoom it doesn't hide how the Moon actually
+// overlaps the Sun. The Solargraph views keep their own 4.5px Sun.
+const NIGHTSKY_SUN_GLOW_RATIO = 25 / 8;
+
+// The Moon's own Display toggles, same pattern as the Sun's just above: "Moon" (#chkNightSkyMoon,
+// on by default) and its "Moon's path" sub-option (#btnNightSkyMoonPath, off by default), shown only
+// while Moon is on. Ephemeris and drawing live in render-moon.js.
+let showNightSkyMoonPath = false;
+function _nightSkyUpdateMoonSubrow() {
+  const row = document.getElementById('nightSkyMoonSubrow');
+  if (row) row.style.display = document.getElementById('chkNightSkyMoon').checked ? 'flex' : 'none';
+}
+_nightSkyUpdateMoonSubrow();
+document.getElementById('chkNightSkyMoon').addEventListener('change', () => {
+  _nightSkyUpdateMoonSubrow();
+  if (nightSkyActive) drawNightSky();
+});
+document.getElementById('btnNightSkyMoonPath').addEventListener('click', () => {
+  showNightSkyMoonPath = !showNightSkyMoonPath;
+  const btn = document.getElementById('btnNightSkyMoonPath');
+  btn.classList.toggle('on', showNightSkyMoonPath);
+  btn.setAttribute('aria-checked', String(showNightSkyMoonPath));
+  if (nightSkyActive) drawNightSky();
+});
+
 const NIGHTSKY_SUN_PATH_COLOR_OUTLINE = 'rgba(0,0,0,0.85)';
 const NIGHTSKY_SUN_PATH_COLOR_FILL = 'rgba(80,220,120,0.9)';
-// One sample every 0.05h (~3 min) across the real UT day - plenty smooth for a canvas curve while
+// One sample every 0.05h (~3 min) across the Sun's current pass (rise to set, _nightSkySunPassHours in
+// render-moon.js) - plenty smooth for a canvas curve while
 // staying cheap enough to rebuild on every redraw (drag/time-scrub), same order of sampling density
 // as the Analyzer's own drawSunArc (0.25 deg in hour-angle terms, ~1 min).
 const NIGHTSKY_SUN_PATH_STEP_H = 0.05;
@@ -1479,7 +1502,7 @@ const NIGHTSKY_SUN_PATH_STEP_H = 0.05;
 // below (which needs the horizon-CROSSING interpolation _nightSkyBisectHorizon provides).
 function _nightSkyDrawSunPath(ctx, layout) {
   const pts = [];
-  for (let hourUT = 0; hourUT <= 24; hourUT += NIGHTSKY_SUN_PATH_STEP_H) {
+  for (const hourUT of _nightSkySunPassHours()) {
     pts.push(_nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, hourUT));
   }
   ctx.save();
@@ -1495,15 +1518,19 @@ function _nightSkyDrawSunPath(ctx, layout) {
 
 function _nightSkyDrawSunDisc(ctx, layout) {
   const s = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-  if (s.el < 0) return;
+  if (!_nightSkyDiscAboveHorizon(s.el, _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT))) return;
   const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, s.az, s.el);
-  const glR = 14;
+  ctx.save();
+  _nightSkyClipToSky(ctx, layout);
+  const r = NIGHTSKY_SKYMAP_DISC_R;
+  const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
   const glow = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glR);
   glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
   ctx.fillStyle = glow; ctx.fillRect(pt.x - glR, pt.y - glR, glR * 2, glR * 2);
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
   ctx.fillStyle = '#e8a020'; ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
 }
 
 // ─── Sub-modes ──────────────────────────────────────────────────────────────────────────────────
@@ -1599,9 +1626,13 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawStars(ctx, layout);
+  const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawSunPath(ctx, layout);
+  if (showMoon && showNightSkyMoonPath) _nightSkyDrawMoonPath(ctx, layout);
   if (showSun) _nightSkyDrawSunDisc(ctx, layout);
+  if (showMoon) _nightSkyDrawMoonDisc(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawHorizon(ctx, layout);
+  _nightSkyDrawSkyMapBodyLabels(ctx, layout);
 }
 
 // ─── Planetarium sub-mode ──────────────────────────────────────────────────────────────────────
@@ -1640,18 +1671,23 @@ _nightSkyUpdatePlanetCamera();
 // (#skyMap3DZoom, render-skydome.js's setSkyDomePlanet3DZoom), shown only while this sub-mode is
 // selected. One shared setter for both the slider's own 'input' event and the canvas wheel handler
 // below, so the two stay in lockstep exactly like Sky Dome's own zoom does.
+// Range 0.5x-8x: at 8x the Sun and the Moon, drawn at their true angular size, are big enough for
+// the phase to read. The slider runs in log2(zoom) (-1..3), so each octave takes the same travel -
+// linear steps would be either coarse at the low end or tediously fine at the top.
+const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 8;
 function setNightSkyPlanetZoom(z) {
-  _nightSkyPlanet3D.zoom = Math.max(0.5, Math.min(2, z));
+  _nightSkyPlanet3D.zoom = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
   _nightSkyUpdatePlanetCamera();
   const rng = document.getElementById('nightSkyPlanetZoom');
-  if (rng && parseFloat(rng.value) !== _nightSkyPlanet3D.zoom) rng.value = _nightSkyPlanet3D.zoom;
+  const log = Math.log2(_nightSkyPlanet3D.zoom);
+  if (rng && Math.abs(parseFloat(rng.value) - log) > 1e-9) rng.value = log;
   const val = document.getElementById('nightSkyPlanetZoomVal');
   if (val) val.textContent = _nightSkyPlanet3D.zoom.toFixed(1) + '×';
   if (nightSkyActive) drawNightSky();
 }
 const _nightSkyPlanetZoomEl = document.getElementById('nightSkyPlanetZoom');
 if (_nightSkyPlanetZoomEl) {
-  _nightSkyPlanetZoomEl.addEventListener('input', (e) => setNightSkyPlanetZoom(parseFloat(e.target.value)));
+  _nightSkyPlanetZoomEl.addEventListener('input', (e) => setNightSkyPlanetZoom(Math.pow(2, parseFloat(e.target.value))));
 }
 // Shown/hidden alongside the rest of this sub-mode's own state - see _nightSkyCommitSubmode() and
 // enterNightSky()/exitNightSky() below.
@@ -1732,7 +1768,12 @@ function _nightSkyDrawPlanetSkyGround(ctx, layout, w, h) {
   ctx.fillStyle = _nightSkyPlanetGroundColor();
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = _nightSkySkyColor();
-
+  _nightSkyTracePlanetSkyPath(ctx, layout);
+  ctx.fill();
+}
+// The sky region's closed outline (current path, not filled) - shared by the fill above and by
+// _nightSkyClipToSky, which uses it to hide the part of a setting Sun/Moon disc below the horizon.
+function _nightSkyTracePlanetSkyPath(ctx, layout) {
   const C = _nightSkyPlanet3D;
   const rClamp = C.FOCAL * NIGHTSKY_PLANET_FADE_OUTER * layout.scale;
   ctx.beginPath();
@@ -1767,7 +1808,14 @@ function _nightSkyDrawPlanetSkyGround(ctx, layout, w, h) {
     }
   }
   ctx.closePath();
-  ctx.fill();
+}
+// Clips the context to the sky above the horizon for the active sub-mode: the traced sky region in
+// Planetarium, the sky circle in Sky Map. Callers wrap it in save()/restore().
+function _nightSkyClipToSky(ctx, layout) {
+  ctx.beginPath();
+  if (nightSkySubmode === 'planetarium') _nightSkyTracePlanetSkyPath(ctx, layout);
+  else ctx.arc(layout.cx, layout.cy, layout.R, 0, 2 * Math.PI);
+  ctx.clip();
 }
 
 // Generic bisection: given a way to evaluate a point (returning at least {az,el}) at any fraction t
@@ -1997,7 +2045,7 @@ function _nightSkyDrawPlanetConstellations(ctx, layout, drawLines, drawNames) {
 function _nightSkyPlanetBuildSunPathPts() {
   const plotPts = [];
   let prev = null;   // {hourUT, el}
-  for (let hourUT = 0; hourUT <= 24; hourUT += NIGHTSKY_SUN_PATH_STEP_H) {
+  for (const hourUT of _nightSkySunPassHours()) {
     const s = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, hourUT);
     if (prev && (prev.el >= 0) !== (s.el >= 0)) {
       const h0 = prev.hourUT, h1 = hourUT;
@@ -2024,16 +2072,19 @@ function _nightSkyDrawPlanetSunPath(ctx, layout) {
 
 function _nightSkyDrawPlanetSun(ctx, layout) {
   const s = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-  if (s.el < 0) return;
+  const semi = _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  if (!_nightSkyDiscAboveHorizon(s.el, semi)) return;
   const proj = _nightSkyPlanetProject(layout, s.az, s.el);
   if (!proj.visible) return;
+  const r = _nightSkyPlanetDiscRadiusPx(layout, semi);
   ctx.save();
+  _nightSkyClipToSky(ctx, layout);
   ctx.globalAlpha = proj.alpha;
-  const glR = 14;
+  const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
   const glow = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, glR);
   glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
   ctx.fillStyle = glow; ctx.fillRect(proj.x - glR, proj.y - glR, glR * 2, glR * 2);
-  ctx.beginPath(); ctx.arc(proj.x, proj.y, 4.5, 0, Math.PI * 2);
+  ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI * 2);
   ctx.fillStyle = '#e8a020'; ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
   ctx.restore();
@@ -2254,9 +2305,13 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawPlanetConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
+  const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
+  if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
   if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
+  if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawPlanetHorizon(ctx, layout);
+  _nightSkyDrawPlanetBodyLabels(ctx, layout);
   _nightSkyDrawCatalogFrame(ctx, layout);
   _nightSkyUpdateFrameThumb(layout, w, h);
 }
@@ -2278,8 +2333,10 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     if (!dragging) return;
     const dx = x - lastX, dy = y - lastY;
     lastX = x; lastY = y;
-    _nightSkyPlanet3D.camAz -= dx * 0.005;
-    _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, _nightSkyPlanet3D.camEl + dy * 0.004));
+    // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.
+    const z = _nightSkyPlanet3D.zoom;
+    _nightSkyPlanet3D.camAz -= dx * 0.005 / z;
+    _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, _nightSkyPlanet3D.camEl + dy * 0.004 / z));
     _nightSkyUpdatePlanetCamera();
     drawNightSky();
   }
@@ -2299,13 +2356,13 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   cv.addEventListener('pointerup', dragEnd);
   cv.addEventListener('pointercancel', dragEnd);
 
-  // One tick = one 0.1 zoom step, additive, rounded to avoid float drift - same convention as Sky
-  // Dome's own canvas wheel handler.
+  // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: 32 ticks from
+  // 0.5x to 8x. The exponent is snapped to whole eighths so repeated ticks don't drift.
   cv.addEventListener('wheel', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
     e.preventDefault();
-    const step = -Math.sign(e.deltaY) * 0.1;
-    setNightSkyPlanetZoom(Math.round((_nightSkyPlanet3D.zoom + step) * 10) / 10);
+    const eighths = Math.round(Math.log2(_nightSkyPlanet3D.zoom) * 8) - Math.sign(e.deltaY);
+    setNightSkyPlanetZoom(Math.pow(2, eighths / 8));
   }, { passive: false });
 })();
 
@@ -2396,6 +2453,7 @@ function drawNightSky() {
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
   }
+  if (nightSkyTopView === 'visualization') _nightSkyUpdateStatusPanel();
 }
 
 // Top-level mode button, a peer of Gallery/Analyzer/Eclipse rather than an Analyzer sub-view -
