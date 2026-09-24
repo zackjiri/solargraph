@@ -2304,7 +2304,15 @@
     50%      { opacity: 0.35; transform: scale(0.72); }
   }
 
-  #theaterStatus, #sgStatus {
+  /* Night Sky info panel - same look as the Sun Graph's, top-left like the Analyzer's own
+     #statusWrap (never visible at the same time: Night Sky hides that one). */
+  #nightSkyStatusWrap {
+    position: absolute; top: 10px; left: 12.5px;
+    z-index: 12; display: none;          /* shown by JS only in Night Sky's Visualization */
+    flex-direction: column; align-items: flex-start;
+  }
+
+  #theaterStatus, #sgStatus, #nightSkyStatus {
     display: flex; flex-direction: column; gap: 0;
     padding: 16.25px 20px 18.75px;
     background: rgba(15,19,24,0.75);      /* semi-transparent (75%) */
@@ -2318,14 +2326,14 @@
     max-height: 450px;
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
   }
-  body.light #theaterStatus, body.light #sgStatus { background: rgba(245,247,249,0.78); }
-  #statusWrap.collapsed #theaterStatus, #sgStatusWrap.collapsed #sgStatus {
+  body.light #theaterStatus, body.light #sgStatus, body.light #nightSkyStatus { background: rgba(245,247,249,0.78); }
+  #statusWrap.collapsed #theaterStatus, #sgStatusWrap.collapsed #sgStatus, #nightSkyStatusWrap.collapsed #nightSkyStatus {
     max-height: 0; opacity: 0;
     padding-top: 0; padding-bottom: 0;
     border-width: 0; box-shadow: none;
   }
   /* Triangular show/hide arrow under the panel */
-  #statusToggle, #sgStatusToggle {
+  #statusToggle, #sgStatusToggle, #nightSkyStatusToggle {
     margin-top: 5px;
     background: var(--panel);
     border: none;
@@ -2336,7 +2344,7 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.25);
     transition: color 0.15s;
   }
-  #statusToggle:hover, #sgStatusToggle:hover { color: var(--text); }
+  #statusToggle:hover, #sgStatusToggle:hover, #nightSkyStatusToggle:hover { color: var(--text); }
   .ts-row {
     display: flex; justify-content: space-between;
     align-items: baseline; gap: 17.5px; padding: 5px 0;
