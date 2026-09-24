@@ -1705,60 +1705,26 @@ function _nightSkyPlanetLayout(w, h) {
   return { cx: w / 2, cy: h / 2, scale: Math.max(10, Math.min(w, h) / 2 * 0.92) };
 }
 
-// Same forward projection as _nightSkyPlanetProjectRaw, but clamps theta (angle from the view
-// direction) to NIGHTSKY_PLANET_FADE_OUTER instead of reporting "invisible" past it - used ONLY for
-// tracing the sky/ground fill boundary below, where every azimuth around the el=0 ring needs SOME
-// on-screen point to keep that boundary a single closed loop, even for the handful of ring points
-// that briefly swing behind the observer (theta>170°) at very low camera elevations. The direction
-// (bearing) stays correct throughout, only the radius is capped - the resulting "flat" arc segment
-// exactly where the true boundary would be invisible anyway (nothing else is ever drawn out there -
-// stars/lines have already faded to alpha 0 by that point) is not a visible discrepancy in practice.
-function _nightSkyPlanetProjectClamped(layout, az, el) {
-  const v = _skyDomeUnitVec(az, el);
-  const cosTheta = _sd3Dot(v, _nightSkyPlanet3D.FWD);
-  let theta = Math.acos(Math.max(-1, Math.min(1, cosTheta)));
-  if (theta > NIGHTSKY_PLANET_FADE_OUTER) theta = NIGHTSKY_PLANET_FADE_OUTER;
-  const lx = _sd3Dot(v, _nightSkyPlanet3D.RIGHT), ly = _sd3Dot(v, _nightSkyPlanet3D.UP);
-  const rho = Math.hypot(lx, ly);
-  const k = rho > 1e-6 ? theta / rho : 1;
-  const sx = _nightSkyPlanet3D.FOCAL * lx * k, sy = _nightSkyPlanet3D.FOCAL * ly * k;
-  return { x: layout.cx + sx * layout.scale, y: layout.cy - sy * layout.scale };
-}
-
 // Fills the frame: the "ground" a real planetarium dome's audience sits under (not sky) everywhere,
 // then the sky's own colour (_nightSkySkyColor - shared with the Sky Map sub-mode's own circle) over
-// the region actually above the horizon - per the user's own request ("neviditelnou část podkreslíme
-// tmavší šedou"; previously the whole frame was flat navy regardless, so tilting the view down
-// toward/past the horizon, camEl can reach all the way to 0, gave no visual cue that the lower part
-// of the frame was ground, not unrendered sky). Dark neutral grey in dark theme, light grey in light
-// theme (`#e2e7ec`, distinct from the sky's own pure white in light mode, per the user's own choice).
+// the region actually above the horizon. Dark neutral grey in dark theme, light grey in light theme
+// (`#e2e7ec`, distinct from the sky's own pure white in light mode, per the user's own choice).
 //
-// First attempt sampled a coarse pixel grid via the projection's own INVERSE (pixel -> az/el, paint
-// grey/navy per cell) - simple, but produced a visibly jagged/blocky ("okousané" - nibbled) boundary
-// that didn't line up with the smooth horizon-ring STROKE drawn on top by _nightSkyDrawPlanetHorizon,
-// since the two were two independently-sampled approximations of the same curve. Second attempt
-// traced the el=0 ring itself as one closed vector path (_nightSkyPlanetProjectClamped) and filled
-// it directly, matching the stroke pixel-for-pixel wherever both are visible (verified: 0px max
-// difference sweeping every azimuth) - correct whenever the ring forms a simple loop around the
-// screen centre, which is true whenever the camera looks ABOVE the horizon (camEl>0, the view
-// direction FWD then sits strictly on the sky side of the ring). It breaks down once camEl reaches
-// (or gets very close to) exactly 0: FWD itself then lies ON the ring (an azimuth-equidistant
-// projection's centre point IS the view direction), so the ring no longer encloses the centre at
-// all - it degenerates into a straight line THROUGH the centre (this is a general property of the
-// projection: any great circle passing through the view direction maps to a straight line, not a
-// loop) - and "fill what winds around the centre" fills the wrong, self-crossing shape instead.
-// Confirmed via the user's own report: levelling the view to the horizon ("srovnám rovinu do
-// přímky") painted the ground colour over the sphere/sky too.
-//
-// Fixed with a second, explicit code path for camEl near 0 (threshold NIGHTSKY_PLANET_LEVEL_DEG):
-// instead of tracing the ring, project two SAFELY-inside-range points straddling the view direction
-// (az = camAz±90°, el=0, both at theta=90° - nowhere near the ±180° singularity) to get two points
-// that, together with the centre itself (the third point on the same great circle, at theta=0), fix
-// the boundary LINE exactly; a point slightly toward positive elevation at az=camAz tells which side
-// of that line is sky. The whole plane is then filled by one huge quad (an oversized strip along the
-// line, extended toward the sky side far past the canvas edges in every direction) - canvas clipping
-// to the visible frame does the rest, so this doesn't need to know the frame's own bounds precisely.
-const NIGHTSKY_PLANET_LEVEL_DEG = 5;   // below this |camEl|, use the straight-line fallback above
+// The sky region is the el=0 ring traced as one closed vector path and filled directly, so the fill
+// edge matches the horizon STROKE (_nightSkyDrawPlanetHorizon) pixel for pixel. Ring points more
+// than NIGHTSKY_PLANET_FADE_OUTER (170 deg) from the view direction lie behind the observer, where
+// nothing else is drawn; they are pulled in to that radius with their bearing kept, and consecutive
+// such points are joined by an ARC of that circle, not a chord. That arc is what keeps the path
+// valid at every camera elevation down to exactly 0: as camEl -> 0 the visible part of the ring
+// flattens into a straight line through the centre and the rest of it collapses into the far back,
+// where the bearing sweeps across the whole top half of the screen within a few degrees of azimuth.
+// Chords there cut across the sky; the arc follows it. Clamped points always sit on the upper half
+// of the screen (theta > 170 deg needs cos(az offset) < 0, so the camera-space "up" component
+// -sin(camEl)*cos(offset) is >= 0), so each arc is drawn inside canvas angles [-pi, 0] and can only
+// pass over the top, never the bottom - which also settles the one ambiguous case, camEl exactly 0,
+// where two neighbouring clamped points sit on opposite sides of the centre line.
+// The sky therefore never extends past the fisheye disc's own 170 deg radius; outside it the frame
+// stays ground-coloured at every elevation (at zoom 0.5x that disc is smaller than the canvas).
 function _nightSkyPlanetGroundColor() {
   return document.body.classList.contains('light') ? '#e2e7ec' : '#1c1c20';
 }
@@ -1767,33 +1733,38 @@ function _nightSkyDrawPlanetSkyGround(ctx, layout, w, h) {
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = _nightSkySkyColor();
 
-  const camAzDeg = _nightSkyPlanet3D.camAz * 180 / Math.PI;
-  const camElDeg = _nightSkyPlanet3D.camEl * 180 / Math.PI;
-  if (camElDeg < NIGHTSKY_PLANET_LEVEL_DEG) {
-    const centre = _nightSkyPlanetProject(layout, camAzDeg, 0);   // theta=0, always visible
-    const side = _nightSkyPlanetProject(layout, (camAzDeg + 90 + 360) % 360, 0);   // theta=90
-    const above = _nightSkyPlanetProject(layout, camAzDeg, 1);   // slightly toward positive el
-    let ux = side.x - centre.x, uy = side.y - centre.y;   // unit vector ALONG the horizon line
-    const ulen = Math.hypot(ux, uy) || 1;
-    ux /= ulen; uy /= ulen;
-    let nx = -uy, ny = ux;   // perpendicular to the line - one of the two possible directions
-    const upDx = above.x - centre.x, upDy = above.y - centre.y;
-    if (nx * upDx + ny * upDy < 0) { nx = -nx; ny = -ny; }   // flip so it points to the SKY side
-    const big = Math.max(w, h) * 2;   // comfortably past any canvas edge in every direction
-    ctx.beginPath();
-    ctx.moveTo(centre.x - ux * big, centre.y - uy * big);
-    ctx.lineTo(centre.x + ux * big, centre.y + uy * big);
-    ctx.lineTo(centre.x + ux * big + nx * big, centre.y + uy * big + ny * big);
-    ctx.lineTo(centre.x - ux * big + nx * big, centre.y - uy * big + ny * big);
-    ctx.closePath();
-    ctx.fill();
-    return;
-  }
-
+  const C = _nightSkyPlanet3D;
+  const rClamp = C.FOCAL * NIGHTSKY_PLANET_FADE_OUTER * layout.scale;
   ctx.beginPath();
-  for (let az = 0; az <= 360; az += 2) {
-    const p = _nightSkyPlanetProjectClamped(layout, az, 0);
-    if (az === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+  let prevAngle = null;   // canvas angle of the previous point, only while it was clamped
+  // Starts at the view direction, so the clamped stretch behind the observer is always one run in
+  // the middle of the loop rather than split between its start and end (closePath would then join
+  // those two halves with a straight chord instead of the arc over the top).
+  const az0 = C.camAz * 180 / Math.PI;
+  for (let i = 0; i <= 360; i++) {
+    const az = az0 + i;
+    const v = _skyDomeUnitVec(az, 0);
+    const theta = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(v, C.FWD))));
+    const lx = _sd3Dot(v, C.RIGHT), ly = _sd3Dot(v, C.UP);
+    if (theta > NIGHTSKY_PLANET_FADE_OUTER) {
+      let angle = Math.atan2(-ly, lx);   // canvas y points down
+      // True angles lie in [-pi, 0] (upper half of the screen); a positive value is only roundoff
+      // in ly around 0 (camEl ~ 0), so snap it to whichever end of the range it sits next to.
+      if (angle > 0) angle = angle < Math.PI / 2 ? 0 : -Math.PI;
+      if (prevAngle === null) {
+        const x = layout.cx + rClamp * Math.cos(angle), y = layout.cy + rClamp * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      } else {
+        ctx.arc(layout.cx, layout.cy, rClamp, prevAngle, angle, angle < prevAngle);
+      }
+      prevAngle = angle;
+    } else {
+      const rho = Math.hypot(lx, ly);
+      const k = rho > 1e-6 ? theta / rho : 1;
+      const x = layout.cx + C.FOCAL * lx * k * layout.scale, y = layout.cy - C.FOCAL * ly * k * layout.scale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      prevAngle = null;
+    }
   }
   ctx.closePath();
   ctx.fill();
