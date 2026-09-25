@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug170">
+  <link rel="stylesheet" href="css/style.css?perfdebug181">
 </head>
 <body>
 
@@ -292,14 +292,14 @@
       <!-- Night Sky info panel - top-left, Visualization only (Sky Map + Planetarium), same look and
            collapse arrow as the Sun Graph's own #sgStatusWrap. Filled by _nightSkyUpdateStatusPanel()
            (js/render-moon.js) on every redraw. Times are local (shared Time zone), rise/set are the
-           geometric centre of the body at 0 deg, searched over the local calendar day. -->
+           standard: the upper limb on the horizon with refraction, searched over the local calendar day. -->
       <div id="nightSkyStatusWrap">
         <div id="nightSkyStatus">
           <div class="ts-row" title="Time between sunrise and sunset on this local day">
             <span class="ts-lbl">daylength</span>
             <span class="ts-val" id="nsDayLen">—</span>
           </div>
-          <div class="ts-row" title="Sunrise / sunset (centre of the Sun at the horizon, local time)">
+          <div class="ts-row" title="Sunrise / sunset (upper limb on the horizon, refraction included - the standard almanac definition; local time)">
             <span class="ts-lbl">sunrise/set</span>
             <span class="ts-val" id="nsSunRiseSet">—</span>
           </div>
@@ -307,7 +307,7 @@
             <span class="ts-lbl"></span>
             <span class="ts-val" id="nsSunRiseSetAz">—</span>
           </div>
-          <div class="ts-row" title="Moonrise / moonset (centre of the Moon at the horizon, local time); — when it does not rise or set on this local day">
+          <div class="ts-row" title="Moonrise / moonset (upper limb on the horizon, refraction included - the standard almanac definition; local time); — when it does not rise or set on this local day">
             <span class="ts-lbl">moonrise/set</span>
             <span class="ts-val" id="nsMoonRiseSet">—</span>
           </div>
@@ -319,13 +319,28 @@
             <span class="ts-lbl">illuminated</span>
             <span class="ts-val" id="nsMoonIllum">—</span>
           </div>
-          <div class="ts-row" title="Age of the Moon: time since the last new moon">
+          <div class="ts-row" title="Age of the Moon: its phase in the cycle expressed in days (elongation from the Sun / 360° × mean synodic month 29.53 d), as in Stellarium and moon calculators - 0 at new moon, 14.77 at full moon">
             <span class="ts-lbl">age</span>
             <span class="ts-val" id="nsMoonAge">—</span>
           </div>
         </div>
         <button id="nightSkyStatusToggle" title="Hide / show the info panel">▲</button>
       </div>
+      <!-- Planetarium RA/Dec picker - bottom-right round button (red crosshair), shown only in
+           Planetarium (render-nightsky.js: _nightSkyUpdatePlanetControlsVisibility()). Active: the
+           cursor becomes a crosshair, #nightSkyPickerBox follows it with the RA/Dec under it, and a
+           click locks the view on that point (_nightSkyPicker). Disabled while a Catalog photo is
+           presented. -->
+      <button id="btnNightSkyPicker" title="Pick a point by RA/Dec and lock the view on it">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="12" y1="1.5" x2="12" y2="8" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="12" y1="16" x2="12" y2="22.5" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="1.5" y1="12" x2="8" y2="12" stroke="currentColor" stroke-width="1.8"/>
+          <line x1="16" y1="12" x2="22.5" y2="12" stroke="currentColor" stroke-width="1.8"/>
+        </svg>
+      </button>
+      <div id="nightSkyPickerBox"></div>
       <div id="nightSkyPlanetZoomCtl" title="Zoom the Planetarium view">
         <input type="range" id="nightSkyPlanetZoom" min="-1" max="3" step="0.02" value="0" title="Zoom the Planetarium view (0.5x-8x; the Sun and the Moon are drawn at their true size)">
         <span id="nightSkyPlanetZoomVal">1.0×</span>
@@ -640,6 +655,17 @@
           <div class="wheel-track" id="wheelDay"></div>
           <button class="wheel-btn" id="btnDayInc">▶</button>
         </div>
+        <!-- Calendar year of the Solargraph views (core.js solarYear): the Sun is computed for a
+             real date. Taken from the exposure dates while a Gallery image with them is shown - the
+             field then just displays that year, disabled (controls.js updateSolarYearField). -->
+        <div class="solar-year-row" id="solarYearRow">
+          <span class="solar-year-label">Year</span>
+          <div class="nightsky-year-controls">
+            <button class="lat-btn" id="btnSolarYearDec">◀</button>
+            <input type="number" class="lat-input" id="inpSolarYear" min="1" max="9999" step="1" value="2026">
+            <button class="lat-btn" id="btnSolarYearInc">▶</button>
+          </div>
+        </div>
       </div>
       <div class="chk-row-wrap">
         <label class="chk-row" id="chkImgChmiRow" title="Overlay measured sunshine or air temperature data from the nearest CHMI weather station instead of the plain Custom date"><input type="checkbox" id="chkImgChmi"> CHMI data</label>
@@ -683,7 +709,7 @@
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <label class="chk-row" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
       <label class="chk-row" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
-      <label class="chk-row" title="Labels: constellations (3-letter IAU designator), the Sun and the Moon"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <label class="chk-row" title="Labels: constellations (3-letter IAU designator), the Sun and the Moon, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
       <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
       <!-- Off by default (unlike every other Night Sky Display checkbox) - a genuinely different
            coordinate frame (RA/Dec) overlaid on top of the Az/Alt one, useful but not something you'd
@@ -952,22 +978,22 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.9.24
 </div>
 
-<script src="js/core.js?perfdebug170"></script>
-<script src="js/render-2d.js"></script>
-<script src="js/controls.js?perfdebug170"></script>
-<script src="js/render-sungraph.js?perfdebug170"></script>
-<script src="js/render-3d.js?perfdebug170"></script>
-<script src="js/render-skydome.js?perfdebug170"></script>
-<script src="js/render-moon.js?perfdebug170"></script>
-<script src="js/render-nightsky.js?perfdebug170"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug170"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug170"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug170"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug170"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug170"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug170"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug170"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug170"></script>
-<script src="js/render-eclipse.js?perfdebug170"></script>
+<script src="js/core.js?perfdebug181"></script>
+<script src="js/render-2d.js?perfdebug181"></script>
+<script src="js/controls.js?perfdebug181"></script>
+<script src="js/render-sungraph.js?perfdebug181"></script>
+<script src="js/render-3d.js?perfdebug181"></script>
+<script src="js/render-skydome.js?perfdebug181"></script>
+<script src="js/render-moon.js?perfdebug181"></script>
+<script src="js/render-nightsky.js?perfdebug181"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug181"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug181"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug181"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug181"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug181"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug181"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug181"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug181"></script>
+<script src="js/render-eclipse.js?perfdebug181"></script>
 </body>
 </html>
