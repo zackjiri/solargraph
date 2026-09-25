@@ -59,7 +59,7 @@ cos(az) = (sin δ − sin φ · sin el) / (cos φ · cos el)
 
 Declination is where most simple sun calculators cut a corner. The textbook formula `δ = 23.45° · sin(360/365 · (d − 81))` assumes Earth travels a circle at constant speed. It doesn't: the orbit is an ellipse (e ≈ 0.0167), and by Kepler's second law Earth moves faster near perihelion in early January and slower near aphelion in July.
 
-Solargraphy Viewer uses the **equation of the center** instead - mean anomaly → true anomaly → ecliptic longitude → declination. Its worst-case error over a year stays below 0.1–0.3°, against up to ~0.9° for the simple sine, and it reproduces the real asymmetry between the two halves of the year, which a sine wave cannot.
+Solargraphy Viewer takes the Sun from the solar series in Meeus's *Astronomical Algorithms* (ch. 25) for the real calendar date, accurate to about 0.01°. It is the same Sun in every part of the app, so the Analyzer, the Sun Graph and Night Sky give the same sunrise and sunset for the same day and place. The year comes from the exposure dates of a Gallery image, or from the Year field under the custom date in the Analyzer.
 
 Southern-hemisphere paths are mirrored by flipping the **sign of the declination**, rather than by the common shortcut of shifting the date half a year. It is an exact identity - `sunPosition(H, δ, φ) ≡ sunPosition(H, −δ, −φ)` - so the southern sky is reconstructed as accurately as the northern one.
 
@@ -67,23 +67,28 @@ Southern-hemisphere paths are mirrored by flipping the **sign of the declination
 
 The model natively runs in **apparent solar time**, where noon is by definition the moment the Sun crosses the meridian. Two corrections turn that into a civil reading, and you can display either:
 
-- **Equation of time** - up to ±16 minutes over the year, from the same orbital eccentricity and axial tilt as above.
+- **Equation of time** - up to ±16 minutes over the year, from the same orbital eccentricity and axial tilt as above (Meeus 28.3, from the same solar series).
 - **Longitude offset** - 4 minutes for every degree between your location and its time zone's reference meridian.
 
 Both affect labels only, never the geometry - with one deliberate exception. In the Sun Graph the whole chart is re-projected into the chosen convention, which is why solar noon there becomes a wavy line rather than a flat one at 12:00. Same physical event, different clock.
 
-### What the model does not include
+### Refraction, sunrise and sunset
 
-It is an analytic, geometric, airless model, and it is explicit about its limits:
+The pinhole records the Sun where it *appears*, lifted by the atmosphere, so the model draws apparent positions too: atmospheric refraction (Saemundsson's formula) raises the Sun by ~0.57° at the horizon, ~0.1° at 10° and next to nothing above 15°.
+
+Sunrise and sunset follow the almanac standard: the upper limb touching the horizon, with refraction. The Sun's centre is then 0.84° below the geometric horizon, so the day is a few minutes longer than a geometric one, and polar day begins a little south of the Arctic Circle (65.7°) while polar night begins a little north of it (67.4°). The times agree with USNO to within the minute they are published in.
+
+### What the model does not include
 
 | Effect | Modeled | Magnitude |
 |---|---|---|
-| Atmospheric refraction | no | ~0.57° at the horizon, ~0.1° at 10°, ~0 above 15° |
-| Declination (equation of the center) | yes | < 0.1–0.3° |
-| Finite solar disc | no | ~0.5° - traces are bands, not lines |
-| Parallax, nutation, aberration | no | < 0.01° |
+| Atmospheric refraction | yes | ~0.57° at the horizon, ~0.1° at 10°, ~0 above 15° |
+| Declination and equation of time (Meeus) | yes | ~0.01°, ~1 s |
+| Finite solar disc | no (in the arcs) | ~0.5° - traces are bands, not lines |
+| Sun's motion within a day | no (in the arcs) | ±0.1° morning and evening near the equinoxes |
+| Parallax, nutation | no | < 0.01° |
 
-Near the horizon, real traces therefore sit slightly *above* the prediction, and the day runs a few minutes longer than the geometric sunrise/sunset. In practice these residuals are often smaller than the calibration error itself: the paper never lies perfectly against the wall, and the can's radius and orientation are only known so well.
+The two *in the arcs* entries come from drawing each day as one line at the day's noon declination; sunrise and sunset themselves are computed for the moment they happen. In practice all of these are smaller than the calibration error itself: the paper never lies perfectly against the wall, and the can's radius and orientation are only known so well.
 
 ---
 
@@ -101,11 +106,11 @@ Near the horizon, real traces therefore sit slightly *above* the prediction, and
 
 🌦 **CHMI weather data** - measured sunshine duration or air temperature from the nearest Czech Hydrometeorological Institute station, in 10-minute resolution. It colours the sun path directly on the photo, or covers the whole exposure period at once, and appears in the Sun Graph too - so the modelled clear-sky day can be held against what the weather actually did.
 
-🌑 **Eclipse mode** *(experimental)* - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements.
+🌑 **Eclipse mode** *(experimental)* - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements. Unlike the rest of the app, Eclipse mode is geometric, without atmospheric refraction, because published contact times and magnitudes are geometric too; near the horizon it therefore shows the Sun up to ~0.5° lower than it is actually seen.
 
 🌠 **Night Sky mode** *(experimental)* - the real starry sky for the chosen location, date and time: 5,044 stars down to magnitude 6 and the 88 IAU constellations, as a flat polar Sky Map or an all-sky Planetarium you can look around in. Unlike the rest of the app it needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next. Star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). Optional overlays add an equatorial grid, the ecliptic, and the Sun and Moon with their daily paths. An info panel gives the day length, sunrise and sunset, moonrise and moonset with their azimuths, and the Moon's illuminated fraction and age.
 
-- **Moon** - positioned from the full lunar series in Meeus ch. 47, so it sits up to 5.1° off the ecliptic just as the real one does, corrected for topocentric parallax (up to ~1° near the horizon, two of its own diameters). In the Planetarium the Sun and the Moon are drawn at their true angular size, with the zoom reaching 8× so the phase can be read; labels keep both easy to find when zoomed out. The phase is drawn with the lit side turned towards the Sun, and the dark side carries earthshine that is strongest at a thin crescent and fades out towards full moon. Checked against Meeus's worked examples, the 2026 new and full moons, USNO rise and set times, and the eclipse of 12 August 2026, where its overlap with the Sun matches the Eclipse mode's magnitude to within 0.004. Rise and set times are geometric, like the rest of the app: the centre of the disc on the horizon, without refraction, a few minutes off published almanac times.
+- **Moon** - positioned from the full lunar series in Meeus ch. 47, so it sits up to 5.1° off the ecliptic just as the real one does, corrected for topocentric parallax (up to ~1° near the horizon, two of its own diameters). In the Planetarium the Sun and the Moon are drawn at their true angular size, with the zoom reaching 8× so the phase can be read; labels keep both easy to find when zoomed out. The phase is drawn with the lit side turned towards the Sun, and the dark side carries earthshine that is strongest at a thin crescent and fades out towards full moon. Checked against Meeus's worked examples, the 2026 new and full moons, USNO rise and set times, and the eclipse of 12 August 2026, where its overlap with the Sun matches the Eclipse mode's magnitude to within 0.004. Night Sky draws apparent positions, with atmospheric refraction (Saemundsson's formula, about 34′ at the horizon), and gives rise and set times by the almanac standard: the upper limb touching the horizon. They agree with USNO to within a minute or two.
 
 - **Catalog** - the author's own astrophotography gallery of landscapes, Solar System objects and deep-sky targets, filterable by category. Clicking a photo restores the date, time and place it was taken, turns the Planetarium towards the target and marks the photographed field on the sky with red corner brackets, next to a thumbnail that opens the full-size image. The field is placed from the photo's centre (RA/Dec), field of view and position angle through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs, including the part below the horizon.
 
@@ -129,6 +134,7 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 5. **Night Sky** - the Catalog opens first; narrow it with `ALL` / `LANDSCAPE` / `SOLAR SYSTEM` / `DEEP SKY` and click a photo to see where on the sky it was taken. Click the thumbnail beside the frame for the full-size photo.
    - `Visualization` shows the star map on its own; switch between `Sky Map` and `Planetarium` with the wheel picker, and drag to look around in Planetarium.
    - `SET NOW` jumps to the current date and time; the play button animates time forward.
+   - The red crosshair button (bottom right of the Planetarium) picks a point: the box by the cursor shows its RA/Dec, a click locks the view on it, and time stops where the point reaches the horizon. Click the button again to release it.
 6. **Save your work** with `Export` under Preset, and reload it later with `Import`.
 
 ---
