@@ -2125,6 +2125,43 @@
     color: var(--accent2); letter-spacing: 0.04em;
   }
 
+  /* Planetarium RA/Dec picker - round button bottom-right, red crosshair. Inactive: the same dark
+     translucent panel as the zoom control with a red cross; active: filled red with a white cross
+     and a soft glow, so the two states read apart at a glance; disabled (a Catalog photo is being
+     presented): dimmed. */
+  #btnNightSkyPicker {
+    position: absolute; right: 12.5px; bottom: 12.5px;
+    z-index: 12; display: none;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #ff5050;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  #btnNightSkyPicker:hover { border-color: #ff5050; }
+  #btnNightSkyPicker.active {
+    background: #ff5050; color: #fff; border-color: #ff5050;
+    box-shadow: 0 0 0 3px rgba(255,80,80,0.28), 0 0 12px rgba(255,80,80,0.55);
+  }
+  #btnNightSkyPicker:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--border); }
+  body.light #btnNightSkyPicker:not(.active) { background: rgba(220,228,236,0.82); color: #d42020; }
+  /* RA/Dec readout following the cursor while the picker is active (above the horizon only). */
+  #nightSkyPickerBox {
+    position: absolute; z-index: 13; display: none;
+    pointer-events: none;
+    padding: 4px 7px;
+    background: rgba(15,19,24,0.82);
+    border: 1px solid #ff5050; border-radius: var(--radius-sm);
+    font-family: var(--mono); font-size: 11px; line-height: 1.45;
+    color: var(--text); white-space: nowrap;
+  }
+  body.light #nightSkyPickerBox { background: rgba(245,247,249,0.9); }
+  #nightSkyPickerBox .picker-epoch { color: var(--dim); font-size: 10px; }
+
   /* Sky Map's "3D" ON/OFF toggle – small pill switch, same panel treatment as .skydome-proj-row */
   #skyMap3DToggleRow {
     position: absolute; top: 48px; right: 12.5px;
@@ -2311,6 +2348,10 @@
     z-index: 12; display: none;          /* shown by JS only in Night Sky's Visualization */
     flex-direction: column; align-items: flex-start;
   }
+
+  /* The canvas container hides the OS cursor (cursor:none - the Analyzer draws its own crosshair);
+     the info panels sit inside it, so they set the normal cursor back instead of inheriting that. */
+  #statusWrap, #sgStatusWrap, #nightSkyStatusWrap { cursor: default; }
 
   #theaterStatus, #sgStatus, #nightSkyStatus {
     display: flex; flex-direction: column; gap: 0;
@@ -2994,6 +3035,10 @@
   /* SET NOW + year stepper row - SET NOW hugs the left edge, the year stepper the right edge
      (flush with the wheel rows/Location rows below, unlike every other .lat-row's left start). */
   .nightsky-year-row { justify-content: space-between; }
+  /* Analyzer's Year (solarYear) under the Custom date wheels - same controls as Night Sky's year. */
+  .solar-year-row { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .solar-year-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+  .solar-year-row.from-exposure .lat-btn, .solar-year-row.from-exposure .lat-input { opacity: 0.45; pointer-events: none; }
   .nightsky-year-controls { display: flex; align-items: center; gap: 4px; }
   /* SET NOW matched to DEC/DM's own exact dimensions (#locFormatRow .ns-btn just above) - same
      height/line-height/font-size/text-align, just auto-width with a little horizontal padding
