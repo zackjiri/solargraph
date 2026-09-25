@@ -19,41 +19,7 @@
 // Time (Meeus ch.12, the IAU 1982 GMST-at-UT1 polynomial - UT1/UTC difference (<1s) ignored, well
 // below what matters for a naked-eye star map).
 
-// Julian Date (UT) for a Gregorian calendar civil date/time. hourUT may include minutes/seconds as
-// a fraction (e.g. 13.5 = 13:30 UT). Valid for the Gregorian calendar (after 1582-10-15).
-function _skyToJulianDateUT(year, month, day, hourUT) {
-  let y = year, m = month;
-  if (m <= 2) { y -= 1; m += 12; }
-  const a = Math.floor(y / 100);
-  const b = 2 - a + Math.floor(a / 4);
-  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + day + hourUT / 24 + b - 1524.5;
-}
 
-// Inverse of _skyToJulianDateUT (Meeus ch.7's own inverse algorithm) - Julian Date (UT) back to a
-// Gregorian civil {year, month, day, hourUT}. Used by the time strip's continuous drag/animation
-// (below): dragging is done entirely in JD-space (a single continuous number), then converted back
-// to calendar fields only to update the UI/state - this is what makes crossing a UTC midnight "just
-// work" as a date rollover, with no separate day-boundary special-casing needed in the drag math.
-function _skyFromJulianDateUT(jd) {
-  const jdShift = jd + 0.5;
-  const Z = Math.floor(jdShift);
-  const F = jdShift - Z;
-  let A = Z;
-  if (Z >= 2299161) {
-    const alpha = Math.floor((Z - 1867216.25) / 36524.25);
-    A = Z + 1 + alpha - Math.floor(alpha / 4);
-  }
-  const B = A + 1524;
-  const C = Math.floor((B - 122.1) / 365.25);
-  const D = Math.floor(365.25 * C);
-  const E = Math.floor((B - D) / 30.6001);
-  const dayFrac = B - D - Math.floor(30.6001 * E) + F;
-  const day = Math.floor(dayFrac);
-  const hourUT = (dayFrac - day) * 24;
-  const month = E < 14 ? E - 1 : E - 13;
-  const year = month > 2 ? C - 4716 : C - 4715;
-  return { year, month, day, hourUT };
-}
 
 // Greenwich Mean Sidereal Time, in degrees [0, 360), for Julian Date jd (UT-based).
 function _skyGMSTDeg(jd) {
@@ -85,11 +51,33 @@ function _skySiderealTimeHours(year, month, day, hourUT, lonDegEast) {
 // raDeg/decDeg: star's equatorial coordinates in degrees (as given by the GeoJSON catalogs, J2000).
 // lstHours: local sidereal time (Phase 1). latDegSigned: real signed latitude, i.e. LAT*hemisphere
 // (see core.js's LAT/hemisphere convention, same as _eclipseLocalCirc's LAT*hemisphere usage).
-function _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned) {
+// GEOMETRIC (true, airless) position. Everything Night Sky draws goes through _skyRaDecToAzEl
+// below instead, which adds atmospheric refraction; this one is kept for the few things defined on
+// the true altitude (the twilight phases: the Sun's centre at -6/-12/-18 deg).
+function _skyRaDecToAzElTrue(raDeg, decDeg, lstHours, latDegSigned) {
   const D2R = Math.PI / 180;
   let hDeg = lstHours * 15 - raDeg;
   hDeg = ((hDeg + 180) % 360 + 360) % 360 - 180;   // normalize to (-180, 180]
-  return sunPosition(hDeg * D2R, decDeg * D2R, latDegSigned * D2R);
+  return sunPositionTrue(hDeg * D2R, decDeg * D2R, latDegSigned * D2R);
+}
+// APPARENT position - what an observer sees and what Night Sky draws: true position plus refraction.
+// Returns sunPosition's own shape, el replaced by the apparent altitude, plus elTrue.
+function _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned) {
+  const p = _skyRaDecToAzElTrue(raDeg, decDeg, lstHours, latDegSigned);
+  return Object.assign({}, p, { el: p.el + _skyRefractionDeg(p.el), elTrue: p.el });
+}
+// Inverse of _skyRaDecToAzEl: APPARENT {az, el} (degrees, az from north through east, the app's own
+// convention - e.g. the point under the cursor) -> {ra, dec} for the same local sidereal time and
+// signed latitude: refraction removed first, then the standard horizontal -> equatorial
+// transformation (Meeus 13.5/13.6 turned round).
+function _skyAzElToRaDec(azDeg, elDeg, lstHours, latDegSigned) {
+  const D2R = Math.PI / 180;
+  const A = azDeg * D2R, h = _skyTrueFromApparentEl(elDeg) * D2R, phi = latDegSigned * D2R;
+  const sinDec = Math.sin(phi) * Math.sin(h) + Math.cos(phi) * Math.cos(h) * Math.cos(A);
+  const dec = Math.asin(Math.max(-1, Math.min(1, sinDec)));
+  const H = Math.atan2(-Math.sin(A) * Math.cos(h), Math.cos(phi) * Math.sin(h) - Math.sin(phi) * Math.cos(h) * Math.cos(A));
+  const ra = ((lstHours * 15 - H / D2R) % 360 + 360) % 360;
+  return { ra, dec: dec / D2R };
 }
 
 // Convenience wrapper: star Az/El for a real civil UT date/time, using the app's OWN current
@@ -105,12 +93,47 @@ function _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned) {
 // exactly this singularity (its own comment: "clamp poles and equator to avoid singularities") but
 // only clamps the MAGNITUDE, not the sign - reusing its exact same clamp values here (0.1/89.9)
 // rather than inventing a new one.
-function _skyStarAzEl(raDeg, decDeg, year, month, day, hourUT) {
+//
+// Frame: Night Sky works in the MEAN EQUINOX OF DATE - the frame of the real sky over the horizon,
+// in which the Sun and the Moon come out of their Meeus series. Catalog data is J2000 (the star
+// catalog, constellation lines, the RA/Dec of every Catalog photo), so _skyStarAzEl precesses its
+// input to the date first (_skyJ2000ToDate); _skyOfDateAzEl takes coordinates already of date (the
+// equatorial grid and its labels, the ecliptic).
+function _skyOfDateAzEl(raDeg, decDeg, year, month, day, hourUT) {
   const latMagClamped = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
   const lonDegEast = lonHemisphere * LONG;
   const latDegSigned = hemisphere * latMagClamped;
   const lstHours = _skySiderealTimeHours(year, month, day, hourUT, lonDegEast);
   return _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned);
+}
+function _skyStarAzEl(raDeg, decDeg, year, month, day, hourUT) {
+  const q = _skyJ2000ToDate(raDeg, decDeg, _moonJDE(year, month, day, hourUT));
+  return _skyOfDateAzEl(q.ra, q.dec, year, month, day, hourUT);
+}
+// J2000 -> mean equinox of date as one 3x3 rotation (Meeus ch. 21, the same precession as
+// _moonPrecessFromJ2000 - its three columns ARE that formula applied to the x/y/z axes), cached per
+// ~1.4 min of JDE: precession moves the sky ~50"/year, so reusing one matrix per redraw is exact to
+// well under 0.001". Thousands of stars and line vertices per frame then cost 9 multiplications each.
+let _skyPrecCache = { key: null, m: null };
+function _skyPrecessionMatrix(jde) {
+  const key = Math.round(jde * 1000);
+  if (_skyPrecCache.key === key) return _skyPrecCache.m;
+  const col = (ra, dec) => _skyDomeUnitVecRaDec(_moonPrecessFromJ2000(ra, dec, jde));
+  const x = col(0, 0), y = col(90, 0), z = col(0, 90);
+  _skyPrecCache = { key, m: [[x[0], y[0], z[0]], [x[1], y[1], z[1]], [x[2], y[2], z[2]]] };
+  return _skyPrecCache.m;
+}
+function _skyDomeUnitVecRaDec(q) {
+  const a = q.ra * Math.PI / 180, d = q.dec * Math.PI / 180;
+  return [Math.cos(d) * Math.cos(a), Math.cos(d) * Math.sin(a), Math.sin(d)];
+}
+function _skyJ2000ToDate(raDeg, decDeg, jde) {
+  const m = _skyPrecessionMatrix(jde);
+  const v = _skyDomeUnitVecRaDec({ ra: raDeg, dec: decDeg });
+  const x = m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2];
+  const y = m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2];
+  const z = m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2];
+  return { ra: ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
 }
 
 // ─── Astro Catalog frame geometry (build 40_1) ─────────────────────────────────────────────────
@@ -182,24 +205,31 @@ function _nightSkyFrameCorners(raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg) {
   return { corners, arms };
 }
 
-// The Sun's own real Az/El for a real civil UT date/time, in the same J2000 frame as the star
-// catalog and the Moon (render-moon.js): geocentric ecliptic longitude of date from Meeus ch. 25
+// The Sun's own real Az/El for a real civil UT date/time, in the equinox of date like everything
+// else Night Sky draws (see _skyStarAzEl): geocentric ecliptic longitude of date from Meeus ch. 25
 // (_skySunEclipticOfDate, ~0.01 deg, the Sun's own latitude taken as 0), rotated to equatorial with
-// the mean obliquity of date, precessed to J2000, then the same _skyRaDecToAzEl() as every star.
-// The app applies no precession to the stars, so a Sun left in "of date" coordinates (as the
-// hour-angle model used elsewhere in the app effectively is) would sit ~0.3 deg (2026) off the
-// stars and the Moon it is drawn among - visible as a misplaced eclipse. Solar parallax (8.8") and
-// nutation (~17") are left out. REAL signed latitude (LAT*hemisphere), not the flat scan's "path"
+// the mean obliquity of date, then the same _skyRaDecToAzEl() as every star. Solar parallax (8.8")
+// and nutation (~17") are left out. REAL signed latitude (LAT*hemisphere), not the flat scan's "path"
 // convention; same LAT===0/90 clamp as _skyStarAzEl, since sunPosition's azimuth formula divides by
 // cos(latitude).
-function _nightSkySunAzEl(year, month, day, hourUT) {
+function _nightSkySunRaDec(year, month, day, hourUT) {
   const jde = _moonJDE(year, month, day, hourUT);
   const sun = _skySunEclipticOfDate(jde);
-  const eqDate = _moonEclToEq(sun.lambda, 0, _moonMeanObliquityDeg(jde));
-  const eq = _moonPrecessToJ2000(eqDate.ra, eqDate.dec, jde);
+  return _moonEclToEq(sun.lambda, 0, _moonMeanObliquityDeg(jde));
+}
+// Apparent (refracted) position - drawing, rise/set.
+function _nightSkySunAzEl(year, month, day, hourUT) {
+  const eq = _nightSkySunRaDec(year, month, day, hourUT);
   const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
   const lst = _skySiderealTimeHours(year, month, day, hourUT, lonHemisphere * LONG);
   return _skyRaDecToAzEl(eq.ra, eq.dec, lst, hemisphere * latMag);
+}
+// True (geometric) position - the twilight phases, which are defined on the Sun's true altitude.
+function _nightSkySunAzElTrue(year, month, day, hourUT) {
+  const eq = _nightSkySunRaDec(year, month, day, hourUT);
+  const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
+  const lst = _skySiderealTimeHours(year, month, day, hourUT, lonHemisphere * LONG);
+  return _skyRaDecToAzElTrue(eq.ra, eq.dec, lst, hemisphere * latMag);
 }
 
 // ─── Phase 3: load the vendored catalog data ───────────────────────────────────────────────────
@@ -433,6 +463,8 @@ function exitNightSkyVisualization() {
   // while nightSkyTopView is still 'visualization' and nightSkyActive still true, so that
   // function's own condition would keep the slider on screen.
   document.getElementById('nightSkyPlanetZoomCtl').style.display = 'none';
+  document.getElementById('btnNightSkyPicker').style.display = 'none';
+  _nightSkyPickerSetActive(false);
   _nightSkyUpdatePresentationLock();
   // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
   // _nightSkyUpdateReadout via _nightSkySyncControls) don't belong to whatever view comes next -
@@ -656,26 +688,40 @@ function _nightSkyDaysInMonth(year, month) {
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return days[month - 1];
 }
+// The Date controls (year field, month and day wheels) show and edit the LOCAL calendar date at the
+// shared Time zone - the date the user's own clock is on - while the state itself stays UT
+// (nightSkyYear/Month/Day/HourUT), as the astronomy needs. So 23:30 UTC at +2:00 reads as the next
+// day, and stepping a day or a month keeps the local time of day. The steps run through the real
+// calendar: after 31 Dec comes 1 Jan of the NEXT year (the month wheel likewise goes Dec -> Jan of
+// the next year and back), not a wrap within the same year.
+function _nightSkyTzHours() {
+  return typeof timeZoneHours !== 'undefined' ? timeZoneHours : 0;
+}
+function _nightSkyLocalDate() {
+  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const r = _skyFromJulianDateUT(jd + _nightSkyTzHours() / 24);
+  return { year: r.year, month: r.month, day: r.day, hour: r.hourUT };
+}
+function _nightSkySetLocal(year, month, day, hour) {
+  const r = _skyFromJulianDateUT(_skyToJulianDateUT(year, month, day, hour) - _nightSkyTzHours() / 24);
+  nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
+}
 function _nightSkyStepMonth(dir) {
-  nightSkyMonth = dir > 0 ? (nightSkyMonth < 12 ? nightSkyMonth + 1 : 1) : (nightSkyMonth > 1 ? nightSkyMonth - 1 : 12);
-  nightSkyDay = Math.min(nightSkyDay, _nightSkyDaysInMonth(nightSkyYear, nightSkyMonth));
+  const L = _nightSkyLocalDate();
+  let y = L.year, m = L.month + (dir > 0 ? 1 : -1);
+  if (m > 12) { m = 1; y++; } else if (m < 1) { m = 12; y--; }
+  _nightSkySetLocal(y, m, Math.min(L.day, _nightSkyDaysInMonth(y, m)), L.hour);
 }
 function _nightSkyStepDay(dir) {
-  if (dir > 0) {
-    if (nightSkyDay < _nightSkyDaysInMonth(nightSkyYear, nightSkyMonth)) nightSkyDay++;
-    else { nightSkyMonth = nightSkyMonth < 12 ? nightSkyMonth + 1 : 1; nightSkyDay = 1; }
-  } else {
-    if (nightSkyDay > 1) nightSkyDay--;
-    else { nightSkyMonth = nightSkyMonth > 1 ? nightSkyMonth - 1 : 12; nightSkyDay = _nightSkyDaysInMonth(nightSkyYear, nightSkyMonth); }
-  }
+  const L = _nightSkyLocalDate();
+  const r = _skyFromJulianDateUT(_skyToJulianDateUT(L.year, L.month, L.day, 12) + (dir > 0 ? 1 : -1));
+  _nightSkySetLocal(r.year, r.month, r.day, L.hour);
 }
-// Day value `off` steps away from the current date, without mutating state - same shape as
-// controls.js's own customDayAt(), just leap-year-aware via _nightSkyDaysInMonth(nightSkyYear, m).
+// Local day number `off` days away from the current local date, without mutating state - the day
+// wheel's side labels, continuing across month and year ends.
 function _nightSkyDayAt(off) {
-  let m = nightSkyMonth, d = nightSkyDay;
-  while (off > 0) { if (d < _nightSkyDaysInMonth(nightSkyYear, m)) d++; else { m = m < 12 ? m + 1 : 1; d = 1; } off--; }
-  while (off < 0) { if (d > 1) d--; else { m = m > 1 ? m - 1 : 12; d = _nightSkyDaysInMonth(nightSkyYear, m); } off++; }
-  return d;
+  const L = _nightSkyLocalDate();
+  return _skyFromJulianDateUT(_skyToJulianDateUT(L.year, L.month, L.day, 12) + off).day;
 }
 function _nightSkyRenderDateWheels() {
   if (typeof _nightSkyMonthWheel !== 'undefined' && _nightSkyMonthWheel) _nightSkyMonthWheel.render();
@@ -686,7 +732,7 @@ function _nightSkyRenderDateWheels() {
 // place nightSkyYear/Month/Day/HourUT changes: the date wheels/year field, dragging or
 // mouse-wheeling the time strip, and the Play animation loop.
 function _nightSkySyncControls() {
-  document.getElementById('inpNightSkyYear').value = nightSkyYear;
+  document.getElementById('inpNightSkyYear').value = _nightSkyLocalDate().year;
   _nightSkyRenderDateWheels();
   _nightSkyUpdateTimeLabel();
   _nightSkyUpdateReadout();
@@ -699,15 +745,16 @@ function _nightSkyCommitDate() {
   _nightSkySyncControls();
 }
 function _nightSkyApplyYear(val) {
-  nightSkyYear = Math.max(1, Math.min(9999, Math.round(val) || nightSkyYear));
+  const L = _nightSkyLocalDate();
+  const y = Math.max(1, Math.min(9999, Math.round(val) || L.year));
   // Clamp Feb 29 -> Feb 28 when moving off a leap year, same reasoning as stepCustomMonth's own
   // month-length clamp in controls.js.
-  nightSkyDay = Math.min(nightSkyDay, _nightSkyDaysInMonth(nightSkyYear, nightSkyMonth));
+  _nightSkySetLocal(y, L.month, Math.min(L.day, _nightSkyDaysInMonth(y, L.month)), L.hour);
   _nightSkySyncControls();
 }
 
 const _nightSkyMonthWheel = makeWheelPicker(document.getElementById('wheelNightSkyMonth'), {
-  labelAt: (off) => MONTHS[((nightSkyMonth - 1 + off) % 12 + 12) % 12],
+  labelAt: (off) => MONTHS[((_nightSkyLocalDate().month - 1 + off) % 12 + 12) % 12],
   step: _nightSkyStepMonth,
   itemW: 38,
   onCommit: _nightSkyCommitDate,
@@ -728,8 +775,8 @@ document.getElementById('btnNightSkyDayInc').addEventListener('click', () => { _
 document.getElementById('inpNightSkyYear').addEventListener('change', (e) => _nightSkyApplyYear(parseFloat(e.target.value)));
 document.getElementById('inpNightSkyYear').addEventListener('blur', (e) => _nightSkyApplyYear(parseFloat(e.target.value)));
 document.getElementById('inpNightSkyYear').addEventListener('keydown', (e) => { if (e.key === 'Enter') _nightSkyApplyYear(parseFloat(e.target.value)); });
-document.getElementById('btnNightSkyYearDec').addEventListener('click', () => _nightSkyApplyYear(nightSkyYear - 1));
-document.getElementById('btnNightSkyYearInc').addEventListener('click', () => _nightSkyApplyYear(nightSkyYear + 1));
+document.getElementById('btnNightSkyYearDec').addEventListener('click', () => _nightSkyApplyYear(_nightSkyLocalDate().year - 1));
+document.getElementById('btnNightSkyYearInc').addEventListener('click', () => _nightSkyApplyYear(_nightSkyLocalDate().year + 1));
 
 // SET NOW - resets to the real current moment, i.e. re-runs the exact same computation the
 // nightSkyYear/Month/Day/HourUT module-level init already does on page load (that init IS "now" at
@@ -845,7 +892,7 @@ const NIGHTSKY_STRIP_HOURS_SPAN = 6;   // total visible window width, in hours (
 // the altitude by up to ~2 deg, enough to put a Sun still visibly above the horizon into
 // "Civil twilight".
 function _nightSkySunAlt(year, month, day, hourUT) {
-  return _nightSkySunAzEl(year, month, day, hourUT).el;
+  return _nightSkySunAzElTrue(year, month, day, hourUT).el;
 }
 // Day (Sun above horizon) -> dusk -> night. The dusk band originally spanned the FULL
 // astronomical twilight range (civil+nautical+astronomical lumped together, DUSK peak at the -9°
@@ -955,7 +1002,12 @@ function _nightSkyBuildTimeStripFill() {
 // day/dusk/night gradient above it (twenty-second round's own civil-twilight narrowing) - that one
 // reads well at a glance but doesn't commit to exact phase boundaries; this band does, in the same
 // vocabulary the rest of the app already uses for "which kind of twilight is this".
-const NIGHTSKY_TWILIGHT_THRESHOLDS = [0, -6, -12, -18];   // day | civil | nautical | astronomical | night
+// TRUE altitude of the Sun's centre (_nightSkySunAlt). Day ends at the standard sunset,
+// SUN_HORIZON_ALT_DEG (core.js, -0.841 deg: upper limb on the horizon, refraction at the limb), the
+// same threshold as the Sun Graph's day band, so the day/civil edge falls on the info panel's
+// sunset (to ~2 s: the panel takes the day's real semi-diameter); the twilights are defined on the
+// true centre at -6/-12/-18 deg.
+const NIGHTSKY_TWILIGHT_THRESHOLDS = [SUN_HORIZON_ALT_DEG, -6, -12, -18];   // day | civil | nautical | astronomical | night
 const NIGHTSKY_TWILIGHT_COLORS = ['#e8a020', '#9cbdd2', '#5a7588', '#39505f', '#1c2a35'];
 function _nightSkyTwilightBandIndex(alt) {
   for (let i = 0; i < NIGHTSKY_TWILIGHT_THRESHOLDS.length; i++) {
@@ -1078,7 +1130,8 @@ _nightSkyStripEl.addEventListener('pointermove', (e) => {
   const dx = e.clientX - _nightSkyDragX0;
   const w = _nightSkyStripEl.clientWidth || 220;
   const hoursPerPx = NIGHTSKY_STRIP_HOURS_SPAN / w;
-  const jd = _nightSkyDragStartJD - (dx * hoursPerPx) / 24;
+  const jd = _nightSkyPickerClampJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
+    _nightSkyDragStartJD - (dx * hoursPerPx) / 24).jd;
   const r = _skyFromJulianDateUT(jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
   _nightSkySyncControls();
@@ -1093,8 +1146,8 @@ _nightSkyStripEl.addEventListener('pointercancel', _nightSkyEndDrag);
 _nightSkyStripEl.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive) _nightSkyStopAnim();
-  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)
-    + (e.deltaY > 0 ? 1 : -1) * (0.25 / 24);   // 15 min per wheel tick
+  const jdNow = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const jd = _nightSkyPickerClampJD(jdNow, jdNow + (e.deltaY > 0 ? 1 : -1) * (0.25 / 24)).jd;   // 15 min per wheel tick
   const r = _skyFromJulianDateUT(jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
   _nightSkySyncControls();
@@ -1147,9 +1200,11 @@ function _nightSkySetPlayIcon(playing) {
 function _nightSkyAdvanceAnim(ts) {
   if (_nightSkyAnimStart === null) _nightSkyAnimStart = ts;
   const elapsed = (ts - _nightSkyAnimStart) / 1000;
-  const jd = _nightSkyAnimStartJD + (_nightSkyAnimRateHps() * elapsed) / 24;
-  const r = _skyFromJulianDateUT(jd);
+  const clamp = _nightSkyPickerClampJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
+    _nightSkyAnimStartJD + (_nightSkyAnimRateHps() * elapsed) / 24);
+  const r = _skyFromJulianDateUT(clamp.jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
+  if (clamp.stopped) _nightSkyStopAnim();   // the locked point reached the horizon
   _nightSkySyncControls();
 }
 function _nightSkyAnimFrame(ts) {
@@ -1202,10 +1257,15 @@ function _nightSkyLayout(w, h) {
   return { cx, cy, R };
 }
 
+// Az/Alt grid line colour: faint white on the dark sky, faint black on the white light-theme sky
+// (the white lines alone vanished there). Shared by Sky Map and Planetarium.
+function _nightSkyGridLineColor() {
+  return document.body.classList.contains('light') ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.14)';
+}
 function _nightSkyDrawGrid(ctx, layout) {
   const { cx, cy, R } = layout;
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.strokeStyle = _nightSkyGridLineColor();
   ctx.lineWidth = 1;
   // Altitude rings every 30° (the outer rim itself already reads as the el=0 ring).
   for (const el of [30, 60]) {
@@ -1282,13 +1342,142 @@ function _nightSkyDrawEquatorialGrid(ctx, layout) {
   ctx.lineWidth = 1;
   for (const dec of [-60, -30, 0, 30, 60]) {
     const pts = [];
-    for (let ra = 0; ra <= 360; ra += 5) pts.push(_skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
+    for (let ra = 0; ra <= 360; ra += 5) pts.push(_skyOfDateAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
     _nightSkyStrokePartlyVisibleRun(ctx, layout, pts);
   }
   for (let ra = 0; ra < 360; ra += 30) {
     const pts = [];
-    for (let dec = -90; dec <= 90; dec += 5) pts.push(_skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
+    for (let dec = -90; dec <= 90; dec += 5) pts.push(_skyOfDateAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
     _nightSkyStrokePartlyVisibleRun(ctx, layout, pts);
+  }
+  ctx.restore();
+}
+
+// ─── Grid labels ────────────────────────────────────────────────────────────────────────────────
+// Coordinate labels for both grids, shown with Display "Labels" (#chkNightSkyNames, shared with the
+// constellation and Sun/Moon labels) and only while their own grid is on. Az/Alt: altitude of each
+// ring (30, 60 deg) and azimuth of each spoke (every 30 deg; the N/E/S/W points are left to the
+// Horizon compass letters while Horizon is on). Equatorial: declination of each parallel (-60..+60)
+// and right ascension of each meridian (every 2h) on the celestial equator. Nothing below the
+// horizon. Same small font as the constellation names; Az/Alt in the grid's own neutral tone,
+// Equatorial in the grid's reddish tone, both darker on the white light-theme sky.
+const NIGHTSKY_ALT_RINGS = [30, 60];
+const NIGHTSKY_DEC_PARALLELS = [-60, -30, 0, 30, 60];
+function _nightSkyGridLabelColors() {
+  return document.body.classList.contains('light')
+    ? { azAlt: 'rgba(0,0,0,0.6)', eq: 'rgba(160,50,50,0.85)' }
+    : { azAlt: 'rgba(255,255,255,0.5)', eq: 'rgba(235,140,140,0.8)' };
+}
+function _nightSkyFmtDec(dec) { return dec === 0 ? '0°' : (dec > 0 ? '+' : '−') + Math.abs(dec) + '°'; }
+function _nightSkyGridLabelsWanted() {
+  return document.getElementById('chkNightSkyNames').checked;
+}
+function _nightSkyAzLabelWanted(az) {
+  return !(az % 90 === 0 && document.getElementById('chkNightSkyHorizon').checked);
+}
+// Local meridian's right ascension (deg) - where declination labels sit in Sky Map.
+function _nightSkyMeridianRaDeg() {
+  return _skySiderealTimeHours(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, lonHemisphere * LONG) * 15;
+}
+
+// Sky Map: altitude labels up the SW gap between spokes (az 225), azimuths just outside the rim
+// (like the compass letters), declinations on the local meridian, right ascensions on the equator.
+function _nightSkyDrawGridLabels(ctx, layout) {
+  if (!_nightSkyGridLabelsWanted()) return;
+  const showGrid = document.getElementById('chkNightSkyGrid').checked;
+  const showEq = document.getElementById('chkNightSkyEquatorial').checked;
+  if (!showGrid && !showEq) return;
+  const { cx, cy, R } = layout, col = _nightSkyGridLabelColors();
+  ctx.save();
+  ctx.font = '9px Helvetica, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+  if (showGrid) {
+    ctx.fillStyle = col.azAlt;
+    ctx.textAlign = 'center';
+    for (const el of NIGHTSKY_ALT_RINGS) {
+      const p = _skyDomePoint(cx, cy, R, 225, el);
+      ctx.fillText(el + '°', p.x, p.y);
+    }
+    for (let az = 0; az < 360; az += 30) {
+      if (!_nightSkyAzLabelWanted(az)) continue;
+      const p = _skyDomePoint(cx, cy, R * 1.06, az, 0);
+      ctx.fillText(az + '°', p.x, p.y);
+    }
+  }
+  if (showEq) {
+    ctx.fillStyle = col.eq;
+    ctx.textAlign = 'left';
+    const raM = _nightSkyMeridianRaDeg();
+    for (const dec of NIGHTSKY_DEC_PARALLELS) {
+      const q = _skyOfDateAzEl(raM, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+      if (q.el < 2) continue;
+      const p = _skyDomePoint(cx, cy, R, q.az, q.el);
+      ctx.fillText(_nightSkyFmtDec(dec), p.x + 3, p.y - 6);
+    }
+    for (let ra = 0; ra < 360; ra += 30) {
+      const q = _skyOfDateAzEl(ra, 0, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+      if (q.el < 2) continue;
+      const p = _skyDomePoint(cx, cy, R, q.az, q.el);
+      ctx.fillText((ra / 15) + 'h', p.x + 3, p.y + 6);
+    }
+  }
+  ctx.restore();
+}
+
+// Planetarium: labels have to follow the camera, so altitude and declination labels go where their
+// ring/parallel comes closest to the centre of the view (for the altitude rings that is the
+// vertical through the centre, az = camAz); azimuths sit just above the horizon, right ascensions on
+// the equator. Each fades with the rim like everything else here.
+function _nightSkyPlanetLabelAt(ctx, layout, az, el, text, dx, dy) {
+  const p = _nightSkyPlanetProject(layout, az, el);
+  if (!p.visible || p.alpha <= 0) return;
+  ctx.globalAlpha = p.alpha;
+  ctx.fillText(text, p.x + dx, p.y + dy);
+}
+function _nightSkyDrawPlanetGridLabels(ctx, layout) {
+  if (!_nightSkyGridLabelsWanted()) return;
+  const showGrid = document.getElementById('chkNightSkyGrid').checked;
+  const showEq = document.getElementById('chkNightSkyEquatorial').checked;
+  if (!showGrid && !showEq) return;
+  const col = _nightSkyGridLabelColors(), C = _nightSkyPlanet3D;
+  const camAzDeg = C.camAz * 180 / Math.PI;
+  ctx.save();
+  ctx.font = '9px Helvetica, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+  if (showGrid) {
+    ctx.fillStyle = col.azAlt;
+    ctx.textAlign = 'left';
+    for (const el of NIGHTSKY_ALT_RINGS) _nightSkyPlanetLabelAt(ctx, layout, camAzDeg, el, el + '°', 4, -6);
+    ctx.textAlign = 'center';
+    for (let az = 0; az < 360; az += 30) {
+      if (!_nightSkyAzLabelWanted(az)) continue;
+      const h = _nightSkyPlanetProject(layout, az, 0), up = _nightSkyPlanetProject(layout, az, 1);
+      if (!h.visible || h.alpha <= 0) continue;
+      const ux = up.x - h.x, uy = up.y - h.y, ul = Math.hypot(ux, uy) || 1;
+      ctx.globalAlpha = h.alpha;
+      ctx.fillText(az + '°', h.x + ux / ul * 9, h.y + uy / ul * 9);
+    }
+  }
+  if (showEq) {
+    ctx.fillStyle = col.eq;
+    ctx.textAlign = 'right';
+    for (const dec of NIGHTSKY_DEC_PARALLELS) {
+      // The parallel's above-horizon point nearest to the view direction.
+      let best = null, bestCos = -2;
+      for (let ra = 0; ra < 360; ra += 3) {
+        const q = _skyOfDateAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+        if (q.el < 2) continue;
+        const c = _sd3Dot(_skyDomeUnitVec(q.az, q.el), C.FWD);
+        if (c > bestCos) { bestCos = c; best = q; }
+      }
+      if (best) _nightSkyPlanetLabelAt(ctx, layout, best.az, best.el, _nightSkyFmtDec(dec), -4, -6);
+    }
+    ctx.textAlign = 'left';
+    for (let ra = 0; ra < 360; ra += 30) {
+      const q = _skyOfDateAzEl(ra, 0, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+      if (q.el < 2) continue;
+      _nightSkyPlanetLabelAt(ctx, layout, q.az, q.el, (ra / 15) + 'h', 3, 7);
+    }
   }
   ctx.restore();
 }
@@ -1300,13 +1489,11 @@ function _nightSkyDrawEquatorialGrid(ctx, layout) {
 // converted to RA/Dec via the standard obliquity rotation, which at beta=0 simplifies to:
 //   dec = asin(sin(epsilon)*sin(lambda))
 //   RA  = atan2(cos(epsilon)*sin(lambda), cos(lambda))
-// The J2000 ecliptic (obliquity 23.4392911 deg, Meeus 22.2 at T=0) - the same frame the Sun
-// (_nightSkySunAzEl), the Moon and the stars are drawn in, so with Sun's path on, the green path
-// traces right along this line rather than a slightly-off parallel curve (the Sun's own ecliptic of
-// date, precessed to J2000, stays within ~0.001 deg of it for decades either side of 2000).
-const NIGHTSKY_OBLIQUITY_DEG = 23.4392911;
+// The ecliptic of date - mean obliquity of the current Night Sky date (Meeus 22.2, 23.436 deg in
+// 2026), in the equinox of date like the Sun (_nightSkySunAzEl), so with Sun's path on, the green
+// path traces right along this line.
 function _nightSkyEclipticPoints(stepDeg) {
-  const epsRad = NIGHTSKY_OBLIQUITY_DEG * Math.PI / 180;
+  const epsRad = _moonMeanObliquityDeg(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)) * Math.PI / 180;
   const pts = [];
   for (let lambda = 0; lambda <= 360; lambda += stepDeg) {
     const lamRad = lambda * Math.PI / 180;
@@ -1329,7 +1516,7 @@ function _nightSkyDrawEcliptic(ctx, layout) {
   ctx.clip();
   ctx.strokeStyle = NIGHTSKY_ECLIPTIC_COLOR;
   ctx.lineWidth = NIGHTSKY_ECLIPTIC_WIDTH;
-  const pts = _nightSkyEclipticPoints(2).map(([ra, dec]) => _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
+  const pts = _nightSkyEclipticPoints(2).map(([ra, dec]) => _skyOfDateAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
   _nightSkyStrokePartlyVisibleRun(ctx, layout, pts);
   ctx.restore();
 }
@@ -1632,6 +1819,7 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showSun) _nightSkyDrawSunDisc(ctx, layout);
   if (showMoon) _nightSkyDrawMoonDisc(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawHorizon(ctx, layout);
+  _nightSkyDrawGridLabels(ctx, layout);
   _nightSkyDrawSkyMapBodyLabels(ctx, layout);
 }
 
@@ -1692,9 +1880,11 @@ if (_nightSkyPlanetZoomEl) {
 // Shown/hidden alongside the rest of this sub-mode's own state - see _nightSkyCommitSubmode() and
 // enterNightSky()/exitNightSky() below.
 function _nightSkyUpdatePlanetControlsVisibility() {
+  const shown = nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'planetarium';
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
-  if (ctl) ctl.style.display = (nightSkyActive && nightSkyTopView === 'visualization'
-    && nightSkySubmode === 'planetarium') ? 'flex' : 'none';
+  if (ctl) ctl.style.display = shown ? 'flex' : 'none';
+  document.getElementById('btnNightSkyPicker').style.display = shown ? 'flex' : 'none';
+  if (!shown) _nightSkyPickerSetActive(false);
 }
 
 // Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
@@ -1712,6 +1902,12 @@ function _nightSkyUpdatePresentationLock() {
     && nightSkySubmode === 'planetarium' && !!_nightSkyActiveFrame;
   document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting);
   document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting);
+  // The picker would fight the photo's own centring and time lock - unavailable while presenting.
+  const picker = document.getElementById('btnNightSkyPicker');
+  picker.disabled = presenting;
+  picker.title = presenting ? 'Picker unavailable while a Catalog photo is shown'
+    : 'Pick a point by RA/Dec and lock the view on it';
+  if (presenting) _nightSkyPickerSetActive(false);
 }
 
 // Fisheye (equidistant) projection - screen radius proportional to the angle theta from the view
@@ -1843,13 +2039,14 @@ function _nightSkyBisectHorizon(sampleAt, el0, el1) {
 // Finds where a segment between two RA/Dec points crosses the horizon (el=0), given the two
 // points' own already-computed elevations have opposite signs - the shortest way around the 0/360
 // RA wrap. See _nightSkyBisectHorizon just above for the actual bisection.
-function _nightSkyHorizonCrossing(ra0, dec0, el0, ra1, dec1, el1) {
+function _nightSkyHorizonCrossing(ra0, dec0, el0, ra1, dec1, el1, ofDate) {
+  const azElOf = ofDate ? _skyOfDateAzEl : _skyStarAzEl;
   let dra = ra1 - ra0;
   if (dra > 180) dra -= 360; else if (dra < -180) dra += 360;
   return _nightSkyBisectHorizon((t) => {
     const ra = (ra0 + dra * t + 360) % 360;
     const dec = dec0 + (dec1 - dec0) * t;
-    return _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    return azElOf(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   }, el0, el1);
 }
 
@@ -1861,17 +2058,20 @@ function _nightSkyHorizonCrossing(ra0, dec0, el0, ra1, dec1, el1) {
 // it (a gap of up to one sample step, visibly short of the rim - the user's own report). Delegates
 // the actual az/el plotting (rim-fade alpha bucketing, .breakBefore-forced subpath starts) to
 // _nightSkyPlanetStrokeRun once the raw vertex list has been expanded with those crossing points.
-function _nightSkyPlanetStrokeRaDecRun(ctx, layout, raDecPoints, color) {
+// ofDate: the points are already in the equinox of date (grid, ecliptic); otherwise J2000 catalog
+// data (constellation lines), precessed by _skyStarAzEl.
+function _nightSkyPlanetStrokeRaDecRun(ctx, layout, raDecPoints, color, ofDate) {
+  const azElOf = ofDate ? _skyOfDateAzEl : _skyStarAzEl;
   const plotPts = [];
   let prev = null;   // {ra, dec, el}
   for (const [ra, dec] of raDecPoints) {
-    const el = _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el;
+    const el = azElOf(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el;
     if (prev && (prev.el >= 0) !== (el >= 0)) {
-      const cross = _nightSkyHorizonCrossing(prev.ra, prev.dec, prev.el, ra, dec, el);
+      const cross = _nightSkyHorizonCrossing(prev.ra, prev.dec, prev.el, ra, dec, el, ofDate);
       plotPts.push({ az: cross.az, el: Math.max(0, cross.el), breakBefore: prev.el < 0 });
     }
     if (el >= 0) {
-      const p = _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+      const p = azElOf(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
       plotPts.push({ az: p.az, el: p.el, breakBefore: false });
     }
     prev = { ra, dec, el };
@@ -1934,12 +2134,12 @@ function _nightSkyDrawPlanetGrid(ctx, layout) {
   for (const el of [30, 60]) {
     const pts = [];
     for (let az = 0; az <= 360; az += 4) pts.push({ az, el });
-    _nightSkyPlanetStrokeRun(ctx, layout, pts, 'rgba(255,255,255,0.14)');
+    _nightSkyPlanetStrokeRun(ctx, layout, pts, _nightSkyGridLineColor());
   }
   for (let az = 0; az < 360; az += 30) {
     const pts = [];
     for (let el = 0; el <= 90; el += 4) pts.push({ az, el });
-    _nightSkyPlanetStrokeRun(ctx, layout, pts, 'rgba(255,255,255,0.14)');
+    _nightSkyPlanetStrokeRun(ctx, layout, pts, _nightSkyGridLineColor());
   }
   ctx.restore();
 }
@@ -1948,19 +2148,19 @@ function _nightSkyDrawPlanetEquatorialGrid(ctx, layout) {
   for (const dec of [-60, -30, 0, 30, 60]) {
     const pts = [];
     for (let ra = 0; ra <= 360; ra += 4) pts.push([ra, dec]);
-    _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, 'rgba(224,120,120,0.45)');
+    _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, 'rgba(224,120,120,0.45)', true);
   }
   for (let ra = 0; ra < 360; ra += 30) {
     const pts = [];
     for (let dec = -90; dec <= 90; dec += 4) pts.push([ra, dec]);
-    _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, 'rgba(224,120,120,0.45)');
+    _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, 'rgba(224,120,120,0.45)', true);
   }
 }
 
 function _nightSkyDrawPlanetEcliptic(ctx, layout) {
   ctx.save();
   ctx.lineWidth = NIGHTSKY_ECLIPTIC_WIDTH;
-  _nightSkyPlanetStrokeRaDecRun(ctx, layout, _nightSkyEclipticPoints(2), NIGHTSKY_ECLIPTIC_COLOR);
+  _nightSkyPlanetStrokeRaDecRun(ctx, layout, _nightSkyEclipticPoints(2), NIGHTSKY_ECLIPTIC_COLOR, true);
   ctx.restore();
 }
 
@@ -2287,6 +2487,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     return;
   }
 
+  _nightSkyPickerApplyLock();
   _nightSkyUpdatePlanetCamera();
   const layout = _nightSkyPlanetLayout(w, h);
   _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
@@ -2311,7 +2512,9 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
   if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawPlanetHorizon(ctx, layout);
+  _nightSkyDrawPlanetGridLabels(ctx, layout);
   _nightSkyDrawPlanetBodyLabels(ctx, layout);
+  _nightSkyPickerDrawMarker(ctx, layout);
   _nightSkyDrawCatalogFrame(ctx, layout);
   _nightSkyUpdateFrameThumb(layout, w, h);
 }
@@ -2333,6 +2536,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     if (!dragging) return;
     const dx = x - lastX, dy = y - lastY;
     lastX = x; lastY = y;
+    if (_nightSkyPicker.lock) return;   // the view is held on the picked point
     // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.
     const z = _nightSkyPlanet3D.zoom;
     _nightSkyPlanet3D.camAz -= dx * 0.005 / z;
@@ -2343,11 +2547,12 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   function dragEnd() {
     if (!dragging) return;
     dragging = false;
-    cv.style.cursor = 'default';
+    cv.style.cursor = _nightSkyPicker.active ? 'crosshair' : 'default';
   }
 
   cv.addEventListener('pointerdown', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
+    if (_nightSkyPicker.active) { _nightSkyPickerPick(e); e.preventDefault(); return; }
     dragStart(e.clientX, e.clientY);
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic/test events lack a real pointer session */ }
     e.preventDefault();
@@ -2364,6 +2569,154 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     const eighths = Math.round(Math.log2(_nightSkyPlanet3D.zoom) * 8) - Math.sign(e.deltaY);
     setNightSkyPlanetZoom(Math.pow(2, eighths / 8));
   }, { passive: false });
+})();
+
+// ─── Planetarium RA/Dec picker ──────────────────────────────────────────────────────────────────
+// Round red-crosshair button bottom-right of Planetarium (#btnNightSkyPicker). Active: the cursor is
+// a crosshair and #nightSkyPickerBox follows it with the RA/Dec under it (above the horizon only).
+// A click above the horizon locks the view on that fixed RA/Dec point: the camera is re-aimed at it
+// on every redraw (_nightSkyPickerApplyLock), so it stays centred through the time strip, the Play
+// animation, a location change or a zoom; dragging the view does nothing while locked. A further
+// click moves the lock to a new point; switching the button off drops it. Smooth time changes
+// (strip drag, strip wheel, animation) stop exactly where the point reaches the horizon
+// (_nightSkyPickerClampJD); a jump that lands it below (date/year controls, SET NOW, Location)
+// releases the lock instead - the picker stays on for a new pick. Unavailable while a Catalog
+// photo is presented (_nightSkyUpdatePresentationLock), and switched off whenever Planetarium
+// isn't showing. A small red crosshair marks the locked point.
+const _nightSkyPicker = { active: false, lock: null };   // lock: {ra, dec} (J2000 deg) | null
+// Az/El of the locked J2000 point at a given instant (precessed to that date, like a star).
+function _nightSkyPickerAzElAt(year, month, day, hourUT) {
+  const L = _nightSkyPicker.lock;
+  return _skyStarAzEl(L.ra, L.dec, year, month, day, hourUT);
+}
+function _nightSkyPickerSetActive(on) {
+  _nightSkyPicker.active = on;
+  if (!on) _nightSkyPicker.lock = null;
+  if (!on && !_nightSkyCursorOnSky && nightSkyActive) _nightSkyClearReadout();
+  const btn = document.getElementById('btnNightSkyPicker');
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', String(on));
+  document.getElementById('nightSkyCanvas').style.cursor = on ? 'crosshair' : 'default';
+  if (!on) document.getElementById('nightSkyPickerBox').style.display = 'none';
+  if (nightSkyActive) drawNightSky();
+}
+document.getElementById('btnNightSkyPicker').addEventListener('click', (e) => {
+  e.stopPropagation();
+  _nightSkyPickerSetActive(!_nightSkyPicker.active);
+});
+function _nightSkyLstNow() {
+  return _skySiderealTimeHours(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, lonHemisphere * LONG);
+}
+function _nightSkyLatSigned() {
+  return hemisphere * (LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT);
+}
+// Canvas pointer event -> {az, el, ra, dec} under it, or null outside the projected sphere.
+function _nightSkyPickerHit(e) {
+  const cv = document.getElementById('nightSkyCanvas');
+  const dpr = cv._res || 1, rect = cv.getBoundingClientRect();
+  const layout = _nightSkyPlanetLayout(cv.width / dpr, cv.height / dpr);
+  const hit = _nightSkyPlanetPixelToAzEl(layout, e.clientX - rect.left, e.clientY - rect.top);
+  if (!hit) return null;
+  const eq = _skyAzElToRaDec(hit.az, hit.el, _nightSkyLstNow(), _nightSkyLatSigned());   // of date
+  const j = _moonPrecessToJ2000(eq.ra, eq.dec, _moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
+  return { az: hit.az, el: hit.el, ra: j.ra, dec: j.dec, px: e.clientX - rect.left, py: e.clientY - rect.top };
+}
+function _nightSkyPickerPick(e) {
+  const hit = _nightSkyPickerHit(e);
+  if (!hit || hit.el < 0) return;   // only above the horizon
+  _nightSkyPicker.lock = { ra: hit.ra, dec: hit.dec };
+  document.getElementById('nightSkyPickerBox').style.display = 'none';
+  drawNightSky();
+}
+// Sexagesimal, same notation as filelist_astro.json: 10h41m00s / +41°16'00". Rounded once on the
+// total seconds, so 59.6s carries into the next minute instead of printing "60s".
+function _nightSkyFmtRaHMS(raDeg) {
+  const t = Math.round(((raDeg / 15) % 24 + 24) % 24 * 3600) % 86400;
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  return h + 'h' + String(m).padStart(2, '0') + 'm' + String(sec).padStart(2, '0') + 's';
+}
+function _nightSkyFmtDecDMS(decDeg) {
+  const t = Math.round(Math.abs(decDeg) * 3600);
+  const d = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  return (decDeg < 0 ? '−' : '+') + d + '°' + String(m).padStart(2, '0') + "'" + String(sec).padStart(2, '0') + '"';
+}
+// Re-aims the camera at the locked point (called at the top of every Planetarium draw). camEl keeps
+// the drag handler's own [0, 90deg - 0.02] clamp, so a point within ~1.15 deg of the zenith sits
+// just off centre. A point already below the horizon (after a jump) releases the lock.
+function _nightSkyPickerApplyLock() {
+  const L = _nightSkyPicker.lock;
+  if (!L) return;
+  const p = _nightSkyPickerAzElAt(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  if (p.el < 0) {
+    _nightSkyPicker.lock = null;
+    if (!_nightSkyCursorOnSky) _nightSkyClearReadout();
+    return;
+  }
+  _nightSkyPlanet3D.camAz = p.az * Math.PI / 180;
+  _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, p.el * Math.PI / 180));
+}
+// Elevation of the locked point at a Julian Date (UT).
+function _nightSkyPickerElAt(jd) {
+  const r = _skyFromJulianDateUT(jd);
+  return _nightSkyPickerAzElAt(r.year, r.month, r.day, r.hourUT).el;
+}
+// Smooth time step jdFrom -> jdTo: with a lock, returns the last instant on the way at which the
+// locked point is still at or above the horizon (bisected to ~0.1 s) and stopped:true when it cut
+// the step short; without a lock (or if the point is somehow already below), jdTo unchanged.
+function _nightSkyPickerClampJD(jdFrom, jdTo) {
+  if (!_nightSkyPicker.lock || _nightSkyPickerElAt(jdTo) >= 0) return { jd: jdTo, stopped: false };
+  if (_nightSkyPickerElAt(jdFrom) < 0) return { jd: jdTo, stopped: false };
+  let lo = jdFrom, hi = jdTo;   // el(lo) >= 0 > el(hi)
+  for (let i = 0; i < 40 && Math.abs(hi - lo) > 1e-6; i++) {
+    const m = (lo + hi) / 2;
+    if (_nightSkyPickerElAt(m) >= 0) lo = m; else hi = m;
+  }
+  return { jd: lo, stopped: true };
+}
+// Top info bar (Az/Alt/Dir) for the locked point, used while the cursor is off the sky vault: the
+// pointer handlers switch to it there, and every drawNightSky() in Planetarium refreshes it, so it keeps
+// tracking the point through the time strip and the animation. _nightSkyCursorOnSky is kept by the
+// cursor-readout listener below.
+let _nightSkyCursorOnSky = false;
+function _nightSkyPickerShowLockReadout() {
+  const L = _nightSkyPicker.lock;
+  if (!L) return;
+  const p = _nightSkyPickerAzElAt(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  document.getElementById('valAz').textContent = p.az.toFixed(1) + '°';
+  document.getElementById('valAlt').textContent = (p.el >= 0 ? '+' : '') + p.el.toFixed(1) + '°';
+  document.getElementById('valDir').textContent = azimutToDir(p.az);
+}
+function _nightSkyPickerDrawMarker(ctx, layout) {
+  const L = _nightSkyPicker.lock;
+  if (!L) return;
+  const p = _nightSkyPickerAzElAt(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const q = _nightSkyPlanetProject(layout, p.az, p.el);
+  if (!q.visible) return;
+  ctx.save();
+  ctx.strokeStyle = '#ff5050'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(q.x, q.y, 6, 0, 2 * Math.PI);
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    ctx.moveTo(q.x + dx * 3, q.y + dy * 3);
+    ctx.lineTo(q.x + dx * 11, q.y + dy * 11);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+// The box follows the cursor, down and to the right of the crosshair, while the picker is on.
+(function () {
+  const cv = document.getElementById('nightSkyCanvas'), box = document.getElementById('nightSkyPickerBox');
+  cv.addEventListener('pointermove', (e) => {
+    if (!_nightSkyPicker.active || nightSkySubmode !== 'planetarium') return;
+    const hit = _nightSkyPickerHit(e);
+    if (!hit || hit.el < 0) { box.style.display = 'none'; return; }
+    box.innerHTML = 'RA&nbsp; ' + _nightSkyFmtRaHMS(hit.ra) + '<br>Dec ' + _nightSkyFmtDecDMS(hit.dec)
+      + '<br><span class="picker-epoch">(J2000 epoch)</span>';
+    box.style.left = (cv.offsetLeft + hit.px + 14) + 'px';
+    box.style.top = (cv.offsetTop + hit.py + 14) + 'px';
+    box.style.display = 'block';
+  });
+  cv.addEventListener('pointerleave', () => { box.style.display = 'none'; });
 })();
 
 // ─── Cursor readout (top info bar: Az/Alt/Dir) ────────────────────────────────────────────────
@@ -2424,6 +2777,10 @@ function _nightSkyClearReadout() {
     const hit = nightSkySubmode === 'planetarium'
       ? _nightSkyPlanetPixelToAzEl(layout, px, py)
       : _nightSkyPixelToAzEl(layout, px, py);
+    // With a picker lock, the readout falls back to the locked point whenever the cursor is off
+    // the sky vault (outside the sphere or over the ground) - see _nightSkyPickerShowLockReadout.
+    _nightSkyCursorOnSky = !!hit && hit.el >= 0;
+    if (_nightSkyPicker.lock && !_nightSkyCursorOnSky) { _nightSkyPickerShowLockReadout(); return; }
     if (!hit) { _nightSkyClearReadout(); return; }
     document.getElementById('valAz').textContent = hit.az !== null ? hit.az.toFixed(1) + '°' : '—';
     document.getElementById('valAlt').textContent = (hit.el >= 0 ? '+' : '') + hit.el.toFixed(1) + '°';
@@ -2431,7 +2788,8 @@ function _nightSkyClearReadout() {
   });
   cv.addEventListener('pointerleave', () => {
     if (!nightSkyActive) return;
-    _nightSkyClearReadout();
+    _nightSkyCursorOnSky = false;
+    if (_nightSkyPicker.lock) _nightSkyPickerShowLockReadout(); else _nightSkyClearReadout();
   });
 })();
 
@@ -2452,6 +2810,9 @@ function drawNightSky() {
     _nightSkyDrawSkyMap(ctx, w, h);
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
+    // Here rather than inside the Planetarium draw, which returns early while the star data is
+    // still loading - the locked point's readout doesn't depend on it.
+    if (_nightSkyPicker.lock && !_nightSkyCursorOnSky) _nightSkyPickerShowLockReadout();
   }
   if (nightSkyTopView === 'visualization') _nightSkyUpdateStatusPanel();
 }

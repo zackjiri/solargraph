@@ -94,15 +94,18 @@ function _eclipseParallacticAngle(H_rad, deltaRad) {
 // Sun's true-solar hour angle + declination at Besselian time t (hours since t0), reusing the
 // app's own EoT/declination machinery (core.js) rather than re-deriving the Sun's position from
 // the eclipse elements - t0 is 18:00 TDT on the real calendar day 2026-08-12, so this is just the
-// app's ordinary sunPosition() pipeline fed the right day/hour.
+// app's ordinary sunPositionTrue() pipeline fed the right day/hour.
 function _eclipseSunGeom(t) {
-  const doy = dayOfYear(_eclipseActiveEvent.dayMonth, _eclipseActiveEvent.dayDay);
   const utcHour = _eclipseActiveEvent.t0UtcHours + t;
   const lonEastDeg = lonHemisphere * LONG;
   const meanSolarHour = utcHour + lonEastDeg / 15;
-  const trueSolarHour = trueFromMean(meanSolarHour, doy);
+  // The app's shared Meeus Sun (core.js) at this very instant of the event's own year - not the
+  // day's noon values the Solargraph views use: in August the declination moves 0.28 deg a day, so
+  // noon's would put an evening eclipse's Sun ~0.08 deg off.
+  const sun = _solarSunAtJDE(_moonJDE(_eclipseActiveEvent.year, _eclipseActiveEvent.dayMonth, _eclipseActiveEvent.dayDay, utcHour));
+  const trueSolarHour = meanSolarHour + sun.eotMin / 60;
   const H = (trueSolarHour - 12) * 15 * Math.PI / 180;
-  const deltaRad = sunDeclination(doy);
+  const deltaRad = sun.dec;
   return { H, deltaRad };
 }
 // Sun's topocentric altitude alone (degrees) at Besselian time t - used to find sunset within the
@@ -110,7 +113,7 @@ function _eclipseSunGeom(t) {
 function _eclipseSunAltAt(t) {
   const { H, deltaRad } = _eclipseSunGeom(t);
   const phi = LAT * hemisphere * Math.PI / 180;
-  return sunPosition(H, deltaRad, phi).el;
+  return sunPositionTrue(H, deltaRad, phi).el;
 }
 
 // ── Contact times (C1/C4 = partial begins/ends, C2/C3 = totality begins/ends if in the path) ──
@@ -326,7 +329,7 @@ function _eclipseFmtUTC(t) {
 }
 // Sun's own az/alt at Besselian time t, for the shared top readout bar (valAz/valAlt/valDay/
 // valTime/valDir) - same world-azimuth/hemisphere-flip convention the readout already uses
-// everywhere else (see controls.js's mousemove handler), computed from the app's own sunPosition()
+// everywhere else (see controls.js's mousemove handler), computed from the app's own sunPositionTrue()
 // rather than anything Besselian-element-specific (the Sun's position doesn't depend on the Moon).
 function _eclipseUpdateReadout(t) {
   const valAz = document.getElementById('valAz'), valAlt = document.getElementById('valAlt');
@@ -335,7 +338,7 @@ function _eclipseUpdateReadout(t) {
   if (!valAz) return;
   const { H: hAngle, deltaRad } = _eclipseSunGeom(t);
   const phi = LAT * hemisphere * Math.PI / 180;
-  const s = sunPosition(hAngle, deltaRad, phi);
+  const s = sunPositionTrue(hAngle, deltaRad, phi);
   const azWorld = (s.beta + 180 + 360) % 360;
   const displayAz = hemisphere >= 0 ? azWorld : (azWorld + 180) % 360;
   valAz.textContent = displayAz.toFixed(1) + '°';
@@ -581,7 +584,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // readout (_eclipseUpdateReadout, called separately) - computed once rather than several times.
   const { H: hAngle, deltaRad } = _eclipseSunGeom(t);
   const phi = LAT * hemisphere * Math.PI / 180;
-  const sunGeom = sunPosition(hAngle, deltaRad, phi);
+  const sunGeom = sunPositionTrue(hAngle, deltaRad, phi);
   // Moved up from just above the Moon section below (§21.40's own follow-up) - needed here now for
   // scaleDeg's own live L1(t) anchoring, but otherwise unchanged/still just used by the Moon's own
   // position and by the code below it.
@@ -674,7 +677,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // the Equatorial grid's axes against the trusted real az/el mapping), NOT a general property of
   // converting zenith-up content to an equatorial-locked view. Verified this directly: computed
   // where celestial North actually lands on screen via the SAME trusted real-astronomy pipeline the
-  // Moon itself uses (a tiny declination-only offset run through sunPosition() and the ordinary
+  // Moon itself uses (a tiny declination-only offset run through sunPositionTrue() and the ordinary
   // az/el->screen mapping, bypassing rot()/the (u,v) convention entirely) - that screen angle came
   // out equal to q itself, to within rounding (23.818° vs 23.817°, checked at 2026-08-12/65.2N/
   // 25.2W mid-totality) - so a PLAIN rotation by -q (no mirror) is the correct, exact fix; verified
@@ -858,7 +861,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // Moon - the only thing that moves. Its Besselian (u,v) offset is East+/North+ and already
   // topocentric (parallax-corrected via xi/eta in _eclipseLocalCirc), so it converts directly into
   // a real RA/Dec offset from the Sun (u = dRA*cosDec, v = dDec - the standard tangent-plane/
-  // "standard coordinates" relation) - which then goes through the app's OWN sunPosition(), the
+  // "standard coordinates" relation) - which then goes through the app's OWN sunPositionTrue(), the
   // same function computing the Sun's own alt/az just above, to get the Moon's real altitude and
   // azimuth. Placed on screen via the same grid-relative mapping the Az/Alt grid and Horizon
   // overlay use (dy=-(el-sunEl)*px) - NOT the rot()/parallactic-angle shortcut the compass cross
@@ -891,7 +894,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   const moonRadiusPx = _eclipseMoonSemidiamTopoAt(t) * pxPerDeg;
   const dRA = (_eclipseActiveEvent.uvSign * circ.u * scaleDeg * Math.PI / 180) / Math.cos(deltaRad);
   const decMoon = deltaRad + _eclipseActiveEvent.uvSign * circ.v * scaleDeg * Math.PI / 180;
-  const moonGeom = sunPosition(hAngle - dRA, decMoon, phi);
+  const moonGeom = sunPositionTrue(hAngle - dRA, decMoon, phi);
   const moonAzWorld = (moonGeom.beta + 180 + 360) % 360;
   const moonAz = hemisphere >= 0 ? moonAzWorld : (moonAzWorld + 180) % 360;
   const mx = cx + (moonAz - sunAz) * Math.cos(sunGeom.el * Math.PI / 180) * pxPerDeg,

@@ -959,15 +959,11 @@ function fmtSolarTime(t) {
 }
 // Sunrise/sunset solar times for the current custom date (symmetric around noon).
 // cos(H0) = −tan(φ)·tan(δ); polar day → full 24 h, polar night → empty (rise=set=12).
+// Standard sunrise..sunset of the Custom date (core.js solarRiseSet: upper limb, refracted) - the
+// same times the Sun Graph and Night Sky show. Polar day: the whole 0..24 h; polar night: 12..12.
 function sunDayRange() {
-  const delta = pathDeclination(dayOfYear(customMonth, customDay));
-  const phi   = effectiveLat();
-  const cosH0 = -Math.tan(phi) * Math.tan(delta);
-  let H0h;                                  // half-day length in hours
-  if (cosH0 <= -1)      H0h = 12;           // polar day (sun always up)
-  else if (cosH0 >= 1)  H0h = 0;            // polar night (sun never rises)
-  else                  H0h = Math.acos(cosH0) * 12 / Math.PI;
-  return { tRise: 12 - H0h, tSet: 12 + H0h };
+  const r = solarRiseSet(dayOfYear(customMonth, customDay));
+  return { tRise: r.rise, tSet: r.set, eotRise: r.eotRise, eotSet: r.eotSet };
 }
 // Advance the animation clock: SUN_RATE_HPS hours of solar time per real second, +2 s pause.
 // The loop sweeps the full sunrise..sunset range, same as the slider (see refreshSunTimeRange) -
@@ -994,11 +990,11 @@ function syncSunTimeUI() {
   const doy = dayOfYear(customMonth, customDay);
   if (rng && parseFloat(rng.value) !== sunTimeHours) rng.value = sunTimeHours;
   if (lbl) lbl.textContent = fmtSolarTime(displayHour(sunTimeHours, doy));
-  const { tRise, tSet } = sunDayRange();
+  const { tRise, tSet, eotRise, eotSet } = sunDayRange();
   const riseLbl = document.getElementById('lblSunRise');
   const setLbl  = document.getElementById('lblSunSet');
-  if (riseLbl) riseLbl.textContent = fmtSolarTime(displayHour(tRise, doy));
-  if (setLbl)  setLbl.textContent  = fmtSolarTime(displayHour(tSet, doy));
+  if (riseLbl) riseLbl.textContent = fmtSolarTime(displayHour(tRise, doy, eotRise));
+  if (setLbl)  setLbl.textContent  = fmtSolarTime(displayHour(tSet, doy, eotSet));
 }
 // Slider spans the full day (sunrise..sunset), scrubbable end to end - the entering interval
 // (green + red, between the white lines) is a visual marker only, not a physical stop (see the

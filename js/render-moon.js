@@ -7,9 +7,8 @@
 // (tables 47.A/47.B), ~10" in longitude and ~4" in latitude. Latitude beta is what puts the Moon up
 // to 5.1 deg off the ecliptic. The series gives geocentric ecliptic coordinates referred to the MEAN
 // equinox of date; they are rotated to equatorial with the mean obliquity of date (Meeus 22.2) and
-// then precessed back to J2000 (Meeus ch. 21), the frame the star catalog (data/celestial) is in -
-// the app applies no precession to the stars, so a Moon left in "of date" coordinates would sit
-// ~0.36 deg (2026) off the stars it is drawn among. Topocentric parallax (Meeus ch. 40, WGS84) is
+// stay in the equinox of date - the frame Night Sky works in, the J2000 star catalog being
+// precessed to it instead (_skyStarAzEl, render-nightsky.js). Topocentric parallax (Meeus ch. 40, WGS84) is
 // applied last: the Moon's horizontal parallax is ~1 deg, i.e. two of its own diameters near the
 // horizon. The result goes through the same _skyRaDecToAzEl() as every star.
 //
@@ -17,7 +16,6 @@
 // deltaT from the Espenak-Meeus polynomial for 2005-2050 (~69 s in 2026 - the Moon moves ~0.01 deg
 // in that time; outside 2005-2050 the polynomial still gives a usable few-minute estimate).
 
-const _MOON_D2R = Math.PI / 180;
 
 // Table 47.A: [D, M, M', F, sigma_l (1e-6 deg), sigma_r (1e-3 km)]
 const _MOON_TERMS_LR = [
@@ -61,17 +59,7 @@ const _MOON_TERMS_B = [
   [4, 0, 1, -1, 132], [1, 0, -1, -1, -119], [4, -1, 0, -1, 115], [2, -2, 0, 1, 107],
 ];
 
-function _moonNorm360(x) { return ((x % 360) + 360) % 360; }
 
-// deltaT = TT - UT in seconds (Espenak & Meeus polynomial, valid 2005-2050).
-function _moonDeltaTSec(year) {
-  const t = year - 2000;
-  return 62.92 + 0.32217 * t + 0.005589 * t * t;
-}
-// Julian Ephemeris Day (TT) for a Night Sky UT instant.
-function _moonJDE(year, month, day, hourUT) {
-  return _skyToJulianDateUT(year, month, day, hourUT) + _moonDeltaTSec(year) / 86400;
-}
 
 // Geocentric ecliptic coordinates of the Moon, mean equinox of date (Meeus ch. 47).
 // Returns {lambda, beta} in degrees and {dist} in km.
@@ -109,19 +97,7 @@ function _moonEclipticOfDate(jde) {
   return { lambda: _moonNorm360(Lp + sl / 1e6), beta: sb / 1e6, dist: 385000.56 + sr / 1000 };
 }
 
-// Mean obliquity of the ecliptic of date, degrees (Meeus 22.2).
-function _moonMeanObliquityDeg(jde) {
-  const T = (jde - 2451545.0) / 36525;
-  return 23.439291111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600;
-}
 
-// Ecliptic (lambda, beta) -> equatorial (ra, dec), all degrees, for obliquity eps (Meeus 13.3/13.4).
-function _moonEclToEq(lambda, beta, epsDeg) {
-  const l = lambda * _MOON_D2R, b = beta * _MOON_D2R, e = epsDeg * _MOON_D2R;
-  const ra = Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
-  const dec = Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
-  return { ra: _moonNorm360(ra / _MOON_D2R), dec: dec / _MOON_D2R };
-}
 
 // Precession angles zeta, z, theta (degrees) from J2000 to the epoch jde (Meeus 21.3, J2000 start).
 function _moonPrecessionAngles(jde) {
@@ -133,7 +109,8 @@ function _moonPrecessionAngles(jde) {
     theta: (2004.3109 * T - 0.42665 * T2 - 0.041833 * T3) / 3600,
   };
 }
-// J2000 -> mean equinox of jde (Meeus 21.4). Used only to verify the inverse below.
+// J2000 -> mean equinox of jde (Meeus 21.4). Night Sky's precession matrix is built from it
+// (_skyPrecessionMatrix, render-nightsky.js).
 function _moonPrecessFromJ2000(ra0, dec0, jde) {
   const { zeta, z, theta } = _moonPrecessionAngles(jde);
   const a = (ra0 + zeta) * _MOON_D2R, d = dec0 * _MOON_D2R, th = theta * _MOON_D2R;
@@ -165,18 +142,17 @@ function _moonTopocentric(ra, dec, distKm, latDeg, lstHours) {
   return { ra: _moonNorm360(ra + dA / _MOON_D2R), dec: decT / _MOON_D2R };
 }
 
-// Geocentric Moon, J2000 RA/Dec (degrees) + distance (km), plus the of-date ecliptic longitude/
-// latitude the phase and age below work from.
+// Geocentric Moon, RA/Dec of date (degrees) + distance (km), plus the ecliptic longitude/latitude
+// of date the phase and age below work from.
 function _moonGeocentric(year, month, day, hourUT) {
   const jde = _moonJDE(year, month, day, hourUT);
   const ecl = _moonEclipticOfDate(jde);
-  const eqDate = _moonEclToEq(ecl.lambda, ecl.beta, _moonMeanObliquityDeg(jde));
-  const eq = _moonPrecessToJ2000(eqDate.ra, eqDate.dec, jde);
+  const eq = _moonEclToEq(ecl.lambda, ecl.beta, _moonMeanObliquityDeg(jde));
   return { ra: eq.ra, dec: eq.dec, dist: ecl.dist, lambda: ecl.lambda, beta: ecl.beta, jde };
 }
 
 // Topocentric Moon for Night Sky's own current Location: {az, el} (degrees, same convention as
-// _skyStarAzEl) plus the J2000 RA/Dec it came from. Same LAT===0/90 clamp as _skyStarAzEl.
+// _skyStarAzEl) plus the topocentric RA/Dec of date it came from. Same LAT===0/90 clamp as _skyStarAzEl.
 function _moonAzEl(year, month, day, hourUT) {
   const g = _moonGeocentric(year, month, day, hourUT);
   const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
@@ -184,27 +160,11 @@ function _moonAzEl(year, month, day, hourUT) {
   const lst = _skySiderealTimeHours(year, month, day, hourUT, lonHemisphere * LONG);
   const topo = _moonTopocentric(g.ra, g.dec, g.dist, latSigned, lst);
   const p = _skyRaDecToAzEl(topo.ra, topo.dec, lst, latSigned);
-  return { az: p.az, el: p.el, ra: topo.ra, dec: topo.dec, dist: g.dist };
+  return { az: p.az, el: p.el, elTrue: p.elTrue, ra: topo.ra, dec: topo.dec, dist: g.dist };
 }
+
 
 // ─── Phase and age ──────────────────────────────────────────────────────────────────────────────
-// Geocentric Sun, low-precision (Meeus ch. 25, ~0.01 deg): ecliptic longitude referred to the same
-// mean equinox of date as _moonEclipticOfDate (aberration applied, nutation left out - in the
-// Moon's phase and age it would be added to both bodies and cancel; for the Sun's own position it
-// is ~17") and distance in km. Shared by the Moon's phase/age below and by the Sun Night Sky draws
-// (_nightSkySunAzEl, render-nightsky.js), so both work from one and the same Sun.
-function _skySunEclipticOfDate(jde) {
-  const T = (jde - 2451545.0) / 36525;
-  const L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
-  const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * _MOON_D2R;
-  const e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
-  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
-          + (0.019993 - 0.000101 * T) * Math.sin(2 * M) + 0.000289 * Math.sin(3 * M);
-  const nu = M + C * _MOON_D2R;
-  const rAU = 1.000001018 * (1 - e * e) / (1 + e * Math.cos(nu));
-  return { lambda: _moonNorm360(L0 + C - 0.00569), dist: rAU * 149597870.7 };
-}
-
 // Illuminated fraction k (0..1) and phase angle i (degrees) of the geocentric Moon (Meeus 48.2/
 // 48.3, ecliptic form: the Sun's own latitude is taken as 0).
 function _moonPhase(jde) {
@@ -221,25 +181,26 @@ function _moonLongitudeElongation(jde) {
   const d = _moonEclipticOfDate(jde).lambda - _skySunEclipticOfDate(jde).lambda;
   return ((d + 180) % 360 + 360) % 360 - 180;
 }
-// Age of the Moon in days: time since the most recent new moon (Sun and Moon at equal ecliptic
-// longitude). Starts from the elongation divided by the mean synodic rate and refines with the same
-// step against the real elongation; converges to well under a minute in 3-4 steps.
-const _MOON_SYNODIC_RATE = 360 / 29.530589;   // deg/day
+// Age of the Moon in days, the way planetarium software and moon calculators state it (Stellarium
+// included): the Moon's phase in the cycle expressed in days - the Sun-Moon elongation in ecliptic
+// longitude (0-360 deg from new moon, i.e. the waning half continues past 180) as a fraction of the
+// mean synodic month (29.530589 d, Meeus ch. 49). It is 0 at new moon and 14.77 at full moon,
+// whatever this particular lunation's pace. It is NOT the time elapsed since new moon: the Moon's
+// speed varies (a lunation lasts ~29.3-29.8 d), so near apogee the phase lags the elapsed time and
+// near perigee it runs ahead - on 2026-09-25 17:00 UT the phase gives 13.76 d while 14.56 d had
+// passed since the new moon of 11 Sep 03:26:40 UT.
+const MOON_SYNODIC_MONTH_DAYS = 29.530589;
 function _moonAgeDays(jde) {
   let e = _moonLongitudeElongation(jde);
-  if (e < 0) e += 360;   // waning half: the last new moon is still behind us
-  let t = jde - e / _MOON_SYNODIC_RATE;
-  for (let n = 0; n < 6; n++) {
-    const de = _moonLongitudeElongation(t);
-    t -= de / _MOON_SYNODIC_RATE;
-    if (Math.abs(de) < 1e-5) break;
-  }
-  return jde - t;
+  if (e < 0) e += 360;   // waning half: 180-360 deg
+  return e / 360 * MOON_SYNODIC_MONTH_DAYS;
 }
 
 // ─── Rise and set ───────────────────────────────────────────────────────────────────────────────
-// Geometric definition, as everywhere else in the app: the CENTRE of the body at elevation 0 (for
-// the Moon the topocentric centre), no refraction, no semi-diameter. Searched over the LOCAL
+// Standard (almanac) definition: the body's UPPER LIMB on the horizon, refraction included (elevAt
+// returns the upper limb's apparent altitude - _moonElevAtJD/_moonSunElevAtJD below; for the Moon
+// the topocentric position). Matches USNO/Stellarium, and the drawn disc appears/disappears at the
+// same moment. Searched over the LOCAL
 // calendar day (00:00-24:00 at the shared Time zone) containing the given UT instant: a coarse
 // 10-minute sweep finds each sign change of the elevation, bisection refines it to ~0.1 s.
 // elevAt(jd) returns {az, el} for a Julian Date (UT). Returns {rise, set} as {jd, az} or null
@@ -276,13 +237,19 @@ function _moonRiseSetOnLocalDay(jdUT, elevAt) {
   }
   return { rise, set, alwaysUp: !rise && !set && anyUp, alwaysDown: !rise && !set && !anyUp };
 }
+// Apparent elevation of the UPPER LIMB (refraction taken at the limb, skyUpperLimbApparentEl):
+// rise and set are when it touches the horizon, the standard almanac rule shared with the Solargraph
+// views (core.js). It is also exactly when the drawn disc appears/disappears
+// (_nightSkyDiscAboveHorizon).
 function _moonElevAtJD(jd) {
   const r = _skyFromJulianDateUT(jd);
-  return _moonAzEl(r.year, r.month, r.day, r.hourUT);
+  const m = _moonAzEl(r.year, r.month, r.day, r.hourUT);
+  return { az: m.az, el: skyUpperLimbApparentEl(m.elTrue, _moonSemiDiamDeg(m)) };
 }
 function _moonSunElevAtJD(jd) {
   const r = _skyFromJulianDateUT(jd);
-  return _nightSkySunAzEl(r.year, r.month, r.day, r.hourUT);
+  const s = _nightSkySunAzEl(r.year, r.month, r.day, r.hourUT);
+  return { az: s.az, el: skyUpperLimbApparentEl(s.elTrue, _skySunSemiDiamDeg(r.year, r.month, r.day, r.hourUT)) };
 }
 
 // ─── Drawing ────────────────────────────────────────────────────────────────────────────────────
@@ -299,20 +266,16 @@ const NIGHTSKY_SKYMAP_DISC_R = 3;
 // zenith.
 function _moonSemiDiamDeg(moon) {
   const sinPi = 6378.14 / moon.dist;
-  const distTopo = moon.dist * (1 - sinPi * Math.sin(moon.el * _MOON_D2R));
+  const distTopo = moon.dist * (1 - sinPi * Math.sin((moon.elTrue !== undefined ? moon.elTrue : moon.el) * _MOON_D2R));
   return Math.asin(1737.4 / distTopo) / _MOON_D2R;
 }
-// Semi-diameter of the Sun, degrees: 959.63" at 1 AU (Meeus ch. 55).
-function _skySunSemiDiamDeg(year, month, day, hourUT) {
-  const rAU = _skySunEclipticOfDate(_moonJDE(year, month, day, hourUT)).dist / 149597870.7;
-  return 959.63 / 3600 / rAU;
-}
-// A disc stays on screen until its UPPER limb has gone below the horizon, not just its centre - so
-// an eclipse near the horizon doesn't end abruptly the moment the Moon's centre dips under it. The
-// part already below is hidden by clipping to the sky (_nightSkyClipToSky, render-nightsky.js).
-// Rise/set times in the info panel stay the centre's (the app's geometric convention).
+// A disc stays on screen until its UPPER limb, refracted, has gone below the horizon - the same
+// standard rule as rise/set (skyUpperLimbApparentEl, core.js) - not just its centre, so an eclipse
+// near the horizon doesn't end abruptly the moment the Moon's centre dips under it. The part
+// already below is hidden by clipping to the sky (_nightSkyClipToSky, render-nightsky.js). el is
+// the APPARENT centre elevation the drawing works with.
 function _nightSkyDiscAboveHorizon(el, semiDeg) {
-  return el >= -semiDeg;
+  return skyUpperLimbApparentEl(_skyTrueFromApparentEl(el), semiDeg) >= 0;
 }
 // Screen radius in Planetarium for a semi-diameter in degrees: the equidistant projection's own
 // radial scale, FOCAL*scale px per radian (exact at the view centre; towards the rim the tangential
@@ -472,8 +435,8 @@ function _nightSkyDrawPlanetMoonPath(ctx, layout) {
 // day (which made the Moon's path jump at 00:00 UTC while it stood high in the sky): from the rise
 // to the set of the pass the body is on now, or - while it is below the horizon - of the next one.
 // The path therefore stays put the whole time the body is up and changes only at its set, when the
-// disc disappears too. Rise/set here are the centre at 0 deg, the same geometric definition as the
-// info panel. A body that doesn't set within NIGHTSKY_PASS_SEARCH_DAYS either way (circumpolar)
+// disc disappears too. Rise/set here are the same standard ones as in the info panel (upper limb,
+// refraction included). A body that doesn't set within NIGHTSKY_PASS_SEARCH_DAYS either way (circumpolar)
 // gets a +-12 h window around now; one that doesn't rise within it gets no path.
 const NIGHTSKY_PASS_STEP_DAYS = 10 / 1440;
 const NIGHTSKY_PASS_SEARCH_DAYS = 1.5;

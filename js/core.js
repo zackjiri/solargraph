@@ -155,10 +155,12 @@ function refineDayFromDeclination(seed, target) {
 
 // From (azimut_world °, elevation °, lat rad) → { day1, day2, time }
 // Returns null if outside valid range
+// el_deg is the APPARENT elevation (a pixel of the scan, a point of the Sky Dome) - refraction is
+// taken out first, the solving below is geometric.
 function inverseSolar(az_world_deg, el_deg, phi_rad) {
   if (el_deg < 0) return null;
 
-  const el  = el_deg  * Math.PI / 180;
+  const el  = _skyTrueFromApparentEl(el_deg) * Math.PI / 180;
   // az_south: azimuth measured from south (β), positive = west
   // az_world → az_south = az_world - 180
   const az_south = (az_world_deg - 180) * Math.PI / 180;
@@ -176,7 +178,7 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   // - solves directly for the real, unshifted day. Seeded via the old closed-form linear-time
   // formula, then refined against the real Kepler-based sunDeclination() (see
   // refineDayFromDeclination() above) since that formula has no closed-form inverse.
-  const maxDecl = 23.45 * Math.PI / 180;
+  const maxDecl = 23.44 * Math.PI / 180;   // seed range only (obliquity of date, 2026: 23.436 deg)
   const target = hemisphere >= 0 ? delta : -delta;
   if (Math.abs(target) > maxDecl) return null;
   const sinArg = target / maxDecl;
@@ -255,6 +257,148 @@ function effectiveLat() {
   return lat * Math.PI / 180;
 }
 
+// ─── Shared astronomy (Julian Date, Meeus Sun, refraction) ──────────────────────────────────────
+// Used by BOTH halves of the app - the Solargraph views (sunDeclination/equationOfTimeMin/
+// sunPosition below) and Night Sky (render-nightsky.js, render-moon.js) - so a given date, time and
+// place gives the same Sun everywhere. Lives here because core.js loads first and the Solargraph
+// views draw on load. (Names keep the _sky/_moon prefixes of the files they came from.)
+
+// Julian Date (UT) for a Gregorian calendar civil date/time. hourUT may include minutes/seconds as
+// a fraction (e.g. 13.5 = 13:30 UT). Valid for the Gregorian calendar (after 1582-10-15).
+function _skyToJulianDateUT(year, month, day, hourUT) {
+  let y = year, m = month;
+  if (m <= 2) { y -= 1; m += 12; }
+  const a = Math.floor(y / 100);
+  const b = 2 - a + Math.floor(a / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + day + hourUT / 24 + b - 1524.5;
+}
+
+// Inverse of _skyToJulianDateUT (Meeus ch.7's own inverse algorithm) - Julian Date (UT) back to a
+// Gregorian civil {year, month, day, hourUT}. Used by the time strip's continuous drag/animation
+// (below): dragging is done entirely in JD-space (a single continuous number), then converted back
+// to calendar fields only to update the UI/state - this is what makes crossing a UTC midnight "just
+// work" as a date rollover, with no separate day-boundary special-casing needed in the drag math.
+function _skyFromJulianDateUT(jd) {
+  const jdShift = jd + 0.5;
+  const Z = Math.floor(jdShift);
+  const F = jdShift - Z;
+  let A = Z;
+  if (Z >= 2299161) {
+    const alpha = Math.floor((Z - 1867216.25) / 36524.25);
+    A = Z + 1 + alpha - Math.floor(alpha / 4);
+  }
+  const B = A + 1524;
+  const C = Math.floor((B - 122.1) / 365.25);
+  const D = Math.floor(365.25 * C);
+  const E = Math.floor((B - D) / 30.6001);
+  const dayFrac = B - D - Math.floor(30.6001 * E) + F;
+  const day = Math.floor(dayFrac);
+  const hourUT = (dayFrac - day) * 24;
+  const month = E < 14 ? E - 1 : E - 13;
+  const year = month > 2 ? C - 4716 : C - 4715;
+  return { year, month, day, hourUT };
+}
+
+const _MOON_D2R = Math.PI / 180;
+
+function _moonNorm360(x) { return ((x % 360) + 360) % 360; }
+
+// deltaT = TT - UT in seconds (Espenak & Meeus polynomial, valid 2005-2050).
+function _moonDeltaTSec(year) {
+  const t = year - 2000;
+  return 62.92 + 0.32217 * t + 0.005589 * t * t;
+}
+
+// Julian Ephemeris Day (TT) for a UT instant.
+function _moonJDE(year, month, day, hourUT) {
+  return _skyToJulianDateUT(year, month, day, hourUT) + _moonDeltaTSec(year) / 86400;
+}
+
+// Mean obliquity of the ecliptic of date, degrees (Meeus 22.2).
+function _moonMeanObliquityDeg(jde) {
+  const T = (jde - 2451545.0) / 36525;
+  return 23.439291111 - (46.8150 * T + 0.00059 * T * T - 0.001813 * T * T * T) / 3600;
+}
+
+// Ecliptic (lambda, beta) -> equatorial (ra, dec), all degrees, for obliquity eps (Meeus 13.3/13.4).
+function _moonEclToEq(lambda, beta, epsDeg) {
+  const l = lambda * _MOON_D2R, b = beta * _MOON_D2R, e = epsDeg * _MOON_D2R;
+  const ra = Math.atan2(Math.sin(l) * Math.cos(e) - Math.tan(b) * Math.sin(e), Math.cos(l));
+  const dec = Math.asin(Math.sin(b) * Math.cos(e) + Math.cos(b) * Math.sin(e) * Math.sin(l));
+  return { ra: _moonNorm360(ra / _MOON_D2R), dec: dec / _MOON_D2R };
+}
+
+// Geocentric Sun, low-precision (Meeus ch. 25, ~0.01 deg): apparent ecliptic longitude referred to
+// the mean equinox of date (aberration applied, nutation left out - ~17", and in the Moon's phase and
+// age it would be added to both bodies and cancel), the mean longitude L0 (for the equation of time)
+// and the distance in km. The ONE Sun of the whole app: Night Sky (_nightSkySunAzEl), the Moon's
+// phase/age (render-moon.js) and the Solargraph views (sunDeclination/equationOfTimeMin below).
+function _skySunEclipticOfDate(jde) {
+  const T = (jde - 2451545.0) / 36525;
+  const L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * _MOON_D2R;
+  const e = 0.016708634 - 0.000042037 * T - 0.0000001267 * T * T;
+  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+          + (0.019993 - 0.000101 * T) * Math.sin(2 * M) + 0.000289 * Math.sin(3 * M);
+  const nu = M + C * _MOON_D2R;
+  const rAU = 1.000001018 * (1 - e * e) / (1 + e * Math.cos(nu));
+  return { lambda: _moonNorm360(L0 + C - 0.00569), L0: _moonNorm360(L0), dist: rAU * 149597870.7 };
+}
+
+// Atmospheric refraction, degrees, for a TRUE altitude hTrue (degrees): Saemundsson's formula (Meeus
+// 16.4, standard 1010 hPa / 10 degC), R = 1.02' / tan(h + 10.3/(h + 5.11)). ~0.57 deg at the horizon,
+// 0.09 deg at 10 deg, under 0.02 deg above 45 deg, 0 at the zenith. The formula holds down to about
+// -1 deg; below that (what is still drawn under the horizon - Night Sky's Planetarium ground and the
+// frame of a low photo, a Solargraph path's run-out) refraction is faded linearly to 0 at -3 deg,
+// which keeps true -> apparent monotonic (slope >= 0.68) and so exactly invertible.
+const SKY_REFR_FADE_TOP = -1, SKY_REFR_FADE_BOTTOM = -3;
+
+function _skySaemundssonDeg(h) {
+  return 1.02 / Math.tan((h + 10.3 / (h + 5.11)) * Math.PI / 180) / 60;
+}
+
+function _skyRefractionDeg(hTrue) {
+  if (hTrue >= 90) return 0;
+  if (hTrue >= SKY_REFR_FADE_TOP) return Math.max(0, _skySaemundssonDeg(hTrue));
+  if (hTrue <= SKY_REFR_FADE_BOTTOM) return 0;
+  return _skySaemundssonDeg(SKY_REFR_FADE_TOP) * (hTrue - SKY_REFR_FADE_BOTTOM) / (SKY_REFR_FADE_TOP - SKY_REFR_FADE_BOTTOM);
+}
+
+// Apparent altitude -> true altitude: the exact inverse of hTrue + _skyRefractionDeg(hTrue), by
+// Newton steps on that same function (not Bennett's separate formula, which would disagree with it
+// by up to ~4" and make a picked point drift off centre).
+function _skyTrueFromApparentEl(hApp) {
+  let h = hApp - _skyRefractionDeg(hApp);
+  for (let i = 0; i < 6; i++) {
+    const f = h + _skyRefractionDeg(h) - hApp;
+    if (Math.abs(f) < 1e-9) break;
+    const d = 1e-4, fp = 1 + (_skyRefractionDeg(h + d) - _skyRefractionDeg(h - d)) / (2 * d);
+    h -= f / fp;
+  }
+  return h;
+}
+
+// Semi-diameter of the Sun, degrees: 959.63" at 1 AU (Meeus ch. 55).
+function _skySunSemiDiamDeg(year, month, day, hourUT) {
+  const rAU = _skySunEclipticOfDate(_moonJDE(year, month, day, hourUT)).dist / 149597870.7;
+  return 959.63 / 3600 / rAU;
+}
+// Rise and set, the standard (almanac) rule for the whole app: a body is up while its UPPER LIMB,
+// refracted, is above the horizon. The refraction is taken at the limb itself (the limb sits on the
+// apparent horizon at true altitude SKY_HORIZON_TRUE_ALT = -0.575 deg, 34.4'), so the centre's true
+// altitude at rise/set is -0.575 deg minus the semi-diameter: -0.841 deg for the Sun, within 0.008
+// deg (~3 s) of USNO's -0.8333 deg (their fixed 34' + 16'). Night Sky's disc visibility and rise/set
+// search and the Solargraph views' sunrise/sunset/day length (solarRiseSet) all use it.
+const SKY_HORIZON_TRUE_ALT = _skyTrueFromApparentEl(0);
+function skyUpperLimbApparentEl(elTrueCentre, semiDeg) {
+  const limb = elTrueCentre + semiDeg;
+  return limb + _skyRefractionDeg(limb);
+}
+// The Sun's centre true altitude at sunrise/sunset for its mean semi-diameter (16.0') - the fixed
+// threshold the Sun Graph's day band and Night Sky's twilight band use (solarRiseSet's own times
+// take each day's real semi-diameter, 15.7'-16.3', a difference of at most ~2 s).
+const SUN_HORIZON_ALT_DEG = SKY_HORIZON_TRUE_ALT - 959.63 / 3600;
+
 // ─── True / Mean / Standard solar time ─────────────────────────────────────
 // Three time conventions, display-only (never fed back into geometry - hDeg/pixel positions
 // always stay driven by TRUE solar hour angle, per the project's own photographic-fidelity rule):
@@ -264,16 +408,71 @@ function effectiveLat() {
 //                         meridian (chosenZone × 15°) plus the chosen whole/quarter-hour zone.
 let timeDisplayMode = 'standard';   // 'true' | 'mean' | 'standard' - default per product decision
 
-// Equation of time [minutes]: true solar time minus mean solar time. Low-order approximation,
-// reuses the same "day − 81" phase reference as sunDeclination() for consistency. Day-of-year
-// only (no time-of-day dependence - valid to treat as constant across one calendar day, the
-// actual drift is on the order of seconds, far below the app's 10-min data resolution).
-function equationOfTimeMin(doy) {
-  const B = 2 * Math.PI / 365 * (doy - 81);
-  return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+// ─── Calendar year of the Solargraph views ─────────────────────────────────────────────────────
+// The Solargraph views work in day-of-year (365-day table, dayOfYear()); the Sun itself comes from
+// the same Meeus series as Night Sky (_skySunEclipticOfDate), which needs a real calendar date. The
+// year for a day-of-year: a Gallery image's own exposure dates (currentExposure, controls.js - an
+// exposure crossing New Year gives its days from the start day on the start year, the rest the end
+// year), otherwise the Analyzer's Year field (solarYear, default the current year). Feb 29 of a
+// leap year has no day-of-year of its own in the 365-day table and is simply skipped.
+let solarYear = new Date().getFullYear();
+// The shown Gallery image's exposure {startDoy, endDoy, startYear, endYear} | null - set by
+// controls.js (setCurrentExposureFromGallery, loadImage). Declared here, before anything can draw.
+let currentExposure = null;
+function solarYearForDoy(doy) {
+  const exp = typeof currentExposure !== 'undefined' ? currentExposure : null;
+  if (exp && exp.startYear) {
+    if (exp.startYear === exp.endYear) return exp.startYear;
+    return doy >= exp.startDoy ? exp.startYear : exp.endYear;
+  }
+  return solarYear;
+}
+// Julian Ephemeris Day for a (possibly fractional) day-of-year at a UT hour, in its solar year.
+function _solarJDE(doy, hourUT, year) {
+  const n = Math.floor(doy), frac = doy - n;
+  const w = ((n - 1) % 365 + 365) % 365 + 1;   // wrap into 1..365 (refineDayFromDeclination probes past the ends)
+  let m = 0, d = w;
+  while (d > MONTH_DAYS[m]) { d -= MONTH_DAYS[m]; m++; }
+  const y = year !== undefined ? year : solarYearForDoy(w);
+  return _moonJDE(y, m + 1, d, hourUT) + frac;
+}
+// UT of local mean noon (12:00 mean solar time at this longitude) - the instant the per-day Sun
+// values below are taken at, the middle of the day's path.
+function _solarNoonUT() {
+  return 12 - (lonHemisphere * LONG) / 15;
+}
+// Sun at local noon of a day-of-year: {dec (rad), eotMin}. Declination from Meeus ch. 25 of date
+// (same as Night Sky); equation of time (Meeus 28.3) E = L0 - 0.0057183 deg - RA, the true minus
+// the mean solar time, nutation left out (<~1 s). Cached per day, year and longitude - the Sun
+// Graph asks for all 365 days on every redraw.
+const _solarNoonCache = new Map();
+// The Sun at one instant: {dec (rad), eotMin, semiDeg}.
+function _solarSunAtJDE(jde) {
+  const sun = _skySunEclipticOfDate(jde);
+  const eq = _moonEclToEq(sun.lambda, 0, _moonMeanObliquityDeg(jde));
+  let e = sun.L0 - 0.0057183 - eq.ra;
+  e = ((e + 180) % 360 + 360) % 360 - 180;
+  return { dec: eq.dec * Math.PI / 180, eotMin: e * 4, semiDeg: 959.63 / 3600 / (sun.dist / 149597870.7) };
+}
+function _solarNoonSun(doy, year) {
+  const y = year !== undefined ? year : solarYearForDoy(Math.round(doy));
+  const key = doy + '|' + y + '|' + (lonHemisphere * LONG);
+  let v = _solarNoonCache.get(key);
+  if (v) return v;
+  v = _solarSunAtJDE(_solarJDE(doy, _solarNoonUT(), y));
+  if (_solarNoonCache.size > 5000) _solarNoonCache.clear();
+  _solarNoonCache.set(key, v);
+  return v;
 }
 
-function meanFromTrue(trueHour, doy) { return trueHour - equationOfTimeMin(doy) / 60; }
+// Equation of time [minutes]: true (apparent) solar time minus mean solar time, for the day's own
+// solar year (Meeus, _solarNoonSun). Day-of-year only - constant across one calendar day, the real
+// drift is under ~30 s a day. year: optional override (the Eclipse module passes its event's).
+function equationOfTimeMin(doy, year) {
+  return _solarNoonSun(doy, year).eotMin;
+}
+
+function meanFromTrue(trueHour, doy, eotMin) { return trueHour - (eotMin !== undefined ? eotMin : equationOfTimeMin(doy)) / 60; }
 function trueFromMean(meanHour, doy) { return meanHour + equationOfTimeMin(doy) / 60; }
 
 function standardFromMean(meanHour) {
@@ -285,16 +484,18 @@ function meanFromStandard(standardHour) {
   return standardHour + (longSigned - timeZoneHours * 15) / 15;
 }
 
-function standardFromTrue(trueHour, doy) { return standardFromMean(meanFromTrue(trueHour, doy)); }
+function standardFromTrue(trueHour, doy, eotMin) { return standardFromMean(meanFromTrue(trueHour, doy, eotMin)); }
 function trueFromStandard(standardHour, doy) { return trueFromMean(meanFromStandard(standardHour), doy); }
 
 // Dispatcher for anything that DISPLAYS a time number (labels, readouts, axis ticks) - picks the
 // conversion per the current mode. Never call this to compute a pixel position or hour angle;
 // geometry stays in true solar time always (the Sun Graph's yearly view is the one exception -
 // see render-sungraph.js, which reprojects its own geometry rather than just relabeling).
-function displayHour(trueHour, doy) {
-  if (timeDisplayMode === 'mean') return meanFromTrue(trueHour, doy);
-  if (timeDisplayMode === 'standard') return standardFromTrue(trueHour, doy);
+// eotMin: optional equation of time for the exact instant (solarRiseSet's eotRise/eotSet), instead
+// of the day's noon value.
+function displayHour(trueHour, doy, eotMin) {
+  if (timeDisplayMode === 'mean') return meanFromTrue(trueHour, doy, eotMin);
+  if (timeDisplayMode === 'standard') return standardFromTrue(trueHour, doy, eotMin);
   return trueHour;
 }
 
@@ -307,35 +508,46 @@ function displayHourFromStandard(standardHour, doy) {
   return standardHour;
 }
 
-// Earth's orbit is an ellipse (eccentricity ~0.0167), not a circle - by Kepler's 2nd law it sweeps
-// ecliptic longitude fastest near perihelion (~3 Jan) and slowest near aphelion (~4 Jul). Feeds
-// the equation-of-center correction in sunDeclination() below.
-const PERIHELION_DOY = 3;
-const EARTH_ECCENTRICITY = 0.0167;
+// Solar declination (rad) for day-of-year d (1 = Jan 1) at local noon: Meeus ch. 25 of date for the
+// day's solar year (solarYearForDoy) - the same Sun Night Sky draws, ~0.01 deg. Replaces the app's
+// earlier year-less model (equation of centre on a 365-day circle, obliquity 23.45 deg, 0.1-0.3 deg
+// off), under which the same day and place gave sunrise/sunset times 1-2 min apart from Night Sky's.
+// year: optional override (the Eclipse module passes its event's).
+function sunDeclination(dayOfYear, year) {
+  return _solarNoonSun(dayOfYear, year).dec;
+}
 
-// Solar declination for day-of-year d (1 = Jan 1), via the equation of center (Kepler) rather
-// than a plain sine of calendar time. A plain `23.45°·sin(2π/365·(d−81))` implicitly assumes
-// ecliptic longitude is linear in time, which the elliptical orbit above makes wrong in two
-// compounding ways: (1) for any single date, by up to ~1.5-2° (worst near the equinoxes) - the
-// declination formula's own long-known imprecision; (2) that error's SIGN flips between the
-// first and second half of the year (faster near perihelion/Jan, slower near aphelion/Jul) - a
-// real asymmetry between how fast the sun's path actually progresses in, say, February vs.
-// August, which a symmetric sine can never reproduce no matter how it's tuned, only by computing
-// the true (not mean) ecliptic longitude directly. See project notes for the full derivation and
-// a worked numeric example (~186 vs ~179 days for the two halves of the year). Reduces the error
-// to <0.1-0.3° (equivalent to the commonly-cited "Spencer" level of precision).
-function sunDeclination(dayOfYear) {
-  const meanAnomaly = 2 * Math.PI / 365 * (dayOfYear - PERIHELION_DOY);
-  const e = EARTH_ECCENTRICITY;
-  // Equation of center - how far the true position runs ahead of (perihelion side) or behind
-  // (aphelion side) the mean position. First two terms of the standard series; the e³ term is
-  // <0.001° here and not worth carrying.
-  const eqOfCenter = (2 * e - e * e * e / 4) * Math.sin(meanAnomaly)
-                    + (5 * e * e / 4) * Math.sin(2 * meanAnomaly);
-  const meanLongitude = 2 * Math.PI / 365 * (dayOfYear - 81);   // 81 = spring equinox reference
-  const trueLongitude = meanLongitude + eqOfCenter;
-  const obliquity = 23.45 * Math.PI / 180;
-  return Math.asin(Math.sin(obliquity) * Math.sin(trueLongitude));
+// Sunrise/sunset of a day-of-year for the current Location, in TRUE solar hours: {rise, set,
+// polarDay, polarNight}. Standard rule (upper limb, refracted - see SKY_HORIZON_TRUE_ALT). The
+// declination and semi-diameter are taken at the event itself, not at noon - near the equinoxes
+// the declination moves 0.4 deg a day, which at noon alone would put the times ~20 s off; two
+// refinement steps bring them to under a second of Night Sky's own search.
+function solarRiseSet(doy) {
+  const phi = effectiveLat() * hemisphere;
+  const sphi = Math.sin(phi), cphi = Math.cos(phi);
+  const lonE = lonHemisphere * LONG;
+  const eot = equationOfTimeMin(doy);
+  const at = (trueHour) => {
+    const v = _solarSunAtJDE(_solarJDE(doy, trueHour - eot / 60 - lonE / 15));
+    return { dec: v.dec, h0: (SKY_HORIZON_TRUE_ALT - v.semiDeg) * Math.PI / 180, eotMin: v.eotMin };
+  };
+  const halfWidth = ({ dec, h0 }) => {
+    const X = (Math.sin(h0) - sphi * Math.sin(dec)) / (cphi * Math.cos(dec));
+    if (X <= -1) return 12;
+    if (X >= 1) return 0;
+    return Math.acos(X) * 12 / Math.PI;
+  };
+  const w0 = halfWidth(at(12));
+  if (w0 >= 12) return { rise: 0, set: 24, polarDay: true, polarNight: false, eotRise: eot, eotSet: eot };
+  if (w0 <= 0) return { rise: 12, set: 12, polarDay: false, polarNight: true, eotRise: eot, eotSet: eot };
+  let rise = 12 - w0, set = 12 + w0;
+  for (let i = 0; i < 2; i++) {
+    rise = 12 - Math.min(12, halfWidth(at(rise)));
+    set = 12 + Math.min(12, halfWidth(at(set)));
+  }
+  // The equation of time AT each event (it drifts up to ~30 s a day), for displayHour's clock
+  // conversion - with the day's noon value the clock times would be up to ~5 s off.
+  return { rise, set, polarDay: false, polarNight: false, eotRise: at(rise).eotMin, eotSet: at(set).eotMin };
 }
 
 // "Path" convention (2D canvas Sun's-paths/Custom-date arcs - see drawSunArc() below - plus the
@@ -606,9 +818,11 @@ function _readoutFallbackSunPos() {
   return sunPosition(H, delta, phi);
 }
 
-// Azimuth and elevation of sun for hour angle H (rad), declination δ (rad), latitude φ (rad)
-// Returns { az, el } in degrees; az = world azimuth 0=N, 90=E, 180=S, 270=W
-function sunPosition(H, delta, phi) {
+// GEOMETRIC (airless) azimuth and elevation for hour angle H (rad), declination δ (rad), latitude φ
+// (rad). Returns { az, el } in degrees; az = world azimuth 0=N, 90=E, 180=S, 270=W. Used where the
+// true position is wanted: Night Sky's own transform (which adds refraction itself), the Eclipse
+// module (contact times and magnitudes are published geometric), and sunPosition below.
+function sunPositionTrue(H, delta, phi) {
   const sinEl = Math.sin(phi) * Math.sin(delta) + Math.cos(phi) * Math.cos(delta) * Math.cos(H);
   const el = Math.asin(Math.max(-1, Math.min(1, sinEl)));
 
@@ -622,6 +836,13 @@ function sunPosition(H, delta, phi) {
     el: el * 180 / Math.PI,          // elevation
     beta: az * 180 / Math.PI - 180   // β from south (camera centre = south always)
   };
+}
+// APPARENT position - what the pinhole records and every Solargraph view draws: the geometric one
+// with atmospheric refraction added to the elevation (_skyRefractionDeg, Saemundsson - ~0.57 deg at
+// the horizon, 0.09 deg at 10 deg). elTrue carries the geometric elevation along.
+function sunPosition(H, delta, phi) {
+  const p = sunPositionTrue(H, delta, phi);
+  return { az: p.az, el: p.el + _skyRefractionDeg(p.el), elTrue: p.el, beta: p.beta };
 }
 
 // Draw a single solar arc

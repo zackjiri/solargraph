@@ -141,14 +141,14 @@ function _monthStartDoy() {
 }
 const _DAYS_IN_YEAR = 365;
 
-// Twilight altitude thresholds [deg]. Daylight edge is the pure geometric horizon (0°), matching
-// every other horizon test in the app (core.js/render-2d.js all use el >= 0, no refraction). Real
-// sunrise/sunset could optionally include atmospheric refraction + solar semidiameter (≈ −0.833°),
-// but that's deliberately NOT applied here - the rest of the model doesn't account for refraction
-// either (see project notes §6.5), and mixing the two thresholds broke the polar-day/polar-night
-// symmetry: with −0.833° the polar-night cutoff latitude (~67.4°N) no longer matched the polar-day
-// cutoff (~65.7°N) the way both do at exactly the geometric Arctic Circle (66.57°N) with 0°.
-const _SG_THRESH = { day: 0, civil: -6, naut: -12, astro: -18 };
+// Twilight altitude thresholds [deg], on the Sun's TRUE centre altitude. Daylight ends at the
+// standard sunset, SUN_HORIZON_ALT_DEG (core.js, -0.841 deg: the upper limb on the horizon with
+// refraction taken at the limb) - the same rule Night Sky uses, so both give the same sunrise and
+// sunset for the same day and place. The twilights are the standard -6/-12/-18 deg. Because the
+// day edge sits below the geometric horizon, polar day starts at a lower latitude (~65.7 deg) than
+// polar night (~67.4 deg) - a real effect of refraction, shown by every almanac. (Until build 42_1
+// the edge was the geometric 0 deg, symmetric about the Arctic Circle but ~3-5 min off almanacs.)
+const _SG_THRESH = { day: SUN_HORIZON_ALT_DEG, civil: -6, naut: -12, astro: -18 };
 // Band colours (meaning-bearing → same in both themes; approx. timeanddate palette).
 const _SG_BANDS = { night: '#1c2a35', astro: '#39505f', naut: '#5a7588', civil: '#9cbdd2', day: '#cfe8f6' };
 
@@ -213,18 +213,21 @@ function updateSunGraphStatus() {
   const phi = effectiveLat() * hemisphere;
   const activeDay = (sgHoverDay !== null) ? sgHoverDay : dayOfYear(customMonth, customDay);
   const delta = sunDeclination(activeDay);
-  const w = _sgDayWidths(activeDay, Math.sin(phi), Math.cos(phi)).day;   // daylight half-width [h]
+  // Standard sunrise/sunset (core.js solarRiseSet: upper limb, refracted; declination at the event
+  // itself) - the same times Night Sky's info panel gives for this day and place.
+  const rsT = solarRiseSet(activeDay);
   dEl.textContent = _sgDoyMD(activeDay);
   const rs = document.getElementById('sgRiseSet'), dl = document.getElementById('sgDayLen');
   const rsAz = document.getElementById('sgRiseSetAz');
-  if (w <= 0)       { rs.textContent = '—';  dl.textContent = '00:00'; if (rsAz) rsAz.textContent = '—'; }   // polar night
-  else if (w >= 12) { rs.textContent = '—';  dl.textContent = '24:00'; if (rsAz) rsAz.textContent = '—'; }   // polar day
+  if (rsT.polarNight)    { rs.textContent = '—';  dl.textContent = '00:00'; if (rsAz) rsAz.textContent = '—'; }
+  else if (rsT.polarDay) { rs.textContent = '—';  dl.textContent = '24:00'; if (rsAz) rsAz.textContent = '—'; }
   else {
-    rs.textContent = _sgHM(displayHour(12 - w, activeDay)) + ' / ' + _sgHM(displayHour(12 + w, activeDay));
-    dl.textContent = _sgHM(2 * w);
+    rs.textContent = _sgHM(displayHour(rsT.rise, activeDay, rsT.eotRise)) + ' / ' + _sgHM(displayHour(rsT.set, activeDay, rsT.eotSet));
+    // Clock (mean-time) day length: the equation of time drifts between rise and set.
+    dl.textContent = _sgHM((rsT.set - rsT.eotSet / 60) - (rsT.rise - rsT.eotRise / 60));
     if (rsAz) {
-      const riseAz = sunPosition(-w * Math.PI / 12, delta, phi).az;
-      const setAz  = sunPosition( w * Math.PI / 12, delta, phi).az;
+      const riseAz = sunPosition((rsT.rise - 12) * Math.PI / 12, delta, phi).az;
+      const setAz  = sunPosition((rsT.set - 12) * Math.PI / 12, delta, phi).az;
       rsAz.textContent = _sgFmtAz(riseAz) + ' / ' + _sgFmtAz(setAz);
     }
   }

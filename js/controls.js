@@ -822,6 +822,7 @@ document.getElementById('btnScanWInc').addEventListener('click', () => applyScan
 
 function loadImage(file) {
   currentExposure    = null;   // uploaded image has no filelist metadata → no exposure overlay
+  updateSolarYearField();      // the Year field is the user's own again
   currentChmi        = null;   // ditto for the CHMI sunshine overlay
   currentChmiExtra   = null;   // ditto for any per-image extra dataset (chmi_extra)
   chmiActiveElement  = null;   // back to SSV10M - the extra-element switch has nothing to show now
@@ -933,7 +934,34 @@ function stepCustomDay(dir) {
     else { customMonth = customMonth > 1 ? customMonth - 1 : 12; customDay = DAYS_IN_MONTH[customMonth - 1]; }
   }
 }
+// Year field (core.js solarYear) under the Custom date wheels. While the shown image has exposure
+// dates, the year comes from them (solarYearForDoy) - the field then displays the Custom date's own
+// year from the exposure, disabled, with a tooltip saying so; otherwise it edits solarYear.
+function updateSolarYearField() {
+  const row = document.getElementById('solarYearRow'), inp = document.getElementById('inpSolarYear');
+  if (!row || !inp) return;
+  const fromExp = !!(currentExposure && currentExposure.startYear);
+  row.classList.toggle('from-exposure', fromExp);
+  inp.value = solarYearForDoy(dayOfYear(customMonth, customDay));
+  row.title = fromExp
+    ? 'Year from the exposure dates of the selected image'
+    : 'Calendar year for the Sun (Custom date, Sun Graph, Sky Dome, 3D Model)';
+}
+function applySolarYear(val) {
+  const y = Math.round(val);
+  if (!Number.isFinite(y)) { updateSolarYearField(); return; }
+  solarYear = Math.max(1, Math.min(9999, y));
+  updateSolarYearField();
+  commitCustomDate();
+  if (typeof skyDomeActive !== 'undefined' && skyDomeActive && typeof drawSkyDome === 'function') drawSkyDome();
+}
+document.getElementById('inpSolarYear').addEventListener('change', (e) => applySolarYear(parseFloat(e.target.value)));
+document.getElementById('inpSolarYear').addEventListener('keydown', (e) => { if (e.key === 'Enter') applySolarYear(parseFloat(e.target.value)); });
+document.getElementById('btnSolarYearDec').addEventListener('click', () => applySolarYear(solarYear - 1));
+document.getElementById('btnSolarYearInc').addEventListener('click', () => applySolarYear(solarYear + 1));
+
 function commitCustomDate() {
+  updateSolarYearField();   // an exposure crossing New Year gives the date its own year
   updateDateLabels(); if (show3DCulmination) refreshSunTimeRange(); draw(); if (show3DCulmination) draw3D(); if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
   updateInfoReadout();   // new date changes both the hover-path day and the fallback day alike
 }
@@ -1028,6 +1056,7 @@ const _dayWheel = makeWheelPicker(document.getElementById('wheelDay'), {
 
 function renderDateWheels() { _monthWheel.render(); _dayWheel.render(); }
 renderDateWheels();
+updateSolarYearField();
 window.addEventListener('resize', renderDateWheels);
 
 // Every id that goes together with 'chkCustomArc' in a setDisplaySectionEnabled() keepIds list -
@@ -1302,7 +1331,7 @@ let galleryState = { genId: null, imageIndex: null, layer: 0 };
 
 // Exposure interval (day-of-year) of the current GALLERY image from filelist; null for images
 // loaded via "load new image" (no metadata). Used by the Sun Graph exposure overlay.
-let currentExposure = null;
+// currentExposure itself is declared in core.js (solarYearForDoy reads it during the first draw).
 function setCurrentExposureFromGallery() {
   currentExposure = null;
   if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
@@ -1311,8 +1340,11 @@ function setCurrentExposureFromGallery() {
   const m = img && img.metadata;
   if (m && m.exposure_start && m.exposure_end) {
     const doy = (s) => { const [, mo, d] = s.split('-').map(Number); return dayOfYear(mo, d); };
-    currentExposure = { startDoy: doy(m.exposure_start), endDoy: doy(m.exposure_end) };
+    const year = (str) => Number(str.split('-')[0]);
+    currentExposure = { startDoy: doy(m.exposure_start), endDoy: doy(m.exposure_end),
+                        startYear: year(m.exposure_start), endYear: year(m.exposure_end) };
   }
+  updateSolarYearField();
 }
 
 // Which half of the year the current generation covers ('H1'|'H2'), from its label
