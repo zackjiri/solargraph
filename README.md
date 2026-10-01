@@ -102,7 +102,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 📈 **Sun Graph** - a year-long chart of sunrise, sunset and the civil/nautical/astronomical twilight bands, computed from the elevation thresholds 0 / −6 / −12 / −18°, overlaid with exposure intervals and with the days the Sun actually reached the paper.
 
-🌌 **Sky Dome** - the same sun paths in true compass projections: a Sky Map, an azimuth-elevation planetarium chart, an orbiting 3D view, and an experimental warp of the calibrated photo onto the dome itself.
+🌌 **Sky Dome** - the same sun paths in true compass projections: a Sky Map, an azimuth-elevation planetarium chart, an orbiting 3D view, and an experimental warp of the calibrated photo onto the dome itself. While the photo is shown on the dome, **Show flat** opens it straightened into a cylindrical panorama with the current calibration: azimuth across, the horizon level and vertical edges upright.
 
 🌦 **CHMI weather data** - measured sunshine duration or air temperature from the nearest Czech Hydrometeorological Institute station, in 10-minute resolution. It colours the sun path directly on the photo, or covers the whole exposure period at once, and appears in the Sun Graph too - so the modelled clear-sky day can be held against what the weather actually did.
 
