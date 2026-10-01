@@ -1144,6 +1144,9 @@ const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');
 const container = document.getElementById('canvasContainer');
 let imgBitmap = null;
+// 'GEN-<gen>_<image>' while imgBitmap is a Gallery image, null for an uploaded scan - lets Sky Dome's
+// SHOW FLAT fetch that image's own full-size L1 file (controls.js sets it).
+let imgGalleryKey = null;
 let mouseX = -1, mouseY = -1;
 let showGrid = true, showLabels = true, showHorizon = true;
 let dispOpacity = 0.75;  // master opacity for all display overlays

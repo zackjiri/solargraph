@@ -120,6 +120,7 @@ function exitSkyDome() {
   document.getElementById('skyMap3DToggleRow').style.display = 'none';
   document.getElementById('skyMap3DZoomCtl').style.display = 'none';
   document.getElementById('skyDomePlanetImgToggleRow').style.display = 'none';
+  document.getElementById('skyDomeFlatRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   skyDomeActive = false;
   // Safety: exiting mid-drag (e.g. Escape) shouldn't leave either drag flag - or the RENDERING
@@ -1255,6 +1256,7 @@ function drawSkyDomeMatrixAxes(ctx, W, H, pal) {
 function drawSkyDome() {
   const cv = document.getElementById('skyDomeCanvas');
   if (!cv) return;
+  _skyDomeUpdateFlatRow();   // RENDER IMAGE may have been switched on before the image finished loading
   const RES = cv._res || 1;
   const ctx = cv.getContext('2d');
   const W = cv.width  / RES;
@@ -1385,7 +1387,9 @@ function drawSkyDome() {
 // ── Wiring ───────────────────────────────────────────────────────────────────
 // (Top sub-view switcher is now the wheel in .mode-subrow, wired in controls.js.)
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && skyDomeActive) exitSkyDome();
+  // An open SHOW FLAT viewer takes the Escape for itself (its own listener closes it) - without this
+  // check one press would close the viewer AND leave Sky Dome.
+  if (e.key === 'Escape' && skyDomeActive && !document.getElementById('skyDomeFlatModal').classList.contains('visible')) exitSkyDome();
 });
 
 // Projection switch (top-right of the canvas, Sky Dome only): Sky Map / Az-El Chart / Planetarium.
@@ -1414,6 +1418,15 @@ function updateSkyMap3DControlsVisibility() {
     imgRow.style.display = (skyDomeActive && skyDomeProjection === 'planet3d') ? 'flex' : 'none';
     imgRow.classList.toggle('split', skyDomePanoEligible);   // re-applied defensively - see _skyDomeUpdatePanoRowSplit
   }
+  _skyDomeUpdateFlatRow();
+}
+// SHOW FLAT is offered only while a render is actually on (RENDER IMAGE with an image, or PANO).
+function _skyDomeUpdateFlatRow() {
+  const row = document.getElementById('skyDomeFlatRow');
+  if (!row) return;
+  const on = skyDomeActive && skyDomeProjection === 'planet3d'
+    && ((skyDomePlanetImageOn && !!imgBitmap) || skyDomePanoOn);
+  row.style.display = on ? 'flex' : 'none';
 }
 // Called whenever the active gallery image changes (hooked into applyGalleryPreset(), controls.js)
 // - GEN-1_5/GEN-2_6 are the one pair shot from the same physical site (see this file's own
@@ -1475,6 +1488,7 @@ document.getElementById('btnSkyDomePlanetImgToggle').addEventListener('click', (
   const btn = document.getElementById('btnSkyDomePlanetImgToggle');
   btn.classList.toggle('on', skyDomePlanetImageOn);
   btn.querySelector('span').textContent = skyDomePlanetImageOn ? 'HIDE IMAGE' : 'RENDER IMAGE';
+  _skyDomeUpdateFlatRow();
   // Mutually exclusive with RENDER PANO (the split row's other half, when shown) - turning this on
   // turns that off first, same as a segmented control, rather than compositing three warps at once.
   if (skyDomePlanetImageOn && skyDomePanoOn) _skyDomePanoSetOn(false);
@@ -1492,6 +1506,7 @@ function _skyDomePanoSetOn(on) {
   const btn = document.getElementById('btnSkyDomePano');
   btn.classList.toggle('on', skyDomePanoOn);
   btn.querySelector('span').textContent = skyDomePanoOn ? 'HIDE PANO' : 'RENDER PANO';
+  _skyDomeUpdateFlatRow();
 }
 document.getElementById('btnSkyDomePano').addEventListener('click', () => {
   _skyDomePanoSetOn(!skyDomePanoOn);
@@ -1501,6 +1516,7 @@ document.getElementById('btnSkyDomePano').addEventListener('click', () => {
     const otherBtn = document.getElementById('btnSkyDomePlanetImgToggle');
     otherBtn.classList.remove('on');
     otherBtn.querySelector('span').textContent = 'RENDER IMAGE';
+    _skyDomeUpdateFlatRow();
   }
   _skyDomePlanetHDCancel();
   _skyDomeIndicatorHide();
@@ -1513,6 +1529,206 @@ document.getElementById('btnSkyDomePano').addEventListener('click', () => {
   }
   drawSkyDome();
   if (skyDomePanoOn) _skyDomePlanetHDSchedule();
+});
+
+// ── SHOW FLAT - the L1 image straightened into a cylindrical panorama ─────────────────────────
+// The scan is the inside of a can: across, the azimuth is already linear, but up the image the
+// pinhole's own perspective (sy = 2R cos(beta) tan(el)) makes every line of equal altitude sag
+// towards the frame edges, and the can's yaw/pitch/roll tilt the horizon. SHOW FLAT re-projects it
+// with the CURRENT calibration into a cylindrical panorama - the projection photographers' panoramas
+// use: x linear in azimuth (east on the left, as on the scan), y linear in tan(altitude). The horizon
+// comes out as a straight level line and vertical edges stay vertical, however wide the scan.
+// Computed on demand in the browser (the L1 files are 1280 px wide - tens of ms), so it always
+// matches the calibration as it is right now, Analyzer tweaks included; nothing is stored. For a
+// Gallery image the source is its own full-size L1 file (imgGalleryKey), for an uploaded scan the
+// loaded image itself. RENDER PANO gives both its photos in one panorama, painted and blended
+// exactly like the dome (SKY_DOME_PANO_PAINT_ORDER, GEN-1_5's own edge fade on top).
+const SKY_DOME_FLAT_EL_MIN = -45, SKY_DOME_FLAT_EL_MAX = 72;   // tan() would run away towards the zenith
+const SKY_DOME_FLAT_MAX_PX = 4096;                             // longest output side
+const SKY_DOME_FLAT_GRID = 4;                                  // mapping computed every 4 px, interpolated between
+// The panorama's width is the azimuth range the scan covers up to this altitude - the band around
+// the horizon where the scene is. Higher up, a scan's top corners reach towards the zenith, where
+// azimuths fan out fast (GEN-1_5: ~164 deg wide at 18 deg altitude, ~250 deg at 44 deg, ~290 deg at
+// 62 deg); counting them would make the panorama mostly empty flaring corners, so they are cropped.
+const SKY_DOME_FLAT_AZ_EXTENT_EL = 20;
+// Finally the edge rows and columns covered by less than this share of scan are cropped away (the
+// scan's curved top edge and the cut-out under the can leave mostly-black margins otherwise).
+const SKY_DOME_FLAT_MIN_COVER = 0.5;
+
+// Runs fn with the calibration of `preset` swapped in (null = the live calibration as it is), the
+// same save/restore _skyDomePanoPaintOne does around each pano layer.
+function _skyDomeWithCalibration(preset, fn) {
+  if (!preset) return fn();
+  const saved = [yawDeg, pitchDeg, rollDeg, horizonMm, radius, hScale];
+  try {
+    yawDeg    = preset.yaw_deg    ?? 0;
+    pitchDeg  = preset.pitch_deg  ?? 0;
+    rollDeg   = preset.roll_deg   ?? 0;
+    horizonMm = preset.horizon_mm ?? 0;
+    radius    = preset.radius_mm  ?? 33;
+    hScale    = radius / R;
+    return fn();
+  } finally {
+    [yawDeg, pitchDeg, rollDeg, horizonMm, radius, hScale] = saved;
+  }
+}
+function _skyDomeBitmapPixels(bitmap) {
+  const c = document.createElement('canvas');
+  c.width = bitmap.width; c.height = bitmap.height;
+  const g = c.getContext('2d');
+  g.drawImage(bitmap, 0, 0);
+  return { w: c.width, h: c.height, data: g.getImageData(0, 0, c.width, c.height).data };
+}
+// Builds the panorama for sources [{bitmap, preset|null, blend|null}] (base layer first) and
+// returns its canvas. Extent: the union of what the sources cover, azimuth unwrapped around the
+// first source's centre and taken below SKY_DOME_FLAT_AZ_EXTENT_EL, altitude clamped to
+// SKY_DOME_FLAT_EL_MIN..MAX. Scale: the first source's
+// own horizontal pixel density, so the result is about as sharp as the scan, isotropic at the
+// horizon. Returns null when there is nothing to build yet (no layout or calibration).
+function _skyDomeBuildFlat(sources) {
+  const D2R = Math.PI / 180;
+  let az0 = null, azMin = Infinity, azMax = -Infinity, elMin = Infinity, elMax = -Infinity, pxPerRad = null;
+  for (const src of sources) {
+    _skyDomeWithCalibration(src.preset, () => {
+      if (az0 === null) az0 = pixelToAzEl(canvasLW / 2, canvasLH / 2).azimut_world;
+      if (pxPerRad === null) pxPerRad = 2 * R * hScale * scale * (src.bitmap.width / canvasLW);
+      for (let i = 0; i <= 40; i++) for (let j = 0; j <= 20; j++) {
+        const q = pixelToAzEl(canvasLW * i / 40, canvasLH * j / 20);
+        if (!isFinite(q.theta_deg)) continue;
+        const a = ((q.azimut_world - az0 + 540) % 360) - 180 + az0;
+        if (q.theta_deg <= SKY_DOME_FLAT_AZ_EXTENT_EL) { azMin = Math.min(azMin, a); azMax = Math.max(azMax, a); }
+        elMin = Math.min(elMin, q.theta_deg); elMax = Math.max(elMax, q.theta_deg);
+      }
+    });
+  }
+  if (!(azMax > azMin) || !(pxPerRad > 0)) return null;   // calibration/canvas not ready yet
+  elMin = Math.max(SKY_DOME_FLAT_EL_MIN, elMin);
+  elMax = Math.min(SKY_DOME_FLAT_EL_MAX, elMax);
+  const tMin = Math.tan(elMin * D2R), tMax = Math.tan(elMax * D2R);
+  let f = pxPerRad;
+  let W = Math.round(f * (azMax - azMin) * D2R), H = Math.round(f * (tMax - tMin));
+  const k = Math.min(1, SKY_DOME_FLAT_MAX_PX / Math.max(W, H));
+  f *= k; W = Math.max(1, Math.round(W * k)); H = Math.max(1, Math.round(H * k));
+
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const octx = out.getContext('2d');
+  const outImg = octx.createImageData(W, H);
+  const o = outImg.data;
+  for (let i = 3; i < o.length; i += 4) o[i] = 255;   // opaque black where nothing covers it
+
+  const covered = new Uint8Array(W * H);
+  const G = SKY_DOME_FLAT_GRID, GW = Math.ceil(W / G) + 1, GH = Math.ceil(H / G) + 1;
+  for (const src of sources) {
+    const pix = _skyDomeBitmapPixels(src.bitmap);
+    const sxK = pix.w / canvasLW, syK = pix.h / canvasLH;
+    // Source position (scan canvas space) for every grid node; NaN where the ray misses the scan.
+    const gx = new Float32Array(GW * GH), gy = new Float32Array(GW * GH);
+    _skyDomeWithCalibration(src.preset, () => {
+      for (let gj = 0; gj < GH; gj++) {
+        const el = Math.atan(tMax - Math.min(H, gj * G) / f) / D2R;
+        for (let gi = 0; gi < GW; gi++) {
+          const az = azMin + Math.min(W, gi * G) / f / D2R;
+          const p = azElToPixel(az - 180 - yawDeg, el);
+          const n = gj * GW + gi;
+          if (p) { gx[n] = p.px; gy[n] = p.py; } else { gx[n] = NaN; gy[n] = NaN; }
+        }
+      }
+    });
+    for (let y = 0; y < H; y++) {
+      const gj = Math.floor(y / G), fy = (y - gj * G) / G;
+      for (let x = 0; x < W; x++) {
+        const gi = Math.floor(x / G), fx = (x - gi * G) / G;
+        const n00 = gj * GW + gi, n10 = n00 + 1, n01 = n00 + GW, n11 = n01 + 1;
+        const px = (gx[n00] * (1 - fx) + gx[n10] * fx) * (1 - fy) + (gx[n01] * (1 - fx) + gx[n11] * fx) * fy;
+        const py = (gy[n00] * (1 - fx) + gy[n10] * fx) * (1 - fy) + (gy[n01] * (1 - fx) + gy[n11] * fx) * fy;
+        if (!(px >= 0 && px < canvasLW && py >= 0 && py < canvasLH)) continue;   // also rejects NaN
+        const alpha = src.blend ? src.blend({ px, py }) : 1;
+        if (alpha <= 0) continue;
+        covered[y * W + x] = 1;
+        // Bilinear sample of the full-size bitmap.
+        const bx = px * sxK - 0.5, by = py * syK - 0.5;
+        const x0 = Math.max(0, Math.min(pix.w - 1, Math.floor(bx))), y0 = Math.max(0, Math.min(pix.h - 1, Math.floor(by)));
+        const x1 = Math.min(pix.w - 1, x0 + 1), y1 = Math.min(pix.h - 1, y0 + 1);
+        const ax = Math.max(0, Math.min(1, bx - x0)), ay = Math.max(0, Math.min(1, by - y0));
+        const i00 = (y0 * pix.w + x0) * 4, i10 = (y0 * pix.w + x1) * 4, i01 = (y1 * pix.w + x0) * 4, i11 = (y1 * pix.w + x1) * 4;
+        const t = (y * W + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const v = (pix.data[i00 + c] * (1 - ax) + pix.data[i10 + c] * ax) * (1 - ay)
+                  + (pix.data[i01 + c] * (1 - ax) + pix.data[i11 + c] * ax) * ay;
+          o[t + c] = alpha >= 1 ? v : o[t + c] * (1 - alpha) + v * alpha;
+        }
+      }
+    }
+  }
+  octx.putImageData(outImg, 0, 0);
+
+  // Crop: keep the band of rows, then of columns, whose coverage reaches SKY_DOME_FLAT_MIN_COVER.
+  const rowOk = (y) => { let n = 0; for (let x = 0; x < W; x++) n += covered[y * W + x]; return n >= SKY_DOME_FLAT_MIN_COVER * W; };
+  let y0 = 0, y1 = H - 1;
+  while (y0 < y1 && !rowOk(y0)) y0++;
+  while (y1 > y0 && !rowOk(y1)) y1--;
+  const colOk = (x) => { let n = 0; for (let y = y0; y <= y1; y++) n += covered[y * W + x]; return n >= SKY_DOME_FLAT_MIN_COVER * (y1 - y0 + 1); };
+  let x0 = 0, x1 = W - 1;
+  while (x0 < x1 && !colOk(x0)) x0++;
+  while (x1 > x0 && !colOk(x1)) x1--;
+  if (x0 === 0 && y0 === 0 && x1 === W - 1 && y1 === H - 1) return out;
+  const cropped = document.createElement('canvas');
+  cropped.width = x1 - x0 + 1; cropped.height = y1 - y0 + 1;
+  cropped.getContext('2d').drawImage(out, x0, y0, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+  return cropped;
+}
+function _skyDomeLoadImageBitmap(src) {
+  return new Promise((resolve) => {
+    const el = new Image();
+    el.onload = () => createImageBitmap(el).then(resolve).catch(() => resolve(null));
+    el.onerror = () => resolve(null);
+    el.src = src;
+  });
+}
+async function _skyDomeShowFlat() {
+  const btn = document.getElementById('btnSkyDomeFlat');
+  btn.disabled = true;
+  _skyDomeIndicatorShow('RENDERING', false);
+  try {
+    let sources;
+    if (skyDomePanoOn) {
+      await _skyDomePanoEnsureBitmaps();
+      sources = SKY_DOME_PANO_PAINT_ORDER
+        .filter((key) => _skyDomePanoBitmaps[key] && PRESETS && PRESETS[key])
+        .map((key) => ({ bitmap: _skyDomePanoBitmaps[key], preset: PRESETS[key], blend: key === 'GEN-1_5' ? _skyDomePanoTopBlendAlpha : null }));
+    } else {
+      const bm = imgGalleryKey ? (await _skyDomeLoadImageBitmap(`img/${imgGalleryKey}_L1.jpg`)) || imgBitmap : imgBitmap;
+      sources = bm ? [{ bitmap: bm, preset: null, blend: null }] : [];
+    }
+    if (!sources.length) return;
+    // Let the indicator reach the screen before the synchronous pass (same double rAF as the HD pass).
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const canvas = _skyDomeBuildFlat(sources);
+    if (!canvas) return;
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
+    const img = document.getElementById('skyDomeFlatModalImg');
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(blob);
+    document.getElementById('skyDomeFlatModal').classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    _skyDomeIndicatorHide();
+  }
+}
+function _skyDomeCloseFlat() {
+  const img = document.getElementById('skyDomeFlatModalImg');
+  document.getElementById('skyDomeFlatModal').classList.remove('visible');
+  if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+  img.removeAttribute('src');
+}
+document.getElementById('btnSkyDomeFlat').addEventListener('click', _skyDomeShowFlat);
+document.getElementById('btnSkyDomeFlatModalClose').addEventListener('click', _skyDomeCloseFlat);
+document.getElementById('skyDomeFlatModal').addEventListener('click', (e) => {
+  if (e.target.id === 'skyDomeFlatModal') _skyDomeCloseFlat();   // backdrop click only
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('skyDomeFlatModal').classList.contains('visible')) _skyDomeCloseFlat();
 });
 
 // ── Sky Map 3D zoom slider ─────────────────────────────────────────────────────────────────────

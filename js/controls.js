@@ -821,6 +821,7 @@ document.getElementById('btnScanWDec').addEventListener('click', () => applyScan
 document.getElementById('btnScanWInc').addEventListener('click', () => applyScanW(scanWmm + 1));
 
 function loadImage(file) {
+  imgGalleryKey      = null;   // an uploaded scan, not a Gallery image
   currentExposure    = null;   // uploaded image has no filelist metadata → no exposure overlay
   updateSolarYearField();      // the Year field is the user's own again
   currentChmi        = null;   // ditto for the CHMI sunshine overlay
@@ -872,6 +873,7 @@ uploadZone.addEventListener('drop', (e) => {
 
 document.getElementById('btnReset').addEventListener('click', () => {
   imgBitmap = null;
+  imgGalleryKey = null;
   mouseX = -1; mouseY = -1;
   document.getElementById('uploadZone').classList.remove('hidden');
   document.getElementById('canvasContainer').classList.add('hidden');
@@ -1724,6 +1726,7 @@ function loadGalleryImage() {
   // Aplikuj kalibraci z presets.json
   applyGalleryPreset(galleryState.genId, galleryState.imageIndex);
 
+  imgGalleryKey = `GEN-${galleryState.genId}_${galleryState.imageIndex}`;
   const path = `img/GEN-${galleryState.genId}_${galleryState.imageIndex}_L${galleryState.layer}.jpg`;
   const imgEl = new Image();
   imgEl.onload = () => {
