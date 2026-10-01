@@ -57,7 +57,7 @@ let skyMap3DOn = false;           // Sky Map's own 3D ON/OFF toggle - only relev
                                    // defaults OFF/2D (index.html's pill markup must agree, see #btnSkyMap3DToggle)
 let skyDomePlanetImageOn = false; // Planetarium's "render image" toggle (pilot) - see _skyDomePlanet3DDrawImage
 let skyDomePanoOn = false;        // Planetarium's "render pano" toggle - see _skyDomePlanet3DDrawPano
-let skyDomePanoEligible = false;  // true only while the active gallery image is GEN-1_5 or GEN-2_6
+let skyDomePanoEligible = false;  // true only while the active gallery image belongs to a SKY_DOME_PANOS pair
 let _skyDomeLayout = null;        // {mode, ...} - see _skyDomeProject/_skyDomePixelToAzEl
 
 // Which Display checkboxes stay live in Sky Dome - varies by projection, enabled one at a time as
@@ -1429,13 +1429,20 @@ function _skyDomeUpdateFlatRow() {
   row.style.display = on ? 'flex' : 'none';
 }
 // Called whenever the active gallery image changes (hooked into applyGalleryPreset(), controls.js)
-// - GEN-1_5/GEN-2_6 are the one pair shot from the same physical site (see this file's own
-// _skyDomePanoPaintOne comment), so RENDER PANO only ever makes sense while one of them is active.
+// - RENDER PANO only makes sense while the active image belongs to one of the SKY_DOME_PANOS pairs
+// (photos shot from the same physical site); switching to another pair's image turns it off too.
 function _skyDomeUpdatePanoRowSplit(genId, imageIndex) {
-  skyDomePanoEligible = SKY_DOME_PANO_KEYS.includes(`GEN-${genId}_${imageIndex}`);
+  const key = `GEN-${genId}_${imageIndex}`;
+  const next = SKY_DOME_PANOS.find((p) => p.base === key || p.top === key) || null;
+  const changed = next !== _skyDomePanoActive;
+  _skyDomePanoActive = next;
+  skyDomePanoEligible = !!next;
   const row = document.getElementById('skyDomePlanetImgToggleRow');
   if (row) row.classList.toggle('split', skyDomePanoEligible);
-  if (!skyDomePanoEligible && skyDomePanoOn) {
+  const btn = document.getElementById('btnSkyDomePano');
+  if (btn && next) btn.title = `Warp ${next.top} and ${next.base} (same site) onto the sky dome together, ${next.top} on top`;
+  if (changed) _skyDomePanoCache.key = '';
+  if ((!skyDomePanoEligible || changed) && skyDomePanoOn) {
     // Switched to a different image while Pano was on - turn it off, same as clicking it off
     // directly, rather than leaving it "on" for a pair of photos that's no longer even showing.
     _skyDomePanoSetOn(false);
@@ -1498,7 +1505,7 @@ document.getElementById('btnSkyDomePlanetImgToggle').addEventListener('click', (
   if (skyDomePlanetImageOn) _skyDomePlanetHDSchedule();   // freshly on and untouched - worth arming
 });
 
-// ── Planetarium "render pano" toggle - GEN-1_5 + GEN-2_6 composited together ────────────────────
+// ── Planetarium "render pano" toggle - the active SKY_DOME_PANOS pair composited together ───────
 // Only ever shown (see _skyDomeUpdatePanoRowSplit below) while the active gallery image IS one of
 // that pair, so this can unconditionally assume both presets exist once clicked.
 function _skyDomePanoSetOn(on) {
@@ -1542,7 +1549,7 @@ document.getElementById('btnSkyDomePano').addEventListener('click', () => {
 // matches the calibration as it is right now, Analyzer tweaks included; nothing is stored. For a
 // Gallery image the source is its own full-size L1 file (imgGalleryKey), for an uploaded scan the
 // loaded image itself. RENDER PANO gives both its photos in one panorama, painted and blended
-// exactly like the dome (SKY_DOME_PANO_PAINT_ORDER, GEN-1_5's own edge fade on top).
+// exactly like the dome (SKY_DOME_PANOS: same paint order, the top photo's own edge fade).
 const SKY_DOME_FLAT_EL_MIN = -45, SKY_DOME_FLAT_EL_MAX = 72;   // tan() would run away towards the zenith
 const SKY_DOME_FLAT_MAX_PX = 4096;                             // longest output side
 const SKY_DOME_FLAT_GRID = 4;                                  // mapping computed every 4 px, interpolated between
@@ -1694,9 +1701,9 @@ async function _skyDomeShowFlat() {
     let sources;
     if (skyDomePanoOn) {
       await _skyDomePanoEnsureBitmaps();
-      sources = SKY_DOME_PANO_PAINT_ORDER
+      sources = _skyDomePanoKeys()
         .filter((key) => _skyDomePanoBitmaps[key] && PRESETS && PRESETS[key])
-        .map((key) => ({ bitmap: _skyDomePanoBitmaps[key], preset: PRESETS[key], blend: key === 'GEN-1_5' ? _skyDomePanoTopBlendAlpha : null }));
+        .map((key) => ({ bitmap: _skyDomePanoBitmaps[key], preset: PRESETS[key], blend: key === _skyDomePanoActive.top ? _skyDomePanoTopBlendAlpha : null }));
     } else {
       const bm = imgGalleryKey ? (await _skyDomeLoadImageBitmap(`img/${imgGalleryKey}_L1.jpg`)) || imgBitmap : imgBitmap;
       sources = bm ? [{ bitmap: bm, preset: null, blend: null }] : [];
@@ -2603,8 +2610,8 @@ function _sdPlanetImgEnsureScratch(W, H, RES) {
 // blendFn is optional (undefined for the single-image path and for a pano's own base layer) - when
 // given, it's called with each patch's own source midpoint (sMid, the same {px,py} the feather calc
 // already samples) and must return an EXTRA multiplier in [0,1], applied on top of the existing
-// feather/rim-fade alpha rather than replacing it. Used by the pano composite to fade GEN-1_5's own
-// right edge into GEN-2_6 beneath it - see _skyDomePanoTopBlendAlpha.
+// feather/rim-fade alpha rather than replacing it. Used by the pano composite to fade the top photo's
+// own seam edge into the base photo beneath it - see _skyDomePanoTopBlendAlpha.
 //
 // Two-pass render (photo layer + alpha mask, composited via destination-in) instead of drawing each
 // triangle directly at its own alpha: the seam-pad inflate (SD_PLANET_IMG_SEAM_PAD) makes adjacent
@@ -2765,10 +2772,10 @@ function _skyDomePlanet3DDrawImage(ctx, layout) {
   ctx.drawImage(cache.canvas, 0, 0, W, H);
 }
 
-// ── Planetarium "render pano": GEN-1_5 + GEN-2_6 composited, GEN-1_5 always on top ──────────────
-// Both photos were shot from the SAME physical pinhole site (confirmed via presets.json: identical
-// latitude/longitude/hemisphere/time_zone) but at different yaw - and, it turns out, slightly
-// different pitch/roll/horizon/radius too, not just yaw - so each needs to be warped through its
+// ── Planetarium "render pano": a pair of photos (SKY_DOME_PANOS) composited, fixed top layer ─────
+// Both photos of a pair were shot from the SAME physical pinhole site (confirmed via presets.json:
+// identical latitude/longitude/hemisphere/time_zone) but at different yaw and/or pitch - and
+// slightly different roll/horizon/radius too - so each needs to be warped through its
 // OWN calibration, not the app's single currently-active one. Rather than forking a parameterized
 // copy of the whole single-image warp pipeline, _skyDomePanoPaintOne below temporarily swaps just
 // the six calibration globals _skyDomePlanetImagePixel/_rotCanInvWorld actually read
@@ -2777,28 +2784,39 @@ function _skyDomePlanet3DDrawImage(ctx, layout) {
 // exact same, already-tuned warp/feather/mesh-LOD math rather than duplicating it. Nothing else
 // needs swapping: canvasLW/canvasLH/cx/cy are the fixed normalised scan size + its centre (the
 // photo is always stretched to fill it, not sized from its own pixel dimensions), and scale only
-// depends on scanWmm, which is identical (178mm) for both these two presets.
-const SKY_DOME_PANO_KEYS = ['GEN-1_5', 'GEN-2_6'];   // the eligible pair (order-independent use, e.g. eligibility/preload)
-// Paint order, base layer first: briefly made dynamic ("whichever is selected paints on top"), then
-// reverted the very next round to a fixed GEN-1_5-always-on-top per the user's own explicit choice,
-// now paired with GEN-1_5's own hand-tuned edge blend below - "shodně u obou obrázků, takže
-// dostaneme stejný výstup" (the SAME composite regardless of which of the two is the active gallery
-// selection), which a fixed order guarantees and the earlier dynamic one didn't.
-const SKY_DOME_PANO_PAINT_ORDER = ['GEN-2_6', 'GEN-1_5'];
-
-// GEN-1_5's own right-edge feather blend into GEN-2_6 beneath it - a classic panorama-stitch seam
-// blend, defined in GEN-1_5's OWN calibrated source-photo pixel space (0..canvasLW), not screen
-// space: fully opaque from its own left edge out to 75% of its width, then fading LINEARLY to fully
-// transparent by its own right edge (100% width) - "zleva 100 procent až do 75 procent šířky, poté
-// začne prosvítat". Deliberately hand-tuned for this ONE specific pair, not a generic reusable
-// blending system - the user's own note: "každé takové panorama je unikátní a je potřeba to
-// prolnutí odladit individuálně" (every such panorama is unique, this blend needs tuning per pair).
-const SKY_DOME_PANO_BLEND_START_FRAC = 0.75;   // fraction of canvasLW where the fade begins
+// depends on scanWmm, which is identical (178mm) for every preset in these pairs.
+// The panoramas: pairs of photos shot from the same site, base layer painted first, top layer over
+// it with its own seam fade. Paint order is fixed per pair - the same composite whichever of the
+// two is the active gallery selection. Each pair's fade is tuned by hand ("každé takové panorama je
+// unikátní a je potřeba to prolnutí odladit individuálně"), defined in the TOP photo's own
+// calibrated source-pixel space (0..canvasLW x 0..canvasLH), not screen space: fully opaque up to
+// `start` of the way towards `edge`, then fading LINEARLY to fully transparent at that edge.
+//   GEN-1_5 + GEN-2_6: yaw 26 vs 116.5 deg - side by side, GEN-2_6 west of GEN-1_5, so GEN-1_5's
+//     RIGHT edge fades from 75% of its width ("zleva 100 procent až do 75 procent šířky, poté začne
+//     prosvítat").
+//   GEN-1_3 + GEN-2_1: yaw -0.5 vs 6.5 deg but pitch 16.5 vs 34.5 deg - one above the other,
+//     GEN-2_1 reaching higher up the sky, so GEN-1_3's TOP edge fades, from 75% of its height
+//     counted from the bottom - the same 75% rule as the first pair, turned upward.
+const SKY_DOME_PANOS = [
+  { base: 'GEN-2_6', top: 'GEN-1_5', fade: { edge: 'right', start: 0.75 } },
+  { base: 'GEN-2_1', top: 'GEN-1_3', fade: { edge: 'top',   start: 0.75 } },
+];
+// The pair the active gallery image belongs to, or null (see _skyDomeUpdatePanoRowSplit).
+let _skyDomePanoActive = null;
+// Paint order of the active pair, base layer first.
+function _skyDomePanoKeys() {
+  return _skyDomePanoActive ? [_skyDomePanoActive.base, _skyDomePanoActive.top] : [];
+}
+// Extra alpha for a patch of the active pair's TOP photo at source point sMid {px, py}.
 function _skyDomePanoTopBlendAlpha(sMid) {
-  const frac = sMid.px / canvasLW;
-  if (frac <= SKY_DOME_PANO_BLEND_START_FRAC) return 1;
+  const f = _skyDomePanoActive.fade;
+  const frac = f.edge === 'right' ? sMid.px / canvasLW
+    : f.edge === 'left' ? 1 - sMid.px / canvasLW
+    : f.edge === 'top' ? 1 - sMid.py / canvasLH
+    : sMid.py / canvasLH;   // 'bottom'
+  if (frac <= f.start) return 1;
   if (frac >= 1) return 0;
-  return 1 - (frac - SKY_DOME_PANO_BLEND_START_FRAC) / (1 - SKY_DOME_PANO_BLEND_START_FRAC);
+  return 1 - (frac - f.start) / (1 - f.start);
 }
 
 // Loaded lazily (only once RENDER PANO is actually clicked) and kept for the rest of the session -
@@ -2824,7 +2842,7 @@ function _skyDomePanoLoadBitmap(key) {
   });
 }
 function _skyDomePanoEnsureBitmaps() {
-  return Promise.all(SKY_DOME_PANO_KEYS.map(_skyDomePanoLoadBitmap));
+  return Promise.all(_skyDomePanoKeys().map(_skyDomePanoLoadBitmap));
 }
 
 // Own texture cache, one slot per photo (keyed by the GEN id, not shared with
@@ -2848,7 +2866,7 @@ function _skyDomePanoPaintOne(ctx, layout, key, W, H, RES) {
   const bitmap = _skyDomePanoBitmaps[key];
   if (!preset || !bitmap) return;   // not loaded (yet) - skip this layer, don't block the other one
   const tex = _skyDomePanoTexture(key, bitmap);
-  const blendFn = key === 'GEN-1_5' ? _skyDomePanoTopBlendAlpha : null;   // only the top layer fades
+  const blendFn = _skyDomePanoActive && key === _skyDomePanoActive.top ? _skyDomePanoTopBlendAlpha : null;   // only the top layer fades
   const savedYaw = yawDeg, savedPitch = pitchDeg, savedRoll = rollDeg,
         savedHorizon = horizonMm, savedRadius = radius, savedHScale = hScale;
   try {
@@ -2881,7 +2899,7 @@ function _skyDomePanoCacheKey(layout) {
     p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
     layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
     canvasLW, canvasLH, _skyDomePlanet3DInteracting,
-    !!_skyDomePanoBitmaps['GEN-1_5'], !!_skyDomePanoBitmaps['GEN-2_6'],
+    ..._skyDomePanoKeys().map((k) => k + ':' + !!_skyDomePanoBitmaps[k]),
   ].join('|');
 }
 function _skyDomePlanet3DDrawPano(ctx, layout) {
@@ -2905,7 +2923,7 @@ function _skyDomePlanet3DDrawPano(ctx, layout) {
   if (cache.key !== key) {
     cache.cctx.setTransform(RES, 0, 0, RES, 0, 0);
     cache.cctx.clearRect(0, 0, W, H);
-    for (const k of SKY_DOME_PANO_PAINT_ORDER) _skyDomePanoPaintOne(cache.cctx, layout, k, W, H, RES);
+    for (const k of _skyDomePanoKeys()) _skyDomePanoPaintOne(cache.cctx, layout, k, W, H, RES);
     cache.key = key;
   }
 

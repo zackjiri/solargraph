@@ -1610,8 +1610,8 @@ function applyGalleryPreset(genId, imageIndex) {
 
   _applyPresetLocation(preset);
   refreshCalibLimits();
-  // Sky Dome Planetarium's "RENDER PANO" split button only makes sense for the one pair of images
-  // shot from the same physical site (GEN-1_5/GEN-2_6) - re-evaluate on every image switch.
+  // Sky Dome Planetarium's "RENDER PANO" split button only makes sense for the pairs of images shot
+  // from the same physical site (SKY_DOME_PANOS, render-skydome.js) - re-evaluate on every image switch.
   if (typeof _skyDomeUpdatePanoRowSplit === 'function') _skyDomeUpdatePanoRowSplit(genId, imageIndex);
 }
 
