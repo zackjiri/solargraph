@@ -1338,28 +1338,34 @@
     justify-content: center;
   }
   .photo-modal.visible { display: flex; }
+  /* 92dvh where supported: iPad Safari's vh counts its own toolbars, so 92vh could still push the
+     image's top edge (and the close button with it) under them. */
   .photo-modal-body {
     position: relative;
-    max-width: 92vw; max-height: 92vh;
+    max-width: 92vw; max-height: 92vh; max-height: 92dvh;
   }
   .photo-modal-img {
     display: block;
-    max-width: 92vw; max-height: 92vh;
+    max-width: 92vw; max-height: 92vh; max-height: 92dvh;
     border-radius: var(--radius-md);
     box-shadow: 0 8px 40px rgba(0,0,0,0.8);
   }
+  /* Inside the image's top-right corner, so it can never end up off-screen when the image fills the
+     viewport (it used to sit 14px outside the corner and vanished on iPad); the photos all have a
+     dark border there, and the dark disc keeps it readable over anything. */
   .photo-modal-close {
-    position: absolute; top: -14px; right: -14px;
+    position: absolute; top: 10px; right: 10px;
+    z-index: 1;
     width: 32px; height: 32px;
     border-radius: 50%;
-    border: none;
-    background: var(--panel);
-    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.35);
+    background: rgba(0,0,0,0.6);
+    color: #fff;
     font-size: 14px;
     cursor: pointer;
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   }
-  .photo-modal-close:hover { color: var(--accent); }
+  .photo-modal-close:hover { color: var(--accent); background: rgba(0,0,0,0.8); }
 
   .meta-row {
     display: flex;
@@ -2301,6 +2307,29 @@
     display: flex;
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   }
+
+  /* SHOW FLAT - a smaller button on its own line under the render row, its left edge lined up
+     with the row's buttons (the row is 230px wide with 8px padding, right-anchored at 12.5px). */
+  #skyDomeFlatRow {
+    position: absolute; top: 88px; right: 12.5px;
+    width: 230px; box-sizing: border-box;
+    padding: 0 8px;
+    z-index: 12; display: none;          /* shown by JS only while RENDER IMAGE/PANO is on */
+    justify-content: flex-start;
+    pointer-events: none;                /* only the button itself takes clicks */
+  }
+  #btnSkyDomeFlat {
+    pointer-events: auto;
+    height: 20px; padding: 0 10px;
+    background: rgba(10,18,26,0.85);
+    color: #8fd4f7;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.15em; text-transform: uppercase;
+    transition: background 0.15s;
+  }
+  #btnSkyDomeFlat:hover { background: rgba(10,18,26,0.95); }
+  #btnSkyDomeFlat:disabled { opacity: 0.5; cursor: progress; }
 
   /* Rendering-in-progress indicator (pulsing dot + label) - a fixed yellow, not the theme-varying
      --accent (which turns dark orange-brown in light mode for contrast on the light SIDEBAR
