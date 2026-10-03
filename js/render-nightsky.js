@@ -875,7 +875,15 @@ function _nightSkyUpdateReadout() {
   const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const local = _skyFromJulianDateUT(jd + tz / 24);
   valDay.textContent = MONTHS[local.month - 1] + ' ' + local.day + ', ' + local.year;
-  _nightSkyTimeReadout().text.nodeValue = _nightSkyFmtHM(local.hourUT) + ' local';
+  _nightSkyTimeReadout().text.nodeValue = _nightSkyFmtHMS(local.hourUT) + ' local';
+}
+// hh:mm:ss for the info bar, cut down to the whole second (no rounding, so it reads like a clock).
+// The 1 ms nudge only absorbs floating-point error from the Julian-Date round trip (~0.05 ms), so a
+// value meant as exactly 13:00:00 doesn't come out as 12:59:59.
+function _nightSkyFmtHMS(h) {
+  const t = ((Math.floor(h * 3600 + 1e-3) % 86400) + 86400) % 86400;
+  const p = n => String(n).padStart(2, '0');
+  return p(Math.floor(t / 3600)) + ':' + p(Math.floor(t % 3600 / 60)) + ':' + p(t % 60);
 }
 // #valTime in Night Sky = a text node + the red "REC" dot right of "local", blinking once a second
 // while the animation runs (_nightSkySetPlayIcon). The dot is one persistent element, so the
