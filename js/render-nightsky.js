@@ -669,7 +669,7 @@ const _nightSkyNow = new Date();
 let nightSkyYear = _nightSkyNow.getUTCFullYear();
 let nightSkyMonth = _nightSkyNow.getUTCMonth() + 1;   // 1-based
 let nightSkyDay = _nightSkyNow.getUTCDate();
-let nightSkyHourUT = _nightSkyNow.getUTCHours() + _nightSkyNow.getUTCMinutes() / 60;
+let nightSkyHourUT = _nightSkyNow.getUTCHours() + _nightSkyNow.getUTCMinutes() / 60 + _nightSkyNow.getUTCSeconds() / 3600;
 // Whenever the calendar defaults to "now" (this module-load init, and SET NOW below), the shared
 // Time zone field (timeZoneHours, controls.js - defaults to a hardcoded +1 otherwise) should default
 // to the SYSTEM's own current UTC offset too, not stay on that hardcoded value regardless of where
@@ -789,7 +789,7 @@ function _nightSkySetNow() {
   nightSkyYear = now.getUTCFullYear();
   nightSkyMonth = now.getUTCMonth() + 1;
   nightSkyDay = now.getUTCDate();
-  nightSkyHourUT = now.getUTCHours() + now.getUTCMinutes() / 60;
+  nightSkyHourUT = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
   applyTimeZone(_nightSkySystemTzHours(now));
   _nightSkySyncControls();
 }
@@ -875,7 +875,24 @@ function _nightSkyUpdateReadout() {
   const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const local = _skyFromJulianDateUT(jd + tz / 24);
   valDay.textContent = MONTHS[local.month - 1] + ' ' + local.day + ', ' + local.year;
-  valTime.textContent = _nightSkyFmtHM(local.hourUT) + ' local';
+  _nightSkyTimeReadout().text.nodeValue = _nightSkyFmtHM(local.hourUT) + ' local';
+}
+// #valTime in Night Sky = a text node + the red "REC" dot right of "local", blinking once a second
+// while the animation runs (_nightSkySetPlayIcon). The dot is one persistent element, so the
+// per-frame time updates only touch the text node and never restart its CSS blink. Other modes
+// overwrite #valTime wholesale; the structure is rebuilt here on the next Night Sky update.
+function _nightSkyTimeReadout() {
+  const valTime = document.getElementById('valTime');
+  let dot = valTime.querySelector('.rec-dot');
+  if (!dot || !valTime.firstChild || valTime.firstChild.nodeType !== Node.TEXT_NODE) {
+    dot = document.createElement('span');
+    dot.className = 'rec-dot';
+    dot.title = 'Animation running';
+    if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive) dot.classList.add('on');
+    valTime.textContent = '';
+    valTime.append(document.createTextNode(''), dot);
+  }
+  return { text: valTime.firstChild, dot };
 }
 
 // ─── Time strip: infinite drag-the-belt scrubber ────────────────────────────────────────────────
@@ -1191,6 +1208,9 @@ function _nightSkySetPlayIcon(playing) {
   const btn = document.getElementById('btnNightSkyPlay');
   if (!btn) return;
   btn.classList.toggle('playing', playing);
+  // only an existing dot: stop() also runs on leaving Night Sky, when #valTime may already be another mode's
+  const dot = document.querySelector('#valTime .rec-dot');
+  if (dot) dot.classList.toggle('on', playing);
   const ic = btn.querySelector('svg');
   if (ic) ic.innerHTML = playing
     ? '<rect x="2" y="2" width="8" height="8" rx="1"/>'
