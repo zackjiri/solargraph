@@ -2837,7 +2837,7 @@ function _skyDomePanoLoadBitmap(key) {
     // L1 = "ENHANCED" (index.html's own View radio group) - the processed solargraph, per the
     // user's own explicit correction ("myslel jsem pano jen ze snímků L1, tedy upravených
     // solargrafů"), NOT L2 (the separate file core.js's own loadSplitImage() fetches for the
-    // Raw/Enhanced split-screen COMPARISON view - a different feature, unrelated to this one).
+    // Enhanced/real-scene split-screen COMPARISON view - a different feature, unrelated to this one).
     imgEl.src = `img/GEN-${genId}_${imageIndex}_L1.jpg`;
   });
 }

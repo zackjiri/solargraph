@@ -454,6 +454,15 @@ document.getElementById('presetFileInput').addEventListener('change', (e) => {
   e.target.value = ''; // reset so same file can be re-imported
 });
 
+// Prepare L2: the Warp tool in a new tab, with the current Gallery image's L1 preloaded through
+// ?gen=&image= (warp_tool.html fetches img/GEN-X_Y_L1.jpg itself). A scan loaded by hand has no
+// project file to point at, so the tool then opens empty.
+document.getElementById('btnPrepareL2').addEventListener('click', () => {
+  const m = /^GEN-(\d+)_(\d+)$/.exec(imgGalleryKey || '');
+  const url = m ? `warp_tool.html?gen=${m[1]}&image=${m[2]}` : 'warp_tool.html';
+  window.open(url, '_blank', 'noopener');
+});
+
 // ─── Location display format (DEC/DM) ──────────────────────────────────────
 // Originally an Eclipse-only refinement (js/render-eclipse.js, build 34_1-35_1) - promoted to a
 // shared, app-wide setting (build 36_1, user's own request) so Analyzer's #inpLat/#inpLong get
