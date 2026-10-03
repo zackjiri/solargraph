@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solargraphy Warp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --panel: #0f1318;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --pin-a: #e84040;
+    --pin-b: #20a0e8;
+    --accent-green: #50dc78;
+    --text: #c8d4e0;
+    --dim: #6a7a8a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --radius-sm: 6px;
+    --control-fill: rgba(128,128,128,0.14);
+    --control-fill-hover: rgba(128,128,128,0.24);
+    --sidebar: 280px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 15px;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
+  header .sub { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  main { flex: 1; display: flex; min-height: 0; }
+  #views { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  /* Review layout: L1 fills the canvas area, L2 shrinks to an inset box bottom-left */
+  #views.review #viewA { position: absolute; inset: 0; border-bottom: none; }
+  #views.review #viewB {
+    position: absolute; left: 12px; bottom: 12px; z-index: 5; flex: none;
+    width: clamp(220px, 30%, 560px); aspect-ratio: var(--ratio-b, 2); max-height: 45%;
+    border: 1px solid var(--pin-b); border-radius: var(--radius-sm); overflow: hidden;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  }
+  #views.review #viewB .tag { left: 6px; top: 6px; font-size: 10px; padding: 2px 6px; }
+  /* layout switch, top-right over the canvas (same look as the viewer's RENDER IMAGE / PANO row) */
+  #layoutToggle {
+    position: absolute; top: 8px; right: 12px; z-index: 12; width: 230px; display: flex;
+    padding: 5px 8px; background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #layoutToggle button {
+    flex: 1 1 0; min-width: 0; height: 24px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(10,18,26,0.85); color: #8fd4f7; border: none;
+    font-family: var(--mono); font-size: 9px; font-weight: normal; letter-spacing: 0.15em; text-transform: uppercase;
+    transition: background 0.15s, color 0.15s;
+  }
+  #layoutToggle button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  #layoutToggle button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  #layoutToggle button:hover { background: rgba(10,18,26,0.95); }
+  /* active half: outlined like the selected Off / Overlay / Split / Edges button */
+  #layoutToggle button.on { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .view {
+    flex: 1; position: relative; min-height: 0; border-bottom: 1px solid var(--border);
+    background: #000;
+  }
+  .view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .view .tag {
+    position: absolute; left: 10px; top: 8px; z-index: 2; pointer-events: none;
+    font-family: var(--mono); font-size: 12px; padding: 3px 8px; border-radius: var(--radius-sm);
+    background: rgba(10,12,15,0.75); border: 1px solid var(--border);
+  }
+  .view .tag b { font-weight: normal; }
+  #viewA .tag b { color: var(--pin-a); }
+  #viewB .tag b { color: var(--pin-b); }
+  /* empty state: paper-shaped drop zone in the style of the viewer's "load new image" zone */
+  .view .empty {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    container-type: size;
+  }
+  .view .empty[hidden] { display: none; }
+  .zone {
+    --pin: var(--pin-a); --ratio: 1.4016;           /* L1: photo paper 178 x 127 mm */
+    width: min(calc(100cqw - 16px), calc((100cqh - 16px) * var(--ratio)));
+    aspect-ratio: var(--ratio);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    border: 1px dashed var(--pin); border-radius: var(--radius-sm);
+    background: var(--panel); cursor: pointer; text-align: center; padding: 8px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  #viewB .zone { --pin: var(--pin-b); --ratio: 2; }  /* L2: 2:1 panorama */
+  .zone:hover { border-style: solid; background: #12161c; }
+  .zone p { margin: 0; font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: 0.13em; }
+  .zone p span { color: var(--pin); }
+  .view.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+  .view.waiting { box-shadow: inset 0 0 0 2px var(--accent); }
+  #viewA.waiting { box-shadow: inset 0 0 0 2px var(--pin-a); }
+  #viewB.waiting { box-shadow: inset 0 0 0 2px var(--pin-b); }
+
+  aside {
+    width: var(--sidebar); flex: none; background: var(--panel); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 10px 12px 16px; display: flex; flex-direction: column; gap: 0;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  /* sections and titles follow the viewer's right sidebar (.sidebar-section / .sidebar-title) */
+  .sidebar-section { padding: 8px 0; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .sidebar-title {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent-green); margin-bottom: 2px;
+  }
+  .section-toggle {
+    background: none; border: none; color: var(--accent-green); cursor: pointer;
+    font-size: 12px; letter-spacing: normal; text-transform: none; padding: 0; line-height: 1;
+    flex-shrink: 0; opacity: 0.75; transition: opacity 0.15s;
+  }
+  .section-toggle:hover:not(:disabled) { opacity: 1; background: none; }
+  .sidebar-section.collapsed > :not(.sidebar-title) { display: none !important; }
+  button, select {
+    font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text);
+    background: var(--control-fill); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 6px 10px; cursor: pointer;
+  }
+  button:hover:not(:disabled), select:hover { background: var(--control-fill-hover); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  .row { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
+  .row > button, .row > select { flex: 1; min-width: 0; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+  .btn-a { background: rgba(232,64,64,0.18); border-color: rgba(232,64,64,0.6); }
+  .btn-a:hover:not(:disabled) { background: rgba(232,64,64,0.3); }
+  .btn-b { background: rgba(32,160,232,0.18); border-color: rgba(32,160,232,0.6); }
+  .btn-b:hover:not(:disabled) { background: rgba(32,160,232,0.3); }
+  #btnClear { color: var(--pin-a); background: rgba(232,64,64,0.1); border-color: rgba(232,64,64,0.45); }
+  #btnClear:hover:not(:disabled) { background: rgba(232,64,64,0.2); }
+  .file-line { font-family: var(--mono); font-size: 12px; color: var(--dim); word-break: break-all; }
+  .file-line + .file-line { margin-top: 3px; }
+  .file-line .warn { color: var(--accent); }
+  /* Fit: four corner brackets drawn into the button, like a viewfinder */
+  #btnFit {
+    --c: var(--text); --l: 8px; --t: 1.5px; --i: 4px;
+    background:
+      linear-gradient(var(--c), var(--c)) left var(--i) top var(--i) / var(--l) var(--t),
+      linear-gradient(var(--c), var(--c)) left var(--i) top var(--i) / var(--t) var(--l),
+      linear-gradient(var(--c), var(--c)) right var(--i) top var(--i) / var(--l) var(--t),
+      linear-gradient(var(--c), var(--c)) right var(--i) top var(--i) / var(--t) var(--l),
+      linear-gradient(var(--c), var(--c)) left var(--i) bottom var(--i) / var(--l) var(--t),
+      linear-gradient(var(--c), var(--c)) left var(--i) bottom var(--i) / var(--t) var(--l),
+      linear-gradient(var(--c), var(--c)) right var(--i) bottom var(--i) / var(--l) var(--t),
+      linear-gradient(var(--c), var(--c)) right var(--i) bottom var(--i) / var(--t) var(--l),
+      var(--control-fill);
+    background-repeat: no-repeat;
+  }
+  #btnFit:hover:not(:disabled) { --c: var(--accent); background-color: var(--control-fill-hover); }
+  /* Export: inverted colours */
+  #btnExport { background: var(--text); color: var(--bg); border-color: var(--text); }
+  #btnExport:hover:not(:disabled) { background: #fff; border-color: #fff; }
+  #btnWarp {
+    width: 100%; padding: 10px; font-size: 18px; letter-spacing: 0.1em;
+    background: linear-gradient(90deg, rgba(232,64,64,0.25), rgba(32,160,232,0.25));
+    border-color: var(--accent);
+  }
+  /* warped label: letters follow an arch with a fisheye-like bulge in the middle */
+  #btnWarp .wl {
+    display: inline-block; transform: translateY(var(--y)) rotate(var(--r)) scale(var(--s));
+    transform-origin: 50% 60%; transition: transform 0.25s;
+  }
+  #btnWarp .wl.sp { width: 0.35em; }
+  #btnWarp:hover:not(:disabled) .wl { animation: warpWave 1.2s ease-in-out infinite; animation-delay: var(--d); }
+  @keyframes warpWave {
+    0%, 100% { transform: translateY(var(--y)) rotate(var(--r)) scale(var(--s)); }
+    50% { transform: translateY(calc(var(--y) * -1)) rotate(calc(var(--r) * -1)) scale(var(--s)); }
+  }
+  @media (prefers-reduced-motion: reduce) { #btnWarp:hover:not(:disabled) .wl { animation: none; } }
+  #status { font-family: var(--mono); font-size: 12px; color: var(--dim); min-height: 1.4em; }
+  #status.ok { color: var(--accent-green); }
+  #status.err { color: var(--pin-a); }
+  /* pair table: # | L1 | L2 | residual | remove */
+  .pair-head, #pairList li {
+    display: grid; grid-template-columns: 34px 22px 22px 1fr 26px; align-items: center;
+    padding: 3px 6px; font-family: var(--mono); font-size: 12px;
+  }
+  .pair-head {
+    color: var(--dim); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); padding-bottom: 4px;
+  }
+  .pair-head[hidden] { display: none; }
+  /* header and rows share one scroll box, so a scrollbar narrows both alike */
+  .pair-table { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .pair-table:not(:has(li)) { display: none; }
+  .pair-head { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+  .pair-head .l1 { color: var(--pin-a); text-align: center; }
+  .pair-head .l2 { color: var(--pin-b); text-align: center; }
+  .pair-head .res, #pairList .res { text-align: right; padding-right: 6px; }
+  #pairList { list-style: none; margin: 0; padding: 0; }
+  #pairList li { border-radius: var(--radius-sm); cursor: pointer; }
+  #pairList li:hover { background: var(--control-fill); }
+  #pairList li.sel { background: var(--control-fill-hover); outline: 1px solid var(--accent); outline-offset: -1px; }
+  #pairList .num { color: var(--text); }
+  #pairList .dot { width: 9px; height: 9px; border-radius: 50%; justify-self: center; }
+  #pairList .dot.a { background: var(--pin-a); }
+  #pairList .dot.b { background: var(--pin-b); }
+  #pairList .dot.missing { background: transparent; border: 1px dashed var(--dim); }
+  #pairList .res { color: var(--dim); align-self: stretch; display: flex; align-items: center; justify-content: flex-end; }
+  /* residual bar: grows from the right edge, the largest residual spans the whole column */
+  #pairList .res.val {
+    color: #fff; border-radius: 2px;
+    background: linear-gradient(to left, rgba(128,128,128,0.35) var(--w), transparent var(--w));
+  }
+  #pairList .del { padding: 0; font-size: 13px; line-height: 18px; }
+  label.chk { display: flex; gap: 6px; align-items: center; font-size: 14px; cursor: pointer; }
+  .slider { display: grid; grid-template-columns: 70px 1fr 42px; gap: 6px; align-items: center; font-size: 14px; }
+  .slider output { font-family: var(--mono); font-size: 12px; text-align: right; color: #fff; }
+  .slider.off output { color: var(--dim); }
+  /* range sliders: custom track + thumb so the colours can be driven per slider */
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+    background: transparent; cursor: pointer;
+    --track: linear-gradient(90deg, var(--accent) var(--pct, 50%), var(--border) var(--pct, 50%));
+    --thumb: var(--accent);
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--track); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--track); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+    background: var(--thumb); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--thumb);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--thumb); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--thumb);
+  }
+  /* Smoothing: green (exact) -> orange -> red (loose); the thumb takes the colour under it */
+  #rngSmooth { --track: linear-gradient(90deg, #50dc78, #e8a020 50%, #e84040); }
+  /* inactive slider row (Off preview) */
+  .slider.off { color: var(--dim); }
+  .slider.off input[type=range] { filter: grayscale(1); opacity: 0.35; cursor: default; }
+  /* step badges in section titles: red (first step) -> green (export) */
+  .sidebar-title > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+  .step {
+    width: 17px; height: 17px; border-radius: 50%; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0; text-transform: none;
+    color: #0a0c0f; background: var(--step);
+  }
+  .step.info { background: var(--dim); color: var(--panel); font-family: var(--sans); font-size: 13px; font-weight: 700; }
+  .seg { display: flex; }
+  .seg button { flex: 1; border-radius: 0; margin-left: -1px; }
+  .seg button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); margin-left: 0; }
+  .seg button.on { position: relative; z-index: 1; }   /* keep the active border above its neighbours */
+  .seg button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  .help { font-size: 13px; color: var(--dim); line-height: 1.45; }
+  .help-lines div + div { margin-top: 3px; }
+  .help kbd {
+    font-family: var(--mono); font-size: 11px; padding: 0 4px; border: 1px solid var(--border);
+    border-radius: 3px; color: var(--text);
+  }
+  .stale { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+  @media (max-width: 760px) {
+    main { flex-direction: column; overflow-y: auto; }
+    #views { flex: none; height: 120vw; }
+    aside { width: 100%; border-left: none; border-top: 1px solid var(--border); overflow: visible; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SOLARGRAPHY WARP</h1>
+  <span class="sub">L2 real scene &rarr; L1 can projection &middot; thin-plate spline</span>
+</header>
+<main>
+  <div id="views">
+    <div id="layoutToggle" role="group" aria-label="Layout">
+      <button data-layout="pins" class="on" title="L1 and L2 stacked at the same size, for placing pin pairs">Place pins</button>
+      <button data-layout="review" title="L1 fills the canvas to review the warp, L2 shrinks to a box bottom-left">Review warp</button>
+    </div>
+    <div class="view" id="viewA">
+      <canvas></canvas>
+      <div class="tag"><b>&#9679;</b> L1 &middot; ENHANCED <span class="name"></span></div>
+      <div class="empty"><div class="zone" data-load="A" title="Load the L1 enhanced scan (the target can projection)">
+        <p>Drop L1 scan here or <span>click to select file</span></p>
+      </div></div>
+    </div>
+    <div class="view" id="viewB">
+      <canvas></canvas>
+      <div class="tag"><b>&#9679;</b> L2 &middot; REAL SCENE <span class="name"></span></div>
+      <div class="empty"><div class="zone" data-load="B" title="Load the L2 real scene photo (the image that gets warped)">
+        <p>Drop L2 photo here or <span>click to select file</span></p>
+      </div></div>
+    </div>
+  </div>
+  <aside>
+    <section class="sidebar-section" id="secImages">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e84040">1</span>Images</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row"><button class="btn-a" data-load="A" title="Load the L1 enhanced scan - red pins go here, it defines the target geometry">Load L1</button><button class="btn-b" data-load="B" title="Load the L2 real scene photo - blue pins go here, this image gets warped">Load L2</button></div>
+      <div><div class="file-line" id="infoA">L1: -</div>
+      <div class="file-line" id="infoB">L2: -</div></div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8702c">2</span>Pins</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row">
+        <button id="btnAdd" aria-pressed="false" title="Pin mode on/off (N). On: click on L1 for the red pin, then on L2 for its blue twin, pair after pair, with the magnifier. Off: hand cursor for panning, no new pins">+ Pin pair</button>
+        <button id="btnFit" title="Fit both images to their panels, resetting zoom and pan (F)">Fit</button>
+      </div>
+      <div class="pair-table">
+      <div class="pair-head" id="pairHead" hidden>
+        <span title="Pair number, shared by the red and the blue pin">#</span>
+        <span class="l1" title="Red pin on L1">L1</span><span class="l2" title="Blue pin on L2">L2</span>
+        <span class="res" title="Distance in px between the blue pin and where the warp maps its red twin (after WARP IT)">Residual px</span>
+        <span></span>
+      </div>
+      <ul id="pairList"></ul>
+      </div>
+      <div class="row">
+        <button id="btnSavePins" title="Download all pin pairs and warp settings as a JSON file">Save pins</button>
+        <button id="btnLoadPins" title="Load pin pairs from a previously saved JSON file (replaces current pins)">Load pins</button>
+        <button id="btnClear" title="Remove all pin pairs (asks for confirmation)">Clear</button>
+      </div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8a020">3</span>Warp L2</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="slider" title="0 = every blue pin lands exactly on its red twin. Higher values relax that for a smoother warp; the list then shows each pair's residual in px">
+        <span>Smoothing</span><input type="range" id="rngSmooth" min="0" max="100" value="0"><output id="outSmooth">0</output>
+      </div>
+      <label class="chk" title="Adds 4 corners + 4 edge midpoints mapping the L1 frame onto the L2 frame. Use only when both images show the same field of view; otherwise it fights real pins near the edges"><input type="checkbox" id="chkFrame"> Pin frame edges (8 implicit pairs)</label>
+      <button id="btnWarp" disabled aria-label="Warp it" title="Bend L2 into the L1 geometry using the pin pairs (needs at least 3 pairs) (W)">WARP IT</button>
+      <div id="status"></div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#a8c840">4</span>Warped L2 over L1</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="seg" id="segPreview">
+        <button data-mode="off" class="on" title="Show plain L1">Off</button>
+        <button data-mode="overlay" title="Blend the warped L2 over L1 with adjustable opacity">Overlay</button>
+        <button data-mode="split" title="Warped L2 left of the divider, L1 right of it, like the viewer's split screen">Split</button>
+        <button data-mode="edges" title="Compare brightness edges only, colours are ignored: L1 edges red, warped L2 edges cyan, edges that line up turn white">Edges</button>
+      </div>
+      <div class="slider" id="mixRow" title="Opacity of the warped L2 over L1">
+        <span id="lblMix">Opacity</span><input type="range" id="rngMix" min="0" max="100" value="60"><output id="outMix">60</output>
+      </div>
+      <label class="chk" title="Draw the red pins on top of the preview"><input type="checkbox" id="chkPinsOnPreview" checked> Show pins</label>
+      <div class="stale" id="staleNote" hidden>Pins changed since last WARP IT</div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#50dc78">5</span>Export</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row">
+        <select id="selFmt" title="JPG fills areas outside L2 with black, PNG keeps them transparent"><option value="jpg">JPG</option><option value="png">PNG (transparent outside)</option></select>
+      </div>
+      <div class="row"><button id="btnExport" disabled title="Download the warped L2 at L1 size, named after the GEN-X_Y convention">Export warped L2</button></div>
+      <div class="file-line" id="exportName"></div>
+    </section>
+
+    <section class="sidebar-section help">
+      <div class="sidebar-title"><span><span class="step info" aria-hidden="true">i</span>Controls</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="help-lines">
+      <div><kbd>N</kbd> pin mode on/off: click on L1 places the red pin, click on L2 its blue twin</div>
+      <div>Drag a pin to move it, <kbd>Shift</kbd> moves it at 1/4 speed</div>
+      <div>Drag the image to pan, wheel or double-click to zoom</div>
+      <div><kbd>Del</kbd> removes the selected pair</div>
+      <div><kbd>Esc</kbd> turns pin mode off</div>
+      <div><kbd>F</kbd> fits both views</div>
+      <div><kbd>W</kbd> runs WARP IT</div>
+      </div>
+    </section>
+  </aside>
+</main>
+<input type="file" id="fileImg" accept="image/*" hidden>
+<input type="file" id="filePins" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+
+/* ---------- state ---------- */
+const state = {
+  img: { A: null, B: null },        // HTMLImageElement / canvas per layer
+  name: { A: '', B: '' },
+  pairs: [],                         // {id, a:{x,y}|null, b:{x,y}|null, res:number|null}
+  nextId: 1,
+  placing: null,                     // {id, side:'A'|'B'}
+  selected: null,                    // pair id
+  hover: null,                       // pair id
+  warp: null,                        // canvas with warped L2 at L1 size
+  warpStale: false,
+  preview: 'off',
+};
+const COLOR = { A: '#e84040', B: '#20a0e8' };
+const HILITE = '#ffd23c';   // ring around a hovered / selected pin
+const $ = id => document.getElementById(id);
+
+/* ---------- file naming (GEN-X_Y_LZ.jpg) ---------- */
+function parseName(n) {
+  const m = /GEN-(\d+)_(\d+)_L(\d)/i.exec(n || '');
+  return m ? { gen: +m[1], idx: +m[2], layer: +m[3] } : null;
+}
+function exportName() {
+  const fmt = $('selFmt').value;
+  const p = parseName(state.name.B) || parseName(state.name.A);
+  return p ? `GEN-${p.gen}_${p.idx}_L2.${fmt}` : `warped_L2.${fmt}`;
+}
+
+/* ---------- view (zoom/pan canvas) ---------- */
+class View {
+  constructor(side, el) {
+    this.side = side; this.el = el; this.cv = el.querySelector('canvas');
+    this.ctx = this.cv.getContext('2d');
+    this.scale = 1; this.ox = 0; this.oy = 0;
+    this.mouse = null; this.drag = null; this.loupe = false;
+    new ResizeObserver(() => { this.resize(); }).observe(el);
+    this.bind();
+  }
+  get img() { return state.img[this.side]; }
+  measure() {
+    const r = this.el.getBoundingClientRect(), d = devicePixelRatio || 1;
+    this.w = r.width; this.h = r.height;
+    this.cv.width = Math.round(r.width * d); this.cv.height = Math.round(r.height * d);
+  }
+  resize() {
+    this.measure();
+    if (!this.userMoved) this.fit(); else this.draw();
+  }
+  fit() {
+    this.userMoved = false;
+    if (!this.w) this.measure();
+    const im = this.img;
+    if (!im || !this.w) { this.draw(); return; }
+    const pad = this.side === 'B' && $('views').classList.contains('review') ? 3 : 12;   // the inset box needs no margin
+    this.scale = Math.min((this.w - 2 * pad) / im.width, (this.h - 2 * pad) / im.height);
+    this.ox = (this.w - im.width * this.scale) / 2;
+    this.oy = (this.h - im.height * this.scale) / 2;
+    this.draw();
+  }
+  toImg(sx, sy) { return { x: (sx - this.ox) / this.scale, y: (sy - this.oy) / this.scale }; }
+  toScr(p) { return { x: p.x * this.scale + this.ox, y: p.y * this.scale + this.oy }; }
+  pt(pair) { return this.side === 'A' ? pair.a : pair.b; }
+  setPt(pair, p) { if (this.side === 'A') pair.a = p; else pair.b = p; }
+
+  hitPin(sx, sy) {
+    let best = null, bd = 12;
+    for (const pr of state.pairs) {
+      const p = this.pt(pr); if (!p) continue;
+      const s = this.toScr(p), d = Math.hypot(s.x - sx, s.y - sy);
+      if (d < bd) { bd = d; best = pr; }
+    }
+    return best;
+  }
+
+  bind() {
+    const cv = this.cv;
+    const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    cv.addEventListener('wheel', e => {
+      if (!this.img) return;
+      e.preventDefault();
+      const m = pos(e), k = Math.exp(-e.deltaY * 0.0015);
+      const ns = Math.min(40, Math.max(0.05, this.scale * k));
+      this.ox = m.x - (m.x - this.ox) * ns / this.scale;
+      this.oy = m.y - (m.y - this.oy) * ns / this.scale;
+      this.scale = ns; this.userMoved = true; this.draw();
+    }, { passive: false });
+    cv.addEventListener('pointerdown', e => {
+      if (!this.img || e.button !== 0) return;
+      const m = pos(e);
+      cv.setPointerCapture(e.pointerId);
+      const pin = this.hitPin(m.x, m.y);
+      if (pin) {
+        select(pin.id);
+        const p = this.pt(pin);
+        this.drag = { kind: 'pin', pair: pin, start: m, orig: { ...p }, moved: false };
+        this.loupe = state.pinMode;
+      } else {
+        this.drag = { kind: 'pan', start: m, ox: this.ox, oy: this.oy, moved: false };
+        if (!this.isPlacingHere()) cv.style.cursor = 'grabbing';
+      }
+      this.mouse = m; this.draw();
+    });
+    cv.addEventListener('pointermove', e => {
+      const m = pos(e); this.mouse = m;
+      const d = this.drag;
+      if (d) {
+        const dx = m.x - d.start.x, dy = m.y - d.start.y;
+        if (Math.hypot(dx, dy) > 3) d.moved = true;
+        if (d.kind === 'pan' && d.moved) {
+          this.ox = d.ox + dx; this.oy = d.oy + dy; this.userMoved = true;
+        } else if (d.kind === 'pin' && d.moved) {
+          const f = e.shiftKey ? 0.25 : 1;
+          this.setPt(d.pair, clampToImg(this.img, {
+            x: d.orig.x + dx * f / this.scale, y: d.orig.y + dy * f / this.scale }));
+          pinsChanged(false);
+        }
+      } else {
+        const h = this.hitPin(m.x, m.y);
+        const hid = h ? h.id : null;
+        if (hid !== state.hover) { state.hover = hid; views.B.draw(); views.A.draw(); }
+        cv.style.cursor = this.cursorAt(h);
+      }
+      this.draw();
+    });
+    const end = e => {
+      const d = this.drag; this.drag = null; this.loupe = false;
+      if (this.mouse) cv.style.cursor = this.cursorAt(this.hitPin(this.mouse.x, this.mouse.y));
+      if (d && d.kind === 'pan' && !d.moved && this.isPlacingHere()) {
+        placeAt(this.side, clampToImg(this.img, this.toImg(d.start.x, d.start.y)));
+      } else if (d && d.kind === 'pan' && !d.moved) {
+        select(null);
+      } else if (d && d.kind === 'pin' && d.moved) {
+        pinsChanged(true);
+      }
+      this.draw();
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('pointerleave', () => { if (!this.drag) { this.mouse = null; this.draw(); } });
+    cv.addEventListener('dblclick', e => {
+      const m = pos(e);
+      if (this.hitPin(m.x, m.y) || !this.img) return;
+      const ns = Math.min(40, this.scale * 2);
+      this.ox = m.x - (m.x - this.ox) * ns / this.scale;
+      this.oy = m.y - (m.y - this.oy) * ns / this.scale;
+      this.scale = ns; this.userMoved = true; this.draw();
+    });
+  }
+  isPlacingHere() { return state.placing && state.placing.side === this.side; }
+  // Pin mode on: crosshair where the next pin goes. Otherwise a hand for panning; pins get a
+  // move cursor so dragging one is never mistaken for panning.
+  cursorAt(pinUnder) {
+    if (pinUnder) return 'move';
+    return this.isPlacingHere() ? 'crosshair' : 'grab';
+  }
+
+  /* draw the image layer(s) with a given transform */
+  drawScene(ctx, s, ox, oy, pixelated) {
+    const im = this.img;
+    ctx.imageSmoothingEnabled = !pixelated;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.setTransform(ctx._d * s, 0, 0, ctx._d * s, ctx._d * ox, ctx._d * oy);
+    ctx.drawImage(im, 0, 0);
+    if (this.side === 'A' && state.warp && state.preview !== 'off') {
+      const mix = +$('rngMix').value / 100;
+      if (state.preview === 'overlay') {
+        ctx.globalAlpha = mix; ctx.drawImage(state.warp, 0, 0); ctx.globalAlpha = 1;
+      } else if (state.preview === 'split') {
+        const xs = im.width * mix;
+        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, xs, im.height); ctx.clip();
+        ctx.drawImage(state.warp, 0, 0); ctx.restore();
+        ctx.lineWidth = 1.5 / s; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath(); ctx.moveTo(xs, 0); ctx.lineTo(xs, im.height); ctx.stroke();
+      } else if (state.preview === 'edges') {
+        ctx.drawImage(edgeCanvas(), 0, 0);
+      }
+    }
+    ctx.setTransform(ctx._d, 0, 0, ctx._d, 0, 0);
+  }
+  drawPins(ctx, s, ox, oy) {
+    const showOnPreview = this.side !== 'A' || state.preview === 'off' || $('chkPinsOnPreview').checked;
+    if (!showOnPreview) return;
+    for (const pr of state.pairs) {
+      const p = this.pt(pr); if (!p) continue;
+      drawPin(ctx, p.x * s + ox, p.y * s + oy, pr.id, COLOR[this.side],
+        pr.id === state.selected, pr.id === state.hover);
+    }
+  }
+  draw() {
+    const ctx = this.ctx, d = devicePixelRatio || 1; ctx._d = d;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.cv.width, this.cv.height);
+    this.el.querySelector('.empty').hidden = !!this.img;
+    this.el.classList.toggle('waiting', this.isPlacingHere());
+    if (!this.img) return;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    this.drawScene(ctx, this.scale, this.ox, this.oy, this.scale > 3);
+    ctx.save();
+    ctx.strokeStyle = COLOR[this.side]; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.strokeRect(Math.round(this.ox) - 1.5, Math.round(this.oy) - 1.5,
+      Math.round(this.img.width * this.scale) + 3, Math.round(this.img.height * this.scale) + 3);
+    ctx.restore();
+    this.drawPins(ctx, this.scale, this.ox, this.oy);
+
+    // loupe: when dragging a pin or when placing here
+    const m = this.mouse;
+    if (m && state.pinMode && (this.loupe || (this.isPlacingHere() && !this.drag))) this.drawLoupe(ctx, m);
+  }
+  drawLoupe(ctx, m) {
+    const R = 80, mag = Math.max(4, 6 / this.scale) * this.scale;   // screen px per image px in loupe
+    let cx = m.x + R + 24, cy = m.y - R - 24;
+    if (cx + R > this.w - 4) cx = m.x - R - 24;
+    if (cy - R < 4) cy = m.y + R + 24;
+    // the point under the cursor (or the dragged pin) sits at the loupe centre
+    let ip = this.toImg(m.x, m.y);
+    if (this.drag && this.drag.kind === 'pin') ip = this.pt(this.drag.pair);
+    const ox = cx - ip.x * mag, oy = cy - ip.y * mag;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#000'; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    this.drawScene(ctx, mag, ox, oy, true);
+    ctx.save(); ctx.translate(0, 0);
+    // pins in the loupe, small marker only
+    for (const pr of state.pairs) {
+      const p = this.pt(pr); if (!p) continue;
+      if (this.drag && this.drag.pair === pr) continue;
+      drawPin(ctx, p.x * mag + ox, p.y * mag + oy, pr.id, COLOR[this.side], false, false);
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx - 5, cy); ctx.moveTo(cx + 5, cy); ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy - 5); ctx.moveTo(cx, cy + 5); ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+    ctx.restore();
+    ctx.lineWidth = 2; ctx.strokeStyle = this.isPlacingHere() ? COLOR[this.side] : 'rgba(255,255,255,0.8)';
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = '11px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${ip.x.toFixed(1)}, ${ip.y.toFixed(1)}`, cx, cy + R + 14);
+  }
+}
+
+function drawPin(ctx, x, y, id, color, sel, hov) {
+  ctx.save();
+  // tip ring + exact centre
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill();
+  const hi = sel || hov;   // hovered (map or table) or selected pair
+  if (hi) {
+    ctx.strokeStyle = HILITE; ctx.lineWidth = sel ? 2 : 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.stroke();
+  }
+  // label flag
+  const t = String(id);
+  ctx.font = '600 12px "Share Tech Mono", monospace';
+  const w = ctx.measureText(t).width + 8, lx = x + 8, ly = y - 22;
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 5, y - 5); ctx.lineTo(lx + 3, ly + 16); ctx.stroke();
+  // highlighted label swaps colours: white flag, number in the pin colour
+  ctx.fillStyle = hi ? '#fff' : color; roundRect(ctx, lx, ly, w, 16, 3); ctx.fill();
+  if (hi) { ctx.strokeStyle = color; ctx.lineWidth = 1; roundRect(ctx, lx, ly, w, 16, 3); ctx.stroke(); }
+  ctx.fillStyle = hi ? color : '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(t, lx + 4, ly + 8.5);
+  ctx.restore();
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function clampToImg(im, p) {
+  return { x: Math.min(im.width, Math.max(0, p.x)), y: Math.min(im.height, Math.max(0, p.y)) };
+}
+
+const views = { A: new View('A', $('viewA')), B: new View('B', $('viewB')) };
+function redraw() { views.A.draw(); views.B.draw(); }
+
+/* ---------- pin workflow ---------- */
+// Pin mode (the "+ Pin pair" toggle): while on, pairs are placed one after another with the
+// magnifier; off means hand cursor and no new pins, in either layout.
+// Each layout keeps its own preference: Place pins starts on, Review warp starts off.
+state.pinMode = false;
+const pinPref = { pins: true, review: false };
+function setPinMode(on, byUser) {
+  if (byUser) pinPref[state.layout] = on;
+  if (on && (!state.img.A || !state.img.B)) {
+    if (byUser) setStatus('Load both L1 and L2 first.', 'err');
+    return;
+  }
+  state.pinMode = on;
+  $('btnAdd').classList.toggle('on', on);
+  $('btnAdd').setAttribute('aria-pressed', on);
+  if (on) { if (!state.placing) startPair(); } else cancelPlacing();
+  for (const v of [views.A, views.B]) if (v.mouse) v.cv.style.cursor = v.cursorAt(v.hitPin(v.mouse.x, v.mouse.y));
+  redraw();
+}
+function startPair() {
+  if (!state.img.A || !state.img.B) { setStatus('Load both L1 and L2 first.', 'err'); return; }
+  cancelPlacing();
+  const pr = { id: state.nextId++, a: null, b: null, res: null };
+  state.pairs.push(pr);
+  state.placing = { id: pr.id, side: 'A' };
+  select(pr.id);
+  setStatus(`Place red pin #${pr.id} on L1`);
+  renderList(); redraw();
+}
+function placeAt(side, p) {
+  const pr = state.pairs.find(q => q.id === state.placing.id);
+  if (side === 'A') { pr.a = p; state.placing.side = 'B'; setStatus(`Place blue pin #${pr.id} on L2`); }
+  else {
+    pr.b = p; state.placing = null;
+    pinsChanged(true);
+    if (state.pinMode) { startPair(); return; }
+    setStatus(`Pair #${pr.id} done`);
+  }
+  renderList(); redraw();
+}
+function cancelPlacing() {
+  if (!state.placing) return;
+  const pr = state.pairs.find(q => q.id === state.placing.id);
+  // an unfinished pair without any pin is dropped; a half-placed one is kept and shown as incomplete
+  if (pr && !pr.a && !pr.b) state.pairs = state.pairs.filter(q => q !== pr);
+  state.placing = null;
+  setStatus('');
+  renderList(); redraw();
+}
+function resumePair(pr) {
+  // clicking an incomplete pair in the list continues placing its missing pin
+  cancelPlacing();
+  state.pinMode = true; pinPref[state.layout] = true;
+  $('btnAdd').classList.add('on'); $('btnAdd').setAttribute('aria-pressed', true);
+  if (!pr.a) state.placing = { id: pr.id, side: 'A' };
+  else if (!pr.b) state.placing = { id: pr.id, side: 'B' };
+  if (state.placing) setStatus(`Place ${state.placing.side === 'A' ? 'red' : 'blue'} pin #${pr.id} on L${state.placing.side === 'A' ? 1 : 2}`);
+}
+function deletePair(id) {
+  const wasPlacing = state.placing && state.placing.id === id;
+  if (wasPlacing) state.placing = null;
+  state.pairs = state.pairs.filter(q => q.id !== id);
+  if (state.selected === id) state.selected = null;
+  pinsChanged(true); renderList(); redraw();
+  if (wasPlacing && state.pinMode) startPair();
+}
+function select(id) { state.selected = id; renderList(); redraw(); }
+function completePairs() { return state.pairs.filter(p => p.a && p.b); }
+
+function pinsChanged(final) {
+  for (const p of state.pairs) p.res = null;
+  if (state.warp) { state.warpStale = true; $('staleNote').hidden = false; }
+  if (final) { renderList(); saveLocal(); }
+  updateButtons();
+}
+
+function renderList() {
+  const ul = $('pairList'); ul.innerHTML = '';
+  // below 0.05 px everything shows as 0.0, so bars would only visualise rounding noise
+  const maxRes = Math.max(0, ...state.pairs.map(p => p.res || 0));
+  const bars = maxRes >= 0.05;
+  $('pairHead').hidden = state.pairs.length === 0;
+  for (const pr of state.pairs) {
+    const li = document.createElement('li');
+    if (pr.id === state.selected) li.classList.add('sel');
+    li.title = pr.a && pr.b ? 'Select this pair and bring its pins into view (Del removes it)'
+      : 'Incomplete pair - click to place its missing pin';
+    const res = pr.res != null ? pr.res.toFixed(1) : (pr.a && pr.b ? '-' : 'incomplete');
+    li.innerHTML = `<span class="num">#${pr.id}</span>
+      <span class="dot a ${pr.a ? '' : 'missing'}"></span><span class="dot b ${pr.b ? '' : 'missing'}"></span>
+      <span class="res${pr.res != null ? ' val' : ''}" style="--w:${bars && pr.res != null ? (pr.res / maxRes * 100).toFixed(1) : 0}%">${res}</span><button class="del" title="Remove pair">&times;</button>`;
+    li.addEventListener('click', e => {
+      if (e.target.classList.contains('del')) { deletePair(pr.id); return; }
+      select(pr.id);
+      if (!pr.a || !pr.b) { resumePair(pr); redraw(); }
+      centreOn(pr);
+    });
+    li.addEventListener('mouseenter', () => { state.hover = pr.id; redraw(); });
+    li.addEventListener('mouseleave', () => { state.hover = null; redraw(); });
+    ul.appendChild(li);
+  }
+  // the table shows at most 10 rows under its header, more pairs scroll
+  // (skipped while the section is collapsed and nothing has a height; expanding re-renders)
+  const row = ul.firstElementChild;
+  if (row && row.offsetHeight) ul.parentElement.style.maxHeight = `${$('pairHead').offsetHeight + 10 * row.offsetHeight}px`;
+  updateButtons();
+}
+function centreOn(pr) {
+  // only pan views where the pin is off-screen
+  for (const v of [views.A, views.B]) {
+    const p = v.pt(pr); if (!p) continue;
+    const s = v.toScr(p);
+    if (s.x < 20 || s.y < 20 || s.x > v.w - 20 || s.y > v.h - 20) {
+      v.ox += v.w / 2 - s.x; v.oy += v.h / 2 - s.y; v.userMoved = true; v.draw();
+    }
+  }
+}
+function updateButtons() {
+  const n = completePairs().length + ($('chkFrame').checked ? 8 : 0);
+  $('btnWarp').disabled = !(state.img.A && state.img.B && n >= 3);
+  $('btnExport').disabled = !state.warp;
+  $('btnAdd').disabled = !(state.img.A && state.img.B);
+  $('exportName').textContent = state.warp ? exportName() : '';
+}
+function setStatus(t, cls) { const s = $('status'); s.textContent = t; s.className = cls || ''; }
+
+/* ---------- image loading ---------- */
+let loadTarget = 'A';
+document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => {
+  loadTarget = b.dataset.load; $('fileImg').value = ''; $('fileImg').click();
+}));
+$('fileImg').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadImage(loadTarget, f); });
+
+function loadImage(side, file) {
+  const url = URL.createObjectURL(file);
+  const im = new Image();
+  im.onload = () => {
+    const had = !!state.img[side];
+    state.img[side] = im; state.name[side] = file.name;
+    if (side === 'B') $('views').style.setProperty('--ratio-b', im.width / im.height);
+    for (const m of Object.values(layoutMem)) if (m) m[side] = null;
+    state.warp = null; state.warpStale = false; $('staleNote').hidden = true;
+    edges.A = edges.B = edges.canvas = null;
+    const v = views[side]; v.fit();
+    v.el.querySelector('.name').textContent = '· ' + file.name;
+    const p = parseName(file.name), want = side === 'A' ? 1 : 2;
+    const warn = p && p.layer !== want ? ` <span class="warn">(file is L${p.layer})</span>` : '';
+    $('info' + side).innerHTML = `L${want}: ${file.name} &middot; ${im.width}&times;${im.height}${warn}`;
+    if (!had && state.pairs.length === 0) loadLocal();
+    if (state.img.A && state.img.B && pinPref[state.layout] && !state.pinMode) setPinMode(true);
+    if (state.img.A && state.img.B) setSectionCollapsed($('secImages'), true);   // both loaded: Images is done
+    renderList(); redraw();
+  };
+  im.onerror = () => setStatus('Could not read ' + file.name, 'err');
+  im.src = url;
+}
+for (const side of ['A', 'B']) {
+  const el = views[side].el;
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drop'));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.classList.remove('drop');
+    const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+    if (files.length === 2) {
+      // two files dropped at once: route by layer number in the name
+      const l = files.map(f => (parseName(f.name) || {}).layer);
+      if (l[0] === 2 || l[1] === 1) files.reverse();
+      loadImage('A', files[0]); loadImage('B', files[1]);
+    } else if (files[0]) {
+      const p = parseName(files[0].name);
+      loadImage(p && p.layer === 2 ? 'B' : p && p.layer === 1 ? 'A' : side, files[0]);
+    }
+  });
+}
+
+/* ---------- pins persistence ---------- */
+function pinsJSON() {
+  return {
+    tool: 'solargraphy-warp', version: 1,
+    l1: { name: state.name.A, w: state.img.A && state.img.A.width, h: state.img.A && state.img.A.height },
+    l2: { name: state.name.B, w: state.img.B && state.img.B.width, h: state.img.B && state.img.B.height },
+    smoothing: +$('rngSmooth').value, frame: $('chkFrame').checked,
+    pairs: state.pairs.map(p => ({ id: p.id, l1: p.a, l2: p.b })),
+  };
+}
+function applyPins(j) {
+  state.pairs = (j.pairs || []).map(p => ({ id: p.id, a: p.l1 || null, b: p.l2 || null, res: null }));
+  state.nextId = state.pairs.reduce((m, p) => Math.max(m, p.id), 0) + 1;
+  if (j.smoothing != null) { $('rngSmooth').value = j.smoothing; $('outSmooth').textContent = j.smoothing; paintSliders(); }
+  if (j.frame != null) $('chkFrame').checked = j.frame;
+  state.placing = null; state.selected = null;
+  pinsChanged(true); renderList(); redraw();
+  if (state.pinMode) startPair();
+}
+function localKey() { return 'sgwarp:' + state.name.A + '|' + state.name.B; }
+function saveLocal() {
+  if (!state.name.A || !state.name.B) return;
+  try { localStorage.setItem(localKey(), JSON.stringify(pinsJSON())); } catch (e) {}
+}
+function loadLocal() {
+  if (!state.name.A || !state.name.B) return;
+  try {
+    const s = localStorage.getItem(localKey());
+    if (s) { applyPins(JSON.parse(s)); setStatus('Restored pins from the last session', 'ok'); }
+  } catch (e) {}
+}
+$('btnSavePins').addEventListener('click', () => {
+  const p = parseName(state.name.A);
+  const name = p ? `GEN-${p.gen}_${p.idx}_warp_pins.json` : 'warp_pins.json';
+  download(new Blob([JSON.stringify(pinsJSON(), null, 2)], { type: 'application/json' }), name);
+});
+$('btnLoadPins').addEventListener('click', () => { $('filePins').value = ''; $('filePins').click(); });
+$('filePins').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { applyPins(JSON.parse(await f.text())); setStatus(`Loaded ${state.pairs.length} pairs`, 'ok'); }
+  catch (err) { setStatus('Invalid pins file', 'err'); }
+});
+$('btnClear').addEventListener('click', () => {
+  if (!state.pairs.length || !confirm('Remove all pins?')) return;
+  state.pairs = []; state.nextId = 1; state.placing = null; state.selected = null;
+  pinsChanged(true); renderList(); redraw(); setStatus('');
+  if (state.pinMode) startPair();
+});
+
+/* ---------- thin-plate spline ---------- */
+// Solves for f: R2 -> R2 with f(p_i) ~ q_i (exact when lambda = 0).
+// Coordinates are normalised by `norm` for conditioning.
+function tpsFit(P, Q, lambda) {
+  const n = P.length, N = n + 3;
+  const A = Array.from({ length: N }, () => new Float64Array(N + 2));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) A[i][j] = i === j ? lambda : U(P[i][0] - P[j][0], P[i][1] - P[j][1]);
+    A[i][n] = 1; A[i][n + 1] = P[i][0]; A[i][n + 2] = P[i][1];
+    A[n][i] = 1; A[n + 1][i] = P[i][0]; A[n + 2][i] = P[i][1];
+    A[i][N] = Q[i][0]; A[i][N + 1] = Q[i][1];
+  }
+  // Gaussian elimination with partial pivoting, two right-hand sides
+  for (let c = 0; c < N; c++) {
+    let piv = c;
+    for (let r = c + 1; r < N; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-12) return null;
+    [A[c], A[piv]] = [A[piv], A[c]];
+    for (let r = 0; r < N; r++) {
+      if (r === c) continue;
+      const f = A[r][c] / A[c][c]; if (!f) continue;
+      for (let k = c; k < N + 2; k++) A[r][k] -= f * A[c][k];
+    }
+  }
+  const wx = new Float64Array(N), wy = new Float64Array(N);
+  for (let i = 0; i < N; i++) { wx[i] = A[i][N] / A[i][i]; wy[i] = A[i][N + 1] / A[i][i]; }
+  return { P, wx, wy, n };
+}
+function U(dx, dy) { const r2 = dx * dx + dy * dy; return r2 === 0 ? 0 : r2 * Math.log(r2); }
+function tpsEval(t, x, y, out) {
+  const { P, wx, wy, n } = t;
+  let fx = wx[n] + wx[n + 1] * x + wx[n + 2] * y;
+  let fy = wy[n] + wy[n + 1] * x + wy[n + 2] * y;
+  for (let i = 0; i < n; i++) {
+    const u = U(x - P[i][0], y - P[i][1]);
+    fx += wx[i] * u; fy += wy[i] * u;
+  }
+  out[0] = fx; out[1] = fy;
+}
+
+/* ---------- WARP IT ---------- */
+function warpIt() {
+  const A = state.img.A, B = state.img.B;
+  const pairs = completePairs();
+  // inverse mapping: for every L1 pixel find where to sample L2
+  const src = pairs.map(p => [p.a.x, p.a.y]), dst = pairs.map(p => [p.b.x, p.b.y]);
+  if ($('chkFrame').checked) {
+    for (const [u, v] of [[0,0],[0.5,0],[1,0],[1,0.5],[1,1],[0.5,1],[0,1],[0,0.5]]) {
+      src.push([u * A.width, v * A.height]); dst.push([u * B.width, v * B.height]);
+    }
+  }
+  const norm = Math.max(A.width, A.height);
+  const Pn = src.map(p => [p[0] / norm, p[1] / norm]);
+  const Qn = dst.map(p => [p[0] / norm, p[1] / norm]);
+  const sv = +$('rngSmooth').value / 100, lambda = sv * sv * 0.05;
+  const t = tpsFit(Pn, Qn, lambda);
+  if (!t) { setStatus('Degenerate pin layout (collinear or duplicate pins).', 'err'); return; }
+
+  setStatus('Warping...');
+  setTimeout(() => {
+    const t0 = performance.now();
+    const W = A.width, H = A.height, STEP = 4;
+    const gw = Math.ceil(W / STEP) + 1, gh = Math.ceil(H / STEP) + 1;
+    const gx = new Float32Array(gw * gh), gy = new Float32Array(gw * gh), o = [0, 0];
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+      tpsEval(t, (i * STEP) / norm, (j * STEP) / norm, o);
+      gx[j * gw + i] = o[0] * norm; gy[j * gw + i] = o[1] * norm;
+    }
+    // source pixels
+    const sc = document.createElement('canvas'); sc.width = B.width; sc.height = B.height;
+    const sctx = sc.getContext('2d'); sctx.drawImage(B, 0, 0);
+    const sd = sctx.getImageData(0, 0, B.width, B.height).data, SW = B.width, SH = B.height;
+    const out = document.createElement('canvas'); out.width = W; out.height = H;
+    const octx = out.getContext('2d'), od = octx.createImageData(W, H), d = od.data;
+    for (let y = 0; y < H; y++) {
+      const gj = (y + 0.5) / STEP, j0 = Math.floor(gj), fj = gj - j0;
+      for (let x = 0; x < W; x++) {
+        const gi = (x + 0.5) / STEP, i0 = Math.floor(gi), fi = gi - i0;
+        const k = j0 * gw + i0;
+        // pixel centres: sample at (x+0.5, y+0.5) in L1, map, then sample L2 centred
+        const sx = (gx[k] * (1 - fi) + gx[k + 1] * fi) * (1 - fj) + (gx[k + gw] * (1 - fi) + gx[k + gw + 1] * fi) * fj;
+        const sy = (gy[k] * (1 - fi) + gy[k + 1] * fi) * (1 - fj) + (gy[k + gw] * (1 - fi) + gy[k + gw + 1] * fi) * fj;
+        const px = sx - 0.5, py = sy - 0.5;
+        const o4 = (y * W + x) * 4;
+        if (px < -0.5 || py < -0.5 || px > SW - 0.5 || py > SH - 0.5) { d[o4 + 3] = 0; continue; }
+        const x0 = Math.max(0, Math.min(SW - 1, Math.floor(px))), y0 = Math.max(0, Math.min(SH - 1, Math.floor(py)));
+        const x1 = Math.min(SW - 1, x0 + 1), y1 = Math.min(SH - 1, y0 + 1);
+        const ax = Math.max(0, Math.min(1, px - x0)), ay = Math.max(0, Math.min(1, py - y0));
+        const a = (y0 * SW + x0) * 4, b = (y0 * SW + x1) * 4, c = (y1 * SW + x0) * 4, e = (y1 * SW + x1) * 4;
+        for (let ch = 0; ch < 3; ch++) {
+          d[o4 + ch] = (sd[a + ch] * (1 - ax) + sd[b + ch] * ax) * (1 - ay) + (sd[c + ch] * (1 - ax) + sd[e + ch] * ax) * ay;
+        }
+        d[o4 + 3] = 255;
+      }
+    }
+    octx.putImageData(od, 0, 0);
+    state.warp = out; state.warpStale = false; $('staleNote').hidden = true;
+    edges.B = null; edges.canvas = null;
+
+    // residuals: how far each blue pin is from where the fitted map sends its red twin
+    for (const p of pairs) {
+      tpsEval(t, p.a.x / norm, p.a.y / norm, o);
+      p.res = Math.hypot(o[0] * norm - p.b.x, o[1] * norm - p.b.y);
+    }
+    const maxRes = Math.max(0, ...pairs.map(p => p.res));
+    setLayout('review');
+    if (state.preview === 'off') setPreview('split');
+    renderList(); redraw();
+    setStatus(`L2 warped to ${W}×${H} from ${src.length} pairs in ${Math.round(performance.now() - t0)} ms` +
+      (lambda > 0 ? ` · max residual ${maxRes.toFixed(1)} px` : ''), 'ok');
+  }, 20);
+}
+$('btnWarp').addEventListener('click', warpIt);
+
+/* ---------- edge comparison ---------- */
+// Brightness-only edge maps, so the solargraph's colours and the photo's colours don't matter.
+// Each map is normalised to its own strong edges, which also cancels exposure/contrast differences.
+const edges = { A: null, B: null, canvas: null, gain: null };
+function edgeMap(src, W, H) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'); x.drawImage(src, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data, N = W * H;
+  const L = new Float32Array(N), A = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    L[i] = 0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2];
+    A[i] = d[i * 4 + 3] === 255 ? 1 : 0;
+  }
+  // 3x3 box blur against grain and paper texture
+  const T = new Float32Array(N), B = new Float32Array(N);
+  for (let y = 0; y < H; y++) for (let i = 1; i < W - 1; i++) { const k = y * W + i; T[k] = L[k - 1] + L[k] + L[k + 1]; }
+  for (let y = 1; y < H - 1; y++) for (let i = 0; i < W; i++) { const k = y * W + i; B[k] = (T[k - W] + T[k] + T[k + W]) / 9; }
+  // Sobel magnitude; no edges where the 3x3 window touches pixels outside the warped L2
+  const E = new Float32Array(N);
+  for (let y = 2; y < H - 2; y++) for (let i = 2; i < W - 2; i++) {
+    const k = y * W + i;
+    if (!(A[k - W - 1] & A[k - W] & A[k - W + 1] & A[k - 1] & A[k] & A[k + 1] & A[k + W - 1] & A[k + W] & A[k + W + 1])) continue;
+    const gx = B[k - W + 1] + 2 * B[k + 1] + B[k + W + 1] - B[k - W - 1] - 2 * B[k - 1] - B[k + W - 1];
+    const gy = B[k + W - 1] + 2 * B[k + W] + B[k + W + 1] - B[k - W - 1] - 2 * B[k - W] - B[k - W + 1];
+    E[k] = Math.hypot(gx, gy);
+  }
+  // normalise by the 98th percentile of non-zero edges (sampled)
+  const sample = [];
+  for (let k = 0; k < N; k += 37) if (E[k] > 0) sample.push(E[k]);
+  sample.sort((a, b) => a - b);
+  const ref = sample.length ? sample[Math.floor(sample.length * 0.98)] || 1 : 1;
+  for (let k = 0; k < N; k++) E[k] = Math.min(1, E[k] / ref);
+  return E;
+}
+function edgeCanvas() {
+  const A = state.img.A, W = A.width, H = A.height;
+  if (!edges.A) edges.A = edgeMap(A, W, H);
+  if (!edges.B) edges.B = edgeMap(state.warp, W, H);
+  const gain = +$('rngMix').value / 50;   // 50 = 1x
+  if (edges.canvas && edges.gain === gain) return edges.canvas;
+  const c = edges.canvas || document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), img = x.createImageData(W, H), d = img.data;
+  for (let k = 0; k < W * H; k++) {
+    const a = Math.min(255, edges.A[k] * gain * 255), b = Math.min(255, edges.B[k] * gain * 255);
+    d[k * 4] = a; d[k * 4 + 1] = b; d[k * 4 + 2] = b; d[k * 4 + 3] = 255;   // red + cyan = white where they meet
+  }
+  x.putImageData(img, 0, 0);
+  edges.canvas = c; edges.gain = gain;
+  return c;
+}
+
+/* ---------- preview + export ---------- */
+// each preview mode keeps its own slider value
+const mixVals = { off: 60, overlay: 60, split: 50, edges: 50 };
+const MIX_LABEL = { off: 'Opacity', overlay: 'Opacity', split: 'Divider', edges: 'Gain' };
+const MIX_TITLE = {
+  off: 'Opacity of the warped L2 over L1', overlay: 'Opacity of the warped L2 over L1',
+  split: 'Divider position across L1', edges: 'Edge brightness: 50 = normal, higher shows weaker edges',
+};
+function setPreview(mode) {
+  state.preview = mode;
+  document.querySelectorAll('#segPreview button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  $('lblMix').textContent = MIX_LABEL[mode];
+  $('mixRow').title = MIX_TITLE[mode];
+  $('rngMix').value = mixVals[mode]; $('outMix').textContent = mixVals[mode]; paintSliders();
+  $('rngMix').disabled = mode === 'off';
+  $('mixRow').classList.toggle('off', $('rngMix').disabled);
+  views.A.draw();
+}
+document.querySelectorAll('#segPreview button').forEach(b => b.addEventListener('click', () => setPreview(b.dataset.mode)));
+$('rngMix').addEventListener('input', e => {
+  mixVals[state.preview] = +e.target.value;
+  $('outMix').textContent = e.target.value; paintSliders(); views.A.draw();
+});
+$('rngSmooth').addEventListener('input', e => { $('outSmooth').textContent = e.target.value; paintSliders(); pinsChanged(false); saveLocal(); });
+// thumb of Smoothing takes the gradient colour at its position; Opacity/Divider fills up to its value
+function paintSliders() {
+  const v = +$('rngSmooth').value / 100;
+  const stops = [[0x50, 0xdc, 0x78], [0xe8, 0xa0, 0x20], [0xe8, 0x40, 0x40]];
+  const seg = v < 0.5 ? 0 : 1, f = v < 0.5 ? v * 2 : (v - 0.5) * 2;
+  const c = stops[seg].map((a, i) => Math.round(a + (stops[seg + 1][i] - a) * f));
+  $('rngSmooth').style.setProperty('--thumb', `rgb(${c.join(',')})`);
+  $('rngMix').style.setProperty('--pct', $('rngMix').value + '%');
+}
+paintSliders();
+$('chkFrame').addEventListener('change', () => { pinsChanged(true); });
+$('chkPinsOnPreview').addEventListener('change', () => views.A.draw());
+$('selFmt').addEventListener('change', updateButtons);
+setPreview('off');   // the page opens in Place pins, whose default preview is Off (Review warp defaults to Split)
+
+$('btnExport').addEventListener('click', () => {
+  const fmt = $('selFmt').value, w = state.warp;
+  let c = w;
+  if (fmt === 'jpg') {
+    c = document.createElement('canvas'); c.width = w.width; c.height = w.height;
+    const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, c.width, c.height); x.drawImage(w, 0, 0);
+  }
+  c.toBlob(b => download(b, exportName()), fmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.95);
+});
+function download(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ---------- buttons + keys ---------- */
+$('btnAdd').addEventListener('click', () => setPinMode(!state.pinMode, true));
+/* ---------- layout: Place pins (stacked) / Review warp (L1 full, L2 inset) ---------- */
+// Each layout remembers its own zoom/pan of both views and its preview mode, so switching
+// back returns exactly to where you left it. First visit: fitted views, Off (pins) / Split (review).
+state.layout = 'pins';
+const layoutMem = { pins: null, review: null };
+const snapView = v => ({ scale: v.scale, ox: v.ox, oy: v.oy, userMoved: v.userMoved });
+function setLayout(mode) {
+  if (mode === state.layout) return;
+  layoutMem[state.layout] = { preview: state.preview, A: snapView(views.A), B: snapView(views.B) };
+  state.layout = mode;
+  if (state.img.B) $('views').style.setProperty('--ratio-b', state.img.B.width / state.img.B.height);
+  $('views').classList.toggle('review', mode === 'review');
+  document.querySelectorAll('#layoutToggle button').forEach(b => b.classList.toggle('on', b.dataset.layout === mode));
+  const mem = layoutMem[mode];
+  setPreview(mem ? mem.preview : (mode === 'pins' ? 'off' : 'split'));
+  setPinMode(pinPref[mode]);
+  // panel sizes change: measure() reads the new layout right away, then restore or fit
+  for (const side of ['A', 'B']) {
+    const v = views[side], m = mem && mem[side];
+    v.measure();
+    if (m && m.userMoved) { Object.assign(v, m); v.draw(); } else v.fit();
+  }
+}
+document.querySelectorAll('#layoutToggle button').forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+(function warpLabel() {
+  const b = $('btnWarp'), chars = [...b.textContent], n = chars.length;
+  b.innerHTML = chars.map((ch, i) => {
+    const t = (i / (n - 1)) * 2 - 1;          // -1 .. 1 across the label
+    const y = (4.5 * t * t - 2).toFixed(2);   // arch: edges lower than the middle
+    const r = (t * 14).toFixed(1);            // letters lean along the arch
+    const sc = (0.82 + 0.4 * (1 - t * t)).toFixed(2);   // bulge: middle letters larger
+    return ch === ' ' ? '<span class="wl sp" aria-hidden="true"></span>'
+      : `<span class="wl" aria-hidden="true" style="--y:${y}px;--r:${r}deg;--s:${sc};--d:${(i * 0.08).toFixed(2)}s">${ch}</span>`;
+  }).join('');
+})();
+function setSectionCollapsed(sec, collapsed) {
+  sec.classList.toggle('collapsed', collapsed);
+  sec.querySelector('.section-toggle').innerHTML = collapsed ? '&#9654;' : '&#9660;';
+  if (!collapsed) renderList();
+}
+document.querySelectorAll('.section-toggle').forEach(btn => btn.addEventListener('click', () => {
+  const sec = btn.closest('.sidebar-section');
+  setSectionCollapsed(sec, !sec.classList.contains('collapsed'));
+}));
+$('btnFit').addEventListener('click', () => { views.A.fit(); views.B.fit(); });
+document.addEventListener('keydown', e => {
+  if (e.target instanceof Element && e.target.matches('input, select, textarea')) return;
+  if (e.key === 'n' || e.key === 'N') setPinMode(!state.pinMode, true);
+  else if (e.key === 'Escape') setPinMode(false, true);
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected != null) { e.preventDefault(); deletePair(state.selected); }
+  else if (e.key === 'f' || e.key === 'F') { views.A.fit(); views.B.fit(); }
+  else if ((e.key === 'w' || e.key === 'W') && !$('btnWarp').disabled) warpIt();
+});
+renderList();
+
+/* ---------- L1 preload from the viewer ---------- */
+// The viewer's "Prepare L2" button opens this page as warp_tool.html?gen=X&image=Y: L1 comes
+// from the project (img/GEN-X_Y_L1.jpg), the camera panorama is then dropped in as L2.
+// Needs http(s); from file:// the browser blocks the fetch and L1 is loaded by hand.
+(async function preloadL1() {
+  const q = new URLSearchParams(location.search), gen = q.get('gen'), image = q.get('image');
+  if (!/^\d+$/.test(gen || '') || !/^\d+$/.test(image || '')) return;
+  const name = `GEN-${gen}_${image}_L1.jpg`;
+  try {
+    const r = await fetch('img/' + name);
+    if (!r.ok) throw new Error(r.status);
+    const blob = await r.blob();
+    loadImage('A', new File([blob], name, { type: blob.type || 'image/jpeg' }));
+    setStatus(`Loaded ${name} from the project, now drop the camera panorama as L2`, 'ok');
+  } catch (e) {
+    setStatus(`Could not load img/${name} (open the tool over http, or load L1 by hand)`, 'err');
+  }
+})();
+</script>
+</body>
+</html>

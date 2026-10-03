@@ -151,7 +151,7 @@
         <label class="radio-row view-enh active" title="Enhanced contrast and colors">
           <input type="radio" name="view" value="1" checked> ENHANCED
         </label>
-        <label class="radio-row view-split disabled" title="Compare raw and enhanced side by side">
+        <label class="radio-row view-split disabled" title="Compare the enhanced scan with the real scene photo side by side">
           <input type="radio" name="view" value="2" disabled> SPLIT SCREEN
         </label>
       </div>
@@ -161,7 +161,7 @@
             <span class="slider-label" style="color:var(--dim)">Opacity</span>
             <span class="slider-val" style="color:var(--dim)" id="lblL2Opacity">100%</span>
           </div>
-          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)" title="Blend between raw and enhanced scan">
+          <input type="range" id="rngL2Opacity" min="0" max="100" value="100" style="accent-color:var(--dim)" title="Blend the real scene photo with the enhanced scan">
         </div>
         <button id="btnL2Play" title="Crossfade loop (10 s / cycle)">
           <span id="l2PlayIcon"></span>
@@ -242,6 +242,11 @@
       <div class="can3d-btn-row">
         <button class="sidebar-btn" id="btnImportPreset" disabled style="opacity:0.35" title="Load a saved calibration file">Import</button>
         <button class="sidebar-btn" id="btnExportPreset" disabled style="opacity:0.35" title="Save the current calibration to a file">Export</button>
+      </div>
+      <!-- Authoring step before publishing a Split screen: opens warp_tool.html with this image's L1
+           preloaded (js/controls.js), the camera panorama is then dropped in as L2 -->
+      <div class="can3d-btn-row">
+        <button class="sidebar-btn" id="btnPrepareL2" title="Open the Warp tool with this image's L1 loaded, to bend a camera panorama into the can projection for Split screen">Prepare L2 ↗</button>
       </div>
       <div class="can3d-sep"></div>
       <button class="sidebar-btn" id="btnReset" title="Clear the current image and calibration">↩ Load new image</button>
@@ -617,7 +622,7 @@
         <input type="range" id="theaterZoom" min="0.5" max="2" step="0.1" value="1" title="Zoom the 3D model">
         <span id="theaterZoomVal">1.0×</span>
       </div>
-      <div id="splitHandle" title="Drag to resize the raw/enhanced comparison"></div>
+      <div id="splitHandle" title="Drag to move the divider between the real scene and the enhanced scan"></div>
       <button id="btnSplitInvert" title="Swap sides">↺</button>
       <!-- Image metadata "i" - top-right corner of the canvas, shown in Gallery and the plain
            Analyzer Image sub-view (see updateViewButtons(), render-sungraph.js) - moved off the
