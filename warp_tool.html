@@ -383,7 +383,6 @@ const state = {
   img: { A: null, B: null },        // HTMLImageElement / canvas per layer
   name: { A: '', B: '' },
   pairs: [],                         // {id, a:{x,y}|null, b:{x,y}|null, res:number|null}
-  nextId: 1,
   placing: null,                     // {id, side:'A'|'B'}
   selected: null,                    // pair id
   hover: null,                       // pair id
@@ -682,7 +681,8 @@ function setPinMode(on, byUser) {
 function startPair() {
   if (!state.img.A || !state.img.B) { setStatus('Load both L1 and L2 first.', 'err'); return; }
   cancelPlacing();
-  const pr = { id: state.nextId++, a: null, b: null, res: null };
+  // next number follows the highest existing pair, so an abandoned empty pair leaves no gap
+  const pr = { id: state.pairs.reduce((m, q) => Math.max(m, q.id), 0) + 1, a: null, b: null, res: null };
   state.pairs.push(pr);
   state.placing = { id: pr.id, side: 'A' };
   select(pr.id);
@@ -847,7 +847,6 @@ function pinsJSON() {
 }
 function applyPins(j) {
   state.pairs = (j.pairs || []).map(p => ({ id: p.id, a: p.l1 || null, b: p.l2 || null, res: null }));
-  state.nextId = state.pairs.reduce((m, p) => Math.max(m, p.id), 0) + 1;
   if (j.smoothing != null) { $('rngSmooth').value = j.smoothing; $('outSmooth').textContent = j.smoothing; paintSliders(); }
   if (j.frame != null) $('chkFrame').checked = j.frame;
   state.placing = null; state.selected = null;
@@ -879,7 +878,7 @@ $('filePins').addEventListener('change', async e => {
 });
 $('btnClear').addEventListener('click', () => {
   if (!state.pairs.length || !confirm('Remove all pins?')) return;
-  state.pairs = []; state.nextId = 1; state.placing = null; state.selected = null;
+  state.pairs = []; state.placing = null; state.selected = null;
   pinsChanged(true); renderList(); redraw(); setStatus('');
   if (state.pinMode) startPair();
 });
