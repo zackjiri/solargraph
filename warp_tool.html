@@ -350,7 +350,7 @@
       <div class="pair-head" id="pairHead" hidden>
         <span title="Pair number, shared by the red and the blue pin">#</span>
         <span class="l1" title="Red pin on L1">L1</span><span class="l2" title="Blue pin on L2">L2</span>
-        <span class="res" title="Distance in px between the blue pin and where the warp maps its red twin (after WARP IT)">Residual px</span>
+        <span class="res" title="How far off each pair is after WARP IT, in L1 px: the gap between the blue pin and where the warp maps its red twin, measured on the scan">Residual px</span>
         <span></span>
       </div>
       <ul id="pairList"></ul>
@@ -364,7 +364,7 @@
 
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#e8a020">3</span>Warp L2</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
-      <div class="slider" title="0 = every blue pin lands exactly on its red twin. Higher values relax that for a smoother warp; the list then shows each pair's residual in px">
+      <div class="slider" title="0 = every blue pin lands exactly on its red twin. Higher values relax that for a smoother warp; the list then shows each pair's residual in L1 px">
         <span>Smoothing</span><input type="range" id="rngSmooth" min="0" max="100" value="0"><output id="outSmooth">0</output>
       </div>
       <label class="chk" title="Adds 4 corners + 4 edge midpoints mapping the L1 frame onto the L2 frame. Use only when both images show the same field of view; otherwise it fights real pins near the edges"><input type="checkbox" id="chkFrame"> Pin frame edges (8 implicit pairs)</label>
@@ -1065,18 +1065,29 @@ function warpIt() {
     state.warpFit = { t, norm, scale: l2Density(gx, gy, gw, gh, STEP) };
     edges.B = null; edges.canvas = null;
 
-    // residuals: how far each blue pin is from where the fitted map sends its red twin
-    const o = [0, 0];
+    // residuals in L1 px: the miss between the blue pin and where the fitted map sends its red twin
+    // is in L2 px, so it's carried back through the map's local Jacobian at the red pin (central
+    // differences, 1 L1 px apart). Unlike L2 px, the figure doesn't depend on the photo's resolution.
+    const o = [0, 0], px = [0, 0], mx = [0, 0], py = [0, 0], my = [0, 0];
     for (const p of pairs) {
-      tpsEval(t, p.a.x / norm, p.a.y / norm, o);
-      p.res = Math.hypot(o[0] * norm - p.b.x, o[1] * norm - p.b.y);
+      const ax = p.a.x / norm, ay = p.a.y / norm, h = 0.5 / norm;
+      tpsEval(t, ax, ay, o);
+      tpsEval(t, ax + h, ay, px); tpsEval(t, ax - h, ay, mx);
+      tpsEval(t, ax, ay + h, py); tpsEval(t, ax, ay - h, my);
+      const j11 = (px[0] - mx[0]) * norm, j21 = (px[1] - mx[1]) * norm;   // d(L2)/d(L1 x), per L1 px
+      const j12 = (py[0] - my[0]) * norm, j22 = (py[1] - my[1]) * norm;   // d(L2)/d(L1 y)
+      const ex = p.b.x - o[0] * norm, ey = p.b.y - o[1] * norm;           // miss in L2 px
+      const det = j11 * j22 - j12 * j21;
+      p.res = Math.abs(det) > 1e-12
+        ? Math.hypot((j22 * ex - j12 * ey) / det, (j11 * ey - j21 * ex) / det)
+        : Math.hypot(ex, ey);
     }
     const maxRes = Math.max(0, ...pairs.map(p => p.res));
     setLayout('review');
     if (state.preview === 'off') setPreview('split');
     renderList(); redraw(); updateButtons();
     setStatus(`L2 warped to ${W}×${H} from ${src.length} pairs in ${Math.round(performance.now() - t0)} ms` +
-      (lambda > 0 ? ` · max residual ${maxRes.toFixed(1)} px` : ''), 'ok');
+      (lambda > 0 ? ` · max residual ${maxRes.toFixed(1)} px (L1)` : ''), 'ok');
   }, 20);
 }
 // Resamples L2 into the L1 geometry at Wout×Hout output pixels (L1 size, or scaled up for export).
