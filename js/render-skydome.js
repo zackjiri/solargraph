@@ -2239,68 +2239,106 @@ function _skyPlanetAmbientColorAt(elDeg, sunElDeg) {
   return _lerp3(col, [235, 140, 70], glowStrength);
 }
 
-// While actively dragging/pinching (_skyDomePlanet3DInteracting - same flag the photo-warp mesh
-// already reads, see SD_PLANET_IMG_INTERACT_STEP_MUL below), coarsen this shell too: it rebuilds
-// from scratch every frame like Sky Map 3D's (see _skyMap3DDrawShell), so it pays the same per-drag
-// cost even though its own base mesh (4°) is already coarser. No idle-time "HD" refinement beyond
-// the base 4° - unlike the photo warp, this shell's colour model is smooth/low-frequency enough
-// that 4° was already judged plenty (see the comment below), so there's nothing finer worth settling
-// into once the drag stops.
-const SKY_PLANET3D_SHELL_INTERACT_STEP_MUL = 2;   // 4°→8° while actively dragging/pinching
-// Re-stroked over each patch's own fill, below - see the comment at the stroke call itself.
-const SKY_PLANET3D_SHELL_SEAM_PAD = 1.5;   // canvas px
-function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl) {
+// The ambient sky is coloured per pixel into a small offscreen buffer and drawn scaled up in one
+// drawImage, instead of a mesh of gradient-filled patches. Every buffer pixel inverts the fisheye
+// projection (as _skyDomePlanet3DPixelToAzEl does) to its view direction; only the direction's
+// vertical component sin(el) matters, since the colour depends just on elevation and the sun's
+// elevation (see above). The trig is all in lookup tables: sin(θ)/θ and cos(θ) by the angle θ from
+// the view centre (fixed), and the colour by sin(el) (rebuilt each frame for the current sun). The previous mesh (~2000 patches of 4°, each with its own
+// CanvasGradient, fill and seam-hiding stroke) took ~60 ms/frame at 1440x900, most of a Planetarium
+// frame; this takes a few ms and has no patch seams at all. The colour field is smooth, so the
+// browser's bilinear upscale hides the coarse buffer completely.
+const SKY_PLANET3D_SHELL_PX = 3;            // canvas px per buffer px
+const SKY_PLANET3D_SHELL_PX_INTERACT = 4;   // while dragging/pinching (_skyDomePlanet3DInteracting)
+const _skyPlanetShellBuf = { canvas: null, ctx: null, img: null };
+const SKY_PLANET3D_SHELL_THETA_N = 4096, SKY_PLANET3D_SHELL_SIN_N = 4096;
+const _skyPlanetShellTheta = (() => {   // [sin(θ)/θ, cos(θ)] for θ in [0, PLANET3D_FADE_OUTER]
+  const t = new Float64Array((SKY_PLANET3D_SHELL_THETA_N + 1) * 2);
+  for (let n = 0; n <= SKY_PLANET3D_SHELL_THETA_N; n++) {
+    const th = n / SKY_PLANET3D_SHELL_THETA_N * PLANET3D_FADE_OUTER;
+    t[n * 2] = n ? Math.sin(th) / th : 1; t[n * 2 + 1] = Math.cos(th);
+  }
+  return t;
+})();
+// Clips ctx to the sky side of the horizon. Along a ray from the view centre at screen angle φ,
+// the view direction at angle θ from the centre has vertical component
+//   sin(el) = A·sin θ + B·cos θ,  A = cos φ·RIGHT.z + sin φ·UP.z,  B = FWD.z,
+// a sinusoid in θ, so the ray crosses the horizon exactly once in (0, π), at θ0 = atan2(B, -A).
+// With the centre above the horizon (B ≥ 0) the sky is θ < θ0 on every ray, below it θ > θ0. The
+// clip is the polygon r = θ0(φ)·f, capped at the faded-out rim, or that rim circle minus the
+// polygon. Done per ray rather than by projecting the horizon circle, which degenerates to a line
+// of zero area when the view is exactly level.
+const SKY_PLANET3D_CLIP_STEPS = 720;
+function _skyDomePlanet3DClipAboveHorizon(ctx, layout) {
+  const R = _skyDomePlanet3D.RIGHT, U = _skyDomePlanet3D.UP, B = _skyDomePlanet3D.FWD[2];
+  const f = _skyDomePlanet3D.FOCAL * layout.scale, cap = PLANET3D_FADE_OUTER + 0.02;
+  const path = new Path2D();
+  for (let n = 0; n < SKY_PLANET3D_CLIP_STEPS; n++) {
+    const phi = n / SKY_PLANET3D_CLIP_STEPS * 2 * Math.PI, c = Math.cos(phi), s = Math.sin(phi);
+    let th = Math.atan2(B, -(c * R[2] + s * U[2]));
+    if (th < 0) th += Math.PI;
+    const r = Math.min(th, cap) * f;
+    const x = layout.cx + r * c, y = layout.cy - r * s;
+    if (n) path.lineTo(x, y); else path.moveTo(x, y);
+  }
+  path.closePath();
+  if (B >= 0) { ctx.clip(path); return; }
+  path.moveTo(layout.cx + cap * f, layout.cy);   // own subpath, no connecting edge to the polygon
+  path.arc(layout.cx, layout.cy, cap * f, 0, 2 * Math.PI);
+  ctx.clip(path, 'evenodd');
+}
+function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl, W, H) {
   // Wired to the same "cladding" checkbox as the 3D Model theater's cylinder cladding and Sky Map
   // 3D's own shell (#chkCladding/show3DCladding, render-3d.js) - off hides this ambient sky fill
   // entirely, mirroring what that checkbox already does in the other two views.
   if (typeof show3DCladding !== 'undefined' && !show3DCladding) return;
-  const stepMul = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_INTERACT_STEP_MUL : 1;
-  const AZ_STEP = 4 * stepMul, EL_STEP = 4 * stepMul;   // Planetarium's field of view is narrower
-  const patches = [];               // than Sky Map 3D's near-hemisphere, so a coarser mesh already reads smooth.
-  // Corners/midpoints sample a fixed (az,el) grid every frame (only AZ_STEP/EL_STEP - i.e. the
-  // interacting flag - ever changes which grid), so _skyDomeGridVec's cache applies here exactly
-  // as it does to the meridian/ring lines above; adjacent cells also share corners, so this cuts
-  // real duplicate work too, not just repeated frames.
-  for (let az = 0; az < 360; az += AZ_STEP) {
-    for (let el = 0; el < 90; el += EL_STEP) {
-      const az2 = az + AZ_STEP, el2 = Math.min(90, el + EL_STEP);
-      const azMid = az + AZ_STEP / 2, elMid = (el + el2) / 2;
-      const centerP = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(azMid, elMid));
-      if (centerP.visible === false || centerP.alpha <= 0.02) continue;   // behind observer / faded out
-      const corners = [[az, el], [az2, el], [az2, el2], [az, el2]].map(([a, e]) => {
-        const p = _skyDomePlanet3DProjectRaw(layout, _skyDomeGridVec(a, e));
-        return p.visible === false ? null : [p.x, p.y];
-      });
-      if (!corners.every(Boolean)) continue;
-      patches.push({ corners, el, el2, alpha: centerP.alpha });
+  const step = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_PX_INTERACT : SKY_PLANET3D_SHELL_PX;
+  const bw = Math.ceil(W / step), bh = Math.ceil(H / step);
+  const B = _skyPlanetShellBuf;
+  if (!B.canvas) { B.canvas = document.createElement('canvas'); B.ctx = B.canvas.getContext('2d'); }
+  if (B.canvas.width !== bw || B.canvas.height !== bh) {
+    B.canvas.width = bw; B.canvas.height = bh;
+    B.img = B.ctx.createImageData(bw, bh);
+  }
+  const d = B.img.data;
+
+  // colour by sin(el) for the current sun, sin(el) in [0, 1]
+  const SN = SKY_PLANET3D_SHELL_SIN_N, lut = new Uint8ClampedArray((SN + 1) * 3);
+  for (let n = 0; n <= SN; n++) {
+    const c = _skyPlanetAmbientColorAt(Math.asin(n / SN) * 180 / Math.PI, sunEl);
+    lut[n * 3] = c[0]; lut[n * 3 + 1] = c[1]; lut[n * 3 + 2] = c[2];
+  }
+  const TH = _skyPlanetShellTheta, thScale = SKY_PLANET3D_SHELL_THETA_N / PLANET3D_FADE_OUTER;
+
+  const inv = 1 / (layout.scale * _skyDomePlanet3D.FOCAL);   // canvas px -> image-plane angle (rad)
+  const R = _skyDomePlanet3D.RIGHT, U = _skyDomePlanet3D.UP, F = _skyDomePlanet3D.FWD;
+  const fadeSpan = PLANET3D_FADE_OUTER - PLANET3D_FADE_INNER;
+  // The buffer keeps the sky colour a little below the horizon (1.5 buffer px, in sin(el) ~ el
+  // radians) and the crisp edge comes from clipping the upscaled image to the horizon below, so the
+  // bilinear upscale never blurs the edge.
+  const belowHorizon = -1.5 * step * inv;
+  for (let j = 0; j < bh; j++) {
+    const sy = -((j + 0.5) * step - layout.cy) * inv;
+    let o = j * bw * 4;
+    for (let i = 0; i < bw; i++, o += 4) {
+      const sx = ((i + 0.5) * step - layout.cx) * inv;
+      const theta = Math.sqrt(sx * sx + sy * sy);
+      if (theta >= PLANET3D_FADE_OUTER) { d[o + 3] = 0; continue; }
+      const t2 = (theta * thScale) << 1, k = TH[t2];
+      const vz = sx * k * R[2] + sy * k * U[2] + TH[t2 + 1] * F[2];   // sin(el)
+      if (vz < belowHorizon) { d[o + 3] = 0; continue; }   // below the horizon: left to the background
+      const fade = theta <= PLANET3D_FADE_INNER ? 1 : 1 - (theta - PLANET3D_FADE_INNER) / fadeSpan;
+      const n = vz >= 1 ? SN : vz <= 0 ? 0 : (vz * SN + 0.5) | 0;
+      d[o] = lut[n * 3]; d[o + 1] = lut[n * 3 + 1]; d[o + 2] = lut[n * 3 + 2];
+      d[o + 3] = 255 * fade;
     }
   }
-  for (const p of patches) {
-    const c0 = _skyPlanetAmbientColorAt(p.el, sunEl), c1 = _skyPlanetAmbientColorAt(p.el2, sunEl);
-    const midLow  = [(p.corners[0][0] + p.corners[1][0]) / 2, (p.corners[0][1] + p.corners[1][1]) / 2];
-    const midHigh = [(p.corners[2][0] + p.corners[3][0]) / 2, (p.corners[2][1] + p.corners[3][1]) / 2];
-    ctx.beginPath(); ctx.moveTo(p.corners[0][0], p.corners[0][1]);
-    for (let i = 1; i < 4; i++) ctx.lineTo(p.corners[i][0], p.corners[i][1]);
-    ctx.closePath();
-    const grad = ctx.createLinearGradient(midLow[0], midLow[1], midHigh[0], midHigh[1]);
-    grad.addColorStop(0, `rgba(${c0[0] | 0},${c0[1] | 0},${c0[2] | 0},1)`);
-    grad.addColorStop(1, `rgba(${c1[0] | 0},${c1[1] | 0},${c1[2] | 0},1)`);
-    ctx.fillStyle = grad;
-    ctx.globalAlpha = p.alpha;   // fades the whole patch smoothly toward the rim (see _skyDomePlanet3DProject)
-    ctx.fill();
-    // Reported on Windows Chrome (Skia's rasterizer): adjacent patches' antialiased edges don't
-    // blend to exactly the same partial-coverage pixels, leaving a faint seam that traces out the
-    // whole 4°×4° mesh as a visible grid - the same class of bug already fixed for the photo-warp
-    // triangle mesh's own seams (SD_PLANET_IMG_SEAM_PAD, §20.21), just showing up here instead
-    // (this shell has no seam handling of its own yet). A straight quad edge has no texture to
-    // preserve, unlike a texture-mapped triangle, so the simpler fix applies: re-stroke the exact
-    // same path with the exact same gradient - centered on the edge, it straddles and repaints
-    // whatever sliver either neighbour's own antialiasing left short.
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = SKY_PLANET3D_SHELL_SEAM_PAD;
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
+  B.ctx.putImageData(B.img, 0, 0);
+  ctx.save();
+  _skyDomePlanet3DClipAboveHorizon(ctx, layout);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(B.canvas, 0, 0, bw * step, bh * step);
+  ctx.restore();
 
   // Sun halo overlay - only while the sun is above (or just below) the horizon; a sun deep in
   // astronomical twilight isn't lighting the sky enough to show one.
@@ -2948,7 +2986,7 @@ function drawSkyDomePlanet3DAxes(ctx, W, H, pal) {
   const _sunDelta = sunDeclination(dayOfYear(customMonth, customDay));
   const _sunPhi   = effectiveLat() * hemisphere;
   const _sunNow   = sunPosition((sunTimeHours - 12) * 15 * Math.PI / 180, _sunDelta, _sunPhi);
-  _skyDomePlanet3DDrawShell(ctx, layout, _sunNow.az, _sunNow.el);
+  _skyDomePlanet3DDrawShell(ctx, layout, _sunNow.az, _sunNow.el, W, H);
   _skyDomePlanet3DDrawImage(ctx, layout);
   _skyDomePlanet3DDrawPano(ctx, layout);
 
