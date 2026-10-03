@@ -28,6 +28,7 @@
   html, body { margin: 0; height: 100%; }
   body {
     height: 100dvh;    /* visible viewport on iPad Safari, whose 100% reaches under its own toolbars (as in the viewer) */
+    height: var(--app-h, 100dvh);   /* measured in JS, see fitToViewport() */
     background: var(--bg); color: var(--text);
     font-family: var(--sans); font-size: 15px;
     display: flex; flex-direction: column; overflow: hidden;
@@ -423,6 +424,22 @@ const state = {
 const COLOR = { A: '#e84040', B: '#20a0e8' };
 const HILITE = '#ffd23c';   // ring around a hovered / selected pin
 const $ = id => document.getElementById(id);
+
+/* ---------- page height ---------- */
+// iPad Safari reports its final toolbar layout only after the page has loaded, so CSS viewport
+// units can leave the bottom of the page under the fold until the device is rotated. The body
+// height therefore follows the measured visible height; the views refit through their ResizeObservers.
+function fitToViewport() {
+  const vv = window.visualViewport;
+  if (vv && vv.scale > 1.01) return;   // pinch zoom shrinks the visual viewport, not the page
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
+  if (window.scrollY) window.scrollTo(0, 0);
+}
+fitToViewport();
+for (const ev of ['resize', 'orientationchange', 'pageshow']) window.addEventListener(ev, fitToViewport);
+if (window.visualViewport) visualViewport.addEventListener('resize', fitToViewport);
+window.addEventListener('load', () => { fitToViewport(); setTimeout(fitToViewport, 300); setTimeout(fitToViewport, 1000); });
 
 /* ---------- file naming (GEN-X_Y_LZ.jpg) ---------- */
 function parseName(n) {
