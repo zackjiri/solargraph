@@ -1302,7 +1302,10 @@ function setArrange(mode) {
   for (const v of [views.A, views.B]) { v.measure(); v.fit(); }
 }
 $('btnArrange').addEventListener('click', () => setArrange($('views').classList.contains('side') ? 'stacked' : 'side'));
-try { if (localStorage.getItem('sgwarp-arrange') === 'side') setArrange('side'); } catch (e) {}
+// side by side unless this browser last chose stacked
+let arrange0 = 'side';
+try { if (localStorage.getItem('sgwarp-arrange') === 'stacked') arrange0 = 'stacked'; } catch (e) {}
+setArrange(arrange0);
 (function warpLabel() {
   const b = $('btnWarp'), chars = [...b.textContent], n = chars.length;
   b.innerHTML = chars.map((ch, i) => {
