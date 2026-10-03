@@ -333,6 +333,18 @@
     font-size: 11px;
   }
 
+  /* Night Sky: red recording dot right of "local" in Time while the animation runs, blinking
+     once a second (on half, off half) like a video recorder's REC light. The Night Sky view
+     switcher (#nightSkyTopRow, z-index 6) starts right after "local", so the dot is lifted above
+     it and sits in that row's empty left padding, just before its ◀ arrow. */
+  .rec-dot {
+    display: inline-block; width: 6px; height: 6px; margin-left: 2px; border-radius: 50%;
+    background: #e53935; vertical-align: 1px; visibility: hidden;
+    position: relative; z-index: 7;
+  }
+  .rec-dot.on { visibility: visible; animation: rec-blink 1s steps(1, end) infinite; }
+  @keyframes rec-blink { 50% { opacity: 0; } }
+
   /* ── Main area: canvas + sidebar ── */
   .main-area {
     flex: 1 1 0;
