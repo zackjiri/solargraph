@@ -382,6 +382,7 @@
 const state = {
   img: { A: null, B: null },        // HTMLImageElement / canvas per layer
   name: { A: '', B: '' },
+  pinSize: { A: null, B: null },     // {w,h} of the image the pin coordinates refer to, per layer
   pairs: [],                         // {id, a:{x,y}|null, b:{x,y}|null, res:number|null}
   placing: null,                     // {id, side:'A'|'B'}
   selected: null,                    // pair id
@@ -793,12 +794,14 @@ document.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click'
 }));
 $('fileImg').addEventListener('change', e => { const f = e.target.files[0]; if (f) loadImage(loadTarget, f); });
 
+let skipLocal = false;   // set while the project's own _warp.json is about to be applied
 function loadImage(side, file) {
   const url = URL.createObjectURL(file);
   const im = new Image();
-  im.onload = () => {
+  return new Promise(done => { im.onload = () => {
     const had = !!state.img[side];
     state.img[side] = im; state.name[side] = file.name;
+    const fitNote = fitPinsToImages();
     if (side === 'B') $('views').style.setProperty('--ratio-b', im.width / im.height);
     for (const m of Object.values(layoutMem)) if (m) m[side] = null;
     state.warp = null; state.warpStale = false; $('staleNote').hidden = true;
@@ -808,13 +811,15 @@ function loadImage(side, file) {
     const p = parseName(file.name), want = side === 'A' ? 1 : 2;
     const warn = p && p.layer !== want ? ` <span class="warn">(file is L${p.layer})</span>` : '';
     $('info' + side).innerHTML = `L${want}: ${file.name} &middot; ${im.width}&times;${im.height}${warn}`;
-    if (!had && state.pairs.length === 0) loadLocal();
+    if (!had && state.pairs.length === 0 && !skipLocal) loadLocal();
+    else if (fitNote) setStatus(fitNote.text, fitNote.cls);
     if (state.img.A && state.img.B && pinPref[state.layout] && !state.pinMode) setPinMode(true);
     if (state.img.A && state.img.B) setSectionCollapsed($('secImages'), true);   // both loaded: Images is done
     renderList(); redraw();
+    done(true);
   };
-  im.onerror = () => setStatus('Could not read ' + file.name, 'err');
-  im.src = url;
+  im.onerror = () => { setStatus('Could not read ' + file.name, 'err'); done(false); };
+  im.src = url; });
 }
 for (const side of ['A', 'B']) {
   const el = views[side].el;
@@ -847,11 +852,40 @@ function pinsJSON() {
 }
 function applyPins(j) {
   state.pairs = (j.pairs || []).map(p => ({ id: p.id, a: p.l1 || null, b: p.l2 || null, res: null }));
+  const dims = d => d && d.w > 0 && d.h > 0 ? { w: d.w, h: d.h } : null;
+  state.pinSize = { A: dims(j.l1), B: dims(j.l2) };
+  const fitNote = fitPinsToImages();
   if (j.smoothing != null) { $('rngSmooth').value = j.smoothing; $('outSmooth').textContent = j.smoothing; paintSliders(); }
   if (j.frame != null) $('chkFrame').checked = j.frame;
   state.placing = null; state.selected = null;
   pinsChanged(true); renderList(); redraw();
   if (state.pinMode) startPair();
+  return fitNote;
+}
+// Pins are stored in source-image pixels. When a layer is opened at a different size than the
+// pins were placed on (e.g. a downscaled L2), its pins are rescaled to the new size, provided the
+// aspect ratio matches within 1 %; otherwise the image is a different picture or a crop, so the
+// pins stay put and a warning is shown.
+function fitPinsToImages() {
+  const scaled = [], mismatch = [];
+  for (const side of ['A', 'B']) {
+    const im = state.img[side], from = state.pinSize[side];
+    if (!im) continue;
+    const to = { w: im.width, h: im.height };
+    state.pinSize[side] = to;
+    if (!from || (from.w === to.w && from.h === to.h)) continue;
+    const L = side === 'A' ? 'L1' : 'L2', sizes = `${from.w}×${from.h} → ${to.w}×${to.h}`;
+    const key = side === 'A' ? 'a' : 'b';
+    if (!state.pairs.some(p => p[key])) continue;
+    if (Math.abs((to.w / to.h) / (from.w / from.h) - 1) > 0.01) { mismatch.push(`${L} ${sizes}`); continue; }
+    const sx = to.w / from.w, sy = to.h / from.h;
+    for (const p of state.pairs) if (p[key]) p[key] = { x: p[key].x * sx, y: p[key].y * sy };
+    scaled.push(`${L} ${sizes}`);
+  }
+  if (!scaled.length && !mismatch.length) return null;
+  if (scaled.length) pinsChanged(true);
+  if (mismatch.length) return { text: `Pins were placed on a differently shaped image (${mismatch.join(', ')}), not rescaled`, cls: 'err' };
+  return { text: `Pins rescaled to the new image size (${scaled.join(', ')})`, cls: 'ok' };
 }
 function localKey() { return 'sgwarp:' + state.name.A + '|' + state.name.B; }
 function saveLocal() {
@@ -862,18 +896,24 @@ function loadLocal() {
   if (!state.name.A || !state.name.B) return;
   try {
     const s = localStorage.getItem(localKey());
-    if (s) { applyPins(JSON.parse(s)); setStatus('Restored pins from the last session', 'ok'); }
+    if (s) {
+      const n = applyPins(JSON.parse(s));
+      setStatus('Restored pins from the last session' + (n ? '. ' + n.text : ''), n ? n.cls : 'ok');
+    }
   } catch (e) {}
 }
 $('btnSavePins').addEventListener('click', () => {
   const p = parseName(state.name.A);
-  const name = p ? `GEN-${p.gen}_${p.idx}_warp_pins.json` : 'warp_pins.json';
+  const name = p ? `GEN-${p.gen}_${p.idx}_warp.json` : 'warp.json';
   download(new Blob([JSON.stringify(pinsJSON(), null, 2)], { type: 'application/json' }), name);
 });
 $('btnLoadPins').addEventListener('click', () => { $('filePins').value = ''; $('filePins').click(); });
 $('filePins').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
-  try { applyPins(JSON.parse(await f.text())); setStatus(`Loaded ${state.pairs.length} pairs`, 'ok'); }
+  try {
+    const j = JSON.parse(await f.text()), n = applyPins(j);
+    setStatus(`Loaded ${(j.pairs || []).length} pairs` + (n ? '. ' + n.text : ''), n ? n.cls : 'ok');
+  }
   catch (err) { setStatus('Invalid pins file', 'err'); }
 });
 $('btnClear').addEventListener('click', () => {
@@ -1159,23 +1199,43 @@ document.addEventListener('keydown', e => {
 });
 renderList();
 
-/* ---------- L1 preload from the viewer ---------- */
-// The viewer's "Prepare L2" button opens this page as warp_tool.html?gen=X&image=Y: L1 comes
-// from the project (img/GEN-X_Y_L1.jpg), the camera panorama is then dropped in as L2.
-// Needs http(s); from file:// the browser blocks the fetch and L1 is loaded by hand.
-(async function preloadL1() {
-  const q = new URLSearchParams(location.search), gen = q.get('gen'), image = q.get('image');
-  if (!/^\d+$/.test(gen || '') || !/^\d+$/.test(image || '')) return;
-  const name = `GEN-${gen}_${image}_L1.jpg`;
+/* ---------- preload from the project ---------- */
+// The viewer's "Prepare L2" button opens this page as warp_tool.html?gen=X&image=Y. From the
+// project's img folder the tool then loads GEN-X_Y_L1.jpg, the camera panorama GEN-X_Y_pano.*
+// as L2 if it is there, and the saved pins GEN-X_Y_warp.json if they are there (those win over
+// the browser autosave). Needs http(s); from file:// the browser blocks the fetch and the
+// files are loaded by hand.
+const PANO_EXT = ['jpg', 'jpeg', 'png', 'JPG', 'JPEG', 'PNG'];
+async function fetchProjectFile(name) {
   try {
     const r = await fetch('img/' + name);
-    if (!r.ok) throw new Error(r.status);
+    if (!r.ok) return null;
     const blob = await r.blob();
-    loadImage('A', new File([blob], name, { type: blob.type || 'image/jpeg' }));
-    setStatus(`Loaded ${name} from the project, now drop the camera panorama as L2`, 'ok');
-  } catch (e) {
-    setStatus(`Could not load img/${name} (open the tool over http, or load L1 by hand)`, 'err');
-  }
+    return new File([blob], name, { type: blob.type });
+  } catch (e) { return null; }
+}
+(async function preloadFromProject() {
+  const q = new URLSearchParams(location.search), gen = q.get('gen'), image = q.get('image');
+  if (!/^\d+$/.test(gen || '') || !/^\d+$/.test(image || '')) return;
+  const base = `GEN-${gen}_${image}`;
+  const l1 = await fetchProjectFile(`${base}_L1.jpg`);
+  if (!l1) { setStatus(`Could not load img/${base}_L1.jpg (open the tool over http, or load L1 by hand)`, 'err'); return; }
+  let pano = null;
+  for (const ext of PANO_EXT) if ((pano = await fetchProjectFile(`${base}_pano.${ext}`))) break;
+  let pins = null;
+  const pf = await fetchProjectFile(`${base}_warp.json`);
+  if (pf) try { pins = JSON.parse(await pf.text()); } catch (e) { pins = null; }
+  skipLocal = !!pins;
+  await loadImage('A', l1);
+  if (pano) await loadImage('B', pano);
+  skipLocal = false;
+  const loaded = [l1.name].concat(pano ? [pano.name] : []);
+  let note = null;
+  if (pins) { note = applyPins(pins); loaded.push(`${(pins.pairs || []).length} pin pairs (${pf.name})`); }
+  else if (pf) note = { text: `${pf.name} is not a valid pins file`, cls: 'err' };
+  const list = loaded.length > 1 ? loaded.slice(0, -1).join(', ') + ' and ' + loaded[loaded.length - 1] : loaded[0];
+  const next = pano ? '' : ', now drop the camera panorama as L2';
+  setStatus(`Loaded ${list} from the project${next}` + (note ? '. ' + note.text : ''), note ? note.cls : 'ok');
 })();
 </script>
 </body>
