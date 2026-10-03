@@ -116,6 +116,8 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 💾 **Presets** - export a full calibration as JSON and reload it later.
 
+🪡 **[Warp tool](warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded.
+
 Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 
 ---
@@ -144,7 +146,7 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 - **Blank canvas** - make sure a Generation and Image are selected in Gallery, or that a scan is loaded in Analyzer (`↩ Load new image`).
 - **Calibration looks wrong** - hit `Reset calibration`, then work in order: Yaw, Pitch and Roll first, Horizon and Radius last.
 - **`CHMI data` is greyed out** - measured data exists only for images with a matching station extract; not every solargraph has one.
-- **`Split screen` is disabled** - it needs both a Raw and an Enhanced layer for the selected image.
+- **`Split screen` is disabled** - it compares the Enhanced scan with a real scene photo, and not every image has one.
 - **A section disappeared** - click the ▼ / ▶ triangle by its heading; sections collapse their contents, never themselves.
 - **Date, location or time won't change in Night Sky** - they are locked while a Catalog photo is shown, so the frame stays true to it. Switch to `Sky Map` or go back to the Catalog to unlock them.
 - **On a phone** - the layout stacks below ~640 px, but fine calibration is much easier on a tablet or desktop.
