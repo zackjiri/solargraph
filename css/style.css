@@ -1922,7 +1922,9 @@
   .can3d-sep {
     margin: 6px 10px 6px 0;
   }
-  #can3dButtons #btnReset { margin-right: 10px; }
+  /* width:auto, not .sidebar-btn's 100%: a 100% width ignores the right margin and pushed the
+     button's right edge past the Import/Export/Prepare L2 rows above it */
+  #can3dButtons #btnReset { margin-right: 10px; width: auto; }
 
   /* Mobile: stack vertically */
   @media (max-width: 640px) {
