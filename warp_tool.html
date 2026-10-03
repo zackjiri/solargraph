@@ -52,23 +52,35 @@
   #views.review #viewB .tag { left: 6px; top: 6px; font-size: 10px; padding: 2px 6px; }
   /* layout switch, top-right over the canvas (same look as the viewer's RENDER IMAGE / PANO row) */
   #layoutToggle {
-    position: absolute; top: 8px; right: 12px; z-index: 12; width: 230px; display: flex;
+    position: absolute; top: 8px; right: 12px; z-index: 12; width: 230px;
+    display: grid; grid-template-columns: 1fr 1fr; row-gap: 4px;
     padding: 5px 8px; background: rgba(7,9,13,0.55);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   #layoutToggle button {
-    flex: 1 1 0; min-width: 0; height: 24px; padding: 0;
+    min-width: 0; height: 24px; padding: 0;
     display: flex; align-items: center; justify-content: center;
     background: rgba(10,18,26,0.85); color: #8fd4f7; border: none;
     font-family: var(--mono); font-size: 9px; font-weight: normal; letter-spacing: 0.15em; text-transform: uppercase;
     transition: background 0.15s, color 0.15s;
   }
-  #layoutToggle button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
-  #layoutToggle button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+  #layoutToggle [data-layout=pins] { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+  #layoutToggle [data-layout=review] { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
   #layoutToggle button:hover { background: rgba(10,18,26,0.95); }
   /* active half: outlined like the selected Off / Overlay / Split / Edges button */
   #layoutToggle button.on { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  /* Place pins only: an icon button under "Place pins", in the same panel, turns L1/L2 between
+     stacked and side by side; the pictogram shows the current arrangement */
+  #layoutToggle #btnArrange { grid-column: 1; border-radius: var(--radius-sm); }
+  #btnArrange:hover { color: var(--accent); }
+  #btnArrange svg { width: 18px; height: 18px; }
+  #btnArrange .ic-side, #views.side #btnArrange .ic-stacked { display: none; }
+  #views.side #btnArrange .ic-side { display: inline; }
+  #views.review #btnArrange { display: none; }
+  #views.side:not(.review) { flex-direction: row; }
+  #views.side:not(.review) .view { border-bottom: none; }
+  #views.side:not(.review) #viewA { border-right: 1px solid var(--border); }
   .view {
     flex: 1; position: relative; min-height: 0; border-bottom: 1px solid var(--border);
     background: #000;
@@ -296,8 +308,14 @@
 <main>
   <div id="views">
     <div id="layoutToggle" role="group" aria-label="Layout">
-      <button data-layout="pins" class="on" title="L1 and L2 stacked at the same size, for placing pin pairs">Place pins</button>
+      <button data-layout="pins" class="on" title="L1 and L2 at the same size, stacked or side by side, for placing pin pairs">Place pins</button>
       <button data-layout="review" title="L1 fills the canvas to review the warp, L2 shrinks to a box bottom-left">Review warp</button>
+      <button id="btnArrange" aria-label="Side by side" aria-pressed="false" title="Show L1 and L2 side by side">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <g class="ic-stacked"><rect x="5" y="3" width="14" height="7" rx="1"/><path d="M3 12 H21"/><rect x="5" y="14" width="14" height="7" rx="1"/></g>
+          <g class="ic-side"><rect x="1.5" y="8" width="9" height="8" rx="1"/><path d="M12 5 V19"/><rect x="13.5" y="8" width="9" height="8" rx="1"/></g>
+        </svg>
+      </button>
     </div>
     <div class="view" id="viewA">
       <canvas></canvas>
@@ -1260,7 +1278,7 @@ function setLayout(mode) {
   state.layout = mode;
   if (state.img.B) $('views').style.setProperty('--ratio-b', state.img.B.width / state.img.B.height);
   $('views').classList.toggle('review', mode === 'review');
-  document.querySelectorAll('#layoutToggle button').forEach(b => b.classList.toggle('on', b.dataset.layout === mode));
+  document.querySelectorAll('#layoutToggle [data-layout]').forEach(b => b.classList.toggle('on', b.dataset.layout === mode));
   const mem = layoutMem[mode];
   setPreview(mem ? mem.preview : (mode === 'pins' ? 'off' : 'split'));
   setPinMode(pinPref[mode]);
@@ -1271,7 +1289,20 @@ function setLayout(mode) {
     if (m && m.userMoved) { Object.assign(v, m); v.draw(); } else v.fit();
   }
 }
-document.querySelectorAll('#layoutToggle button').forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+document.querySelectorAll('#layoutToggle [data-layout]').forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+
+/* ---------- Place pins arrangement: stacked / side by side ---------- */
+// Remembered per browser; both views refit to their new panels.
+function setArrange(mode) {
+  const side = mode === 'side', b = $('btnArrange');
+  $('views').classList.toggle('side', side);
+  b.setAttribute('aria-pressed', side);
+  b.title = side ? 'Stack L1 above L2' : 'Show L1 and L2 side by side';
+  try { localStorage.setItem('sgwarp-arrange', mode); } catch (e) {}
+  for (const v of [views.A, views.B]) { v.measure(); v.fit(); }
+}
+$('btnArrange').addEventListener('click', () => setArrange($('views').classList.contains('side') ? 'stacked' : 'side'));
+try { if (localStorage.getItem('sgwarp-arrange') === 'side') setArrange('side'); } catch (e) {}
 (function warpLabel() {
   const b = $('btnWarp'), chars = [...b.textContent], n = chars.length;
   b.innerHTML = chars.map((ch, i) => {
