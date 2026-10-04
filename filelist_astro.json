@@ -100,7 +100,10 @@
     "rotation_deg": 20,
     "thumbnail": "img/astro/A2024-05-11_AUR06_T.jpg",
     "full": "img/astro/A2024-05-11_AUR06.jpg",
-    "video": "mov/A2024-05-11_AUR06.mp4"
+    "video": "mov/A2024-05-11_AUR06.mp4",
+    "video_start_utc": "2024-05-10T22:24:19Z",
+    "video_end_utc": "2024-05-10T23:07:27Z",
+    "video_mount": "tripod"
   },
   {
     "id": "A2024-10-22_CMT06",
@@ -118,7 +121,10 @@
     "rotation_deg": 38,
     "thumbnail": "img/astro/A2024-10-22_CMT06_T.jpg",
     "full": "img/astro/A2024-10-22_CMT06.jpg",
-    "video": "mov/A2024-10-22_CMT06.mp4"
+    "video": "mov/A2024-10-22_CMT06.mp4",
+    "video_start_utc": "2024-10-22T17:43:20Z",
+    "video_end_utc": "2024-10-22T18:31:12Z",
+    "video_mount": "tripod"
   },
   {
     "id": "A2025-12-25_M31",
