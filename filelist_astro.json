@@ -99,7 +99,8 @@
     "fov_h_deg": 81.2,
     "rotation_deg": 20,
     "thumbnail": "img/astro/A2024-05-11_AUR06_T.jpg",
-    "full": "img/astro/A2024-05-11_AUR06.jpg"
+    "full": "img/astro/A2024-05-11_AUR06.jpg",
+    "video": "mov/A2024-05-11_AUR06.mp4"
   },
   {
     "id": "A2024-10-22_CMT06",
@@ -116,7 +117,8 @@
     "fov_h_deg": 35,
     "rotation_deg": 38,
     "thumbnail": "img/astro/A2024-10-22_CMT06_T.jpg",
-    "full": "img/astro/A2024-10-22_CMT06.jpg"
+    "full": "img/astro/A2024-10-22_CMT06.jpg",
+    "video": "mov/A2024-10-22_CMT06.mp4"
   },
   {
     "id": "A2025-12-25_M31",
