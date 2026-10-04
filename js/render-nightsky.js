@@ -503,7 +503,7 @@ let _nightSkyAstroCatalog = [];   // filelist_astro.json, fetched once at module
 let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky'
 async function _nightSkyLoadAstroCatalog() {
   try {
-    const res = await fetch('filelist_astro.json');
+    const res = await fetch('filelist_astro.json', { cache: 'no-cache' });   // hand-edited, always revalidate
     _nightSkyAstroCatalog = await res.json();
   } catch (e) { console.warn('Night Sky: failed to load astro catalog', e); }
   if (nightSkyActive && nightSkyTopView === 'catalog') _nightSkyRenderCatalogGrid();
@@ -541,6 +541,14 @@ function _nightSkyRenderCatalogGrid() {
     captionLbl.className = 'catalog-tile-caption';
     captionLbl.textContent = entry.object_name || entry.id;
     tile.appendChild(captionLbl);
+
+    if (entry.video) {
+      const badge = document.createElement('div');
+      badge.className = 'video-badge';
+      badge.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.833 5 L20.333 12 L7.833 19 Z" fill="currentColor"/></svg>';
+      tile.appendChild(badge);
+      tile.title += ' (with video)';
+    }
 
     tile.addEventListener('click', () => {
       _nightSkyApplyCatalogTile(entry);
@@ -609,7 +617,7 @@ function _nightSkyApplyCatalogTile(entry) {
   _nightSkyActiveFrame = {
     raDeg, decDeg,
     fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0,
-    thumbnail: entry.thumbnail, full: entry.full,
+    thumbnail: entry.thumbnail, full: entry.full, video: entry.video || null,
   };
 
   nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = 1;
@@ -2481,21 +2489,77 @@ function _nightSkyUpdateFrameThumb(layout, w, h) {
   el.style.display = 'block';
 }
 document.getElementById('nightSkyFrameThumb').addEventListener('click', () => {
-  if (_nightSkyActiveFrame) _nightSkyOpenPhotoModal(_nightSkyActiveFrame.full);
+  if (_nightSkyActiveFrame) _nightSkyOpenPhotoModal(_nightSkyActiveFrame.full, _nightSkyActiveFrame.video);
 });
+// The thumbnail is shown, hidden and moved from several places (positioning each redraw, leaving
+// Planetarium, data not loaded yet...), so its ▶ badge simply mirrors whatever its style ends up as,
+// pinned to the photo's top-right corner, 6px in from inside the thumbnail's border - the same
+// spot as on the catalog tiles (.catalog-tile .video-badge).
+function _nightSkySyncVideoBadge() {
+  const t = document.getElementById('nightSkyFrameThumb'), b = document.getElementById('nightSkyFrameVideoBadge');
+  const show = t.style.display === 'block' && !!(_nightSkyActiveFrame && _nightSkyActiveFrame.video);
+  b.style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  const inset = t.clientLeft + 6;   // clientLeft = border width
+  b.style.left = (parseFloat(t.style.left) + t.offsetWidth - inset - b.offsetWidth) + 'px';
+  b.style.top = (parseFloat(t.style.top) + inset) + 'px';
+}
+new MutationObserver(_nightSkySyncVideoBadge)
+  .observe(document.getElementById('nightSkyFrameThumb'), { attributes: true, attributeFilter: ['style'] });
 
 // Fullscreen photo modal - same pattern/CSS as Eclipse's own gallery modal
 // (_eclipseOpenGalleryModal/_eclipseCloseGalleryModal, js/render-eclipse.js), sharing the
 // .photo-modal/.photo-modal-body/.photo-modal-img/.photo-modal-close CSS classes but with its own
 // #nightSkyGalleryModal id/DOM (index.html) for this file's own JS to target independently.
-function _nightSkyOpenPhotoModal(src) {
+// With a video (catalog "video" field) the modal gets a PHOTO | VIDEO switch, opens on the photo
+// and becomes a fixed stage in the video's aspect ratio (.photo-modal-body.stage), so neither the
+// switch nor starting playback resizes it. Only the video's metadata loads on open (a few kB with
+// the index at the start of the file) - enough for its real aspect ratio and, via the #t media
+// fragment, its first frame as the preview (Safari otherwise shows nothing before play). It never
+// autoplays, pauses when switching back to PHOTO and is fully released when the modal closes.
+let _nightSkyModalVideoSrc = null;
+function _nightSkyModalShow(which) {
+  const img = document.getElementById('nightSkyGalleryModalImg'), vid = document.getElementById('nightSkyGalleryModalVideo');
+  const video = which === 'video' && !!_nightSkyModalVideoSrc;
+  img.hidden = video;
+  vid.hidden = !_nightSkyModalVideoSrc;   // with a video it stays displayed under the photo (see the CSS)
+  if (!video) vid.pause();
+  document.querySelectorAll('#nightSkyModalSwitch .ns-btn').forEach(b => b.classList.toggle('active', b.dataset.show === (video ? 'video' : 'photo')));
+}
+function _nightSkyOpenPhotoModal(src, videoSrc) {
   document.getElementById('nightSkyGalleryModalImg').src = src;
+  _nightSkyModalVideoSrc = videoSrc || null;
+  document.getElementById('nightSkyModalSwitch').hidden = !_nightSkyModalVideoSrc;
+  const body = document.getElementById('nightSkyGalleryModalBody');
+  body.classList.toggle('stage', !!_nightSkyModalVideoSrc);
+  body.style.removeProperty('--ar');   // 16:9 and 1280 px until the metadata says otherwise
+  body.style.removeProperty('--vw');
+  if (_nightSkyModalVideoSrc) {
+    const vid = document.getElementById('nightSkyGalleryModalVideo');
+    vid.onloadedmetadata = () => {
+      if (!vid.videoWidth || !vid.videoHeight) return;
+      body.style.setProperty('--ar', vid.videoWidth + ' / ' + vid.videoHeight);
+      body.style.setProperty('--vw', vid.videoWidth + 'px');   // at most 1:1, never upscaled
+    };
+    vid.src = _nightSkyModalVideoSrc + '#t=0.001';
+  }
+  _nightSkyModalShow('photo');
   document.getElementById('nightSkyGalleryModal').classList.add('visible');
 }
 function _nightSkyClosePhotoModal() {
   document.getElementById('nightSkyGalleryModal').classList.remove('visible');
   document.getElementById('nightSkyGalleryModalImg').src = '';   // release the (possibly large) image once closed
+  const vid = document.getElementById('nightSkyGalleryModalVideo');
+  vid.onloadedmetadata = null;
+  vid.pause(); vid.removeAttribute('src'); vid.load();   // stop the download too
+  vid.hidden = true;
+  document.getElementById('nightSkyGalleryModalBody').classList.remove('stage');
+  _nightSkyModalVideoSrc = null;
 }
+document.getElementById('nightSkyModalSwitch').addEventListener('click', (e) => {
+  const b = e.target.closest('.ns-btn');
+  if (b) _nightSkyModalShow(b.dataset.show);
+});
 document.getElementById('btnNightSkyGalleryModalClose').addEventListener('click', _nightSkyClosePhotoModal);
 document.getElementById('nightSkyGalleryModal').addEventListener('click', (e) => {
   if (e.target.id === 'nightSkyGalleryModal') _nightSkyClosePhotoModal();   // backdrop click only

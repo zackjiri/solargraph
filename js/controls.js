@@ -362,9 +362,9 @@ function exportPreset() {
     horizon_mm: horizonMm,
     radius_mm:  radius,
     scan_w_mm:  scanWmm,
-    latitude:   LAT,
+    latitude:   Math.round(LAT * 1e6) / 1e6,               // 1e-6° ~ 0.1 m, drops float noise
     hemisphere: hemisphere >= 0 ? 'N' : 'S',
-    longitude:  lonHemisphere * LONG,
+    longitude:  Math.round(lonHemisphere * LONG * 1e6) / 1e6,
     time_zone:  timeZoneHours
   };
   const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
@@ -470,11 +470,8 @@ document.getElementById('btnPrepareL2').addEventListener('click', () => {
 // stepping, and DEC/DM toggle that Eclipse mode already had. No more eclipseActive branching -
 // #inpLat/#inpLong behave identically regardless of which mode is showing them.
 let _locFormat = 'dec';   // 'dec' | 'dm'
-function _locStepDeg() {
-  return _locFormat === 'dm' ? 1 / 60 : 0.01;
-}
 // The ◀/▶ Location arrow buttons always land on the next whole degree in the direction pressed,
-// rather than nudging by _locStepDeg()'s own fine display precision - same idea as a keyboard's
+// rather than nudging by the fields' own display precision - same idea as a keyboard's
 // up/down arrow taking one full step at a time. From a fractional value this is just "round to
 // the next whole degree that way" (e.g. 42.37 -> 43 going up, -> 42 going down); from an already-
 // whole value floor/ceil no-op onto the same number, so the +/-1 below is what actually advances
@@ -580,12 +577,12 @@ _locFormatInput('inpLat', LAT);
 _locFormatInput('inpLong', LONG);
 
 // ─── Latitude control ──────────────────────────────────────────────────────
+// LAT/LONG keep full precision (e.g. a SET HERE device position); only the fields round them, to
+// the active format (_locFormatInput: 0.01° or 1'). Typed values are committed via _locCommit.
 function applyLat(val) {
-  const step = _locStepDeg();
-  // Clamp 0-90, then round to the active step - the extra 1e6 rounding just clears float noise
-  // (e.g. 42.849999999999994) that Math.round(x/step)*step can otherwise leave behind.
-  LAT = Math.round(Math.round(Math.max(0, Math.min(90, val)) / step) * step * 1e6) / 1e6;
+  LAT = Math.max(0, Math.min(90, val));
   _locFormatInput('inpLat', LAT);
+  _locHereStale();
 
   const atEquator = LAT === 0;
   document.getElementById('btnN').disabled = atEquator;
@@ -610,14 +607,18 @@ function applyLat(val) {
   if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
 
-document.getElementById('inpLat').addEventListener('change', (e) => {
-  applyLat(_locParseValue(e.target.value));
-});
-document.getElementById('inpLat').addEventListener('blur', (e) => {
-  applyLat(_locParseValue(e.target.value));
-});
+// Commits a typed Location value. The field shows the value rounded while LAT/LONG keep full
+// precision, so text that still reads as the current value (focus + blur, Enter without editing)
+// leaves the precise value alone instead of replacing it with its own rounded display.
+function _locCommit(inputId, cur, apply) {
+  const el = document.getElementById(inputId), typed = el.value;
+  _locFormatInput(inputId, cur);
+  if (typed !== el.value) apply(_locParseValue(typed));
+}
+document.getElementById('inpLat').addEventListener('change', () => _locCommit('inpLat', LAT, applyLat));
+document.getElementById('inpLat').addEventListener('blur', () => _locCommit('inpLat', LAT, applyLat));
 document.getElementById('inpLat').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLat(_locParseValue(e.target.value));
+  if (e.key === 'Enter') _locCommit('inpLat', LAT, applyLat);
 });
 document.getElementById('btnLatDec').addEventListener('click', () => {
   applyLat(_locArrowStep(LAT, -1));
@@ -628,6 +629,7 @@ document.getElementById('btnLatInc').addEventListener('click', () => {
 document.getElementById('btnN').addEventListener('click', () => {
   if (LAT === 0) return;
   hemisphere = 1;
+  _locHereStale();
   document.getElementById('btnN').className = 'ns-btn active';
   document.getElementById('btnS').className = 'ns-btn';
   if (show3DCulmination) refreshSunTimeRange();
@@ -641,6 +643,7 @@ document.getElementById('btnN').addEventListener('click', () => {
 document.getElementById('btnS').addEventListener('click', () => {
   if (LAT === 0) return;
   hemisphere = -1;
+  _locHereStale();
   document.getElementById('btnN').className = 'ns-btn';
   document.getElementById('btnS').className = 'ns-btn active-s';
   if (show3DCulmination) refreshSunTimeRange();
@@ -655,9 +658,9 @@ document.getElementById('btnS').addEventListener('click', () => {
 // Mirrors latitude exactly: UI edits a 0-180 magnitude + E/W state (lonHemisphere); only the
 // signed combination (lonHemisphere * LONG) ever gets serialized to presets.json.
 function applyLong(val) {
-  const step = _locStepDeg();
-  LONG = Math.round(Math.round(Math.max(0, Math.min(180, val)) / step) * step * 1e6) / 1e6;
+  LONG = Math.max(0, Math.min(180, val));
   _locFormatInput('inpLong', LONG);
+  _locHereStale();
   // LONG doesn't move the "enters the can" interval (sunRayState/sunDayRange are longitude-
   // independent), only the displayed time-of-day text (standard/mean mode) - so just resync the
   // slider's own labels, no need to re-clamp sunTimeHours or rebuild its track fill.
@@ -671,14 +674,10 @@ function applyLong(val) {
   if (typeof nightSkyActive !== 'undefined' && nightSkyActive && typeof _nightSkySyncControls === 'function') _nightSkySyncControls();
 }
 
-document.getElementById('inpLong').addEventListener('change', (e) => {
-  applyLong(_locParseValue(e.target.value));
-});
-document.getElementById('inpLong').addEventListener('blur', (e) => {
-  applyLong(_locParseValue(e.target.value));
-});
+document.getElementById('inpLong').addEventListener('change', () => _locCommit('inpLong', LONG, applyLong));
+document.getElementById('inpLong').addEventListener('blur', () => _locCommit('inpLong', LONG, applyLong));
 document.getElementById('inpLong').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyLong(_locParseValue(e.target.value));
+  if (e.key === 'Enter') _locCommit('inpLong', LONG, applyLong);
 });
 document.getElementById('btnLongDec').addEventListener('click', () => {
   applyLong(_locArrowStep(LONG, -1));
@@ -689,6 +688,7 @@ document.getElementById('btnLongInc').addEventListener('click', () => {
 document.getElementById('btnE').addEventListener('click', () => {
   lonHemisphere = 1;
   document.getElementById('btnE').className = 'ns-btn active';
+  _locHereStale();
   document.getElementById('btnW').className = 'ns-btn';
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
@@ -700,6 +700,7 @@ document.getElementById('btnE').addEventListener('click', () => {
 document.getElementById('btnW').addEventListener('click', () => {
   lonHemisphere = -1;
   document.getElementById('btnE').className = 'ns-btn';
+  _locHereStale();
   document.getElementById('btnW').className = 'ns-btn active-s';
   if (show3DCulmination) syncSunTimeUI();
   draw(); draw3D();
@@ -749,6 +750,97 @@ document.getElementById('btnTimeZoneDec').addEventListener('click', () => {
 });
 document.getElementById('btnTimeZoneInc').addEventListener('click', () => {
   applyTimeZone(timeZoneHours + 0.25);
+});
+
+// ─── SET HERE: Location from the device, else from the IP address ───────────
+// Asks the browser for the device position first (Wi-Fi/GPS, typically tens of metres; needs the
+// user's permission and a secure context - https or localhost, so not over a LAN IP like
+// http://192.168.x.x). If that is refused, unavailable or times out, falls back to an IP address
+// lookup: no permission prompt, but only city level (often the provider's location, off by tens of
+// km) and the IP goes to a third-party service. Runs only on click, never on load, so the
+// browser doesn't prompt for location the moment the page opens. #locHereInfo reports what was set
+// and from what; any later change to Location clears it (_locHereStale), as it no longer applies.
+// Time zone is left alone.
+const LOC_IP_SERVICES = [
+  { url: 'https://ipapi.co/json/',
+    parse: j => ({ lat: +j.latitude, lon: +j.longitude, place: [j.city, j.country_name].filter(Boolean).join(', ') }) },
+  { url: 'https://get.geojs.io/v1/ip/geo.json',
+    parse: j => ({ lat: +j.latitude, lon: +j.longitude, place: [j.city, j.country].filter(Boolean).join(', ') }) },
+];
+const LOC_DEVICE_TIMEOUT_MS = 10000, LOC_IP_TIMEOUT_MS = 6000;
+var _locHereApplying = false;   // var: applyLat/applyLong can run before this line during load
+function _locHereInfo(text, isErr) {
+  const el = document.getElementById('locHereInfo');
+  el.textContent = text;
+  el.classList.toggle('err', !!isErr);
+  el.hidden = !text;
+}
+function _locHereStale() { if (!_locHereApplying) _locHereInfo(''); }
+// Signed degrees -> hemisphere state + the normal applyLat/applyLong path (same as the Eclipse
+// "Find the greatest point" button), so clamping, step rounding and redraws all happen as usual.
+function _locHereApply(lat, lon) {
+  _locHereApplying = true;
+  hemisphere = lat < 0 ? -1 : 1;
+  lonHemisphere = lon < 0 ? -1 : 1;
+  document.getElementById('btnN').className = hemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnS').className = hemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  document.getElementById('btnE').className = lonHemisphere > 0 ? 'ns-btn active' : 'ns-btn';
+  document.getElementById('btnW').className = lonHemisphere > 0 ? 'ns-btn' : 'ns-btn active-s';
+  applyLat(Math.abs(lat));
+  applyLong(Math.abs(lon));
+  _locHereApplying = false;
+}
+// The Location as now shown in the fields, e.g. "49.20° N, 16.60° E" or "49°12' N, 16°36' E".
+function _locHereShown() {
+  const deg = _locFormat === 'dm' ? '' : '°';
+  return document.getElementById('inpLat').value + deg + ' ' + (hemisphere > 0 ? 'N' : 'S') + ', ' +
+    document.getElementById('inpLong').value + deg + ' ' + (lonHemisphere > 0 ? 'E' : 'W');
+}
+// Resolves {lat, lon, acc} or rejects with a short reason for the info line.
+function _locHereDevice() {
+  return new Promise((resolve, reject) => {
+    if (!window.isSecureContext) { reject('needs https'); return; }
+    if (!navigator.geolocation) { reject('not supported'); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }),
+      e => reject(e.code === 1 ? 'not allowed' : e.code === 3 ? 'timed out' : 'unavailable'),
+      { enableHighAccuracy: false, timeout: LOC_DEVICE_TIMEOUT_MS, maximumAge: 5 * 60 * 1000 });
+  });
+}
+async function _locHereIP() {
+  for (const svc of LOC_IP_SERVICES) {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), LOC_IP_TIMEOUT_MS);
+    try {
+      const res = await fetch(svc.url, { signal: ctl.signal, cache: 'no-store' });
+      if (!res.ok) continue;
+      const r = svc.parse(await res.json());
+      if (isFinite(r.lat) && isFinite(r.lon) && (r.lat || r.lon)) return r;
+    } catch (e) { /* next service */ } finally { clearTimeout(timer); }
+  }
+  return null;
+}
+document.getElementById('btnLocSetHere').addEventListener('click', async () => {
+  const btn = document.getElementById('btnLocSetHere');
+  btn.disabled = true;
+  _locHereInfo('Locating…');
+  try {
+    let why;
+    try {
+      const d = await _locHereDevice();
+      _locHereApply(d.lat, d.lon);
+      const acc = d.acc >= 1000 ? `±${(d.acc / 1000).toFixed(1)} km` : `±${Math.round(d.acc)} m`;
+      _locHereInfo(`Set to ${_locHereShown()} from this device's location (${acc}).`);
+      return;
+    } catch (reason) { why = reason; }
+    _locHereInfo(`Device location ${why}, trying the IP address…`);
+    const ip = await _locHereIP();
+    if (!ip) { _locHereInfo(`Location not set: device location ${why}, IP address lookup failed.`, true); return; }
+    _locHereApply(ip.lat, ip.lon);
+    _locHereInfo(`Set to ${_locHereShown()} from the IP address${ip.place ? ' (' + ip.place + ')' : ''}, ` +
+      `approximate, city level at best. Device location ${why}.`);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ─── Dimension limits (validation: scan width ⇄ radius ⇄ horizon) ───────────
@@ -1560,8 +1652,10 @@ async function setCurrentChmiFromGallery() {
 async function loadFilelist() {
   try {
     const [flRes, prRes] = await Promise.all([
-      fetch('filelist.json'),
-      fetch('presets.json')
+      // no-cache: revalidate the hand-edited data files on every load, so an edit shows up
+      // without a hard refresh (unchanged files cost only a 304)
+      fetch('filelist.json', { cache: 'no-cache' }),
+      fetch('presets.json', { cache: 'no-cache' })
     ]);
     FILELIST = await flRes.json();
     PRESETS  = await prRes.json();

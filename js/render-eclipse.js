@@ -1597,7 +1597,7 @@ document.getElementById('btnEclipseGreatestPoint').addEventListener('click', () 
 window.ECLIPSE_GALLERY = {};
 async function _eclipseLoadGalleryData() {
   try {
-    const res = await fetch('filelist_eclipse.json');
+    const res = await fetch('filelist_eclipse.json', { cache: 'no-cache' });   // hand-edited, always revalidate
     window.ECLIPSE_GALLERY = await res.json();
   } catch (e) {
     console.warn('Error loading eclipse gallery data:', e);
