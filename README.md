@@ -78,7 +78,7 @@ The pinhole records the Sun where it *appears*, lifted by the atmosphere, so the
 
 Sunrise and sunset follow the almanac standard: the upper limb touching the horizon, with refraction. The Sun's centre is then 0.84° below the geometric horizon, so the day is a few minutes longer than a geometric one, and polar day begins a little south of the Arctic Circle (65.7°) while polar night begins a little north of it (67.4°). The times agree with USNO to within the minute they are published in.
 
-### What the model does not include
+### What the model includes and leaves out
 
 | Effect | Modeled | Magnitude |
 |---|---|---|
@@ -106,11 +106,11 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 🌦 **CHMI weather data** - measured sunshine duration or air temperature from the nearest Czech Hydrometeorological Institute station, in 10-minute resolution. It colours the sun path directly on the photo, or covers the whole exposure period at once, and appears in the Sun Graph too - so the modelled clear-sky day can be held against what the weather actually did.
 
-🌑 **Eclipse mode** *(experimental)* - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements. Unlike the rest of the app, Eclipse mode is geometric, without atmospheric refraction, because published contact times and magnitudes are geometric too; near the horizon it therefore shows the Sun up to ~0.5° lower than it is actually seen.
+🌑 **Eclipse mode** - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements. Unlike the rest of the app, Eclipse mode is geometric, without atmospheric refraction, because published contact times and magnitudes are geometric too; near the horizon it therefore shows the Sun up to ~0.5° lower than it is actually seen.
 
-🌠 **Night Sky mode** *(experimental)* - the real starry sky for the chosen location, date and time: 5,044 stars down to magnitude 6 and the 88 IAU constellations, as a flat polar Sky Map or an all-sky Planetarium you can look around in. Unlike the rest of the app it needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next. Star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). Optional overlays add an equatorial grid, the ecliptic, and the Sun and Moon with their daily paths. An info panel gives the day length, sunrise and sunset, moonrise and moonset with their azimuths, and the Moon's illuminated fraction and age.
+🌠 **Night Sky mode** - the real starry sky for the chosen location, date and time: 5,044 stars down to magnitude 6 and the 88 IAU constellations, as a flat polar Sky Map or an all-sky Planetarium you can look around in. Unlike the rest of the app it needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next. Star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). Optional overlays add an equatorial grid, the ecliptic, and the Sun and Moon with their daily paths. An info panel gives the day length, sunrise and sunset, moonrise and moonset with their azimuths, and the Moon's illuminated fraction and age.
 
-- **Moon** - positioned from the full lunar series in Meeus ch. 47, so it sits up to 5.1° off the ecliptic just as the real one does, corrected for topocentric parallax (up to ~1° near the horizon, two of its own diameters). In the Planetarium the Sun and the Moon are drawn at their true angular size, with the zoom reaching 8× so the phase can be read; labels keep both easy to find when zoomed out. The phase is drawn with the lit side turned towards the Sun, and the dark side carries earthshine that is strongest at a thin crescent and fades out towards full moon. Checked against Meeus's worked examples, the 2026 new and full moons, USNO rise and set times, and the eclipse of 12 August 2026, where its overlap with the Sun matches the Eclipse mode's magnitude to within 0.004. Night Sky draws apparent positions, with atmospheric refraction (Saemundsson's formula, about 34′ at the horizon), and gives rise and set times by the almanac standard: the upper limb touching the horizon. They agree with USNO to within a minute or two.
+- **Moon** - positioned from the full lunar series in Meeus ch. 47, so it sits up to 5.1° off the ecliptic just as the real one does, corrected for topocentric parallax (up to ~1° near the horizon, two of its own diameters). In the Planetarium the Sun and the Moon are drawn at their true angular size once zoomed in, with the zoom reaching 8× so the phase can be read; zoomed out, both keep a minimum size of a few pixels, and labels keep them easy to find. The phase is drawn with the lit side turned towards the Sun, and the dark side carries earthshine that is strongest at a thin crescent and fades out towards full moon.
 
 - **Catalog** - the author's own astrophotography gallery of landscapes, Solar System objects and deep-sky targets, filterable by category. Clicking a photo restores the date, time and place it was taken, turns the Planetarium towards the target and marks the photographed field on the sky with red corner brackets, next to a thumbnail that opens the full-size image. The field is placed from the photo's centre (RA/Dec), field of view and position angle through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs, including the part below the horizon.
 
@@ -118,9 +118,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 💾 **Presets** - export a full calibration as JSON and reload it later.
 
-🪡 **[Warp tool](warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded, together with the camera panorama (`GEN-X_Y_pano`) and saved pins (`GEN-X_Y_warp.json`) when they are in the `img` folder.
-
-Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
+🪡 **[Warp tool](https://zackjiri.github.io/solargraph/warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded, together with the camera panorama (`GEN-X_Y_pano`) and saved pins (`GEN-X_Y_warp.json`) when they are in the `img` folder.
 
 ---
 
@@ -132,6 +130,7 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
    - Adjust the Calibration sliders until the projected grid lines up with the arcs in the photo.
    - Set Location and time zone, toggle overlays under Display.
    - The clock icon (top left) switches between apparent, mean and standard solar time.
+   - Save your work with `Export` under Preset, and reload it later with `Import`.
 4. **Eclipse** - the Catalog grid opens first; click a tile for the Visualization, then scrub the time slider or press play.
    - While the animation runs, a small label above the play button shows its speed. Click the label to cycle 1x, 10x, 60x and 300x real time - playback keeps running as the rate changes.
    - `Load gallery` marks the exact moments of real photographs on the slider; `Find the greatest point` jumps your location to where the eclipse was deepest.
@@ -139,7 +138,6 @@ Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
    - `Visualization` shows the star map on its own; switch between `Sky Map` and `Planetarium` with the wheel picker, and drag to look around in Planetarium.
    - `SET NOW` jumps to the current date and time; the play button animates time forward.
    - The red crosshair button (bottom right of the Planetarium) picks a point: the box by the cursor shows its RA/Dec, a click locks the view on it, and time stops where the point reaches the horizon. Click the button again to release it.
-6. **Save your work** with `Export` under Preset, and reload it later with `Import`.
 
 ---
 
@@ -166,7 +164,7 @@ Modified or redistributed versions stay under these same terms - no relicensing,
 
 The software is provided as-is, with no warranty of any kind. Breaking these terms ends your rights under the license automatically.
 
-All photographs published with the app - the solargraphs in the Gallery, the eclipse images in the Eclipse photo galleries and the astrophotographs in the Night Sky Catalog - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
+All photographs published with the app - the solargraphs in the Gallery, the eclipse images in the Eclipse photo galleries and the astrophotographs and videos in the Night Sky Catalog - are the author's own work and are **not** covered by the license above. They may not be redistributed, republished, reused or modified, in whole or in part and in any medium, without prior written permission from the author.
 
 Sunshine duration and air temperature measurements shown in the app come from the **open data** of the Czech Hydrometeorological Institute, licensed separately under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs).
 
