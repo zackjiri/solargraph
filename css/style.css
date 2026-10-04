@@ -1378,6 +1378,48 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
   }
   .photo-modal-close:hover { color: var(--accent); background: rgba(0,0,0,0.8); }
+  .photo-modal-img[hidden] { display: none; }
+  /* Photo + video (Night Sky catalog): one fixed stage in the video's aspect ratio (--ar, set from
+     the video's metadata), as large as fits but never wider than the video itself (--vw, its
+     width in px: shown at most 1:1, not upscaled), so switching PHOTO/VIDEO or starting playback
+     never resizes the window or moves the video controls. Both fill it letterboxed on black.
+     Defaults match the 720p iMovie exports, so nothing jumps when the metadata arrives. */
+  .photo-modal-body.stage {
+    --ar: 16 / 9; --vw: 1280px;
+    width: min(92vw, calc(92vh * (var(--ar))), var(--vw));
+    width: min(92vw, calc(92dvh * (var(--ar))), var(--vw));
+    aspect-ratio: var(--ar);
+    background: #000; border-radius: var(--radius-md); overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+  }
+  .photo-modal-body.stage .photo-modal-img {
+    width: 100%; height: 100%; max-width: none; max-height: none;
+    object-fit: contain; border-radius: 0; box-shadow: none;
+  }
+  /* the video stays displayed underneath and the photo covers it on PHOTO: a video that was
+     display:none while loading may not paint its first frame once shown */
+  .photo-modal-body.stage img.photo-modal-img { position: absolute; inset: 0; z-index: 1; background: #000; }
+  .photo-modal-body.stage .photo-modal-close, .photo-modal-body.stage .photo-modal-switch { z-index: 2; }
+  /* PHOTO | VIDEO switch, top-left inside the photo/video, mirroring the close button's corner */
+  .photo-modal-switch {
+    position: absolute; top: 14px; left: 14px; z-index: 1;
+    background: rgba(0,0,0,0.6); box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  .photo-modal-switch[hidden] { display: none; }
+  .photo-modal-switch .ns-btn { padding: 4px 10px; font-size: 10px; }
+
+  /* ▶ badge: a catalog photo that also has a video (Night Sky catalog tile + Planetarium thumbnail) */
+  .video-badge {
+    position: absolute; width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.45); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5); pointer-events: none;   /* clicks go to the tile/thumbnail */
+  }
+  /* the triangle's centroid (mean of its 3 vertices, 7.833/20.333/7.833 -> x 12, y 12) is the
+     centre of the 24-unit viewBox, so it sits in the middle of the circle */
+  .video-badge svg { width: 24px; height: 24px; }
+  .catalog-tile .video-badge { top: 12px; right: 12px; }
+  #nightSkyFrameVideoBadge { display: none; z-index: 12; }
 
   .meta-row {
     display: flex;
@@ -3087,7 +3129,7 @@
      height/line-height/font-size/text-align, just auto-width with a little horizontal padding
      instead of DEC/DM's fixed 22px-per-letter box, since "SET NOW" needs far more room than one
      letter. */
-  #nightSkyDateGroup .ns-btn {
+  #nightSkyDateGroup .ns-btn, #btnLocSetHere {
     height: 14px;
     line-height: 14px;
     padding: 0 6px;
@@ -3097,4 +3139,16 @@
   }
   /* SET NOW - red instead of the shared .ns-btn.active gold, so it reads as its own distinct
      action rather than blending in with DEC/DM/N/S/E/W's "currently selected option" styling. */
-  #btnNightSkySetToday.active { background: var(--accent-red); color: #000; }
+  #btnNightSkySetToday.active, #btnLocSetHere.active { background: var(--accent-red); color: #000; }
+  /* SET NOW and SET HERE share one fixed width (fits the longer "SET HERE") so they read as a pair */
+  #btnNightSkySetToday, #btnLocSetHere { width: 52px; padding: 0; }
+  /* SET HERE left, DEC|DM right, same split as SET NOW + year stepper */
+  .loc-here-row { justify-content: space-between; }
+  /* N|S and E|W flush right too, so they line up under DEC|DM */
+  .hemi-toggle { margin-left: auto; }
+  /* what SET HERE set and from what, at the end of the Location block */
+  .loc-here-info {
+    margin-top: 4px; font-family: var(--mono); font-size: 9px; line-height: 1.35;
+    letter-spacing: 0.04em; color: var(--dim);
+  }
+  .loc-here-info.err { color: var(--accent-red); }
