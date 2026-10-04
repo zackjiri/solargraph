@@ -318,6 +318,12 @@ function enterNightSky() {
   // no meaning for a real star map - hidden the same way Eclipse already hides it for its own
   // duration (enterEclipse/exitEclipse, render-eclipse.js), restored on exit below.
   document.getElementById('headerFormula').style.display = 'none';
+  // Apparent/Mean/Standard only drives the general app's displayHour()/EoT pipeline; Night Sky's
+  // times are always clock time at the Time zone offset and never read timeDisplayMode, so the
+  // switcher has no effect here. Hidden like in Eclipse: visibility, not display, since the
+  // clock's box holds the flush-right header group in place (.time-mode-wrap, css/style.css).
+  document.getElementById('btnTimeMode').style.visibility = 'hidden';
+  document.getElementById('timeModeMenu').classList.remove('open');
 
   document.getElementById('btnModeAnalyzer').className = 'mode-btn';
   document.getElementById('btnModeNightSky').classList.add('active-night-sky');
@@ -347,6 +353,7 @@ function exitNightSky() {
   document.getElementById('nightSkyTopRow').style.display = 'none';
   document.getElementById('mainCanvas').style.pointerEvents = '';
   document.getElementById('headerFormula').style.display = '';
+  document.getElementById('btnTimeMode').style.visibility = '';
   nightSkyActive = false;
 
   document.getElementById('can3dPanel').classList.add('visible');
@@ -593,7 +600,96 @@ function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const thetaMax = Math.atan(Math.hypot(halfW, halfH));
   return Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax));   // lower bound: setNightSkyPlanetZoom's own 0.5x clamp
 }
-let _nightSkyActiveFrame = null;   // {raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg, thumbnail, full} | null
+let _nightSkyActiveFrame = null;   // {raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg, thumbnail, full, video,
+                                   //  videoStartJD, videoEndJD, videoDuration, videoMount, refTime} | null
+
+// ─── Video playback window ──────────────────────────────────────────────────────────────────────
+// A catalog entry whose video carries its real capture interval ("video_start_utc"/"video_end_utc",
+// ISO UTC date-times in filelist_astro.json) unlocks the time strip and Play in Planetarium while
+// its photo is presented, but only within that interval: the strip and the animation are clamped
+// to it, the strip marks its ends with two red lines, and Play runs at the video's own speed
+// (interval length / video duration, read from the video's metadata), shown in the speed chip,
+// which can't be changed then. Without the interval the presented photo keeps time locked as before.
+function _nightSkyVideoInterval(entry) {
+  const a = Date.parse(entry.video_start_utc || ''), b = Date.parse(entry.video_end_utc || '');
+  if (!entry.video || !isFinite(a) || !isFinite(b) || b <= a) return { videoStartJD: null, videoEndJD: null };
+  const jd = ms => ms / 86400000 + 2440587.5;
+  return { videoStartJD: jd(a), videoEndJD: jd(b) };
+}
+function _nightSkyLoadVideoDuration(frame) {
+  frame.videoDuration = null;
+  if (frame.videoStartJD === null) return;
+  const v = document.createElement('video');
+  v.preload = 'metadata';
+  v.onloadedmetadata = () => {
+    if (isFinite(v.duration) && v.duration > 0) frame.videoDuration = v.duration;
+    v.removeAttribute('src'); v.load();
+    if (frame === _nightSkyActiveFrame) { _nightSkyUpdatePresentationLock(); _nightSkyUpdateSpeedBoxLabel(); }
+  };
+  v.src = frame.video;
+}
+// The active video window, or null (no interval, or the photo isn't being presented).
+function _nightSkyVideoWindow() {
+  const f = _nightSkyActiveFrame;
+  if (!f || f.videoStartJD === null || !nightSkyActive || nightSkyTopView !== 'visualization'
+      || nightSkySubmode !== 'planetarium') return null;
+  return { startJD: f.videoStartJD, endJD: f.videoEndJD, duration: f.videoDuration };
+}
+// Sky seconds per video second, or null until the video's duration is known.
+function _nightSkyVideoRate(win) {
+  return win && win.duration ? (win.endJD - win.startJD) * 86400 / win.duration : null;
+}
+// Every time move from the strip and the animation goes through here: the video window first,
+// then the RA/Dec picker's own horizon stop. stopped = the window's end (or the horizon) was hit.
+function _nightSkyClampTimeJD(jdFrom, jdTo) {
+  const win = _nightSkyVideoWindow();
+  if (win) {
+    const jd = Math.max(win.startJD, Math.min(win.endJD, jdTo));
+    return { jd, stopped: jdTo >= win.endJD };
+  }
+  return _nightSkyPickerClampJD(jdFrom, jdTo);
+}
+// How the video was shot ("video_mount"), applied while its window is active:
+//  - tripod: the camera didn't move, so the photo frame stays where it was in the landscape (its
+//    RA/Dec converted at the photo's own instant, _nightSkyFrameTime) and the stars drift through
+//    it; the Planetarium camera stays put too.
+//  - equatorial: the mount tracked the stars, so the frame stays on them (converted at the current
+//    instant, as without a window) and the camera turns with the sky: every time step rotates the
+//    camera about the celestial pole by the sidereal angle (_nightSkyTrackSky), including roll, so
+//    the stars hold still on screen while the horizon wheels past.
+function _nightSkyFrameTime() {
+  const f = _nightSkyActiveFrame, win = _nightSkyVideoWindow();
+  return win && f.videoMount === 'tripod' ? f.refTime : [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT];
+}
+const NIGHTSKY_SIDEREAL_PER_DAY = 2 * Math.PI * 1.00273790935;   // sky rotation, rad per solar day
+let _nightSkyTrackJD = null;   // instant the equatorial tracking last rotated the camera to
+function _nightSkyTrackSky() {
+  const win = _nightSkyVideoWindow();
+  if (!win || _nightSkyActiveFrame.videoMount !== 'equatorial') {
+    _nightSkyTrackJD = null;
+    if (_nightSkyPlanet3D.roll) { _nightSkyPlanet3D.roll = 0; _nightSkyUpdatePlanetCamera(); }   // back to a level view
+    return;
+  }
+  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  if (_nightSkyTrackJD === null || jd === _nightSkyTrackJD) { _nightSkyTrackJD = jd; return; }
+  // celestial pole in the alt-az frame (x east, y north, z up); the sky turns westward about it
+  const phi = LAT * hemisphere * Math.PI / 180;
+  const axis = [0, Math.cos(phi), Math.sin(phi)];
+  const ang = -(jd - _nightSkyTrackJD) * NIGHTSKY_SIDEREAL_PER_DAY;
+  _nightSkyTrackJD = jd;
+  const rot = v => {   // Rodrigues rotation of v about axis by ang
+    const c = Math.cos(ang), sn = Math.sin(ang), k = axis, d = _sd3Dot(k, v), x = _sd3Cross(k, v);
+    return [v[0] * c + x[0] * sn + k[0] * d * (1 - c), v[1] * c + x[1] * sn + k[1] * d * (1 - c), v[2] * c + x[2] * sn + k[2] * d * (1 - c)];
+  };
+  _nightSkyUpdatePlanetCamera();
+  const fwd = rot(_nightSkyPlanet3D.FWD), up = rot(_nightSkyPlanet3D.UP);
+  _nightSkyPlanet3D.camEl = Math.asin(Math.max(-1, Math.min(1, fwd[2])));
+  _nightSkyPlanet3D.camAz = Math.atan2(fwd[0], fwd[1]);
+  _nightSkyPlanet3D.roll = 0;
+  _nightSkyUpdatePlanetCamera();   // level basis for the new direction, then the roll that matches up
+  _nightSkyPlanet3D.roll = Math.atan2(-_sd3Dot(up, _nightSkyPlanet3D.RIGHT), _sd3Dot(up, _nightSkyPlanet3D.UP));
+  _nightSkyUpdatePlanetCamera();
+}
 function _nightSkyApplyCatalogTile(entry) {
   const [y, mo, d] = (entry.date_utc || '1970-01-01').split('-').map(Number);
   const [hh, mm, ss] = (entry.time_utc || '00:00:00').split(':').map(Number);
@@ -618,7 +714,14 @@ function _nightSkyApplyCatalogTile(entry) {
     raDeg, decDeg,
     fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0,
     thumbnail: entry.thumbnail, full: entry.full, video: entry.video || null,
+    ..._nightSkyVideoInterval(entry),
+    // how the video was shot: 'tripod' (fixed to the landscape) or 'equatorial' (tracking the stars)
+    videoMount: entry.video_mount === 'equatorial' ? 'equatorial' : 'tripod',
+    refTime: [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT],   // the photo's own instant
   };
+  _nightSkyLoadVideoDuration(_nightSkyActiveFrame);
+  _nightSkyPlanet3D.roll = 0;
+  _nightSkyTrackJD = null;   // tracking starts from the photo's instant, at the centred camera below
 
   nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = 1;
   _nightSkySubmodeWheel.render();
@@ -747,6 +850,7 @@ function _nightSkySyncControls() {
   _nightSkyBuildTimeStripFill();
   _nightSkyBuildTwilightBand();
   _nightSkyBuildTimeScale();
+  _nightSkyTrackSky();   // equatorial video: the camera follows the sky to the new instant
   if (nightSkyActive) drawNightSky();
 }
 function _nightSkyCommitDate() {
@@ -1024,7 +1128,20 @@ function _nightSkyBuildTimeStripFill() {
     hourSegs.push(`transparent calc(${p}% - 1px), rgba(255,255,255,${alpha}) calc(${p}% - 1px), rgba(255,255,255,${alpha}) calc(${p}% + 1px), transparent calc(${p}% + 1px)`);
   }
   const hourGrad = hourSegs.length ? 'linear-gradient(90deg, ' + hourSegs.join(', ') + '), ' : '';
-  strip.style.background = markGrad + hourGrad + colorGrad;
+  // video window (_nightSkyVideoWindow): its ends as two red lines, the colour of the photo's frame,
+  // and the photo's own instant (where the scene opens) as a yellow one
+  const win = _nightSkyVideoWindow();
+  let winGrad = '';
+  if (win) {
+    const line = (t, col) => {
+      const p = ((t - jdMin) / span * 100).toFixed(2);
+      return `transparent calc(${p}% - 1px), ${col} calc(${p}% - 1px), ${col} calc(${p}% + 1px), transparent calc(${p}% + 1px)`;
+    };
+    const lines = [[win.startJD, '#ff5050'], [win.endJD, '#ff5050'], [_skyToJulianDateUT(..._nightSkyActiveFrame.refTime), '#ffd84a']]
+      .filter(([t]) => t >= jdMin && t <= jdMax).sort((a, b) => a[0] - b[0]);
+    if (lines.length) winGrad = 'linear-gradient(90deg, ' + lines.map(([t, col]) => line(t, col)).join(', ') + '), ';
+  }
+  strip.style.background = winGrad + markGrad + hourGrad + colorGrad;
 }
 
 // ─── Discrete twilight-phase band ───────────────────────────────────────────────────────────────
@@ -1163,7 +1280,7 @@ _nightSkyStripEl.addEventListener('pointermove', (e) => {
   const dx = e.clientX - _nightSkyDragX0;
   const w = _nightSkyStripEl.clientWidth || 220;
   const hoursPerPx = NIGHTSKY_STRIP_HOURS_SPAN / w;
-  const jd = _nightSkyPickerClampJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
+  const jd = _nightSkyClampTimeJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
     _nightSkyDragStartJD - (dx * hoursPerPx) / 24).jd;
   const r = _skyFromJulianDateUT(jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
@@ -1180,7 +1297,7 @@ _nightSkyStripEl.addEventListener('wheel', (e) => {
   e.preventDefault();
   if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive) _nightSkyStopAnim();
   const jdNow = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-  const jd = _nightSkyPickerClampJD(jdNow, jdNow + (e.deltaY > 0 ? 1 : -1) * (0.25 / 24)).jd;   // 15 min per wheel tick
+  const jd = _nightSkyClampTimeJD(jdNow, jdNow + (e.deltaY > 0 ? 1 : -1) * (0.25 / 24)).jd;   // 15 min per wheel tick
   const r = _skyFromJulianDateUT(jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
   _nightSkySyncControls();
@@ -1195,13 +1312,26 @@ _nightSkyStripEl.addEventListener('wheel', (e) => {
 const NIGHTSKY_ANIM_SPEED_TIERS = [1, 10, 60, 300];
 let _nightSkyAnimSpeedIdx = NIGHTSKY_ANIM_SPEED_TIERS.length - 1;   // starts on 300x
 function _nightSkyAnimRateHps() {
+  const videoRate = _nightSkyVideoRate(_nightSkyVideoWindow());
+  if (videoRate) return videoRate / 3600;
   return NIGHTSKY_ANIM_SPEED_TIERS[_nightSkyAnimSpeedIdx] / 3600;   // hours of sim time per real second
 }
 function _nightSkyUpdateSpeedBoxLabel() {
   const box = document.getElementById('nightSkySpeedBox');
-  if (box) box.textContent = NIGHTSKY_ANIM_SPEED_TIERS[_nightSkyAnimSpeedIdx] + 'x';
+  if (!box) return;
+  const win = _nightSkyVideoWindow(), videoRate = _nightSkyVideoRate(win);
+  box.classList.toggle('fixed', !!win);
+  if (win) {
+    box.textContent = videoRate ? Math.round(videoRate) + 'x' : '…';
+    const mins = Math.round((win.endJD - win.startJD) * 1440);
+    box.title = videoRate ? `Video speed: ${mins} min of sky in ${win.duration.toFixed(1)} s of video` : 'Reading the video length…';
+  } else {
+    box.textContent = NIGHTSKY_ANIM_SPEED_TIERS[_nightSkyAnimSpeedIdx] + 'x';
+    box.title = 'Click to change animation speed';
+  }
 }
 function _nightSkyCycleAnimSpeed() {
+  if (_nightSkyVideoWindow()) return;   // fixed to the video's own speed
   _nightSkyAnimSpeedIdx = (_nightSkyAnimSpeedIdx + 1) % NIGHTSKY_ANIM_SPEED_TIERS.length;
   if (_nightSkyAnimActive) {
     // Re-anchor the running loop's own start JD/timestamp to the CURRENT instant under the NEW
@@ -1236,11 +1366,11 @@ function _nightSkySetPlayIcon(playing) {
 function _nightSkyAdvanceAnim(ts) {
   if (_nightSkyAnimStart === null) _nightSkyAnimStart = ts;
   const elapsed = (ts - _nightSkyAnimStart) / 1000;
-  const clamp = _nightSkyPickerClampJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
+  const clamp = _nightSkyClampTimeJD(_skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT),
     _nightSkyAnimStartJD + (_nightSkyAnimRateHps() * elapsed) / 24);
   const r = _skyFromJulianDateUT(clamp.jd);
   nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
-  if (clamp.stopped) _nightSkyStopAnim();   // the locked point reached the horizon
+  if (clamp.stopped) _nightSkyStopAnim();   // end of the video window, or the locked point reached the horizon
   _nightSkySyncControls();
 }
 function _nightSkyAnimFrame(ts) {
@@ -1250,6 +1380,14 @@ function _nightSkyAnimFrame(ts) {
 }
 function _nightSkyStartAnim() {
   if (_nightSkyAnimActive) return;
+  const win = _nightSkyVideoWindow();
+  if (win) {
+    if (!win.duration) return;   // speed not known yet
+    let jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    jd = jd < win.startJD || jd >= win.endJD - 1e-7 ? win.startJD : jd;   // outside, or already at the end: from the start
+    const r = _skyFromJulianDateUT(jd);
+    nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
+  }
   _nightSkyAnimActive = true;
   _nightSkyAnimStart = null;
   _nightSkyAnimStartJD = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
@@ -1876,7 +2014,7 @@ const _NIGHTSKY_PLANET_BASE_FOCAL = 1.15;   // focal length at zoom=1x - tunes t
 // below the horizon shows nothing (Night Sky has no below-horizon content to show anyway, same
 // choice as the Sky Map sub-mode), so the opposite horizon is reached by panning camAz 180°, not by
 // tilting past the zenith. zoom narrows/widens the field of view via FOCAL, same as Sky Dome's own.
-const _nightSkyPlanet3D = { camAz: Math.PI, camEl: 0.5, zoom: 1.0 };
+const _nightSkyPlanet3D = { camAz: Math.PI, camEl: 0.5, zoom: 1.0, roll: 0 };   // roll: equatorial video tracking only
 function _nightSkyUpdatePlanetCamera() {
   const az = _nightSkyPlanet3D.camAz, el = _nightSkyPlanet3D.camEl;
   const fwd = [Math.cos(el) * Math.sin(az), Math.cos(el) * Math.cos(az), Math.sin(el)];
@@ -1884,7 +2022,14 @@ function _nightSkyUpdatePlanetCamera() {
   let right = _sd3Cross(fwd, worldUp);
   const rlen = Math.hypot(right[0], right[1], right[2]) || 1;
   right = [right[0] / rlen, right[1] / rlen, right[2] / rlen];
-  const up = _sd3Cross(right, fwd);
+  let up = _sd3Cross(right, fwd);
+  const roll = _nightSkyPlanet3D.roll || 0;
+  if (roll) {
+    const c = Math.cos(roll), sn = Math.sin(roll);
+    const r2 = [right[0] * c + up[0] * sn, right[1] * c + up[1] * sn, right[2] * c + up[2] * sn];
+    up = [up[0] * c - right[0] * sn, up[1] * c - right[1] * sn, up[2] * c - right[2] * sn];
+    right = r2;
+  }
   _nightSkyPlanet3D.RIGHT = right; _nightSkyPlanet3D.UP = up; _nightSkyPlanet3D.FWD = fwd;
   _nightSkyPlanet3D.FOCAL = _NIGHTSKY_PLANET_BASE_FOCAL * _nightSkyPlanet3D.zoom;
 }
@@ -1937,7 +2082,11 @@ function _nightSkyUpdatePresentationLock() {
   const presenting = nightSkyActive && nightSkyTopView === 'visualization'
     && nightSkySubmode === 'planetarium' && !!_nightSkyActiveFrame;
   document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting);
-  document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting);
+  const win = presenting ? _nightSkyVideoWindow() : null;
+  document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting && !win);
+  // Play needs the video's duration for its speed; until the metadata is in, only the strip moves
+  document.getElementById('btnNightSkyPlay').classList.toggle('nightsky-play-waiting', !!win && !win.duration);
+  _nightSkyUpdateSpeedBoxLabel();
   // The picker would fight the photo's own centring and time lock - unavailable while presenting.
   const picker = document.getElementById('btnNightSkyPicker');
   picker.disabled = presenting;
@@ -2344,8 +2493,9 @@ const NIGHTSKY_FRAME_COLOR = 'rgba(255,80,80,0.9)';   // matches #nightSkyFrameT
 // (drawn over the existing ground fill, _nightSkyDrawPlanetSkyGround, so it reads as "on the
 // ground" there, not floating in empty space).
 function _nightSkyDrawFrameSegment(ctx, layout, ra0, dec0, ra1, dec1, color) {
-  const azel0 = _skyStarAzEl(ra0, dec0, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-  const azel1 = _skyStarAzEl(ra1, dec1, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const t = _nightSkyFrameTime();
+  const azel0 = _skyStarAzEl(ra0, dec0, ...t);
+  const azel1 = _skyStarAzEl(ra1, dec1, ...t);
   const p0 = _nightSkyPlanetProject(layout, azel0.az, azel0.el);
   const p1 = _nightSkyPlanetProject(layout, azel1.az, azel1.el);
   if (!p0.visible || !p1.visible) return;
@@ -2410,7 +2560,8 @@ function _nightSkyUpdateFrameThumb(layout, w, h) {
   // No horizon check here either (see _nightSkyDrawFrameSegment's own comment) - the thumbnail
   // should stay put next to the frame even while its centre is below the horizon, only actually
   // disappearing once the camera itself can't see that direction at all (proj.visible).
-  const centerAzEl = _skyStarAzEl(f.raDeg, f.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const ft = _nightSkyFrameTime();
+  const centerAzEl = _skyStarAzEl(f.raDeg, f.decDeg, ...ft);
   const centerProj = _nightSkyPlanetProject(layout, centerAzEl.az, centerAzEl.el);
   if (!centerProj.visible) { el.style.display = 'none'; return; }
 
@@ -2422,7 +2573,7 @@ function _nightSkyUpdateFrameThumb(layout, w, h) {
   // _nightSkyFrameCorners/NIGHTSKY_FRAME_L_FRAC), needed for the inside-the-frame placement below.
   const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
   const projOf = (pt) => {
-    const azel = _skyStarAzEl(pt.raDeg, pt.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    const azel = _skyStarAzEl(pt.raDeg, pt.decDeg, ...ft);
     return _nightSkyPlanetProject(layout, azel.az, azel.el);
   };
   const cornerProjs = corners.map(projOf);
