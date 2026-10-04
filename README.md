@@ -114,9 +114,11 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 - **Catalog** - the author's own astrophotography gallery of landscapes, Solar System objects and deep-sky targets, filterable by category. Clicking a photo restores the date, time and place it was taken, turns the Planetarium towards the target and marks the photographed field on the sky with red corner brackets, next to a thumbnail that opens the full-size image. The field is placed from the photo's centre (RA/Dec), field of view and position angle through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs, including the part below the horizon.
 
+📍 **Set here** - fills in Location from the device's position (the browser asks for permission). If that is refused or unavailable, it falls back to an approximate, city-level position looked up from the IP address via ipapi.co or geojs.io, which then receive the visitor's IP address. Only on click, never automatically.
+
 💾 **Presets** - export a full calibration as JSON and reload it later.
 
-🪡 **[Warp tool](warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded.
+🪡 **[Warp tool](warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded, together with the camera panorama (`GEN-X_Y_pano`) and saved pins (`GEN-X_Y_warp.json`) when they are in the `img` folder.
 
 Plus: light / dark theme, collapsible panel sections, tablet-friendly layout.
 
