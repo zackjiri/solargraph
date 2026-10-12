@@ -1841,6 +1841,9 @@ document.getElementById('chkNightSkyMoon').addEventListener('change', () => {
   _nightSkyUpdateMoonSubrow();
   if (nightSkyActive) drawNightSky();
 });
+document.getElementById('chkNightSkyPlanets').addEventListener('change', () => {
+  if (nightSkyActive) drawNightSky();
+});
 document.getElementById('btnNightSkyMoonPath').addEventListener('click', () => {
   showNightSkyMoonPath = !showNightSkyMoonPath;
   const btn = document.getElementById('btnNightSkyMoonPath');
@@ -1987,6 +1990,7 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawStars(ctx, layout);
+  _nightSkyDrawSkyMapPlanets(ctx, layout);   // under the Sun and the Moon (render-planets.js)
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawMoonPath(ctx, layout);
@@ -2749,6 +2753,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawPlanetConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
+  _nightSkyDrawPlanetPlanets(ctx, layout);   // under the Sun and the Moon (render-planets.js)
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
