@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug207">
+  <link rel="stylesheet" href="css/style.css?perfdebug208">
 </head>
 <body>
 
@@ -723,7 +723,7 @@
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <label class="chk-row" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
       <label class="chk-row" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
-      <label class="chk-row" title="Labels: constellations (3-letter IAU designator), the Sun and the Moon, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <label class="chk-row" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
       <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
       <!-- Off by default (unlike every other Night Sky Display checkbox) - a genuinely different
            coordinate frame (RA/Dec) overlaid on top of the Az/Alt one, useful but not something you'd
@@ -743,6 +743,7 @@
         <button class="nightsky-sun-switch" id="btnNightSkyMoonPath" role="switch" aria-checked="false"
           title="Overlay the Moon's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
       </div>
+      <label class="chk-row" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
     </div>
 
     <div class="sidebar-section" id="calibrationSection">
@@ -1008,25 +1009,26 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.01
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.12
 </div>
 
-<script src="js/core.js?perfdebug207"></script>
-<script src="js/render-2d.js?perfdebug207"></script>
-<script src="js/controls.js?perfdebug207"></script>
-<script src="js/render-sungraph.js?perfdebug207"></script>
-<script src="js/render-3d.js?perfdebug207"></script>
-<script src="js/render-skydome.js?perfdebug207"></script>
-<script src="js/render-moon.js?perfdebug207"></script>
-<script src="js/render-nightsky.js?perfdebug207"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug207"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug207"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug207"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug207"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug207"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug207"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug207"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug207"></script>
-<script src="js/render-eclipse.js?perfdebug207"></script>
+<script src="js/core.js?perfdebug208"></script>
+<script src="js/render-2d.js?perfdebug208"></script>
+<script src="js/controls.js?perfdebug208"></script>
+<script src="js/render-sungraph.js?perfdebug208"></script>
+<script src="js/render-3d.js?perfdebug208"></script>
+<script src="js/render-skydome.js?perfdebug208"></script>
+<script src="js/render-moon.js?perfdebug208"></script>
+<script src="js/render-planets.js?perfdebug208"></script>
+<script src="js/render-nightsky.js?perfdebug208"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug208"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug208"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug208"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug208"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug208"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug208"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug208"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug208"></script>
+<script src="js/render-eclipse.js?perfdebug208"></script>
 </body>
 </html>
