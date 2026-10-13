@@ -854,6 +854,7 @@ function _nightSkySyncControls() {
   if (nightSkyActive) drawNightSky();
 }
 function _nightSkyCommitDate() {
+  _nightSkyReanchorAnim();
   _nightSkySyncControls();
 }
 function _nightSkyApplyYear(val) {
@@ -862,6 +863,7 @@ function _nightSkyApplyYear(val) {
   // Clamp Feb 29 -> Feb 28 when moving off a leap year, same reasoning as stepCustomMonth's own
   // month-length clamp in controls.js.
   _nightSkySetLocal(y, L.month, Math.min(L.day, _nightSkyDaysInMonth(y, L.month)), L.hour);
+  _nightSkyReanchorAnim();
   _nightSkySyncControls();
 }
 
@@ -903,6 +905,7 @@ function _nightSkySetNow() {
   nightSkyDay = now.getUTCDate();
   nightSkyHourUT = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
   applyTimeZone(_nightSkySystemTzHours(now));
+  _nightSkyReanchorAnim();
   _nightSkySyncControls();
 }
 document.getElementById('btnNightSkySetToday').addEventListener('click', _nightSkySetNow);
@@ -1333,14 +1336,17 @@ function _nightSkyUpdateSpeedBoxLabel() {
 function _nightSkyCycleAnimSpeed() {
   if (_nightSkyVideoWindow()) return;   // fixed to the video's own speed
   _nightSkyAnimSpeedIdx = (_nightSkyAnimSpeedIdx + 1) % NIGHTSKY_ANIM_SPEED_TIERS.length;
-  if (_nightSkyAnimActive) {
-    // Re-anchor the running loop's own start JD/timestamp to the CURRENT instant under the NEW
-    // rate, so the visible motion continues from here instead of jumping - same "resume from
-    // current position" idea as _eclipseCycleAnimSpeed's own re-basing.
-    _nightSkyAnimStartJD = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    _nightSkyAnimStart = null;
-  }
+  // under the NEW rate, the motion continues from here instead of jumping
+  _nightSkyReanchorAnim();
   _nightSkyUpdateSpeedBoxLabel();
+}
+// The running animation counts from the instant it was (re)started, so anything that sets the
+// time while it runs (SET NOW, the date controls, a speed change) re-anchors it to the current
+// instant - otherwise the next frame would put the old time straight back. Keeps running.
+function _nightSkyReanchorAnim() {
+  if (typeof _nightSkyAnimActive === 'undefined' || !_nightSkyAnimActive) return;
+  _nightSkyAnimStartJD = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  _nightSkyAnimStart = null;
 }
 document.getElementById('nightSkySpeedBox').addEventListener('click', (e) => {
   e.stopPropagation();
