@@ -33,13 +33,14 @@ const PLANET_ELEMENTS = {
   saturn:  [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
             [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]],
 };
-// Display: name, dot colour (each planet's familiar naked-eye tint), magnitude law
+// Display: name, dot colour (each planet's familiar naked-eye tint), magnitude law, radius (km,
+// for its silhouette in a transit)
 const PLANETS = [
-  { key: 'mercury', name: 'Mercury', color: '#cbbba6', mag: (r, R, fv) => -0.36 + 5 * Math.log10(r * R) + 0.027 * fv + 2.2e-13 * fv ** 6 },
-  { key: 'venus',   name: 'Venus',   color: '#fff6dc', mag: (r, R, fv) => -4.34 + 5 * Math.log10(r * R) + 0.013 * fv + 4.2e-7 * fv ** 3 },
-  { key: 'mars',    name: 'Mars',    color: '#ff8a5c', mag: (r, R, fv) => -1.51 + 5 * Math.log10(r * R) + 0.016 * fv },
-  { key: 'jupiter', name: 'Jupiter', color: '#f3dfb8', mag: (r, R, fv) => -9.25 + 5 * Math.log10(r * R) + 0.014 * fv },
-  { key: 'saturn',  name: 'Saturn',  color: '#e9cf86', mag: (r, R, fv, ring) => -9.0 + 5 * Math.log10(r * R) + 0.044 * fv + ring },
+  { key: 'mercury', name: 'Mercury', radiusKm: 2439.7, color: '#cbbba6', mag: (r, R, fv) => -0.36 + 5 * Math.log10(r * R) + 0.027 * fv + 2.2e-13 * fv ** 6 },
+  { key: 'venus',   name: 'Venus',   radiusKm: 6051.8,   color: '#fff6dc', mag: (r, R, fv) => -4.34 + 5 * Math.log10(r * R) + 0.013 * fv + 4.2e-7 * fv ** 3 },
+  { key: 'mars',    name: 'Mars',    radiusKm: 3389.5,    color: '#ff8a5c', mag: (r, R, fv) => -1.51 + 5 * Math.log10(r * R) + 0.016 * fv },
+  { key: 'jupiter', name: 'Jupiter', radiusKm: 69911, color: '#f3dfb8', mag: (r, R, fv) => -9.25 + 5 * Math.log10(r * R) + 0.014 * fv },
+  { key: 'saturn',  name: 'Saturn',  radiusKm: 58232,  color: '#e9cf86', mag: (r, R, fv, ring) => -9.0 + 5 * Math.log10(r * R) + 0.044 * fv + ring },
 ];
 const PLANET_LIGHT_DAYS_PER_AU = 0.0057755183;
 const PLANET_OBLIQUITY_J2000 = 23.43928 * Math.PI / 180;
@@ -145,23 +146,60 @@ function _planetDrawLabel(ctx, x, y, r, planet, alpha) {
   ctx.fillText(planet.name, x + r + NIGHTSKY_LABEL_GAP, y);
   ctx.restore();
 }
-function _nightSkyDrawSkyMapPlanets(ctx, layout) {
+// ─── Depth order and transits ───────────────────────────────────────────────────────────────────
+// The Sun, the Moon and the planets are drawn farthest first, so whatever is nearer covers what is
+// behind it: planets farther than the Sun before its disc ('behind'), nearer ones after it
+// ('front'), the Moon last of all (render-nightsky.js). Only Mercury and Venus can ever be nearer
+// than the Sun. One in front whose centre falls on the Sun's disc is in transit and is drawn as it
+// is seen, a black silhouette of its true angular size relative to the Sun's disc as drawn (Venus
+// in 2012: 29" against the Sun's 15.8', ~1/32 of the diameter), at least PLANET_SILHOUETTE_MIN_R px
+// so it stays visible on the small Sky Map symbol and at low zoom.
+const PLANET_SILHOUETTE_MIN_R = 1;
+function _planetSunDistAU() {
+  return _skySunEclipticOfDate(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).dist / 149597870.7;
+}
+// The Sun's disc as drawn: {x, y, r, semiDeg}, or null when the Sun isn't shown.
+function _planetSunDisc(project, radiusPx) {
+  if (!document.getElementById('chkNightSkySun').checked) return null;
+  const s = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const semi = _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  if (!_nightSkyDiscAboveHorizon(s.el, semi)) return null;
+  const p = project(s.az, s.el);
+  return p ? { x: p.x, y: p.y, r: radiusPx(semi), semiDeg: semi } : null;
+}
+function _planetDrawSilhouette(ctx, x, y, planet, sun, alpha) {
+  const semiDeg = Math.asin(planet.radiusKm / (planet.R * 149597870.7)) * 180 / Math.PI;
+  const r = Math.max(PLANET_SILHOUETTE_MIN_R, sun.r * semiDeg / sun.semiDeg);
+  ctx.globalAlpha = alpha;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#0b0b0b'; ctx.fill();
+  ctx.globalAlpha = 1;
+  return r;
+}
+// part: 'behind' (farther than the Sun) or 'front' (nearer). project(az, el) -> {x, y, alpha} | null.
+function _planetDrawPart(ctx, part, project, sunRadiusPx) {
+  const sunAU = _planetSunDistAU();
+  const list = _planetsAboveHorizon().filter(q => (q.p.R < sunAU) === (part === 'front'));
+  if (!list.length) return;
+  const sun = part === 'front' ? _planetSunDisc(project, sunRadiusPx) : null;
+  for (const q of list) {
+    const pt = project(q.az, q.el);
+    if (!pt) continue;
+    const onSun = sun && Math.hypot(pt.x - sun.x, pt.y - sun.y) < sun.r;
+    const r = onSun ? _planetDrawSilhouette(ctx, pt.x, pt.y, q.p, sun, pt.alpha) : _planetDrawDot(ctx, pt.x, pt.y, q.p, pt.alpha);
+    _planetDrawLabel(ctx, pt.x, pt.y, r, q.p, pt.alpha);
+  }
+}
+function _nightSkyDrawSkyMapPlanets(ctx, layout, part) {
   if (!_planetsWanted()) return;
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
-  for (const q of _planetsAboveHorizon()) {
-    const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, q.az, q.el);
-    const r = _planetDrawDot(ctx, pt.x, pt.y, q.p, 1);
-    _planetDrawLabel(ctx, pt.x, pt.y, r, q.p, 1);
-  }
+  _planetDrawPart(ctx, part, (az, el) => ({ ..._skyDomePoint(layout.cx, layout.cy, layout.R, az, el), alpha: 1 }),
+    () => _nightSkyBodyMinR());
   ctx.restore();
 }
-function _nightSkyDrawPlanetPlanets(ctx, layout) {
+function _nightSkyDrawPlanetPlanets(ctx, layout, part) {
   if (!_planetsWanted()) return;
-  for (const q of _planetsAboveHorizon()) {
-    const proj = _nightSkyPlanetProject(layout, q.az, q.el);
-    if (!proj.visible) continue;
-    const r = _planetDrawDot(ctx, proj.x, proj.y, q.p, proj.alpha);
-    _planetDrawLabel(ctx, proj.x, proj.y, r, q.p, proj.alpha);
-  }
+  _planetDrawPart(ctx, part, (az, el) => { const p = _nightSkyPlanetProject(layout, az, el); return p.visible ? p : null; },
+    semi => _nightSkyPlanetDiscRadiusPx(layout, semi));
 }

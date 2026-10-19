@@ -1996,11 +1996,13 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawStars(ctx, layout);
-  _nightSkyDrawSkyMapPlanets(ctx, layout);   // under the Sun and the Moon (render-planets.js)
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawMoonPath(ctx, layout);
+  // farthest first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon
+  _nightSkyDrawSkyMapPlanets(ctx, layout, 'behind');
   if (showSun) _nightSkyDrawSunDisc(ctx, layout);
+  _nightSkyDrawSkyMapPlanets(ctx, layout, 'front');
   if (showMoon) _nightSkyDrawMoonDisc(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawHorizon(ctx, layout);
   _nightSkyDrawGridLabels(ctx, layout);
@@ -2760,11 +2762,13 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
   if (showLines || showNames) _nightSkyDrawPlanetConstellations(ctx, layout, showLines, showNames);
   if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
-  _nightSkyDrawPlanetPlanets(ctx, layout);   // under the Sun and the Moon (render-planets.js)
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
+  // farthest first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon
+  _nightSkyDrawPlanetPlanets(ctx, layout, 'behind');
   if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
+  _nightSkyDrawPlanetPlanets(ctx, layout, 'front');
   if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
   if (showHorizon) _nightSkyDrawPlanetHorizon(ctx, layout);
   _nightSkyDrawPlanetGridLabels(ctx, layout);
