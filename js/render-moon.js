@@ -163,6 +163,50 @@ function _moonAzEl(year, month, day, hourUT) {
   return { az: p.az, el: p.el, elTrue: p.elTrue, ra: topo.ra, dec: topo.dec, dist: g.dist };
 }
 
+// ─── Earth's shadow (lunar eclipses) ────────────────────────────────────────────────────────────
+// Centre: the point opposite the Sun's apparent position (ecliptic longitude + 180 deg, latitude 0),
+// taken at the Moon's own distance - the shadow is a real cone out there, so the observer sees it
+// shifted by the same topocentric parallax as the Moon (up to ~1 deg), then the same refraction.
+// Radii, geocentric: Danjon's rule as in NASA's lunar eclipse predictions (F. Espenak):
+//   umbra = 1.01 pi_M - s_S + pi_S,  penumbra = 1.01 pi_M + s_S + pi_S
+// (pi_M the Moon's horizontal parallax, s_S and pi_S the Sun's semi-diameter and parallax; the 1.01
+// enlarges the Earth for its atmosphere). Against NASA for 2025 Sep 07, 2026 Mar 03 and 2017 Aug 07
+// both radii and the magnitudes agree to the 4th decimal; contact times come out 16-50 s off, the
+// same for every contact of one eclipse - the Sun model's ~20" (core.js _skySunEclipticOfDate,
+// Meeus' low-accuracy series), not the shadow geometry; the Moon itself was within 4".
+// Returned radii are scaled to the Moon's topocentric size, like the disc they are drawn over.
+function _moonShadow(year, month, day, hourUT, moon) {
+  const jde = _moonJDE(year, month, day, hourUT);
+  const sun = _skySunEclipticOfDate(jde), moonEcl = _moonEclipticOfDate(jde);
+  const eq = _moonEclToEq(_moonNorm360(sun.lambda + 180), 0, _moonMeanObliquityDeg(jde));
+  const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
+  const latSigned = hemisphere * latMag;
+  const lst = _skySiderealTimeHours(year, month, day, hourUT, lonHemisphere * LONG);
+  const topo = _moonTopocentric(eq.ra, eq.dec, moonEcl.dist, latSigned, lst);
+  const p = _skyRaDecToAzEl(topo.ra, topo.dec, lst, latSigned);
+  const rAU = sun.dist / 149597870.7;
+  const piM = Math.asin(6378.14 / moonEcl.dist) / _MOON_D2R;
+  const sS = 959.63 / 3600 / rAU, piS = 8.794 / 3600 / rAU;
+  const scale = _moonSemiDiamDeg(moon) / (Math.asin(1737.4 / moonEcl.dist) / _MOON_D2R);   // geocentric -> topocentric size
+  return { az: p.az, el: p.el, umbraDeg: (1.01 * piM - sS + piS) * scale, penumbraDeg: (1.01 * piM + sS + piS) * scale };
+}
+// The shadow over a Moon disc drawn with radius rPx at screen point a: {dx, dy, rU, rP} in px, or
+// null when even the penumbra misses the Moon. The offset keeps its true angular size relative to
+// the disc (so it also works for the Sky Map's fixed-size symbol), in the on-screen direction of
+// the projected shadow centre.
+function _moonShadowOnDisc(moon, rPx, project) {
+  const sh = _moonShadow(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, moon);
+  const semi = _moonSemiDiamDeg(moon);
+  const m = _skyDomeUnitVec(moon.az, moon.el), c = _skyDomeUnitVec(sh.az, sh.el);
+  const sep = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(m, c)))) / _MOON_D2R;
+  if (sep >= sh.penumbraDeg + semi) return null;
+  const pxPerDeg = rPx / semi;
+  let ux = 0, uy = 0;
+  const a = project(moon.az, moon.el), b = project(sh.az, sh.el);
+  if (a && b) { const L = Math.hypot(b.x - a.x, b.y - a.y); if (L > 1e-9) { ux = (b.x - a.x) / L; uy = (b.y - a.y) / L; } }
+  return { dx: ux * sep * pxPerDeg, dy: uy * sep * pxPerDeg, rU: sh.umbraDeg * pxPerDeg, rP: sh.penumbraDeg * pxPerDeg };
+}
+
 
 // ─── Phase and age ──────────────────────────────────────────────────────────────────────────────
 // Illuminated fraction k (0..1) and phase angle i (degrees) of the geocentric Moon (Meeus 48.2/
@@ -254,13 +298,15 @@ function _moonSunElevAtJD(jd) {
 
 // ─── Drawing ────────────────────────────────────────────────────────────────────────────────────
 // Disc sizes. Planetarium draws the Sun and the Moon at their TRUE angular size (the zoom goes up to
-// 8x so the phase reads - at 8x a semi-diameter of ~0.27 deg is 12-18 px on a typical canvas), with
-// a floor of NIGHTSKY_DISC_MIN_R so a disc never shrinks into a flickering sub-pixel dot when zoomed
-// out; the floor only applies where the phase could not be seen anyway. Sky Map has no zoom and
-// shows the whole hemisphere at ~3 px/deg, where the true disc would be under a pixel - it keeps a
-// small fixed symbol (NIGHTSKY_SKYMAP_DISC_R). Labels (Display "Labels") keep both findable.
-const NIGHTSKY_DISC_MIN_R = 2;
-const NIGHTSKY_SKYMAP_DISC_R = 3;
+// 12x so the phase reads - at 12x a semi-diameter of ~0.27 deg is 18-27 px on a typical canvas),
+// but never smaller than _nightSkyBodyMinR(): the same artificial factor for both bodies times the
+// largest planet dot (Venus's, PLANET_DOT_MAX_R in render-planets.js), so the two always look a
+// little bigger than the brightest planet. Sky Map has no zoom and shows the whole hemisphere at
+// ~3 px/deg, where the true disc would be under a pixel - it draws both at that minimum.
+const NIGHTSKY_BODY_SIZE_K = 1.2;
+function _nightSkyBodyMinR() {
+  return NIGHTSKY_BODY_SIZE_K * PLANET_DOT_MAX_R;
+}
 // Topocentric semi-diameter of the Moon, degrees: its distance from the observer is shorter than
 // from the Earth's centre by ~R*sin(altitude) (Meeus ch. 55, first-order form), up to ~1.7% at the
 // zenith.
@@ -282,7 +328,7 @@ function _nightSkyDiscAboveHorizon(el, semiDeg) {
 // scale grows, which a circle cannot show - negligible at the zooms where the disc is big enough to
 // matter, since the field there is narrow).
 function _nightSkyPlanetDiscRadiusPx(layout, semiDeg) {
-  return Math.max(NIGHTSKY_DISC_MIN_R, _nightSkyPlanet3D.FOCAL * layout.scale * semiDeg * _MOON_D2R);
+  return Math.max(_nightSkyBodyMinR(), _nightSkyPlanet3D.FOCAL * layout.scale * semiDeg * _MOON_D2R);
 }
 const MOON_PATH_COLOR_OUTLINE = 'rgba(0,0,0,0.85)';
 const MOON_PATH_COLOR_FILL = 'rgba(190,205,235,0.9)';   // silver-blue, apart from the Sun path's green
@@ -293,12 +339,13 @@ function _moonMix(a, b, t) {
   const A = _moonHexToRgb(a), B = _moonHexToRgb(b);
   return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')';
 }
-// Theme colours. The outline keeps the disc findable even at new moon, when the unlit side is all
-// there is; on the white light-theme sky the lit side needs the dark outline to read at all.
+// Theme colours: the lit side in a pale moonlight yellow. The outline keeps the disc findable even
+// at new moon, when the unlit side is all there is; on the white light-theme sky the lit side needs
+// the dark outline to read at all.
 function _moonColors() {
   return document.body.classList.contains('light')
-    ? { lit: '#f4eed6', dark: '#6e7680', shine: '#aab1ba', outline: 'rgba(0,0,0,0.6)' }
-    : { lit: '#ecebe4', dark: '#1c2029', shine: '#5a6272', outline: 'rgba(200,210,225,0.45)' };
+    ? { lit: '#f0e2a2', dark: '#6e7680', shine: '#aab1ba', outline: 'rgba(0,0,0,0.6)' }
+    : { lit: '#f4eab8', dark: '#1c2029', shine: '#5a6272', outline: 'rgba(200,210,225,0.45)' };
 }
 
 // Canvas angle (radians, canvas y down) from the Moon's screen position towards the Sun: a point
@@ -325,7 +372,7 @@ function _moonBrightLimbAngle(moon, sun, project) {
 // terminator is the disc's limb foreshortened by cos i). The unlit part carries earthshine, whose
 // strength follows the Earth's own phase as seen from the Moon (~1 - k): strongest at a thin
 // crescent, gone at full moon.
-function _moonDrawDisc(ctx, x, y, r, k, brightAngle) {
+function _moonDrawDisc(ctx, x, y, r, k, brightAngle, shadow) {
   const c = _moonColors();
   const shine = Math.pow(1 - k, 2);
   ctx.save();
@@ -349,8 +396,31 @@ function _moonDrawDisc(ctx, x, y, r, k, brightAngle) {
     ctx.fillStyle = c.lit;   // opposition: fully lit, no direction needed
     ctx.fill();
   }
+  if (shadow) _moonDrawShadow(ctx, r, shadow);
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.strokeStyle = c.outline; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+}
+// Earth's shadow over the disc (_moonShadowOnDisc), clipped to it: one radial gradient from the
+// shadow centre - deep blood-brown in the middle, blood-orange towards the umbra's edge, grey at the
+// edge itself, then the penumbra's faint grey fading out - semi-transparent, so it blends with the
+// lit disc underneath. Called with the context already translated to the disc centre.
+const MOON_SHADOW_STOPS = [   // [fraction of the umbra radius, colour]
+  [0.00, 'rgba(92,26,10,0.94)'],
+  [0.55, 'rgba(150,50,20,0.90)'],
+  [0.90, 'rgba(178,88,42,0.84)'],
+  [1.00, 'rgba(118,112,106,0.82)'],
+];
+function _moonDrawShadow(ctx, r, sh) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.clip();
+  const g = ctx.createRadialGradient(sh.dx, sh.dy, 0, sh.dx, sh.dy, sh.rP);
+  const u = sh.rU / sh.rP;
+  for (const [f, col] of MOON_SHADOW_STOPS) g.addColorStop(f * u, col);
+  g.addColorStop(Math.min(1, u + 0.015), 'rgba(135,135,135,0.48)');   // just outside the umbra
+  g.addColorStop(1, 'rgba(135,135,135,0)');                            // penumbra's outer edge
+  ctx.fillStyle = g;
+  ctx.fillRect(-r, -r, 2 * r, 2 * r);
   ctx.restore();
 }
 
@@ -364,7 +434,8 @@ function _nightSkyDrawMoonDisc(ctx, layout) {
   const k = _moonPhase(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).k;
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
-  _moonDrawDisc(ctx, pt.x, pt.y, NIGHTSKY_SKYMAP_DISC_R, k, _moonBrightLimbAngle(moon, sun, project));
+  const r = _nightSkyBodyMinR();
+  _moonDrawDisc(ctx, pt.x, pt.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
   ctx.restore();
 }
 function _nightSkyDrawMoonPath(ctx, layout) {
@@ -397,7 +468,7 @@ function _nightSkyDrawPlanetMoon(ctx, layout) {
   _nightSkyClipToSky(ctx, layout);
   ctx.globalAlpha = proj.alpha;
   const r = _nightSkyPlanetDiscRadiusPx(layout, semi);
-  _moonDrawDisc(ctx, proj.x, proj.y, r, k, _moonBrightLimbAngle(moon, sun, project));
+  _moonDrawDisc(ctx, proj.x, proj.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
   ctx.restore();
 }
 // Same horizon-crossing construction as _nightSkyPlanetBuildSunPathPts, with the Moon's position,
@@ -558,11 +629,11 @@ function _nightSkyDrawSkyMapBodyLabels(ctx, layout) {
   const at = (az, el) => _skyDomePoint(layout.cx, layout.cy, layout.R, az, el);
   if (document.getElementById('chkNightSkySun').checked) {
     const s = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    if (_nightSkyDiscAboveHorizon(s.el, _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT))) { const p = at(s.az, s.el); bodies.push({ x: p.x, y: p.y, r: NIGHTSKY_SKYMAP_DISC_R, text: 'Sun', color: cols.sun, alpha: 1 }); }
+    if (_nightSkyDiscAboveHorizon(s.el, _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT))) { const p = at(s.az, s.el); bodies.push({ x: p.x, y: p.y, r: _nightSkyBodyMinR(), text: 'Sun', color: cols.sun, alpha: 1 }); }
   }
   if (document.getElementById('chkNightSkyMoon').checked) {
     const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    if (_nightSkyDiscAboveHorizon(m.el, _moonSemiDiamDeg(m))) { const p = at(m.az, m.el); bodies.push({ x: p.x, y: p.y, r: NIGHTSKY_SKYMAP_DISC_R, text: 'Moon', color: cols.moon, alpha: 1 }); }
+    if (_nightSkyDiscAboveHorizon(m.el, _moonSemiDiamDeg(m))) { const p = at(m.az, m.el); bodies.push({ x: p.x, y: p.y, r: _nightSkyBodyMinR(), text: 'Moon', color: cols.moon, alpha: 1 }); }
   }
   _nightSkyDrawBodyLabels(ctx, bodies);
 }

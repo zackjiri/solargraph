@@ -580,7 +580,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // of Date.now()), stores its frame definition for _nightSkyDrawCatalogFrame, and centers the
 // Planetarium camera on the frame's own target Az/El - the only "center camera on Az/El" logic
 // anywhere in this file (the existing camera is otherwise only ever moved by the drag handler).
-// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, the slider's own maximum) that frames the photo's
+// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, below the slider's own 12x) that frames the photo's
 // own boundary with a comfortable reserve, rather than leaving zoom at whatever it was before this
 // tile was picked - zoom in as far as the cap allows, as long as the frame's own boundary still fits
 // in view with margin to spare. The equidistant fisheye's screen radius from the view direction is
@@ -591,7 +591,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // search needed - and layout.scale itself cancels out of the formula entirely, so this doesn't
 // even need to know the canvas's current on-screen size.
 const NIGHTSKY_FRAME_ZOOM_MARGIN = 0.85;   // corners land 85% of the way to the visible edge - reserve, not flush against it
-const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // raised from the original 2x with the slider's 8x range (user's choice)
+const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // auto-framing stops at 8x; the slider itself reaches 12x
 function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const D2R = Math.PI / 180;
   const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
@@ -1829,7 +1829,7 @@ document.getElementById('btnNightSkySunPath').addEventListener('click', () => {
 });
 
 // Disc radius: a small fixed symbol in Sky Map, the true angular size in Planetarium (both rules
-// shared with the Moon - NIGHTSKY_SKYMAP_DISC_R/_nightSkyPlanetDiscRadiusPx, render-moon.js, loaded
+// shared with the Moon - _nightSkyBodyMinR/_nightSkyPlanetDiscRadiusPx, render-moon.js, loaded
 // first). The glow scales with the disc, so at high zoom it doesn't hide how the Moon actually
 // overlaps the Sun. The Solargraph views keep their own 4.5px Sun.
 const NIGHTSKY_SUN_GLOW_RATIO = 25 / 8;
@@ -1892,7 +1892,7 @@ function _nightSkyDrawSunDisc(ctx, layout) {
   const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, s.az, s.el);
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
-  const r = NIGHTSKY_SKYMAP_DISC_R;
+  const r = _nightSkyBodyMinR();
   const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
   const glow = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glR);
   glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
@@ -2050,10 +2050,11 @@ _nightSkyUpdatePlanetCamera();
 // (#skyMap3DZoom, render-skydome.js's setSkyDomePlanet3DZoom), shown only while this sub-mode is
 // selected. One shared setter for both the slider's own 'input' event and the canvas wheel handler
 // below, so the two stay in lockstep exactly like Sky Dome's own zoom does.
-// Range 0.5x-8x: at 8x the Sun and the Moon, drawn at their true angular size, are big enough for
-// the phase to read. The slider runs in log2(zoom) (-1..3), so each octave takes the same travel -
+// Range 0.5x-12x: at 12x the Sun and the Moon, drawn at their true angular size, are big enough for
+// the phase and a lunar eclipse's shadow to read. The slider runs in log2(zoom) (-1..log2 12), so
+// each octave takes the same travel -
 // linear steps would be either coarse at the low end or tediously fine at the top.
-const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 8;
+const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 12;
 function setNightSkyPlanetZoom(z) {
   _nightSkyPlanet3D.zoom = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
   _nightSkyUpdatePlanetCamera();
@@ -2815,8 +2816,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   cv.addEventListener('pointerup', dragEnd);
   cv.addEventListener('pointercancel', dragEnd);
 
-  // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: 32 ticks from
-  // 0.5x to 8x. The exponent is snapped to whole eighths so repeated ticks don't drift.
+  // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: ~37 ticks from
+  // 0.5x to 12x. The exponent is snapped to whole eighths so repeated ticks don't drift.
   cv.addEventListener('wheel', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
     e.preventDefault();

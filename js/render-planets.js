@@ -108,9 +108,11 @@ function _planetPositions(year, month, day, hourUT) {
 }
 
 // Dot radius in px from the magnitude: a bit larger than a star of the same brightness
-// (_nightSkyStarSize), so the planets read as such; Venus tops out at 5.5 px.
+// (_nightSkyStarSize), so the planets read as such; Venus tops out at PLANET_DOT_MAX_R. The Sun and
+// the Moon never draw smaller than a fixed multiple of it (_nightSkyBodyMinR, render-moon.js).
+const PLANET_DOT_MAX_R = 5.5;
 function _planetDotRadius(mag) {
-  return Math.max(2.2, Math.min(5.5, 3.6 - 0.45 * mag));
+  return Math.max(2.2, Math.min(PLANET_DOT_MAX_R, 3.6 - 0.45 * mag));
 }
 function _planetsWanted() {
   const c = document.getElementById('chkNightSkyPlanets');
