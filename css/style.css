@@ -2229,7 +2229,7 @@
   #nightSkyPickerBox .picker-epoch { color: var(--dim); font-size: 10px; }
 
   /* Sky Map's "3D" ON/OFF toggle – small pill switch, same panel treatment as .skydome-proj-row */
-  #skyMap3DToggleRow {
+  #skyMap3DToggleRow, #nightSkyMap3DToggleRow {
     position: absolute; top: 48px; right: 12.5px;
     z-index: 12; display: none;          /* shown by JS only while Sky Map is selected */
     align-items: center; gap: 6px;
@@ -2238,14 +2238,14 @@
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  body.light #skyMap3DToggleRow {
+  body.light #skyMap3DToggleRow, body.light #nightSkyMap3DToggleRow {
     background: rgba(220,228,236,0.82);
   }
-  #skyMap3DToggleLabel {
+  #skyMap3DToggleLabel, #nightSkyMap3DToggleRow .nightsky-3d-label {
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
     color: var(--text);
   }
-  #btnSkyMap3DToggle {
+  #btnSkyMap3DToggle, #btnNightSkyMap3D {
     position: relative;
     flex: 0 0 auto;
     width: 30px; height: 17px;
@@ -2256,7 +2256,7 @@
     background: var(--control-fill-hover);
     transition: background 0.18s;
   }
-  #btnSkyMap3DToggle::after {
+  #btnSkyMap3DToggle::after, #btnNightSkyMap3D::after {
     content: '';
     position: absolute;
     top: 2px; left: 2px;
@@ -2266,8 +2266,8 @@
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  #btnSkyMap3DToggle.on { background: #e8a020; }
-  #btnSkyMap3DToggle.on::after { left: 15px; }
+  #btnSkyMap3DToggle.on, #btnNightSkyMap3D.on { background: #e8a020; }
+  #btnSkyMap3DToggle.on::after, #btnNightSkyMap3D.on::after { left: 15px; }
 
   /* Sky Map 3D zoom – vertical slider, same mechanic/styling as #theaterZoomCtl */
   #skyMap3DZoomCtl {
