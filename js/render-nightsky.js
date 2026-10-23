@@ -278,8 +278,8 @@ function _skyLoadData() {
 //
 // Build 40_1 gave Night Sky a second-level split of its own, Catalog | Visualization, mirroring
 // Eclipse's identical split (eclipseSubView/enterEclipseCatalog/enterEclipseVisualization,
-// js/render-eclipse.js) - Catalog (a tile grid of astrophotography shots, filelist_astro.json) is
-// the landing sub-view every time Night Sky is entered; Visualization is everything this whole
+// js/render-eclipse.js) - Catalog (a tile grid of astrophotography shots, filelist_astro.json);
+// Visualization (the landing view, in Planetarium, every time Night Sky is entered) is everything this whole
 // section used to do directly, unchanged underneath (the actual Sky Map/Planetarium star-map
 // canvas, still switched via its own separate, lower-level wheel, NIGHTSKY_SUBMODE_VALUES below -
 // that split was NOT replaced, just nested one level deeper).
@@ -339,11 +339,14 @@ function enterNightSky() {
   // before any tile is picked, and Visualization's own baseline if entered without picking one.
   _nightSkySetNow();
 
-  // Always land on Catalog first, regardless of which sub-view was showing last time Night Sky was
-  // active - same convention as Eclipse's own enterEclipse()/_eclipseSubIndex.
-  _nightSkyTopIndex = 0;
+  // Always land on Visualization - Planetarium, regardless of which view was showing last time
+  // Night Sky was active (the same "fixed landing view" convention as Eclipse's own
+  // enterEclipse()/_eclipseSubIndex).
+  _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf('planetarium');
+  nightSkySubmode = 'planetarium';
+  _nightSkyTopIndex = NIGHTSKY_TOP_VALUES.indexOf('visualization');
   _nightSkyTopWheel.render();
-  enterNightSkyCatalog();
+  enterNightSkyVisualization();
 
   if (typeof updateViewButtons === 'function') updateViewButtons();
 }
@@ -436,6 +439,7 @@ function enterNightSkyVisualization() {
   _nightSkyClearReadout();
   _nightSkyUpdatePlanetControlsVisibility();
   _nightSkyUpdatePresentationLock();
+  if (nightSkySubmode === 'sungraph') enterNightSkySunGraph();   // render-nightsky-sungraph.js
 
   // Date/time controls only just became visible/measurable - sync their displayed values and
   // re-measure the wheel widths (same reasoning as _eclipseSubWheel.render() on Eclipse entry).
@@ -461,6 +465,7 @@ function exitNightSkyVisualization() {
   // Stop the animation loop, if running - it has no reason to keep advancing time (and burning a
   // rAF callback) once the canvas showing it is hidden.
   if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive && typeof _nightSkyStopAnim === 'function') _nightSkyStopAnim();
+  exitNightSkySunGraph();
   document.getElementById('nightSkyCanvas').style.display = 'none';
   document.getElementById('nightSkyDateGroup').style.display = 'none';
   document.getElementById('nightSkyTimeWrap').style.display = 'none';
@@ -759,6 +764,7 @@ function resizeNightSky() {
   const container = document.getElementById('canvasContainer');
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
+  if (_nsSgActive()) { _sgFitCanvas(); drawNightSky(); return; }
   const RES = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
   const cw = container.clientWidth || 600, ch = container.clientHeight || cw;
   cv._res = RES;
@@ -990,7 +996,15 @@ function _nightSkyUpdateReadout() {
   const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const local = _skyFromJulianDateUT(jd + tz / 24);
   valDay.textContent = MONTHS[local.month - 1] + ' ' + local.day + ', ' + local.year;
-  _nightSkyTimeReadout().text.nodeValue = _nightSkyFmtHMS(local.hourUT) + ' local';
+  _nightSkyTimeReadout().text.nodeValue = _nightSkyFmtHMS(local.hourUT) + ' ' + _nightSkyUtcLabel(tz);
+}
+// The offset the time is shown in, "UTC+2" / "UTC−3:30" / "UTC" - not "local": the Time zone field
+// is a fixed offset (SET NOW takes the computer's current one, summer time included), which matches
+// the real civil time there only until the next change of clocks or a date in the other season.
+function _nightSkyUtcLabel(tz) {
+  if (!tz) return 'UTC';
+  const a = Math.abs(tz), h = Math.floor(a), m = Math.round((a - h) * 60);
+  return 'UTC' + (tz < 0 ? '−' : '+') + h + (m ? ':' + String(m).padStart(2, '0') : '');
 }
 // hh:mm:ss for the info bar, cut down to the whole second (no rounding, so it reads like a clock).
 // The 1 ms nudge only absorbs floating-point error from the Julian-Date round trip (~0.05 ms), so a
@@ -1913,16 +1927,22 @@ function _nightSkyDrawSunDisc(ctx, layout) {
 // instead - see the dedicated section below _nightSkyDrawSkyMap(). The dispatch in drawNightSky()
 // further down is written to make adding a further sub-mode a matter of extending these two arrays
 // plus one new branch, not restructuring anything.
-const NIGHTSKY_SUBMODE_VALUES = ['skymap', 'planetarium'];
-const NIGHTSKY_SUBMODE_LABELS = ['SKY MAP', 'PLANETARIUM'];
+const NIGHTSKY_SUBMODE_VALUES = ['skymap', 'planetarium', 'sungraph'];
+const NIGHTSKY_SUBMODE_LABELS = ['SKY MAP', 'PLANETARIUM', 'SUN GRAPH'];
 const NIGHTSKY_SUBMODE_N = NIGHTSKY_SUBMODE_VALUES.length;
-let nightSkySubmode = NIGHTSKY_SUBMODE_VALUES[0];
-let _nightSkySubmodeIndex = 0;
+let nightSkySubmode = 'planetarium';   // the landing sub-mode (enterNightSky)
+let _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode);
 function _nightSkyStepSubmode(dir) {
   _nightSkySubmodeIndex = ((_nightSkySubmodeIndex + dir) % NIGHTSKY_SUBMODE_N + NIGHTSKY_SUBMODE_N) % NIGHTSKY_SUBMODE_N;
 }
 function _nightSkyCommitSubmode() {
+  const prev = nightSkySubmode;
   nightSkySubmode = NIGHTSKY_SUBMODE_VALUES[_nightSkySubmodeIndex];
+  // Sun Graph swaps the sky canvas for the chart (render-nightsky-sungraph.js).
+  if (nightSkyActive && nightSkyTopView === 'visualization') {
+    if (nightSkySubmode === 'sungraph' && prev !== 'sungraph') enterNightSkySunGraph();
+    else if (nightSkySubmode !== 'sungraph' && prev === 'sungraph') { exitNightSkySunGraph(); resizeNightSky(); }
+  }
   // Same "only loadable via Catalog" rule as exitNightSkyVisualization()'s own clear - switching
   // AWAY from Planetarium to Sky Map, while staying in Visualization, is still "leaving" the
   // photo's presentation (user's own "kamkoliv" - anywhere), so it clears here too, not just on a
@@ -3053,6 +3073,7 @@ function _nightSkyClearReadout() {
 })();
 
 function drawNightSky() {
+  if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
   const ctx = cv.getContext('2d');

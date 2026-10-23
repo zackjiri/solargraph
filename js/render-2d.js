@@ -205,7 +205,6 @@ function drawChmiArc(W, H, lineWidth) {
 // range regardless of whether that specific day has a CHMI sample, so the mesh stays geometrically
 // continuous across data gaps; only the fill colour drops to flat grey for a day with no sample at
 // all (same convention as the single-day "no data for this day" case in drawChmiArc's caller).
-const _CHMI_MOSAIC_NDAYS = 365;
 const _CHMI_MOSAIC_HSTEP = 2.5;   // degrees of true hour angle - matches drawChmiArc's cadence
 
 // Ordered list of real calendar days covered by the current exposure interval - INCLUSIVE of both
@@ -220,7 +219,7 @@ function _imgChmiDayList() {
   if (exp.startDoy <= exp.endDoy) {
     for (let d = exp.startDoy; d <= exp.endDoy; d++) days.push(d);
   } else {
-    for (let d = exp.startDoy; d <= _CHMI_MOSAIC_NDAYS; d++) days.push(d);
+    for (let d = exp.startDoy; d <= solarDaysInYear(); d++) days.push(d);
     for (let d = 1; d <= exp.endDoy; d++) days.push(d);
   }
   return days;
@@ -369,7 +368,7 @@ function _imgChmiHighlightCustomDay(W, H) {
     : (realDoy >= exp.startDoy || realDoy <= exp.endDoy);
   if (!inRange) return;
 
-  const N = _CHMI_MOSAIC_NDAYS;
+  const N = solarDaysInYear();
   const lastDay = exp.endDoy;   // endDoy is inclusive - see _imgChmiDayList
   const atStart = realDoy === exp.startDoy;
   const atEnd   = realDoy === lastDay;

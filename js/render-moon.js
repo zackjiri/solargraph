@@ -290,6 +290,36 @@ function _moonElevAtJD(jd) {
   const m = _moonAzEl(r.year, r.month, r.day, r.hourUT);
   return { az: m.az, el: skyUpperLimbApparentEl(m.elTrue, _moonSemiDiamDeg(m)) };
 }
+// The Sun's rise and set on the LOCAL calendar day containing jdUT, in the same {rise, set,
+// alwaysUp, alwaysDown} form as _moonRiseSetOnLocalDay, but from the app's one shared Sun event
+// computation (core.js solarEventsOnDate, the same as the Sun Graph) instead of a search. Those
+// events belong to solar days (around local solar noon); the solar days of the date before, of and
+// after the local date are taken, and whichever events fall inside the local day are used.
+function _nightSkySunRiseSetOnLocalDay(jdUT) {
+  const start = _moonLocalDayStartJD(jdUT), end = start + 1;
+  const tz = typeof timeZoneHours !== 'undefined' ? timeZoneHours : 0;
+  const lonE = lonHemisphere * LONG;
+  const mid = _skyFromJulianDateUT(start + 0.5 + tz / 24);   // the local date, as a calendar date
+  const rises = [], sets = [];
+  let anyPolarDay = false;
+  for (const off of [-1, 0, 1]) {
+    const c = _skyFromJulianDateUT(_skyToJulianDateUT(mid.year, mid.month, mid.day, 12) + off);
+    const ev = solarEventsOnDate(c.year, c.month, c.day, 'day');
+    if (ev.polarDay) { if (off === 0) anyPolarDay = true; continue; }
+    if (ev.polarNight) continue;
+    const jdOf = (trueH, eot) => _skyToJulianDateUT(c.year, c.month, c.day, trueH - eot / 60 - lonE / 15);
+    rises.push(jdOf(ev.rise, ev.eotRise)); sets.push(jdOf(ev.set, ev.eotSet));
+  }
+  const pick = (list) => {
+    const jd = list.filter(j => j >= start && j < end).sort((a, b) => a - b)[0];
+    if (jd === undefined) return null;
+    const r = _skyFromJulianDateUT(jd);
+    return { jd, az: _nightSkySunAzEl(r.year, r.month, r.day, r.hourUT).az };
+  };
+  const rise = pick(rises), set = pick(sets);
+  const up = _moonSunElevAtJD(start + 0.5).el >= 0;
+  return { rise, set, alwaysUp: !rise && !set && (anyPolarDay || up), alwaysDown: !rise && !set && !(anyPolarDay || up) };
+}
 function _moonSunElevAtJD(jd) {
   const r = _skyFromJulianDateUT(jd);
   const s = _nightSkySunAzEl(r.year, r.month, r.day, r.hourUT);
@@ -668,7 +698,7 @@ function _moonRiseSetCached(jdUT) {
   if (_moonRiseSetCache.key !== key) {
     _moonRiseSetCache = {
       key,
-      sun: _moonRiseSetOnLocalDay(jdUT, _moonSunElevAtJD),
+      sun: _nightSkySunRiseSetOnLocalDay(jdUT),
       moon: _moonRiseSetOnLocalDay(jdUT, _moonElevAtJD),
     };
   }
@@ -683,10 +713,12 @@ function _moonFmtLocalTime(ev) {
 function _moonFmtAz(ev) {
   return ev ? Math.round(_moonNorm360(ev.az)) + '° ' + azimutToDir(ev.az) : '—';
 }
-function _nightSkyUpdateStatusPanel() {
+// jdAt: the instant to describe (Night Sky's Sun Graph passes the hovered day); default the
+// selected one.
+function _nightSkyUpdateStatusPanel(jdAt) {
   const el = (id) => document.getElementById(id);
   if (!el('nightSkyStatus')) return;
-  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const jd = jdAt !== undefined ? jdAt : _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const rs = _moonRiseSetCached(jd);
   const sun = rs.sun, moon = rs.moon;
 
@@ -702,7 +734,8 @@ function _nightSkyUpdateStatusPanel() {
   el('nsMoonRiseSet').textContent = _moonFmtLocalTime(moon.rise) + ' / ' + _moonFmtLocalTime(moon.set);
   el('nsMoonRiseSetAz').textContent = _moonFmtAz(moon.rise) + ' / ' + _moonFmtAz(moon.set);
 
-  const jde = _moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const at = _skyFromJulianDateUT(jd);
+  const jde = _moonJDE(at.year, at.month, at.day, at.hourUT);
   el('nsMoonIllum').textContent = (_moonPhase(jde).k * 100).toFixed(1) + ' %';
   el('nsMoonAge').textContent = _moonAgeDays(jde).toFixed(1) + ' days';
 }

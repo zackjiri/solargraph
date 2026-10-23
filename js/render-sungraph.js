@@ -117,6 +117,11 @@ function exitSunGraph() {
 
 function resizeSunGraph() {
   if (!sunGraphActive) return;
+  _sgFitCanvas();
+  drawSunGraph();
+}
+// Sizes #sunGraphCanvas to the canvas area (also used by Night Sky's Sun Graph).
+function _sgFitCanvas() {
   const container = document.getElementById('canvasContainer');
   const cv = document.getElementById('sunGraphCanvas');
   const RES = Math.max(2, Math.ceil(window.devicePixelRatio || 1));   // crisp on HiDPI (see 25_1)
@@ -129,57 +134,42 @@ function resizeSunGraph() {
   // backing maps 1:1 to the container instead of overflowing (showing only the top-left).
   cv.style.width  = cw + 'px';
   cv.style.height = ch + 'px';
-  drawSunGraph();
 }
 
 // Cumulative day-of-year for the first day of each month (index 0 = Jan 1 = doy 1).
 function _monthStartDoy() {
   const starts = [];
   let acc = 1;
-  for (let m = 0; m < 12; m++) { starts.push(acc); acc += DAYS_IN_MONTH[m]; }
+  const md = solarMonthDays();
+  for (let m = 0; m < 12; m++) { starts.push(acc); acc += md[m]; }
   return starts;  // [1, 32, 60, ...]
 }
-const _DAYS_IN_YEAR = 365;
 
 // Twilight altitude thresholds [deg], on the Sun's TRUE centre altitude. Daylight ends at the
 // standard sunset, SUN_HORIZON_ALT_DEG (core.js, -0.841 deg: the upper limb on the horizon with
-// refraction taken at the limb) - the same rule Night Sky uses, so both give the same sunrise and
-// sunset for the same day and place. The twilights are the standard -6/-12/-18 deg. Because the
-// day edge sits below the geometric horizon, polar day starts at a lower latitude (~65.7 deg) than
-// polar night (~67.4 deg) - a real effect of refraction, shown by every almanac. (Until build 42_1
-// the edge was the geometric 0 deg, symmetric about the Arctic Circle but ~3-5 min off almanacs.)
+// refraction taken at the limb) - the same rule Night Sky uses. The twilights are the standard
+// -6/-12/-18 deg. Because the day edge sits below the geometric horizon, polar day starts at a lower
+// latitude (~65.7 deg) than polar night (~67.4 deg) - a real effect of refraction, shown by every
+// almanac. The band boundaries themselves come from core.js solarEvents() (_sgEvents); this table
+// stays for the Sky Dome's own darkness cutoff (render-skydome.js).
 const _SG_THRESH = { day: SUN_HORIZON_ALT_DEG, civil: -6, naut: -12, astro: -18 };
 // Band colours (meaning-bearing → same in both themes; approx. timeanddate palette).
 const _SG_BANDS = { night: '#1c2a35', astro: '#39505f', naut: '#5a7588', civil: '#9cbdd2', day: '#cfe8f6' };
 
-// Half-width in hours (from solar noon) during which the sun is above altitude h [rad].
-// 12 → sun never drops below h that day (band reaches midnight); 0 → sun never rises above h.
-function _sgHalfWidth(hRad, sphi, cphi, sdelta, cdelta) {
-  const X = (Math.sin(hRad) - sphi * sdelta) / (cphi * cdelta);
-  if (X <= -1) return 12;
-  if (X >=  1) return 0;
-  return Math.acos(X) * (12 / Math.PI);   // hour-angle/15 = acos·(12/π)
-}
-
-// All four twilight half-widths (hours from solar noon) for a given day-of-year.
-function _sgDayWidths(doy, sphi, cphi) {
-  const dl = sunDeclination(doy), sd = Math.sin(dl), cd = Math.cos(dl), D2R = Math.PI / 180;
+// The day's band boundaries in true solar hours, from the app's one shared computation
+// (core.js solarEvents: each boundary at its own instant, the same as Night Sky): {day, civ, naut,
+// astro}, each {rise, set, eotRise, eotSet} - rise 0/set 24 when the Sun stays above that level all
+// day (the band reaches midnight), rise = set = 12 when it never gets there.
+function _sgEvents(doy) {
   return {
-    day:   _sgHalfWidth(_SG_THRESH.day   * D2R, sphi, cphi, sd, cd),
-    civ:   _sgHalfWidth(_SG_THRESH.civil * D2R, sphi, cphi, sd, cd),
-    naut:  _sgHalfWidth(_SG_THRESH.naut  * D2R, sphi, cphi, sd, cd),
-    astro: _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sd, cd),
+    day: solarEvents(doy, 'day'), civ: solarEvents(doy, 'civil'),
+    naut: solarEvents(doy, 'nautical'), astro: solarEvents(doy, 'astro'),
   };
 }
 
 // Day-of-year → "Jul 15".
 function _sgDoyMD(doy) {
-  let d = Math.max(1, Math.min(_DAYS_IN_YEAR, Math.round(doy)));
-  for (let m = 0; m < 12; m++) {
-    if (d <= DAYS_IN_MONTH[m]) return MONTH_NAMES[m] + ' ' + d;
-    d -= DAYS_IN_MONTH[m];
-  }
-  return MONTH_NAMES[11] + ' 31';
+  return doyToString(Math.max(1, Math.min(solarDaysInYear(), Math.round(doy))));
 }
 function _sgDoyLabel(doy) { return _sgDoyMD(doy).toUpperCase(); }   // "JUL 15" for the strip
 
@@ -284,12 +274,10 @@ function _sgRayCtx(doy) {
 // Contiguous green (state 2) and red (state 1) intervals [t0,t1] (solar time) for one day.
 function _sgDayRuns(doy, N) {
   const ctx  = _sgRayCtx(doy);
-  const wDay = _sgHalfWidth(_SG_THRESH.day * _SG_D2R,
-                            Math.sin(ctx.phiS), Math.cos(ctx.phiS),
-                            Math.sin(ctx.deltaS), Math.cos(ctx.deltaS));
+  const ev = solarEvents(doy, 'day');
   const green = [], red = [];
-  if (wDay <= 0) return { green, red, onPaper: null };      // polar night – nothing enters
-  const tA = Math.max(0, 12 - wDay - 0.5), tB = Math.min(24, 12 + wDay + 0.5);
+  if (ev.polarNight) return { green, red, onPaper: null };      // polar night – nothing enters
+  const tA = Math.max(0, ev.rise - 0.5), tB = Math.min(24, ev.set + 0.5);
   const push = (st, a, b) => { if (st === 2) green.push([a, b]); else if (st === 1) red.push([a, b]); };
   let prev = sunRayState(tA, ctx), start = tA;
   for (let i = 1; i <= N; i++) {
@@ -306,11 +294,12 @@ function _sgDayRuns(doy, N) {
 let _sgYearRuns = null, _sgYearKey = '';
 function _sgEnsureYearRuns() {
   const key = [LAT, hemisphere, yawDeg, pitchDeg, rollDeg, horizonMm, radius, scanWmm,
-               canvas.width, canvas.height].join(',');
+               canvas.width, canvas.height, solarLeapLayout, solarYear,
+               currentExposure ? currentExposure.startYear + '-' + currentExposure.endYear : ''].join(',');
   if (key === _sgYearKey && _sgYearRuns) return _sgYearRuns;
   _sgYearKey  = key;
-  _sgYearRuns = new Array(_DAYS_IN_YEAR + 1);
-  for (let d = 1; d <= _DAYS_IN_YEAR; d++) _sgYearRuns[d] = _sgDayRuns(d, 120);  // coarser N over the year
+  _sgYearRuns = new Array(solarDaysInYear() + 1);
+  for (let d = 1; d <= solarDaysInYear(); d++) _sgYearRuns[d] = _sgDayRuns(d, 120);  // coarser N over the year
   return _sgYearRuns;
 }
 
@@ -374,12 +363,66 @@ function _sgWrapDraw(ctx, px0, py0, pw, ph, draw) {
   ctx.restore();
 }
 
+// ── Sources ──────────────────────────────────────────────────────────────────
+// _sgDraw() draws the chart for a "source": the days of its year and their Sun events, how a true
+// solar hour lands on the time axis, the chosen and hovered day, the Sun marker, the caption, and
+// optional extra layers. The Solargraph source below is the Analyzer's Sun Graph (exposure,
+// sunlight on the paper, CHMI - its own layers, drawn only when src.solar); Night Sky has its own
+// (render-nightsky.js). The band boundaries always come from core.js solarEvents*.
+let _sgActiveSrc = null;   // the source last drawn (hover/click handlers)
+
+// The day whose pixel column (as _sgDraw's dayCol draws it: [round(dayToX(d)), round(dayToX(d+1))))
+// contains plot x; L = src.layout.
+function _sgDayAtX(L, nDays, x) {
+  const edge = (d) => Math.round(L.px0 + ((d - 1) / nDays) * L.pw);
+  let d = Math.floor(1 + (x - L.px0) / L.pw * nDays);
+  if (x < edge(d)) d--; else if (x >= edge(d + 1)) d++;
+  return Math.max(1, Math.min(nDays, d));
+}
+function _sgSolarSource() {
+  const customDoy = dayOfYear(customMonth, customDay);
+  return {
+    solar: true, legendId: 'sgLegendWrap',
+    nDays: solarDaysInYear(),
+    monthStarts: _monthStartDoy,
+    events: _sgEvents,
+    disp: (h, d, e) => displayHour(h, d, e),
+    flatNoon: timeDisplayMode === 'true', showNoon: true,
+    customDay: customDoy, showCustom: showCustomArc,
+    hoverDay: sgHoverDay,
+    sunMarker: (typeof show3DCulmination !== 'undefined' && show3DCulmination) ? { d: customDoy, trueHour: sunTimeHours } : null,
+    dayLabel: _sgDoyLabel,
+    showLabels: showLabels,
+    caption: () => {
+      // Title (uses current calibration latitude / hemisphere + the active time mode;
+      // standard time additionally shows the longitude / UTC offset it depends on)
+      const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
+      let caption = timeDisplayMode === 'true' ? 'apparent solar time'
+                  : timeDisplayMode === 'mean' ? 'mean solar time'
+                  : 'standard time';
+      caption += ' · Lat ' + latStr;
+      if (timeDisplayMode === 'standard') {
+        caption += ' · Long ' + LONG.toFixed(1) + '° ' + (lonHemisphere >= 0 ? 'E' : 'W')
+                 + ' · UTC' + _fmtTimeZone(timeZoneHours);
+      }
+      return caption;
+    },
+    afterDraw: () => updateSunGraphStatus(),
+    redraw: () => drawSunGraph(),
+    setHover: (d) => { sgHoverDay = d; },
+    isActive: () => sunGraphActive,
+  };
+}
 function drawSunGraph() {
-  const cv = document.getElementById('sunGraphCanvas');
+  _sgDraw(document.getElementById('sunGraphCanvas'), _sgSolarSource());
+}
+
+function _sgDraw(cv, src) {
   if (!cv) return;
+  _sgActiveSrc = src;
   // Without a loaded scan, cy is undefined → azElToPixel().py = NaN → the on-paper (green) test
   // always fails. cx/cy/scale cancel out in sunRayState, so any finite cy works; use nominal.
-  if (!isFinite(cy)) cy = IMG_H / 2;
+  if (src.solar && !isFinite(cy)) cy = IMG_H / 2;
   const RES = cv._res || 1;
   const ctx = cv.getContext('2d');
   const W = cv.width  / RES;          // logical size
@@ -408,18 +451,19 @@ function drawSunGraph() {
   const recapH    = 30;   // selected-day strip
   const chmiStripH = recapH * 0.25;   // CHMI measured-sunshine line, directly above the strip
   const hourAxisH = 16;   // hour ruler (00–22) under the strip
-  const mB  = monthLblH + recapGap + chmiStripH + recapH + hourAxisH;
+  const mB  = monthLblH + recapGap + chmiStripH + recapH + hourAxisH + (src.bottomPad || 0);   // bottomPad: room for an overlay below the chart
   const px0 = mL, py0 = mT, pw = Math.max(10, W - mL - mR), ph = Math.max(10, H - mT - mB);
   const chmiLaneY = py0 + ph + monthLblH + recapGap;   // top of the CHMI strip line
   const laneY = chmiLaneY + chmiStripH;                // top of the bottom (band) strip
-  _sgLayout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
+  src.layout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
+  if (src.solar) _sgLayout = src.layout;
 
   // Pin the legend to the plot's bottom corner, on whichever side stays clear of the CHMI
   // data (H1 generations cluster their exposure in Jan-Jun → legend goes bottom-right instead
   // of the default bottom-left). Unknown / H2 generations keep the original left placement.
-  const _leg = document.getElementById('sgLegendWrap');
+  const _leg = document.getElementById(src.legendId);
   if (_leg) {
-    const legRight = (typeof currentHalf !== 'undefined' && currentHalf === 'H1');
+    const legRight = src.solar && (typeof currentHalf !== 'undefined' && currentHalf === 'H1');
     _leg.style.left       = legRight ? 'auto' : (px0 + 'px');
     _leg.style.right      = legRight ? ((W - (px0 + pw)) + 'px') : 'auto';
     _leg.style.bottom     = (H - (py0 + ph)) + 'px';
@@ -430,48 +474,48 @@ function drawSunGraph() {
   ctx.fillRect(px0, py0, pw, ph);
 
   // Coordinate helpers — X = day of year (Jan→Dec), Y = hour (0 at bottom, 24 at top)
-  const dayToX  = (doy)  => px0 + ((doy - 1) / _DAYS_IN_YEAR) * pw;
+  const dayToX  = (doy)  => px0 + ((doy - 1) / src.nDays) * pw;
   const hourToY = (hour) => py0 + ph - (hour / 24) * ph;
 
-  // ── Twilight bands (solar time, symmetric about solar noon) ──────────────────
+  // ── Twilight bands (solar time) ──────────────────────────────────────────────
   // Drawn as smooth filled "lenses" (one polygon per level) so there are no per-day seams.
-  const phi  = effectiveLat() * hemisphere;   // signed latitude → correct annual pattern per hemisphere
-  const sphi = Math.sin(phi), cphi = Math.cos(phi);
-  const D2R  = Math.PI / 180;
-  const NDAYS = _DAYS_IN_YEAR;
+  const NDAYS = src.nDays;
 
-  // Precompute the sun's declination (sin/cos) for each day.
-  const sdel = new Array(NDAYS + 1), cdel = new Array(NDAYS + 1);
-  for (let d = 1; d <= NDAYS; d++) { const dl = sunDeclination(d); sdel[d] = Math.sin(dl); cdel[d] = Math.cos(dl); }
+  // Each day's band boundaries (core.js solarEvents, cached).
+  const evs = new Array(NDAYS + 1);
+  for (let d = 1; d <= NDAYS; d++) evs[d] = src.events(d);
 
   // Bands at 75% opacity (legend-hovered band emphasised). Night fills the plot; lenses overwrite.
   ctx.save();
   const nightE = _sgEmphBand === 'night';
-  ctx.globalAlpha = nightE ? 0.95 : 0.75;
+  // src.dimBands: the Sun bands fade back (Night Sky with Sun off and Moon on, so the Moon reads).
+  const bandA = (emph) => emph ? 0.95 : (src.dimBands ? 0.30 : 0.75);
+  ctx.globalAlpha = bandA(nightE);
   ctx.fillStyle = _sgShade(_SG_BANDS.night, nightE);
   ctx.fillRect(px0, py0, pw, ph);
 
   const levels = [
-    { key: 'astro', col: _SG_BANDS.astro, h: _SG_THRESH.astro * D2R },
-    { key: 'naut',  col: _SG_BANDS.naut,  h: _SG_THRESH.naut  * D2R },
-    { key: 'civil', col: _SG_BANDS.civil, h: _SG_THRESH.civil * D2R },
-    { key: 'day',   col: _SG_BANDS.day,   h: _SG_THRESH.day   * D2R },
+    { key: 'astro', col: _SG_BANDS.astro, ev: 'astro' },
+    { key: 'naut',  col: _SG_BANDS.naut,  ev: 'naut' },
+    { key: 'civil', col: _SG_BANDS.civil, ev: 'civ' },
+    { key: 'day',   col: _SG_BANDS.day,   ev: 'day' },
   ];
   const lensByKey = {};   // boundary polygons per band, reused for the legend-hover hatch
   for (const lv of levels) {
     const up = new Array(NDAYS + 1), lo = new Array(NDAYS + 1);
     for (let d = 1; d <= NDAYS; d++) {
-      const wh = _sgHalfWidth(lv.h, sphi, cphi, sdel[d], cdel[d]);
-      // displayHour() reprojects the true-solar boundary onto the selected time convention -
-      // identity in True mode (unwaved, as today), a per-day wave in Mean/Standard mode. Raw,
-      // unclamped - _sgWrapDraw below reveals whichever wrapped copy belongs on-screen instead of
-      // this boundary being flattened against the plot's top/bottom edge.
-      up[d] = hourToY(displayHour(12 + wh, d));   // upper boundary (toward later hours / top)
-      lo[d] = hourToY(displayHour(12 - wh, d));   // lower boundary (toward earlier hours / bottom)
+      const e = evs[d][lv.ev];
+      // src.disp() reprojects the true-solar boundary onto the selected time convention -
+      // identity in True mode, a per-day wave in Mean/Standard mode, with the equation of time at
+      // the event itself. Raw, unclamped - _sgWrapDraw below reveals whichever wrapped copy belongs
+      // on-screen instead of this boundary being flattened against the plot's top/bottom edge.
+      // A level never reached (rise = set = 12) collapses to a zero-width point at noon.
+      up[d] = hourToY(src.disp(e.set, d, e.eotSet));    // upper boundary (toward later hours / top)
+      lo[d] = hourToY(src.disp(e.rise, d, e.eotRise));  // lower boundary (toward earlier hours / bottom)
     }
     lensByKey[lv.key] = { up, lo };
     const e = _sgEmphBand === lv.key;
-    ctx.globalAlpha = e ? 0.95 : 0.75;
+    ctx.globalAlpha = bandA(e);
     ctx.fillStyle = _sgShade(lv.col, e);
     _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
       c.beginPath();
@@ -484,7 +528,7 @@ function drawSunGraph() {
   // ── Sun-on-paper overlay (green hits paper, red enters-but-misses) ────────────
   // Within the current gallery image's exposure interval the areas are drawn more prominently.
   // (No exposure for "load new image" uploads → uniform normal opacity, no boundaries.)
-  const exp = (typeof currentExposure !== 'undefined') ? currentExposure : null;
+  const exp = (src.solar && typeof currentExposure !== 'undefined') ? currentExposure : null;
   // Inclusive of endDoy - that's the day the paper was retrieved, still genuinely exposed (and
   // still real CHMI data, not a timezone-rollover artifact); see the exposure-end boundary line
   // below, which is drawn one day further out to match.
@@ -493,15 +537,15 @@ function drawSunGraph() {
         ? (d) => d >= exp.startDoy && d <= exp.endDoy
         : (d) => d >= exp.startDoy || d <= exp.endDoy)      // exposure wrapping across year-end
     : () => false;
-  const yearRuns = _sgEnsureYearRuns();
+  const yearRuns = src.solar ? _sgEnsureYearRuns() : [];
   const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
   const greenCol = (hi) => _sgEmphBand === 'green' ? _SG_GREEN_EMPH : (hi ? _SG_GREEN_HI : _SG_GREEN);
-  _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
+  if (src.solar) _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
     for (let d = 1; d <= NDAYS; d++) {
       const r = yearRuns[d]; if (!r) continue;
       const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
       const hi = inExp(d);
-      const dt0 = (h) => hourToY(displayHour(h, d));   // true-solar boundary → display axis, raw/unclamped
+      const dt0 = (h) => hourToY(src.disp(h, d));   // true-solar boundary → display axis, raw/unclamped
       if (_sgShowRed) {
         c.fillStyle = redCol(hi);
         for (const iv of r.red)   c.fillRect(x0, dt0(iv[1]), w, dt0(iv[0]) - dt0(iv[1]));
@@ -519,7 +563,7 @@ function drawSunGraph() {
   // Hidden entirely in True solar time mode: CHMI's own hour field is standard time, and
   // comparing it against reality only makes sense once the axis is in a real-clock convention
   // (Mean/Standard) - see the product decision in the project notes.
-  if (showImgChmi && timeDisplayMode !== 'true') {
+  if (src.solar && showImgChmi && timeDisplayMode !== 'true') {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
       // Reuse inExp's [start,end] clip (not just its highlight styling) so the CHMI columns end
@@ -541,8 +585,8 @@ function drawSunGraph() {
           // arrive slightly earlier/later than the geometric model. Deep night is skipped outright:
           // the sensor reads ~0 there anyway, so drawing it would only add visual noise. Skipped
           // entirely for temperature - see clipToDaylight above.
-          const wAstro = clipToDaylight ? _sgHalfWidth(_SG_THRESH.astro * D2R, sphi, cphi, sdel[d], cdel[d]) : 0;
-          const hMin = 12 - wAstro, hMax = 12 + wAstro;
+          const ea = evs[d].astro;
+          const hMin = clipToDaylight ? ea.rise : 12, hMax = clipToDaylight ? ea.set : 12;
           const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
           for (const [hour, sec] of samples) {
             if (sec === null) continue;
@@ -551,7 +595,7 @@ function drawSunGraph() {
             // correctly on the (possibly reprojected) display axis.
             const trueHour = trueFromStandard(hour, d);
             if (clipToDaylight && (trueHour < hMin || trueHour > hMax)) continue;
-            const y0 = hourToY(displayHour(trueHour + 1 / 6, d)), y1 = hourToY(displayHour(trueHour, d));
+            const y0 = hourToY(src.disp(trueHour + 1 / 6, d)), y1 = hourToY(src.disp(trueHour, d));
             c.fillStyle = _chmiActiveColor(sec, alpha);
             c.fillRect(x0, y0, w, Math.max(1, y1 - y0));
           }
@@ -559,6 +603,8 @@ function drawSunGraph() {
       });
     }
   }
+
+  if (src.drawExtra) src.drawExtra(ctx, { px0, py0, pw, ph, dayToX, hourToY, NDAYS, evs });
 
   // ── Legend hover: lightly diagonal-hatch the hovered band's region ────────────
   if (_sgEmphBand) {
@@ -586,7 +632,7 @@ function drawSunGraph() {
       for (let d = 1; d <= NDAYS; d++) {
         const r = yearRuns[d]; if (!r) continue;
         const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
-        const dt0 = (h) => hourToY(displayHour(h, d));
+        const dt0 = (h) => hourToY(src.disp(h, d));
         for (const iv of (key === 'green' ? r.green : r.red))
           ctx.rect(x0, dt0(iv[1]), w, dt0(iv[0]) - dt0(iv[1]));
       }
@@ -614,13 +660,13 @@ function drawSunGraph() {
       _sgOutText(ctx, String(h).padStart(2, '0'), px0 - 6, y, OUT);
     }
   }
-  const starts = _monthStartDoy();
+  const starts = src.monthStarts();
   ctx.textBaseline = 'alphabetic';
   for (let m = 0; m < 12; m++) {
     const x = dayToX(starts[m]);
     ctx.strokeStyle = pal.grid; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    const nextDoy = (m < 11) ? starts[m + 1] : _DAYS_IN_YEAR + 1;
+    const nextDoy = (m < 11) ? starts[m + 1] : NDAYS + 1;
     ctx.fillStyle = pal.text; ctx.textAlign = 'center';
     _sgOutText(ctx, MONTH_NAMES[m], dayToX((starts[m] + nextDoy) / 2), py0 + ph + 15, OUT);
   }
@@ -629,7 +675,8 @@ function drawSunGraph() {
   // Mean/Standard mode the axis is reprojected, so true noon's OWN value on that axis drifts
   // with the equation of time across the year → the line waves instead of staying flat.
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
-  if (timeDisplayMode === 'true') {
+  if (!src.showNoon) { /* the Sun is switched off */ }
+  else if (src.flatNoon) {
     const yFlat = hourToY(12);
     ctx.beginPath();
     ctx.moveTo(px0, yFlat); ctx.lineTo(px0 + pw, yFlat);
@@ -641,13 +688,13 @@ function drawSunGraph() {
     _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
       c.beginPath();
       for (let d = 1; d <= NDAYS; d++) {
-        const y = hourToY(displayHour(12, d));
+        const y = hourToY(src.disp(12, d));
         if (d === 1) c.moveTo(dayToX(d), y); else c.lineTo(dayToX(d), y);
       }
       c.stroke();
     });
   }
-  if (showLabels) {   // the caption is a label → controlled by Display "Labels"
+  if (src.showNoon && src.showLabels) {   // the caption is a label → controlled by Display "Labels"
     // The line is the sun's meridian transit in every mode (flat on the apparent
     // axis, waving by the equation of time (+ longitude offset) on the others),
     // so it carries the same name everywhere. "Midday" (12:00 civil) would be a
@@ -660,7 +707,7 @@ function drawSunGraph() {
     // the always-dark outline to stay readable; OUT is only correct paired with pal.text (the
     // hour-axis/month labels above, whose fill itself flips with the theme).
     _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
-      const yEdge = hourToY(displayHour(12, _DAYS_IN_YEAR));
+      const yEdge = hourToY(src.disp(12, NDAYS));
       _sgOutText(c, noonLabel, px0 + pw - 4, yEdge + 12, OUT_LBL);
     });
   }
@@ -681,8 +728,8 @@ function drawSunGraph() {
     // of framing it from outside. 2px clears both effects at once with a bit to spare.
     const LINE_MARGIN = 2;
     [exp.startDoy, exp.endDoy].forEach((doy, i) => {
-      const wd = _sgDayWidths(doy, sphi, cphi).day;   // daylight half-width [h]
-      if (wd <= 0) return;
+      const ed = solarEvents(doy, 'day');   // daylight span [h]
+      if (ed.polarNight) return;
       // endDoy is inclusive (see _imgChmiDayList/inExp above) - its own column is still "inside"
       // the exposure, so the "exposure end" line sits at that day's right edge (= the next day's
       // left edge) rather than its left edge, same as the start line sits at the start day's own
@@ -690,37 +737,44 @@ function drawSunGraph() {
       const x = i === 0 ? dayToX(doy) - LINE_MARGIN : dayToX((doy % NDAYS) + 1) + LINE_MARGIN;
       _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
         c.beginPath();
-        c.moveTo(x, hourToY(displayHour(12 + wd, doy)));
-        c.lineTo(x, hourToY(displayHour(12 - wd, doy)));
+        c.moveTo(x, hourToY(src.disp(ed.set, doy, ed.eotSet)));
+        c.lineTo(x, hourToY(src.disp(ed.rise, doy, ed.eotRise)));
         c.stroke();
-        if (showLabels) _sgVLabel(c, expLbl[i], x, hourToY(displayHour(12, doy)), '#ffffff', OUT_LBL, doy < 10);
+        if (src.showLabels) _sgVLabel(c, expLbl[i], x, hourToY(src.disp(12, doy)), '#ffffff', OUT_LBL, doy < 10);
       });
     });
   }
 
   // ── Day markers in the plot ──────────────────────────────────────────────────
-  const customDoy = dayOfYear(customMonth, customDay);
-  // Green vertical line at the Custom Path date (toggled by the Display "Custom date" checkbox).
-  if (showCustomArc) {
-    const x = dayToX(customDoy);
-    ctx.strokeStyle = '#50dc78'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
-    if (showLabels) {
+  // A day is the column [dayToX(d), dayToX(d+1)], snapped to whole pixels (as the Night Sky Moon
+  // columns); the custom-date and hovered-day markers fill exactly that column (at least 1 px), and
+  // the Sun/Moon markers sit in its middle.
+  const dayCol = (d) => { const x0 = Math.round(dayToX(d)), x1 = Math.round(dayToX(d + 1)); return { x0, w: Math.max(1, x1 - x0) }; };
+  const dayCenter = (d) => { const c = dayCol(d); return c.x0 + c.w / 2; };
+  const customDoy = src.customDay;
+  // Green column at the Custom Path date (toggled by the Display "Custom date" checkbox).
+  if (src.showCustom) {
+    const col = dayCol(customDoy), x = col.x0;
+    ctx.fillStyle = '#50dc78';
+    ctx.fillRect(col.x0, py0, col.w, ph);
+    if (src.showLabels) {
       _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
-        _sgVLabel(c, 'custom date', x, hourToY(displayHour(12, customDoy)), '#ffffff', OUT_LBL, customDoy < 10);
+        _sgVLabel(c, 'custom date', x, hourToY(src.disp(12, customDoy)), '#ffffff', OUT_LBL, customDoy < 10);
       });
     }
   }
-  // Semi-transparent orange line at the cursor-hovered day.
-  if (sgHoverDay !== null) {
-    const x = dayToX(sgHoverDay);
-    ctx.strokeStyle = 'rgba(232,160,32,0.55)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x, py0); ctx.lineTo(x, py0 + ph); ctx.stroke();
+  // Semi-transparent orange column at the cursor-hovered day.
+  if (src.hoverDay !== null) {
+    const col = dayCol(src.hoverDay);
+    ctx.fillStyle = 'rgba(232,160,32,0.55)';
+    ctx.fillRect(col.x0, py0, col.w, ph);
   }
+  // Source-drawn markers (Night Sky: the Sun and the Moon as in the Planetarium).
+  if (src.drawMarkers) src.drawMarkers(ctx, { px0, py0, pw, ph, dayToX, dayCenter, hourToY });
   // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
-  if (typeof show3DCulmination !== 'undefined' && show3DCulmination) {
+  if (src.sunMarker) {
     _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
-      const sx = dayToX(customDoy), sy = hourToY(displayHour(sunTimeHours, customDoy));
+      const sx = dayCenter(src.sunMarker.d), sy = hourToY(src.disp(src.sunMarker.trueHour, src.sunMarker.d));
       const glR = 11;
       const glow = c.createRadialGradient(sx, sy, 0, sx, sy, glR);
       glow.addColorStop(0, 'rgba(232,160,32,0.65)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
@@ -732,25 +786,20 @@ function drawSunGraph() {
   }
 
   // ── Selected-day strip (100% opacity) + centered date label ───────────────────
-  const activeDay = (sgHoverDay !== null) ? sgHoverDay : customDoy;
-  const sw = _sgDayWidths(activeDay, sphi, cphi);
-  const xh = (h) => px0 + (h / 24) * pw;   // raw true-solar-hour axis - fixed ruler, unconverted
-                                            // (matches the main diagram's own hour gridlines: see
-                                            // the "axis stays fixed, data reprojects" note by the
-                                            // solar-noon line above). Used for the hour axis ticks
-                                            // below only - every data layer uses xhData() instead.
-  // Data-layer x-position: reprojects a TRUE-solar-hour value through the current display mode
-  // first (mirrors the main diagram's hourToY(displayHour(...))), then clamps to the strip's
-  // fixed 0-24h axis. Used for the day/night bounds, the sun-on-paper overlay, and the CHMI
-  // overlay so all three move together as the equation of time varies through the year, instead
-  // of the CHMI overlay (which itself starts from real standard time via trueFromStandard())
-  // wobbling against a backdrop that stayed fixed in raw true solar time.
-  const xhData = (trueH) => xh(Math.max(0, Math.min(24, displayHour(trueH, activeDay))));
+  const activeDay = (src.hoverDay !== null) ? src.hoverDay : customDoy;
+  const sw = src.events(activeDay);
+  // The strip is the active day in TRUE solar time, 0-24 h, noon in the middle, in every time
+  // mode: the whole day (night - dawn - day - dusk - night) always fits, however far the Time zone
+  // is from the longitude (at UTC+10 in Europe the clock sunset falls after midnight). Only the
+  // hour labels under it show the selected convention (see the hour axis below). Every data layer
+  // (bands, sun on the paper, CHMI via trueFromStandard) is placed by its true solar hour.
+  const xh = (h) => px0 + (h / 24) * pw;
+  const xhData = (trueH) => xh(Math.max(0, Math.min(24, trueH)));
 
   // ── CHMI strip line (directly above the day strip) ────────────────────────────
   // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
   // day outside the station's coverage window) - only the coloured cells are data-dependent.
-  if (showImgChmi && timeDisplayMode !== 'true') {
+  if (src.solar && showImgChmi && timeDisplayMode !== 'true') {
     const chmiByDoy   = _sgEnsureChmiByDoy();
     const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
     if (daySamples) {
@@ -767,63 +816,55 @@ function drawSunGraph() {
   }
 
   ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
-  const seg = (key, col, wh) => {
-    if (wh <= 0) return;
-    const xl = xhData(12 - wh), xr = xhData(12 + wh);
+  const seg = (key, col, e) => {
+    if (e.polarNight) return;
+    const xl = xhData(e.rise, e.eotRise), xr = xhData(e.set, e.eotSet);
     ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
   };
-  seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
-  seg('civil', _SG_BANDS.civil, sw.civ);   seg('day',  _SG_BANDS.day,  sw.day);
+  if (src.stripBands !== false) {   // Night Sky with Sun off and Moon on: only the Moon on the strip
+    seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
+    seg('civil', _SG_BANDS.civil, sw.civ);   seg('day',  _SG_BANDS.day,  sw.day);
+  }
   // Sun-on-paper overlay on the strip (green/red, respecting legend toggles + hover emphasis); also feeds the panel.
-  const activeRuns = _sgDayRuns(activeDay, 240);
-  _sgActiveOnPaper = activeRuns.onPaper;
-  const segGR = (col, ivs) => {
-    ctx.fillStyle = col;
-    for (const iv of ivs) { const xl = xhData(iv[0]), xr = xhData(iv[1]); ctx.fillRect(xl, laneY, xr - xl, recapH); }
-  };
-  if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
-  if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
+  if (src.solar) {
+    const activeRuns = _sgDayRuns(activeDay, 240);
+    _sgActiveOnPaper = activeRuns.onPaper;
+    const segGR = (col, ivs) => {
+      ctx.fillStyle = col;
+      for (const iv of ivs) { const xl = xhData(iv[0]), xr = xhData(iv[1]); ctx.fillRect(xl, laneY, xr - xl, recapH); }
+    };
+    if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
+    if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
+  }
+  if (src.drawStripExtra) src.drawStripExtra(ctx, { activeDay, laneY, recapH, px0, pw, xh });
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
 
   // Centered date label — readable on any band (white fill + dark outline).
-  const label = (sgHoverDay !== null)
-    ? 'SELECTED DATE: ' + _sgDoyLabel(sgHoverDay)
-    : 'CUSTOM DATE: ' + (MONTH_NAMES[customMonth - 1] + ' ' + customDay).toUpperCase();
+  const label = (src.hoverDay !== null)
+    ? 'SELECTED DATE: ' + src.dayLabel(src.hoverDay)
+    : 'CUSTOM DATE: ' + src.dayLabel(customDoy);
   ctx.font = "bold 11px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ff3b30';   // red, no outline/shadow (contrast on the strip)
   ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
 
-  // ── Hour axis under the strip (range 00–24, labels 00–22) ─────────────────────
+  // ── Hour axis under the strip: every 2 h of the selected convention ──────────────
+  // The strip stays in true solar time; the ticks sit where the displayed clock (src.disp, one
+  // shift for the whole day: zone/longitude offset plus the day's equation of time) reads an even
+  // hour, labelled with that hour (wrapped onto 00-23). In True mode that is 00, 02, ... 22 at
+  // their own places.
   const axisY = laneY + recapH;
   ctx.strokeStyle = pal.grid; ctx.fillStyle = pal.text; ctx.lineWidth = 1;
   ctx.font = "10px 'Share Tech Mono', monospace";
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (let h = 0; h <= 22; h += 2) {
-    const x = xh(h);
+  const shift = src.disp(0, activeDay);   // displayed hour at true midnight
+  for (let H = Math.ceil(shift / 2 - 1e-9) * 2; H - shift < 23.5; H += 2) {
+    const x = xh(H - shift);
     ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 3); ctx.stroke();
-    const shown = displayHour(h, activeDay);
-    // Round to the nearest whole hour FIRST, THEN wrap onto 0-23 - not the other way round. Wrapping
-    // before rounding let an in-range-but-just-under-24 value (e.g. 23.9999) round UP to a literal
-    // 24 afterwards, so h=0's own tick - which the main Y-axis (above) always and only ever labels
-    // "00", never "24" - could show "24" here instead, right next to that axis's own "00" a few
-    // pixels away: two conflicting labels for the same instant (found via the user's own real-world
-    // report). Rounding first means a value that would round to 24 wraps to 0 - always "00" here.
-    const sh = ((Math.round(shown) % 24) + 24) % 24;
-    ctx.fillText(String(sh).padStart(2, '0'), x, axisY + 5);
+    ctx.fillText(String(((H % 24) + 24) % 24).padStart(2, '0'), x, axisY + 5);
   }
 
-  // Title (uses current calibration latitude / hemisphere + the active time mode;
-  // standard time additionally shows the longitude / UTC offset it depends on)
-  const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
-  let caption = timeDisplayMode === 'true' ? 'apparent solar time'
-              : timeDisplayMode === 'mean' ? 'mean solar time'
-              : 'standard time';
-  caption += ' · Lat ' + latStr;
-  if (timeDisplayMode === 'standard') {
-    caption += ' · Long ' + LONG.toFixed(1) + '° ' + (lonHemisphere >= 0 ? 'E' : 'W')
-             + ' · UTC' + _fmtTimeZone(timeZoneHours);
-  }
+  const caption = src.caption();
   ctx.fillStyle = pal.accent;
   ctx.font = "bold 14px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -831,7 +872,7 @@ function drawSunGraph() {
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
   ctx.fillText(caption, mL + 96, 26);
 
-  updateSunGraphStatus();   // keep the top-right info panel in sync with the active day
+  if (src.afterDraw) src.afterDraw(activeDay);   // keep the info panel in sync with the active day
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
@@ -858,8 +899,9 @@ function setSgStatusCollapsed(c) {
   const items = document.querySelectorAll('#sgLegend .sg-leg-item');
   items.forEach((el) => {
     const band = el.dataset.band;
-    el.addEventListener('mouseenter', () => { _sgEmphBand = band; if (sunGraphActive) drawSunGraph(); });
-    el.addEventListener('mouseleave', () => { _sgEmphBand = null; if (sunGraphActive) drawSunGraph(); });
+    const redraw = () => { const src = _sgActiveSrc; if (src && src.isActive()) src.redraw(); };
+    el.addEventListener('mouseenter', () => { _sgEmphBand = band; redraw(); });
+    el.addEventListener('mouseleave', () => { _sgEmphBand = null; redraw(); });
     if (el.classList.contains('sg-leg-toggle')) {
       el.addEventListener('click', (e) => {
         if (el.classList.contains('unavailable')) return;   // nothing to toggle - no CHMI data for this image
@@ -900,19 +942,22 @@ function setSgLegendCollapsed(c) {
 (function () {
   const cv = document.getElementById('sunGraphCanvas');
   if (!cv) return;
+  // Works for whichever source drew last (_sgActiveSrc: the Analyzer's or Night Sky's Sun Graph).
   cv.addEventListener('mousemove', (e) => {
-    if (!sunGraphActive || !_sgLayout) return;
+    const src = _sgActiveSrc;
+    if (!src || !src.layout || !src.isActive()) return;
     const r = cv.getBoundingClientRect();      // CSS box = logical size (see resizeSunGraph)
     const x = e.clientX - r.left, y = e.clientY - r.top;
-    const L = _sgLayout;
+    const L = src.layout;
     let day = null;
     if (x >= L.px0 && x <= L.px0 + L.pw && y >= L.py0 && y <= L.py0 + L.ph) {
-      day = Math.max(1, Math.min(_DAYS_IN_YEAR, Math.round(1 + (x - L.px0) / L.pw * _DAYS_IN_YEAR)));
+      day = _sgDayAtX(L, src.nDays, x);   // the column under the cursor
     }
-    if (day !== sgHoverDay) { sgHoverDay = day; drawSunGraph(); }
+    if (day !== src.hoverDay) { src.setHover(day); src.redraw(); }
   });
   cv.addEventListener('mouseleave', () => {
-    if (sgHoverDay !== null) { sgHoverDay = null; drawSunGraph(); }
+    const src = _sgActiveSrc;
+    if (src && src.isActive() && src.hoverDay !== null) { src.setHover(null); src.redraw(); }
   });
 })();
 

@@ -127,13 +127,54 @@ function azElToPixel(beta_deg, theta_deg) {
 // ─── Inverse solar calculations ───────────────────────────────────────────
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONTH_DAYS  = [31,28,31,30,31,30,31,31,30,31,30,31];
+const MONTH_DAYS_LEAP = [31,29,31,30,31,30,31,31,30,31,30,31];
+
+// ─── Calendar layout of the Solargraph views ────────────────────────────────────────────────────
+// The Solargraph views (2D image, 3D Model, Sun Graph, Sky Dome, Custom date) number the days of a
+// year 1..N. N is 365 - except while the shown image's exposure interval contains a real leap day
+// (29 Feb of a leap year), when the layout has that day too and N is 366. So Feb 29 appears in the
+// Sun Graph and the Custom date only when the exposure actually covered it (set by
+// setSolarCalendarFromExposure, controls.js). Every day-of-year in these views goes through the
+// helpers below; Night Sky works on real calendar dates and never uses them.
+let solarLeapLayout = false;
+function solarMonthDays() { return solarLeapLayout ? MONTH_DAYS_LEAP : MONTH_DAYS; }
+function solarDaysInYear() { return solarLeapLayout ? 366 : 365; }
+function solarWrapDoy(doy) {
+  const N = solarDaysInYear();
+  return ((Math.round(doy) - 1) % N + N) % N + 1;
+}
+// Day-of-year (any number, wrapped) -> {month 1-12, day} in the current layout.
+function solarDoyToMonthDay(doy) {
+  const md = solarMonthDays();
+  let m = 0, d = solarWrapDoy(doy);
+  while (d > md[m]) { d -= md[m]; m++; }
+  return { month: m + 1, day: d };
+}
+function isLeapYear(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
+// Exposure "YYYY-MM-DD" .. "YYYY-MM-DD" (inclusive): does it contain a real 29 Feb?
+function exposureHasLeapDay(startStr, endStr) {
+  const y0 = Number(startStr.slice(0, 4)), y1 = Number(endStr.slice(0, 4));
+  for (let y = y0; y <= y1; y++) {
+    if (!isLeapYear(y)) continue;
+    const ld = String(y).padStart(4, '0') + '-02-29';
+    if (ld >= startStr && ld <= endStr) return true;
+  }
+  return false;
+}
+// Switches the layout; the day-of-year numbers after February change meaning, so the per-day Sun
+// caches are emptied and a Custom date of Feb 29 falls back to Feb 28 when the day goes away.
+function setSolarLeapLayout(leap) {
+  if (solarLeapLayout === leap) return;
+  solarLeapLayout = leap;
+  if (typeof _solarNoonCache !== 'undefined') _solarNoonCache.clear();
+  if (typeof _solarEventCache !== 'undefined') _solarEventCache.clear();
+  if (!leap && typeof customMonth !== 'undefined' && customMonth === 2 && customDay === 29) customDay = 28;
+}
 
 // Convert day-of-year to month/day string e.g. "Mar 15"
 function doyToString(doy) {
-  doy = ((Math.round(doy) - 1 + 365) % 365) + 1;
-  let m = 0, d = doy;
-  while (d > MONTH_DAYS[m]) { d -= MONTH_DAYS[m]; m++; }
-  return MONTH_NAMES[m] + ' ' + d;
+  const md = solarDoyToMonthDay(doy);
+  return MONTH_NAMES[md.month - 1] + ' ' + md.day;
 }
 
 // Invert sunDeclination(d) = target (rad) for day-of-year, starting from a closed-form seed based
@@ -184,11 +225,12 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   const sinArg = target / maxDecl;
   const angle  = Math.asin(sinArg); // −π/2 .. π/2, seed only
 
-  // Two seed solutions in [1,365]:
-  // d1 = 81 + angle·365/(2π)        (spring side)
-  // d2 = 81 + (π − angle)·365/(2π)  (autumn side)
-  const d1 = refineDayFromDeclination(81 + angle * 365 / (2 * Math.PI), target);
-  const d2 = refineDayFromDeclination(81 + (Math.PI - angle) * 365 / (2 * Math.PI), target);
+  // Two seed solutions in [1,N] (N = solarDaysInYear(), 365 or 366):
+  // d1 = 81 + angle·N/(2π)        (spring side)
+  // d2 = 81 + (π − angle)·N/(2π)  (autumn side)
+  const N = solarDaysInYear();
+  const d1 = refineDayFromDeclination(81 + angle * N / (2 * Math.PI), target);
+  const d2 = refineDayFromDeclination(81 + (Math.PI - angle) * N / (2 * Math.PI), target);
 
   // Hour angle H from el/phi/delta:
   // cos(H) = (sin(el) - sin(φ)·sin(δ)) / (cos(φ)·cos(δ))
@@ -209,9 +251,9 @@ function inverseSolar(az_world_deg, el_deg, phi_rad) {
   const solarHour = 12 - H * 180 / Math.PI / 15;
   if (solarHour < 0 || solarHour > 24) return null;
 
-  // Raw day-of-year integers (same wrap-to-[1,365] rule doyToString applies internally).
-  const doy1 = ((Math.round(d1) - 1 + 365) % 365) + 1;
-  const doy2 = ((Math.round(d2) - 1 + 365) % 365) + 1;
+  // Raw day-of-year integers (same wrap rule doyToString applies internally).
+  const doy1 = solarWrapDoy(d1);
+  const doy2 = solarWrapDoy(d2);
 
   // Reproject through the selected time-display convention (True/Mean/Standard), same as every
   // other printed clock reading in the project (syncSunTimeUI's slider label, drawSunArc's hourly
@@ -409,12 +451,12 @@ const SUN_HORIZON_ALT_DEG = SKY_HORIZON_TRUE_ALT - 959.63 / 3600;
 let timeDisplayMode = 'standard';   // 'true' | 'mean' | 'standard' - default per product decision
 
 // ─── Calendar year of the Solargraph views ─────────────────────────────────────────────────────
-// The Solargraph views work in day-of-year (365-day table, dayOfYear()); the Sun itself comes from
-// the same Meeus series as Night Sky (_skySunEclipticOfDate), which needs a real calendar date. The
-// year for a day-of-year: a Gallery image's own exposure dates (currentExposure, controls.js - an
-// exposure crossing New Year gives its days from the start day on the start year, the rest the end
-// year), otherwise the Analyzer's Year field (solarYear, default the current year). Feb 29 of a
-// leap year has no day-of-year of its own in the 365-day table and is simply skipped.
+// The Solargraph views work in day-of-year (the calendar layout above, dayOfYear()); the Sun itself
+// comes from the same Meeus series as Night Sky (_skySunEclipticOfDate), which needs a real calendar
+// date. The year for a day-of-year: a Gallery image's own exposure dates (currentExposure,
+// controls.js - an exposure crossing New Year gives its days from the start day on the start year,
+// the rest the end year), otherwise the Analyzer's Year field (solarYear, default the current year).
+// Feb 29 has a day-of-year only in the leap layout (an exposure that covered it).
 let solarYear = new Date().getFullYear();
 // The shown Gallery image's exposure {startDoy, endDoy, startYear, endYear} | null - set by
 // controls.js (setCurrentExposureFromGallery, loadImage). Declared here, before anything can draw.
@@ -428,13 +470,13 @@ function solarYearForDoy(doy) {
   return solarYear;
 }
 // Julian Ephemeris Day for a (possibly fractional) day-of-year at a UT hour, in its solar year.
+// The day is wrapped into the layout's 1..N (refineDayFromDeclination probes past the ends).
 function _solarJDE(doy, hourUT, year) {
   const n = Math.floor(doy), frac = doy - n;
-  const w = ((n - 1) % 365 + 365) % 365 + 1;   // wrap into 1..365 (refineDayFromDeclination probes past the ends)
-  let m = 0, d = w;
-  while (d > MONTH_DAYS[m]) { d -= MONTH_DAYS[m]; m++; }
+  const w = solarWrapDoy(n);
+  const md = solarDoyToMonthDay(w);
   const y = year !== undefined ? year : solarYearForDoy(w);
-  return _moonJDE(y, m + 1, d, hourUT) + frac;
+  return _moonJDE(y, md.month, md.day, hourUT) + frac;
 }
 // UT of local mean noon (12:00 mean solar time at this longitude) - the instant the per-day Sun
 // values below are taken at, the middle of the day's path.
@@ -444,7 +486,7 @@ function _solarNoonUT() {
 // Sun at local noon of a day-of-year: {dec (rad), eotMin}. Declination from Meeus ch. 25 of date
 // (same as Night Sky); equation of time (Meeus 28.3) E = L0 - 0.0057183 deg - RA, the true minus
 // the mean solar time, nutation left out (<~1 s). Cached per day, year and longitude - the Sun
-// Graph asks for all 365 days on every redraw.
+// Graph asks for every day of the year on every redraw.
 const _solarNoonCache = new Map();
 // The Sun at one instant: {dec (rad), eotMin, semiDeg}.
 function _solarSunAtJDE(jde) {
@@ -456,7 +498,7 @@ function _solarSunAtJDE(jde) {
 }
 function _solarNoonSun(doy, year) {
   const y = year !== undefined ? year : solarYearForDoy(Math.round(doy));
-  const key = doy + '|' + y + '|' + (lonHemisphere * LONG);
+  const key = (solarLeapLayout ? 'L' : 'N') + doy + '|' + y + '|' + (lonHemisphere * LONG);
   let v = _solarNoonCache.get(key);
   if (v) return v;
   v = _solarSunAtJDE(_solarJDE(doy, _solarNoonUT(), y));
@@ -517,19 +559,51 @@ function sunDeclination(dayOfYear, year) {
   return _solarNoonSun(dayOfYear, year).dec;
 }
 
-// Sunrise/sunset of a day-of-year for the current Location, in TRUE solar hours: {rise, set,
-// polarDay, polarNight}. Standard rule (upper limb, refracted - see SKY_HORIZON_TRUE_ALT). The
-// declination and semi-diameter are taken at the event itself, not at noon - near the equinoxes
-// the declination moves 0.4 deg a day, which at noon alone would put the times ~20 s off; two
-// refinement steps bring them to under a second of Night Sky's own search.
-function solarRiseSet(doy) {
+// Sun events of a day-of-year for the current Location, in TRUE solar hours - the one place both
+// halves of the app take sunrise/sunset and the twilight boundaries from (Sun Graph bands and
+// panel, the 3D Model's day range, Night Sky's info panel). kind:
+//   'day'      standard sunrise/sunset: the upper limb on the horizon, refracted (SKY_HORIZON_TRUE_ALT
+//              minus the semi-diameter, on the centre's true altitude)
+//   'civil' | 'nautical' | 'astro'   the centre's true altitude at -6 / -12 / -18 deg
+// Returns {rise, set, polarDay, polarNight, eotRise, eotSet}: polarDay = the Sun stays above the
+// threshold all day (rise 0, set 24), polarNight = never reaches it (rise = set = 12). The
+// declination (and the semi-diameter) are taken at the event itself, not at noon - near the
+// equinoxes the declination moves 0.4 deg a day, which at noon alone puts the times up to ~35 s
+// off; two refinement steps bring every boundary to within a second of Night Sky's own search.
+// eotRise/eotSet: the equation of time at each event, for displayHour's clock conversion.
+// year: optional override (Night Sky passes its own). Cached per day, year, kind and location.
+const SOLAR_EVENT_ALT = { civil: -6, nautical: -12, astro: -18 };
+const _solarEventCache = new Map();
+function solarEvents(doy, kind, year) {
+  const y = year !== undefined ? year : solarYearForDoy(Math.round(doy));
+  const key = [solarLeapLayout ? 'L' : 'N', doy, y, kind, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  const hit = _solarEventCache.get(key);
+  if (hit) return hit;
+  const r = _solarEventsCore((hourUT) => _solarJDE(doy, hourUT, y), kind);
+  if (_solarEventCache.size > 20000) _solarEventCache.clear();
+  _solarEventCache.set(key, r);
+  return r;
+}
+// The same for a real calendar date (Night Sky's info panel), independent of the layout above.
+function solarEventsOnDate(year, month, day, kind) {
+  const key = ['D', year, month, day, kind, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  const hit = _solarEventCache.get(key);
+  if (hit) return hit;
+  const r = _solarEventsCore((hourUT) => _moonJDE(year, month, day, hourUT), kind);
+  if (_solarEventCache.size > 20000) _solarEventCache.clear();
+  _solarEventCache.set(key, r);
+  return r;
+}
+// jdeAt(hourUT): the JDE of an instant on the day in question.
+function _solarEventsCore(jdeAt, kind) {
   const phi = effectiveLat() * hemisphere;
   const sphi = Math.sin(phi), cphi = Math.cos(phi);
   const lonE = lonHemisphere * LONG;
-  const eot = equationOfTimeMin(doy);
+  const eot = _solarSunAtJDE(jdeAt(_solarNoonUT())).eotMin;
   const at = (trueHour) => {
-    const v = _solarSunAtJDE(_solarJDE(doy, trueHour - eot / 60 - lonE / 15));
-    return { dec: v.dec, h0: (SKY_HORIZON_TRUE_ALT - v.semiDeg) * Math.PI / 180, eotMin: v.eotMin };
+    const v = _solarSunAtJDE(jdeAt(trueHour - eot / 60 - lonE / 15));
+    const hDeg = kind === 'day' ? SKY_HORIZON_TRUE_ALT - v.semiDeg : SOLAR_EVENT_ALT[kind];
+    return { dec: v.dec, h0: hDeg * Math.PI / 180, eotMin: v.eotMin };
   };
   const halfWidth = ({ dec, h0 }) => {
     const X = (Math.sin(h0) - sphi * Math.sin(dec)) / (cphi * Math.cos(dec));
@@ -537,17 +611,23 @@ function solarRiseSet(doy) {
     if (X >= 1) return 0;
     return Math.acos(X) * 12 / Math.PI;
   };
+  let r;
   const w0 = halfWidth(at(12));
-  if (w0 >= 12) return { rise: 0, set: 24, polarDay: true, polarNight: false, eotRise: eot, eotSet: eot };
-  if (w0 <= 0) return { rise: 12, set: 12, polarDay: false, polarNight: true, eotRise: eot, eotSet: eot };
-  let rise = 12 - w0, set = 12 + w0;
-  for (let i = 0; i < 2; i++) {
-    rise = 12 - Math.min(12, halfWidth(at(rise)));
-    set = 12 + Math.min(12, halfWidth(at(set)));
+  if (w0 >= 12) r = { rise: 0, set: 24, polarDay: true, polarNight: false, eotRise: eot, eotSet: eot };
+  else if (w0 <= 0) r = { rise: 12, set: 12, polarDay: false, polarNight: true, eotRise: eot, eotSet: eot };
+  else {
+    let rise = 12 - w0, set = 12 + w0;
+    for (let i = 0; i < 2; i++) {
+      rise = 12 - Math.min(12, halfWidth(at(rise)));
+      set = 12 + Math.min(12, halfWidth(at(set)));
+    }
+    r = { rise, set, polarDay: false, polarNight: false, eotRise: at(rise).eotMin, eotSet: at(set).eotMin };
   }
-  // The equation of time AT each event (it drifts up to ~30 s a day), for displayHour's clock
-  // conversion - with the day's noon value the clock times would be up to ~5 s off.
-  return { rise, set, polarDay: false, polarNight: false, eotRise: at(rise).eotMin, eotSet: at(set).eotMin };
+  return r;
+}
+// Standard sunrise/sunset (solarEvents 'day').
+function solarRiseSet(doy, year) {
+  return solarEvents(doy, 'day', year);
 }
 
 // "Path" convention (2D canvas Sun's-paths/Custom-date arcs - see drawSunArc() below - plus the
@@ -571,9 +651,9 @@ function pathDeclination(dayOfYear) {
 
 // Day of year for given month/day
 function dayOfYear(month, day) {
-  const daysInMonth = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+  const md = solarMonthDays();
   let d = day;
-  for (let m = 1; m < month; m++) d += daysInMonth[m];
+  for (let m = 1; m < month; m++) d += md[m - 1];
   return d;
 }
 
@@ -677,13 +757,14 @@ function _chmiBucketByDoy(values, tzHours) {
 // SSV10M, or the extra per-image dataset once switched to it) for the Sun Graph - cached on
 // (dataset identity, timeZoneHours), since the zone control can change live without the data
 // itself changing, and the identity check alone already invalidates on an element-switch flip.
-let _sgChmiByDoy = null, _sgChmiSrc = null, _sgChmiZone = null;
+let _sgChmiByDoy = null, _sgChmiSrc = null, _sgChmiZone = null, _sgChmiLeap = null;
 function _sgEnsureChmiByDoy() {
   const src = _chmiActiveDataset();
   if (!src) { _sgChmiSrc = null; _sgChmiByDoy = null; return null; }
-  if (_sgChmiSrc === src && _sgChmiZone === timeZoneHours) return _sgChmiByDoy;
+  if (_sgChmiSrc === src && _sgChmiZone === timeZoneHours && _sgChmiLeap === solarLeapLayout) return _sgChmiByDoy;
   _sgChmiSrc = src;
   _sgChmiZone = timeZoneHours;
+  _sgChmiLeap = solarLeapLayout;   // the days are numbered in the calendar layout
   _sgChmiByDoy = _chmiBucketByDoy(src.values, timeZoneHours);
   return _sgChmiByDoy;
 }
@@ -693,12 +774,13 @@ function _sgEnsureChmiByDoy() {
 // the readout wants SSV10M and the extra element (T, when this image has one) at the same time
 // regardless of the switch state - so each dataset gets its own independent bucket cache, mirroring
 // the same (dataset identity, timeZoneHours) invalidation rule.
-let _roChmiByDoy = null, _roChmiByDoySrc = null, _roChmiByDoyZone = null;
+let _roChmiByDoy = null, _roChmiByDoySrc = null, _roChmiByDoyZone = null, _roChmiByDoyLeap = null;
 function _roChmiEnsureByDoy() {
   if (typeof currentChmi === 'undefined' || !currentChmi) { _roChmiByDoySrc = null; _roChmiByDoy = null; return null; }
-  if (_roChmiByDoySrc === currentChmi && _roChmiByDoyZone === timeZoneHours) return _roChmiByDoy;
+  if (_roChmiByDoySrc === currentChmi && _roChmiByDoyZone === timeZoneHours && _roChmiByDoyLeap === solarLeapLayout) return _roChmiByDoy;
   _roChmiByDoySrc = currentChmi;
   _roChmiByDoyZone = timeZoneHours;
+  _roChmiByDoyLeap = solarLeapLayout;
   _roChmiByDoy = _chmiBucketByDoy(currentChmi.values, timeZoneHours);
   return _roChmiByDoy;
 }
@@ -1057,14 +1139,15 @@ function _analemmaBuildPoints(sampleAt) {
   // boundary - only wrapped back into a real calendar day right before each sampleAt() call.
   const horizonEdge = (a, b) => {
     const aVisible = a.el >= 0;
-    let d0 = a.day, d1 = b.day > a.day ? b.day : b.day + 365;
+    const N = solarDaysInYear();
+    let d0 = a.day, d1 = b.day > a.day ? b.day : b.day + N;
     for (let i = 0; i < 18; i++) {
       const dm = (d0 + d1) / 2;
-      const s = sampleAt(dm > 365 ? dm - 365 : dm);
+      const s = sampleAt(dm > N ? dm - N : dm);
       if ((s.el >= 0) === aVisible) d0 = dm; else d1 = dm;
     }
     const dm = (d0 + d1) / 2;
-    return sampleAt(dm > 365 ? dm - 365 : dm).point;
+    return sampleAt(dm > N ? dm - N : dm).point;
   };
   const raw = [];
   for (let i = 0; i < 12; i++) {

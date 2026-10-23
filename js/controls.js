@@ -924,6 +924,7 @@ document.getElementById('btnScanWInc').addEventListener('click', () => applyScan
 function loadImage(file) {
   imgGalleryKey      = null;   // an uploaded scan, not a Gallery image
   currentExposure    = null;   // uploaded image has no filelist metadata → no exposure overlay
+  setSolarLeapLayout(false);   // no exposure → the plain 365-day layout (core.js)
   updateSolarYearField();      // the Year field is the user's own again
   currentChmi        = null;   // ditto for the CHMI sunshine overlay
   currentChmiExtra   = null;   // ditto for any per-image extra dataset (chmi_extra)
@@ -1002,7 +1003,6 @@ new ResizeObserver(() => { if (imgBitmap) resizeCanvas(); })
 
 // ─── Custom arc ────────────────────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const DAYS_IN_MONTH = [31,28,31,30,31,30,31,31,30,31,30,31];
 let customMonth = 7; // 1-based, default July
 let customDay = 20;
 let showCustomArc = true;        // Custom date on by default (Gallery + Analyzer)
@@ -1026,15 +1026,15 @@ function updateDateLabels() {
 function stepCustomMonth(dir) {
   customMonth = dir > 0 ? (customMonth < 12 ? customMonth + 1 : 1)
                         : (customMonth > 1  ? customMonth - 1 : 12);
-  customDay = Math.min(customDay, DAYS_IN_MONTH[customMonth - 1]);
+  customDay = Math.min(customDay, solarMonthDays()[customMonth - 1]);
 }
 function stepCustomDay(dir) {
   if (dir > 0) {
-    if (customDay < DAYS_IN_MONTH[customMonth - 1]) customDay++;
+    if (customDay < solarMonthDays()[customMonth - 1]) customDay++;
     else { customMonth = customMonth < 12 ? customMonth + 1 : 1; customDay = 1; }
   } else {
     if (customDay > 1) customDay--;
-    else { customMonth = customMonth > 1 ? customMonth - 1 : 12; customDay = DAYS_IN_MONTH[customMonth - 1]; }
+    else { customMonth = customMonth > 1 ? customMonth - 1 : 12; customDay = solarMonthDays()[customMonth - 1]; }
   }
 }
 // Year field (core.js solarYear) under the Custom date wheels. While the shown image has exposure
@@ -1073,8 +1073,8 @@ function commitCustomDate() {
 // (month-boundary wrapping matches stepCustomDay)
 function customDayAt(off) {
   let m = customMonth, d = customDay;
-  while (off > 0) { if (d < DAYS_IN_MONTH[m - 1]) d++; else { m = m < 12 ? m + 1 : 1; d = 1; } off--; }
-  while (off < 0) { if (d > 1) d--; else { m = m > 1 ? m - 1 : 12; d = DAYS_IN_MONTH[m - 1]; } off++; }
+  while (off > 0) { if (d < solarMonthDays()[m - 1]) d++; else { m = m < 12 ? m + 1 : 1; d = 1; } off--; }
+  while (off < 0) { if (d > 1) d--; else { m = m > 1 ? m - 1 : 12; d = solarMonthDays()[m - 1]; } off++; }
   return d;
 }
 
@@ -1437,11 +1437,14 @@ let galleryState = { genId: null, imageIndex: null, layer: 0 };
 // currentExposure itself is declared in core.js (solarYearForDoy reads it during the first draw).
 function setCurrentExposureFromGallery() {
   currentExposure = null;
-  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) return;
+  setSolarLeapLayout(false);
+  if (!FILELIST || galleryState.genId === null || galleryState.imageIndex === null) { updateSolarYearField(); return; }
   const gen = FILELIST.generations.find(g => g.id === galleryState.genId);
   const img = gen && gen.images.find(i => i.index === galleryState.imageIndex);
   const m = img && img.metadata;
   if (m && m.exposure_start && m.exposure_end) {
+    // the layout first (Feb 29 only when the exposure covered one), then the days in it
+    setSolarLeapLayout(exposureHasLeapDay(m.exposure_start, m.exposure_end));
     const doy = (s) => { const [, mo, d] = s.split('-').map(Number); return dayOfYear(mo, d); };
     const year = (str) => Number(str.split('-')[0]);
     currentExposure = { startDoy: doy(m.exposure_start), endDoy: doy(m.exposure_end),
