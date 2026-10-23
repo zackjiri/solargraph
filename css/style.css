@@ -1855,7 +1855,7 @@
     width: 11px; height: 11px; flex: 0 0 11px; box-sizing: border-box;
     border: 1px solid rgba(255,255,255,0.3);
   }
-  .sg-leg-val { margin-left: auto; color: var(--text); }
+  .sg-leg-val { margin-left: auto; padding-left: 12px; color: var(--text); }
   .sg-leg-sep { height: 1px; margin: 3px 0; background: rgba(255,255,255,0.22); }
   body.light .sg-leg-sep { background: rgba(0,0,0,0.25); }
 
@@ -2457,6 +2457,10 @@
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
   }
   body.light #theaterStatus, body.light #sgStatus, body.light #nightSkyStatus { background: rgba(245,247,249,0.78); }
+  /* Over a Sun Graph the panel can sit on the light Daylight band, which shows through the 75 %
+     dark background and washes out the dim labels - nearly opaque there (dark theme only; the light
+     theme's panel is light on light anyway). */
+  body:not(.light) #sgStatus, body:not(.light) #nightSkyStatusWrap.ns-sungraph #nightSkyStatus { background: rgba(15,19,24,0.94); }
   #statusWrap.collapsed #theaterStatus, #sgStatusWrap.collapsed #sgStatus, #nightSkyStatusWrap.collapsed #nightSkyStatus {
     max-height: 0; opacity: 0;
     padding-top: 0; padding-bottom: 0;
@@ -2479,6 +2483,13 @@
     display: flex; justify-content: space-between;
     align-items: baseline; gap: 17.5px; padding: 5px 0;
   }
+  /* Night Sky info panel: the Sun's rows tinted light yellow, the Moon's light brown - each tint
+     runs to the panel's edges (the negative margin takes back #nightSkyStatus's 20px padding). */
+  #nightSkyStatus .ns-row-sun, #nightSkyStatus .ns-row-moon { margin: 0 -20px; padding: 5px 20px; }
+  #nightSkyStatus .ns-row-sun  { background: rgba(232,184,40,0.12); }
+  #nightSkyStatus .ns-row-moon { background: rgba(150,100,60,0.18); }
+  body.light #nightSkyStatus .ns-row-sun  { background: rgba(232,184,40,0.20); }
+  body.light #nightSkyStatus .ns-row-moon { background: rgba(140,90,50,0.14); }
   .ts-lbl {
     font-size: 13.75px; letter-spacing: 0.14em; text-transform: uppercase;
     color: var(--dim); white-space: nowrap; flex-shrink: 0;
@@ -3159,15 +3170,61 @@
 
   /* Night Sky's Sun Graph view (.ns-sungraph, render-nightsky-sungraph.js): Display keeps Labels,
      Custom date, Sun and Moon; the legend drops the sunlight and CHMI rows and shows Moon; the info
-     panel moves to the right, under the sub-mode wheel (the plot starts top-left); the time strip has no Play. */
+     panel moves to the right, under the sub-mode wheel (the plot starts top-left). */
   .ns-sg-only { display: none; }
   #nightSkyDisplaySection.ns-sungraph .ns-sg-only { display: flex; }
   #sgLegendWrap.ns-sungraph .ns-sg-only { display: flex; }
+  /* Moonless night legend row: Night Sky's Sun Graph, switch on (body.ns-moonless). */
+  .ns-sg-moonless { display: none; }
+  body.ns-moonless #sgLegendWrap.ns-sungraph .ns-sg-moonless { display: flex; }
   #nightSkyDisplaySection.ns-sungraph .chk-row:not(.ns-sg-keep):not(.ns-sg-only),
-  #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow { display: none !important; }
+  #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow:not(.ns-sg-only) { display: none !important; }
   #sgLegendWrap.ns-sungraph .sg-leg-sep,
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="green"],
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="red"],
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="chmi"] { display: none; }
   #nightSkyStatusWrap.ns-sungraph { left: auto; right: 12.5px; top: 52px; align-items: flex-end; }
-  #nightSkyTimeWrap.ns-sungraph #btnNightSkyPlay { display: none; }
+  /* Sun Graph TIMES | LENGTH switch (render-sungraph.js sgViewMode), centred over the plot by JS.
+     body.sg-length: the length view keeps only the band rows of the legend (and Night Sky's Moon),
+     and Night Sky's Display only Labels, Custom date and Moon (the Sun's bands are always there). */
+  #sgViewSwitch {
+    position: absolute; transform: translateX(-50%);
+    z-index: 13; display: none;          /* flex, shown by JS with either Sun Graph; above the info panels */
+    align-items: center; gap: 6px;
+    padding: 4px 8px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    cursor: default;
+  }
+  body.light #sgViewSwitch { background: rgba(220,228,236,0.82); }
+  #sgViewSwitch .sg-view-lbl { color: var(--text); cursor: pointer; }
+  #sgViewSwitch .sg-view-lbl.dim { color: var(--dim); }
+  #btnSgView {
+    position: relative; flex: 0 0 auto;
+    width: 30px; height: 17px; border-radius: 9px; border: none; padding: 0;
+    cursor: pointer; background: #e8a020;
+  }
+  #btnSgView::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    transition: left 0.18s;
+  }
+  #btnSgView.on::after { left: 15px; }
+  body.sg-length #sgLegendWrap .sg-leg-sep,
+  body.sg-length #sgLegendWrap .sg-leg-item[data-band="transit"],
+  body.sg-length #sgLegendWrap .sg-leg-item[data-band="green"],
+  body.sg-length #sgLegendWrap .sg-leg-item[data-band="red"],
+  body.sg-length #sgLegendWrap .sg-leg-item[data-band="chmi"],
+  body.sg-length #nightSkyDisplaySection.ns-sungraph .ns-sg-sun,
+  body.sg-length #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow:not(#nightSkyMoonlessSubrow) { display: none !important; }
+  /* Solar eclipses in the lunar calendar: red = placed at the new Moon (click for the maximum),
+     yellow = placed at the local maximum (click for the new Moon). Same small pill as SET NOW. */
+  #nightSkyEclipseCalRow { padding-left: 19px; }
+  #btnNightSkyEclipseCal {
+    height: 14px; line-height: 14px; padding: 0; font-size: 7px; white-space: nowrap;
+    width: 84px; text-align: center;   /* one width for both labels (fits ECLIPSE MAX) */
+    background: var(--accent-red); color: #000; font-weight: bold;
+  }
+  #btnNightSkyEclipseCal.at-max { background: #f2d33c; }
