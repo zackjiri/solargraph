@@ -13,8 +13,8 @@
 // horizon. The result goes through the same _skyRaDecToAzEl() as every star.
 //
 // Time: the series runs in dynamical time (TT). Night Sky's clock is UT, so TT = UT + deltaT, with
-// deltaT from the Espenak-Meeus polynomial for 2005-2050 (~69 s in 2026 - the Moon moves ~0.01 deg
-// in that time; outside 2005-2050 the polynomial still gives a usable few-minute estimate).
+// deltaT from NASA's Espenak-Meeus polynomials (core.js _moonDeltaTSec; ~69 s in 2026, ~5 min in
+// 1415 - the Moon moves ~0.5 deg an hour, so deltaT matters for historical eclipses).
 
 
 // Table 47.A: [D, M, M', F, sigma_l (1e-6 deg), sigma_r (1e-3 km)]
@@ -193,9 +193,11 @@ function _moonShadow(year, month, day, hourUT, moon) {
 // The shadow over a Moon disc drawn with radius rPx at screen point a: {dx, dy, rU, rP} in px, or
 // null when even the penumbra misses the Moon. The offset keeps its true angular size relative to
 // the disc (so it also works for the Sky Map's fixed-size symbol), in the on-screen direction of
-// the projected shadow centre.
-function _moonShadowOnDisc(moon, rPx, project) {
-  const sh = _moonShadow(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, moon);
+// the projected shadow centre. at: {year, month, day, hourUT} of the instant, default the selected
+// one (the Sun Graph's lunar calendar passes each full Moon's).
+function _moonShadowOnDisc(moon, rPx, project, at) {
+  const t = at || { year: nightSkyYear, month: nightSkyMonth, day: nightSkyDay, hourUT: nightSkyHourUT };
+  const sh = _moonShadow(t.year, t.month, t.day, t.hourUT, moon);
   const semi = _moonSemiDiamDeg(moon);
   const m = _skyDomeUnitVec(moon.az, moon.el), c = _skyDomeUnitVec(sh.az, sh.el);
   const sep = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(m, c)))) / _MOON_D2R;
@@ -738,6 +740,15 @@ function _nightSkyUpdateStatusPanel(jdAt) {
   const jde = _moonJDE(at.year, at.month, at.day, at.hourUT);
   el('nsMoonIllum').textContent = (_moonPhase(jde).k * 100).toFixed(1) + ' %';
   el('nsMoonAge').textContent = _moonAgeDays(jde).toFixed(1) + ' days';
+
+  // Distances from this place, km: the geocentric distance less the observer's offset towards the
+  // body, R_earth * sin(true altitude) - up to ~6 400 km for the Moon, irrelevant for the Sun but
+  // computed the same way.
+  const fmtKm = (km) => Math.round(km).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u2009') + ' km';
+  const moonPos = _moonAzEl(at.year, at.month, at.day, at.hourUT);
+  el('nsMoonDist').textContent = fmtKm(moonPos.dist - 6378.14 * Math.sin(moonPos.elTrue * _MOON_D2R));
+  const sunElTrue = _nightSkySunAzElTrue(at.year, at.month, at.day, at.hourUT).el;
+  el('nsSunDist').textContent = fmtKm(_skySunEclipticOfDate(jde).dist - 6378.14 * Math.sin(sunElTrue * _MOON_D2R));
 }
 let _nightSkyStatusCollapsed = false;
 function _nightSkySetStatusCollapsed(c) {

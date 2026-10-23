@@ -79,24 +79,35 @@ function enterSunGraph() {
   document.getElementById('statusWrap').style.display = 'none';   // analyzer info panel hidden here
   document.getElementById('sgStatusWrap').style.display = 'flex'; // sun graph info panel (top-right)
   document.getElementById('sgLegendWrap').style.display = 'flex'; // legend (bottom corner)
+  _sgCursor = null;
 
   // Set before setDisplaySectionEnabled() below, which refreshes the CHMI controls' grey state
   // via updateChmiLegendAvailability() → syncChmiModeGroupState() - that reads sunGraphActive to
   // decide whether the custom-date/whole-period group should stay dimmed, so it needs to already
   // be current.
   sunGraphActive = true;
+  document.getElementById('sgViewSwitch').style.display = 'flex';
   // Display off except Labels, Custom date, and now CHMI data + its element switch (SSV10M/T) -
   // the Sun Graph's own diagram and custom-date strip both render CHMI (core.js's
   // _sgEnsureChmiByDoy/_chmiActiveColor), so those two stay live here too. The custom-date/whole-
   // period sub-toggle stays disabled regardless (see syncChmiModeGroupState()): Sun Graph only
   // ever shows the whole-year overlay, there's no single-day-vs-whole-exposure choice to make.
-  setDisplaySectionEnabled(false, ['chkLabels', 'chkImgChmi', 'btnChmiElemSwitch', ...CUSTOM_DATE_KEEP_IDS]);
+  _sgApplyDisplayLock();
 
   if (typeof updateViewButtons === 'function') updateViewButtons();   // sync sub-toggle active states
   resizeSunGraph();
 }
 
+// The Analyzer's Display while its Sun Graph shows: Labels, Custom date and the CHMI controls in the
+// times view; Labels and Custom date in the length view (CHMI is a time-of-day layer).
+function _sgApplyDisplayLock() {
+  setDisplaySectionEnabled(false, sgViewMode === 'length'
+    ? ['chkLabels', ...CUSTOM_DATE_KEEP_IDS]
+    : ['chkLabels', 'chkImgChmi', 'btnChmiElemSwitch', ...CUSTOM_DATE_KEEP_IDS]);
+}
+
 function exitSunGraph() {
+  document.getElementById('sgViewSwitch').style.display = 'none';
   document.getElementById('sunGraphCanvas').style.display = 'none';
   document.getElementById('sgStatusWrap').style.display = 'none';
   document.getElementById('sgLegendWrap').style.display = 'none';
@@ -371,6 +382,22 @@ function _sgWrapDraw(ctx, px0, py0, pw, ph, draw) {
 // (render-nightsky.js). The band boundaries always come from core.js solarEvents*.
 let _sgActiveSrc = null;   // the source last drawn (hover/click handlers)
 
+// View switch above the plot (#sgViewSwitch, both Sun Graphs): 'times' = when each band starts
+// and ends; 'length' = how long each lasts - the morning and evening parts of every twilight added
+// up and stacked from the bottom (day, then civil, nautical and astronomical twilight, night on top
+// to 24 h), a 100 % chart of the day. The axes stay; the day strip stays in times. Only the bands
+// draw in 'length' (no sunlight on the paper, CHMI, solar noon or Sun/Moon markers; Night Sky adds
+// the Moon's hours above the horizon, src.drawLengthExtra), the Display keeps Labels and Custom
+// date (Night Sky also Moon), the legend the bands (and Night Sky's Moon).
+let sgViewMode = 'times';
+// Length [h] of one level's interval (solarEvents form), in clock hours: the equation of time
+// drifts between rise and set (as DAYLENGTH in the info panels).
+function _sgLen(e) {
+  if (e.polarNight) return 0;
+  if (e.polarDay) return 24;
+  return Math.max(0, Math.min(24, (e.set - e.eotSet / 60) - (e.rise - e.eotRise / 60)));
+}
+
 // The day whose pixel column (as _sgDraw's dayCol draws it: [round(dayToX(d)), round(dayToX(d+1))))
 // contains plot x; L = src.layout.
 function _sgDayAtX(L, nDays, x) {
@@ -407,6 +434,7 @@ function _sgSolarSource() {
       }
       return caption;
     },
+    lengthCaption: () => 'day, twilight and night lengths · Lat ' + LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S'),
     afterDraw: () => updateSunGraphStatus(),
     redraw: () => drawSunGraph(),
     setHover: (d) => { sgHoverDay = d; },
@@ -445,7 +473,18 @@ function _sgDraw(cv, src) {
   ctx.fillRect(0, 0, W, H);
 
   // Layout — reserve a lane at the bottom for the future selected-day breakdown bar
-  const mL = 46, mR = 18, mT = 44;
+  // Title row: "Sun Graph", its caption, and the TIMES | LENGTH switch centred over the plot. The
+  // caption stays beside the title unless it would run into the switch; then it gets a line of its
+  // own under the title and the plot moves down by that line.
+  const mL = 46, mR = 18;
+  const lengthMode = sgViewMode === 'length';
+  const caption = lengthMode && src.lengthCaption ? src.lengthCaption() : src.caption();
+  const sw0 = document.getElementById('sgViewSwitch');
+  const plotW = Math.max(10, W - mL - mR);
+  const swLeft = sw0 && sw0.offsetWidth ? mL + plotW / 2 - sw0.offsetWidth / 2 : Infinity;
+  ctx.font = "11px 'Share Tech Mono', monospace";
+  const captionWrap = mL + 96 + ctx.measureText(caption).width + 8 > swLeft;
+  const mT = captionWrap ? 56 : 44;
   const monthLblH = 20;   // month labels under the plot
   const recapGap  = 8;
   const recapH    = 30;   // selected-day strip
@@ -457,6 +496,8 @@ function _sgDraw(cv, src) {
   const laneY = chmiLaneY + chmiStripH;                // top of the bottom (band) strip
   src.layout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
   if (src.solar) _sgLayout = src.layout;
+  // The TIMES | LENGTH switch: centred over the plot, on the title row (title text centre ~y 21).
+  if (sw0) { sw0.style.left = (px0 + pw / 2) + 'px'; sw0.style.top = Math.round(21 - (sw0.offsetHeight || 27) / 2) + 'px'; }
 
   // Pin the legend to the plot's bottom corner, on whichever side stays clear of the CHMI
   // data (H1 generations cluster their exposure in Jan-Jun → legend goes bottom-right instead
@@ -510,6 +551,10 @@ function _sgDraw(cv, src) {
       // the event itself. Raw, unclamped - _sgWrapDraw below reveals whichever wrapped copy belongs
       // on-screen instead of this boundary being flattened against the plot's top/bottom edge.
       // A level never reached (rise = set = 12) collapses to a zero-width point at noon.
+      if (lengthMode) {   // stacked from the bottom: the level's whole interval, morning + evening
+        up[d] = hourToY(_sgLen(e)); lo[d] = hourToY(0);
+        continue;
+      }
       up[d] = hourToY(src.disp(e.set, d, e.eotSet));    // upper boundary (toward later hours / top)
       lo[d] = hourToY(src.disp(e.rise, d, e.eotRise));  // lower boundary (toward earlier hours / bottom)
     }
@@ -537,10 +582,11 @@ function _sgDraw(cv, src) {
         ? (d) => d >= exp.startDoy && d <= exp.endDoy
         : (d) => d >= exp.startDoy || d <= exp.endDoy)      // exposure wrapping across year-end
     : () => false;
-  const yearRuns = src.solar ? _sgEnsureYearRuns() : [];
+  const timeLayers = !lengthMode;   // layers placed in time of day: not in the length view
+  const yearRuns = src.solar && timeLayers ? _sgEnsureYearRuns() : [];
   const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
   const greenCol = (hi) => _sgEmphBand === 'green' ? _SG_GREEN_EMPH : (hi ? _SG_GREEN_HI : _SG_GREEN);
-  if (src.solar) _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
+  if (src.solar && timeLayers) _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
     for (let d = 1; d <= NDAYS; d++) {
       const r = yearRuns[d]; if (!r) continue;
       const x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1);
@@ -563,7 +609,7 @@ function _sgDraw(cv, src) {
   // Hidden entirely in True solar time mode: CHMI's own hour field is standard time, and
   // comparing it against reality only makes sense once the axis is in a real-clock convention
   // (Mean/Standard) - see the product decision in the project notes.
-  if (src.solar && showImgChmi && timeDisplayMode !== 'true') {
+  if (src.solar && timeLayers && showImgChmi && timeDisplayMode !== 'true') {
     const chmiByDoy = _sgEnsureChmiByDoy();
     if (chmiByDoy) {
       // Reuse inExp's [start,end] clip (not just its highlight styling) so the CHMI columns end
@@ -604,7 +650,9 @@ function _sgDraw(cv, src) {
     }
   }
 
-  if (src.drawExtra) src.drawExtra(ctx, { px0, py0, pw, ph, dayToX, hourToY, NDAYS, evs });
+  if (src.drawExtra && timeLayers) src.drawExtra(ctx, { px0, py0, pw, ph, dayToX, hourToY, NDAYS, evs });
+  // A source's own layer in the length view (Night Sky: the Moon's hours above the horizon).
+  if (src.drawLengthExtra && lengthMode) src.drawLengthExtra(ctx, { px0, py0, pw, ph, dayToX, hourToY, NDAYS });
 
   // ── Legend hover: lightly diagonal-hatch the hovered band's region ────────────
   if (_sgEmphBand) {
@@ -675,7 +723,8 @@ function _sgDraw(cv, src) {
   // Mean/Standard mode the axis is reprojected, so true noon's OWN value on that axis drifts
   // with the equation of time across the year → the line waves instead of staying flat.
   ctx.strokeStyle = '#e04040'; ctx.lineWidth = 1.5;
-  if (!src.showNoon) { /* the Sun is switched off */ }
+  const showNoon = src.showNoon && timeLayers;
+  if (!showNoon) { /* the Sun is switched off, or the length view */ }
   else if (src.flatNoon) {
     const yFlat = hourToY(12);
     ctx.beginPath();
@@ -694,7 +743,7 @@ function _sgDraw(cv, src) {
       c.stroke();
     });
   }
-  if (src.showNoon && src.showLabels) {   // the caption is a label → controlled by Display "Labels"
+  if (showNoon && src.showLabels) {   // the caption is a label → controlled by Display "Labels"
     // The line is the sun's meridian transit in every mode (flat on the apparent
     // axis, waving by the equation of time (+ longitude offset) on the others),
     // so it carries the same name everywhere. "Midday" (12:00 civil) would be a
@@ -715,6 +764,10 @@ function _sgDraw(cv, src) {
   // Plot border
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1.5;
   ctx.strokeRect(px0, py0, pw, ph);
+
+  // Where a vertical line's label starts: solar noon in the times view, half the day's length in
+  // the length view (the middle of the day band).
+  const labelY = (d) => lengthMode ? hourToY(_sgLen(evs[d].day) / 2) : hourToY(src.disp(12, d));
 
   // ── Exposure interval boundaries: white verticals spanning only the daylight zone ─
   if (exp) {
@@ -737,10 +790,13 @@ function _sgDraw(cv, src) {
       const x = i === 0 ? dayToX(doy) - LINE_MARGIN : dayToX((doy % NDAYS) + 1) + LINE_MARGIN;
       _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
         c.beginPath();
-        c.moveTo(x, hourToY(src.disp(ed.set, doy, ed.eotSet)));
-        c.lineTo(x, hourToY(src.disp(ed.rise, doy, ed.eotRise)));
+        if (lengthMode) { c.moveTo(x, hourToY(_sgLen(ed))); c.lineTo(x, hourToY(0)); }   // the day's length
+        else {
+          c.moveTo(x, hourToY(src.disp(ed.set, doy, ed.eotSet)));
+          c.lineTo(x, hourToY(src.disp(ed.rise, doy, ed.eotRise)));
+        }
         c.stroke();
-        if (src.showLabels) _sgVLabel(c, expLbl[i], x, hourToY(src.disp(12, doy)), '#ffffff', OUT_LBL, doy < 10);
+        if (src.showLabels) _sgVLabel(c, expLbl[i], x, labelY(doy), '#ffffff', OUT_LBL, doy < 10);
       });
     });
   }
@@ -759,7 +815,7 @@ function _sgDraw(cv, src) {
     ctx.fillRect(col.x0, py0, col.w, ph);
     if (src.showLabels) {
       _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
-        _sgVLabel(c, 'custom date', x, hourToY(src.disp(12, customDoy)), '#ffffff', OUT_LBL, customDoy < 10);
+        _sgVLabel(c, 'custom date', x, labelY(customDoy), '#ffffff', OUT_LBL, customDoy < 10);
       });
     }
   }
@@ -770,9 +826,9 @@ function _sgDraw(cv, src) {
     ctx.fillRect(col.x0, py0, col.w, ph);
   }
   // Source-drawn markers (Night Sky: the Sun and the Moon as in the Planetarium).
-  if (src.drawMarkers) src.drawMarkers(ctx, { px0, py0, pw, ph, dayToX, dayCenter, hourToY });
+  if (src.drawMarkers && timeLayers) src.drawMarkers(ctx, { px0, py0, pw, ph, dayToX, dayCenter, hourToY });
   // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
-  if (src.sunMarker) {
+  if (src.sunMarker && timeLayers) {
     _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
       const sx = dayCenter(src.sunMarker.d), sy = hourToY(src.disp(src.sunMarker.trueHour, src.sunMarker.d));
       const glR = 11;
@@ -836,7 +892,9 @@ function _sgDraw(cv, src) {
     if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
     if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
   }
-  if (src.drawStripExtra) src.drawStripExtra(ctx, { activeDay, laneY, recapH, px0, pw, xh });
+  // thinY/thinH: the thin lane right above the strip (the CHMI line's place), free for a source
+  // that has no CHMI (Night Sky draws the Moon there when the strip shows the Sun).
+  if (src.drawStripExtra) src.drawStripExtra(ctx, { activeDay, laneY, recapH, px0, pw, xh, thinY: chmiLaneY, thinH: chmiStripH, border: pal.border });
   ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
 
   // Centered date label — readable on any band (white fill + dark outline).
@@ -864,15 +922,39 @@ function _sgDraw(cv, src) {
     ctx.fillText(String(((H % 24) + 24) % 24).padStart(2, '0'), x, axisY + 5);
   }
 
-  const caption = src.caption();
   ctx.fillStyle = pal.accent;
   ctx.font = "bold 14px 'Share Tech Mono', monospace";
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('Sun Graph', mL, 26);
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
-  ctx.fillText(caption, mL + 96, 26);
+  if (captionWrap) ctx.fillText(caption, mL, 48); else ctx.fillText(caption, mL + 96, 26);
+
+  _sgUpdateLegendTimes(src, activeDay, evs, lengthMode);
 
   if (src.afterDraw) src.afterDraw(activeDay);   // keep the info panel in sync with the active day
+}
+
+// Legend values per band while Custom date is on, for the active day (hovered, else the custom
+// date - the same day as the Transit row): in the times view the band's start / end in the shown
+// convention (Daylight = sunrise / sunset, a twilight = its dawn start / dusk end, Night = astronomical
+// dusk / dawn), in the length view how long the band lasts (morning + evening). '—' for a level
+// the Sun doesn't reach or never leaves that day. Empty with Custom date off.
+function _sgUpdateLegendTimes(src, d, evs, lengthMode) {
+  const ev = evs[d] || src.events(d);
+  const hm = (h, eot) => _sgHM(src.disp(h, d, eot));
+  const span = (e) => (e.polarDay || e.polarNight) ? '—' : hm(e.rise, e.eotRise) + ' / ' + hm(e.set, e.eotSet);
+  const L = { day: _sgLen(ev.day), civil: _sgLen(ev.civ), naut: _sgLen(ev.naut), astro: _sgLen(ev.astro) };
+  const vals = lengthMode ? {
+    day: _sgHM(L.day), civil: _sgHM(L.civil - L.day), naut: _sgHM(L.naut - L.civil),
+    astro: _sgHM(L.astro - L.naut), night: _sgHM(24 - L.astro),
+  } : {
+    day: span(ev.day), civil: span(ev.civ), naut: span(ev.naut), astro: span(ev.astro),
+    night: (ev.astro.polarDay || ev.astro.polarNight) ? '—' : hm(ev.astro.set, ev.astro.eotSet) + ' / ' + hm(ev.astro.rise, ev.astro.eotRise),
+  };
+  if (src.legendExtra) Object.assign(vals, src.legendExtra(d, lengthMode));   // e.g. Night Sky's Moon
+  document.querySelectorAll('#sgLegend .sg-leg-val[data-val]').forEach(el => {
+    el.textContent = src.showCustom && vals[el.dataset.val] !== undefined ? vals[el.dataset.val] : '';
+  });
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
@@ -880,6 +962,22 @@ function _sgDraw(cv, src) {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && sunGraphActive) exitSunGraph();
 });
+
+// TIMES | LENGTH switch (sgViewMode, see its comment). body.sg-length lets the CSS trim the legend
+// and Night Sky's Display; the Analyzer's Display is re-locked here.
+function setSgViewMode(mode) {
+  sgViewMode = mode;
+  document.body.classList.toggle('sg-length', mode === 'length');
+  const btn = document.getElementById('btnSgView');
+  btn.classList.toggle('on', mode === 'length');
+  btn.setAttribute('aria-checked', String(mode === 'length'));
+  document.querySelectorAll('#sgViewSwitch .sg-view-lbl').forEach(el => el.classList.toggle('dim', el.dataset.v !== mode));
+  if (sunGraphActive) { _sgApplyDisplayLock(); drawSunGraph(); updateInfoReadout(); }
+  const src = _sgActiveSrc;
+  if (src && !src.solar && src.isActive()) { src.redraw(); if (typeof _nsSgReadout === 'function') _nsSgReadout(null); }
+}
+document.getElementById('btnSgView').addEventListener('click', () => setSgViewMode(sgViewMode === 'times' ? 'length' : 'times'));
+document.querySelectorAll('#sgViewSwitch .sg-view-lbl').forEach(el => el.addEventListener('click', () => setSgViewMode(el.dataset.v)));
 
 // Info-panel collapse (▲/▼ arrow only).
 let sgStatusCollapsed = false;
@@ -938,6 +1036,25 @@ function setSgLegendCollapsed(c) {
   if (tog) tog.addEventListener('click', (e) => { e.stopPropagation(); setSgLegendCollapsed(!sgLegendCollapsed); });
 })();
 
+// Top readout in the Analyzer's Sun Graph (called from updateInfoReadout, controls.js), while
+// Custom date is on: Day/Time under the cursor in the plot (_sgCursor - the day column and the
+// hour of the displayed convention), otherwise the Custom date and the Sun time slider (in the
+// displayed convention, as the slider label). Az/Alt/Dir stay empty; with Custom date off, all '—'.
+let _sgCursor = null;   // {doy, hour} under the cursor in the Analyzer's plot, or null
+function _sgUpdateReadout() {
+  const set = (id, v) => { document.getElementById(id).textContent = v; };
+  ['valAz', 'valAlt', 'valDir'].forEach(id => set(id, '—'));
+  if (!showCustomArc) { set('valDay', '—'); set('valTime', '—'); return; }
+  if (_sgCursor) {   // the length view's rows are durations, not times: date only
+    const md = solarDoyToMonthDay(_sgCursor.doy);
+    set('valDay', MONTH_NAMES[md.month - 1] + ' ' + md.day);
+    set('valTime', sgViewMode === 'length' ? '—' : fmtSolarTime(_sgCursor.hour));
+  } else {
+    set('valDay', MONTH_NAMES[customMonth - 1] + ' ' + customDay);
+    set('valTime', fmtSolarTime(displayHour(sunTimeHours, dayOfYear(customMonth, customDay))));
+  }
+}
+
 // Cursor over the plot → that day is "selected" (orange marker + strip); off the plot → custom date.
 (function () {
   const cv = document.getElementById('sunGraphCanvas');
@@ -954,10 +1071,44 @@ function setSgLegendCollapsed(c) {
       day = _sgDayAtX(L, src.nDays, x);   // the column under the cursor
     }
     if (day !== src.hoverDay) { src.setHover(day); src.redraw(); }
+    if (src.solar) {
+      _sgCursor = day === null ? null : { doy: day, hour: (L.py0 + L.ph - y) / L.ph * 24 };
+      _sgUpdateReadout();
+    }
   });
   cv.addEventListener('mouseleave', () => {
     const src = _sgActiveSrc;
     if (src && src.isActive() && src.hoverDay !== null) { src.setHover(null); src.redraw(); }
+    if (src && src.solar && sunGraphActive) { _sgCursor = null; _sgUpdateReadout(); }
+  });
+})();
+
+// A click in the Analyzer's plot sets the Custom date (column) and the Sun time (row) - the same
+// as Night Sky's Sun Graph sets its date and time (render-nightsky-sungraph.js). The row is an hour
+// of the displayed convention; the Sun time slider runs in true solar time, so it is taken back
+// through the inverse of displayHour and then held to sunrise..sunset like the slider itself
+// (refreshSunTimeRange) - a click in the night lands on the nearer end of the day.
+(function () {
+  const cv = document.getElementById('sunGraphCanvas');
+  if (!cv) return;
+  cv.addEventListener('click', (e) => {
+    const src = _sgActiveSrc;
+    if (!src || !src.solar || !src.layout || !sunGraphActive) return;
+    const r = cv.getBoundingClientRect(), L = src.layout;
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    if (x < L.px0 || x > L.px0 + L.pw || y < L.py0 || y > L.py0 + L.ph) return;
+    const doy = _sgDayAtX(L, src.nDays, x);
+    const shown = (L.py0 + L.ph - y) / L.ph * 24;
+    let trueH = timeDisplayMode === 'mean' ? trueFromMean(shown, doy)
+              : timeDisplayMode === 'standard' ? trueFromStandard(shown, doy) : shown;
+    trueH = ((trueH % 24) + 24) % 24;
+    if (typeof sunAnimActive !== 'undefined' && sunAnimActive) stopSunAnim();
+    const md = solarDoyToMonthDay(doy);
+    customMonth = md.month; customDay = md.day;
+    const rs = solarRiseSet(doy);
+    if (sgViewMode === 'length') trueH = sunTimeHours;   // rows are durations there: date only
+    sunTimeHours = rs.polarNight ? 12 : Math.max(rs.rise, Math.min(rs.set, trueH));
+    commitCustomDate();   // wheels, time slider range, 2D/3D, the graph, the readout
   });
 })();
 

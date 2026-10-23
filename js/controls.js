@@ -133,7 +133,9 @@ function updateInfoReadout() {
   // pointermove/pointerleave listeners (render-nightsky.js) drive valAz/valAlt/valDir the same
   // way - same exclusion, same reason. Section 2 below still runs in both: inImageMode is false
   // there either way, which is exactly what hides SSV10M/T.
-  if (!inEclipse && !inNightSky && mouseX < 0) {
+  // Sun Graph: its own Day/Time (cursor in the plot, or Custom date + Sun time; render-sungraph.js).
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive) _sgUpdateReadout();
+  else if (!inEclipse && !inNightSky && mouseX < 0) {
     if (inImageMode && showCustomArc) {
       const sp = _readoutFallbackSunPos();
       const displayAz = hemisphere >= 0 ? sp.az : (sp.az + 180) % 360;
@@ -1487,6 +1489,8 @@ let currentChmiExtra = null;
 function _chmiControlsRelevantHere() {
   if (typeof theaterMode3D !== 'undefined' && theaterMode3D) return false;
   if (typeof skyDomeActive !== 'undefined' && skyDomeActive) return false;
+  // Sun Graph's length view draws no time-of-day layers (render-sungraph.js sgViewMode).
+  if (typeof sunGraphActive !== 'undefined' && sunGraphActive && sgViewMode === 'length') return false;
   return true;
 }
 

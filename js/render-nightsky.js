@@ -800,8 +800,11 @@ function _nightSkySystemTzHours(date) {
 }
 applyTimeZone(_nightSkySystemTzHours(_nightSkyNow));
 
+// Day numbers of a month: Julian leap years before the 1582 reform, Gregorian after (the calendar of
+// _skyToJulianDateUT). October 1582 keeps 31 numbers though 5-14 never happened - stepping goes
+// through the Julian Date, so 4 Oct is followed by 15 Oct.
 function _nightSkyDaysInMonth(year, month) {
-  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const leap = year < 1582 ? year % 4 === 0 : (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return days[month - 1];
 }
