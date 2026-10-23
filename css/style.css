@@ -1745,6 +1745,10 @@
     cursor: pointer;
   }
   #nightSkySpeedBox:hover { color: var(--text); }
+  /* video playback window (render-nightsky.js): the speed is the video's own, not a choice */
+  #nightSkySpeedBox.fixed { cursor: default; }
+  #nightSkySpeedBox.fixed:hover { color: var(--accent); }
+  #btnNightSkyPlay.nightsky-play-waiting { opacity: 0.35; pointer-events: none; }
   /* Date/time value label indented to start at the STRIP's own left edge, not the box's - i.e.
      past the play button (28px) + row gap (6px) that sit to the strip's left. */
   /* 28px play button + 20px row gap (widened from 6px in a later round, this margin never got
@@ -3152,3 +3156,18 @@
     letter-spacing: 0.04em; color: var(--dim);
   }
   .loc-here-info.err { color: var(--accent-red); }
+
+  /* Night Sky's Sun Graph view (.ns-sungraph, render-nightsky-sungraph.js): Display keeps Labels,
+     Custom date, Sun and Moon; the legend drops the sunlight and CHMI rows and shows Moon; the info
+     panel moves to the right, under the sub-mode wheel (the plot starts top-left); the time strip has no Play. */
+  .ns-sg-only { display: none; }
+  #nightSkyDisplaySection.ns-sungraph .ns-sg-only { display: flex; }
+  #sgLegendWrap.ns-sungraph .ns-sg-only { display: flex; }
+  #nightSkyDisplaySection.ns-sungraph .chk-row:not(.ns-sg-keep):not(.ns-sg-only),
+  #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow { display: none !important; }
+  #sgLegendWrap.ns-sungraph .sg-leg-sep,
+  #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="green"],
+  #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="red"],
+  #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="chmi"] { display: none; }
+  #nightSkyStatusWrap.ns-sungraph { left: auto; right: 12.5px; top: 52px; align-items: flex-end; }
+  #nightSkyTimeWrap.ns-sungraph #btnNightSkyPlay { display: none; }
