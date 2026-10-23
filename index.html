@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug227">
+  <link rel="stylesheet" href="css/style.css?perfdebug252">
 </head>
 <body>
 
@@ -300,31 +300,39 @@
            standard: the upper limb on the horizon with refraction, searched over the local calendar day. -->
       <div id="nightSkyStatusWrap">
         <div id="nightSkyStatus">
-          <div class="ts-row" title="Time between sunrise and sunset on this local day">
+          <div class="ts-row ns-row-sun" title="Time between sunrise and sunset on this local day">
             <span class="ts-lbl">daylength</span>
             <span class="ts-val" id="nsDayLen">—</span>
           </div>
-          <div class="ts-row" title="Sunrise / sunset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset)">
+          <div class="ts-row ns-row-sun" title="Sunrise / sunset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset)">
             <span class="ts-lbl">sunrise/set</span>
             <span class="ts-val" id="nsSunRiseSet">—</span>
           </div>
-          <div class="ts-row" title="Sunrise / sunset azimuth">
+          <div class="ts-row ns-row-sun" title="Sunrise / sunset azimuth">
             <span class="ts-lbl"></span>
             <span class="ts-val" id="nsSunRiseSetAz">—</span>
           </div>
-          <div class="ts-row" title="Moonrise / moonset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset); — when it does not rise or set on this local day">
+          <div class="ts-row ns-row-sun" title="Distance of the Sun's centre from this place at the selected time">
+            <span class="ts-lbl">distance</span>
+            <span class="ts-val" id="nsSunDist">—</span>
+          </div>
+          <div class="ts-row ns-row-moon" title="Moonrise / moonset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset); — when it does not rise or set on this local day">
             <span class="ts-lbl">moonrise/set</span>
             <span class="ts-val" id="nsMoonRiseSet">—</span>
           </div>
-          <div class="ts-row" title="Moonrise / moonset azimuth">
+          <div class="ts-row ns-row-moon" title="Moonrise / moonset azimuth">
             <span class="ts-lbl"></span>
             <span class="ts-val" id="nsMoonRiseSetAz">—</span>
           </div>
-          <div class="ts-row" title="Illuminated fraction of the Moon's disc">
+          <div class="ts-row ns-row-moon" title="Distance of the Moon's centre from this place at the selected time (up to ~6 400 km less than from the Earth's centre while it is high in the sky)">
+            <span class="ts-lbl">distance</span>
+            <span class="ts-val" id="nsMoonDist">—</span>
+          </div>
+          <div class="ts-row ns-row-moon" title="Illuminated fraction of the Moon's disc">
             <span class="ts-lbl">illuminated</span>
             <span class="ts-val" id="nsMoonIllum">—</span>
           </div>
-          <div class="ts-row" title="Age of the Moon: its phase in the cycle expressed in days (elongation from the Sun / 360° × mean synodic month 29.53 d), as in Stellarium and moon calculators - 0 at new moon, 14.77 at full moon">
+          <div class="ts-row ns-row-moon" title="Age of the Moon: its phase in the cycle expressed in days (elongation from the Sun / 360° × mean synodic month 29.53 d), as in Stellarium and moon calculators - 0 at new moon, 14.77 at full moon">
             <span class="ts-lbl">age</span>
             <span class="ts-val" id="nsMoonAge">—</span>
           </div>
@@ -555,16 +563,24 @@
         <button id="sgStatusToggle" title="Hide / show the info panel">▲</button>
       </div>
       <!-- Sun Graph legend – bottom corner, flush to the plot (shown only in Sun Graph), collapsible -->
+      <!-- Sun Graph view switch (both Sun Graphs), centred over the plot - sgViewMode, render-sungraph.js -->
+      <div id="sgViewSwitch">
+        <span class="sg-view-lbl" data-v="times">TIMES</span>
+        <button id="btnSgView" role="switch" aria-checked="false" title="Times of the day's phases, or their lengths"></button>
+        <span class="sg-view-lbl dim" data-v="length">LENGTH</span>
+      </div>
       <div id="sgLegendWrap">
         <button id="sgLegendToggle" title="Hide / show the legend">▼</button>
         <div id="sgLegend">
-          <div class="sg-leg-item" data-band="night"><span class="sg-leg-sw" style="background:#1c2a35"></span>Night</div>
-          <div class="sg-leg-item" data-band="astro"><span class="sg-leg-sw" style="background:#39505f"></span>Astronomical Twilight</div>
-          <div class="sg-leg-item" data-band="naut"><span class="sg-leg-sw" style="background:#5a7588"></span>Nautical Twilight</div>
-          <div class="sg-leg-item" data-band="civil"><span class="sg-leg-sw" style="background:#9cbdd2"></span>Civil Twilight</div>
-          <div class="sg-leg-item" data-band="day"><span class="sg-leg-sw" style="background:#cfe8f6"></span>Daylight</div>
+          <!-- .sg-leg-val[data-val]: the active day's times (or lengths) while Custom date is on -->
+          <div class="sg-leg-item" data-band="night"><span class="sg-leg-sw" style="background:#1c2a35"></span>Night<span class="sg-leg-val" data-val="night"></span></div>
+          <div class="sg-leg-item" data-band="astro"><span class="sg-leg-sw" style="background:#39505f"></span>Astronomical Twilight<span class="sg-leg-val" data-val="astro"></span></div>
+          <div class="sg-leg-item" data-band="naut"><span class="sg-leg-sw" style="background:#5a7588"></span>Nautical Twilight<span class="sg-leg-val" data-val="naut"></span></div>
+          <div class="sg-leg-item" data-band="civil"><span class="sg-leg-sw" style="background:#9cbdd2"></span>Civil Twilight<span class="sg-leg-val" data-val="civil"></span></div>
+          <div class="sg-leg-item" data-band="day"><span class="sg-leg-sw" style="background:#cfe8f6"></span>Daylight<span class="sg-leg-val" data-val="day"></span></div>
           <div class="sg-leg-item" data-band="transit"><span class="sg-leg-sw" style="background:#e04040"></span>Transit<span class="sg-leg-val" id="sgLegendTransit">—</span></div>
-          <div class="sg-leg-item ns-sg-only" data-band="moon" title="The Moon above the horizon, denser the fuller it is"><span class="sg-leg-sw" style="background:#f4eab8"></span>Moon</div>
+          <div class="sg-leg-item ns-sg-only" data-band="moon" title="The Moon above the horizon, denser the fuller it is"><span class="sg-leg-sw" style="background:#f4eab8"></span>Moon<span class="sg-leg-val" data-val="moon"></span></div>
+          <div class="sg-leg-item ns-sg-moonless" data-band="moonless" title="Astronomical night with the Moon below the horizon; the value is its length that day"><span class="sg-leg-sw" style="background:rgb(126,92,232)"></span>Moonless night<span class="sg-leg-val" data-val="moonless"></span></div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
@@ -734,7 +750,7 @@
       <label class="chk-row" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
       <label class="chk-row" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
       <label class="chk-row" title="Overlay the horizon"><input type="checkbox" id="chkNightSkyHorizon" checked> Horizon</label>
-      <label class="chk-row ns-sg-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
+      <label class="chk-row ns-sg-keep ns-sg-sun" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
       <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
         <span class="nightsky-sun-label">Sun's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
@@ -745,6 +761,25 @@
         <span class="nightsky-sun-label">Moon's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkyMoonPath" role="switch" aria-checked="false"
           title="Overlay the Moon's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
+      </div>
+      <!-- Sun Graph view only (.ns-sg-only), while Moon is on (render-nightsky-sungraph.js). -->
+      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyLunarCalSubrow">
+        <span class="nightsky-sun-label">Lunar calendar</span>
+        <button class="nightsky-sun-switch" id="btnNightSkyLunarCal" role="switch" aria-checked="false"
+          title="Mark every new Moon, first quarter, full Moon and last quarter of the year at its date and time"></button>
+      </div>
+      <!-- Shown while Lunar calendar is on: where a solar eclipse is placed - at the new Moon (red
+           button offers the switch to the maximum) or at the local maximum (yellow offers the way
+           back). -->
+      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyEclipseCalRow">
+        <div class="ns-toggle"><button class="ns-btn" id="btnNightSkyEclipseCal"
+          title="Place each solar eclipse of the lunar calendar at its maximum phase seen from this place with the Sun above the horizon, instead of at the new Moon">ECLIPSE MAX</button></div>
+      </div>
+      <!-- Sun Graph view only (.ns-sg-only), while Moon is on: astronomical night without the Moon. -->
+      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyMoonlessSubrow">
+        <span class="nightsky-sun-label">Moonless night</span>
+        <button class="nightsky-sun-switch" id="btnNightSkyMoonless" role="switch" aria-checked="false"
+          title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
       </div>
       <label class="chk-row" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
     </div>
@@ -1012,27 +1047,27 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.12
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.23
 </div>
 
-<script src="js/core.js?perfdebug227"></script>
-<script src="js/render-2d.js?perfdebug227"></script>
-<script src="js/controls.js?perfdebug227"></script>
-<script src="js/render-sungraph.js?perfdebug227"></script>
-<script src="js/render-3d.js?perfdebug227"></script>
-<script src="js/render-skydome.js?perfdebug227"></script>
-<script src="js/render-moon.js?perfdebug227"></script>
-<script src="js/render-planets.js?perfdebug227"></script>
-<script src="js/render-nightsky.js?perfdebug227"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug227"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug227"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug227"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug227"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug227"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug227"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug227"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug227"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug227"></script>
-<script src="js/render-eclipse.js?perfdebug227"></script>
+<script src="js/core.js?perfdebug252"></script>
+<script src="js/render-2d.js?perfdebug252"></script>
+<script src="js/controls.js?perfdebug252"></script>
+<script src="js/render-sungraph.js?perfdebug252"></script>
+<script src="js/render-3d.js?perfdebug252"></script>
+<script src="js/render-skydome.js?perfdebug252"></script>
+<script src="js/render-moon.js?perfdebug252"></script>
+<script src="js/render-planets.js?perfdebug252"></script>
+<script src="js/render-nightsky.js?perfdebug252"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug252"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug252"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug252"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug252"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug252"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug252"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug252"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug252"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug252"></script>
+<script src="js/render-eclipse.js?perfdebug252"></script>
 </body>
 </html>
