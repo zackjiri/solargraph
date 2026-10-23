@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug213">
+  <link rel="stylesheet" href="css/style.css?perfdebug227">
 </head>
 <body>
 
@@ -304,7 +304,7 @@
             <span class="ts-lbl">daylength</span>
             <span class="ts-val" id="nsDayLen">—</span>
           </div>
-          <div class="ts-row" title="Sunrise / sunset (upper limb on the horizon, refraction included - the standard almanac definition; local time)">
+          <div class="ts-row" title="Sunrise / sunset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset)">
             <span class="ts-lbl">sunrise/set</span>
             <span class="ts-val" id="nsSunRiseSet">—</span>
           </div>
@@ -312,7 +312,7 @@
             <span class="ts-lbl"></span>
             <span class="ts-val" id="nsSunRiseSetAz">—</span>
           </div>
-          <div class="ts-row" title="Moonrise / moonset (upper limb on the horizon, refraction included - the standard almanac definition; local time); — when it does not rise or set on this local day">
+          <div class="ts-row" title="Moonrise / moonset (upper limb on the horizon, refraction included - the standard almanac definition; in the Time zone offset); — when it does not rise or set on this local day">
             <span class="ts-lbl">moonrise/set</span>
             <span class="ts-val" id="nsMoonRiseSet">—</span>
           </div>
@@ -564,6 +564,7 @@
           <div class="sg-leg-item" data-band="civil"><span class="sg-leg-sw" style="background:#9cbdd2"></span>Civil Twilight</div>
           <div class="sg-leg-item" data-band="day"><span class="sg-leg-sw" style="background:#cfe8f6"></span>Daylight</div>
           <div class="sg-leg-item" data-band="transit"><span class="sg-leg-sw" style="background:#e04040"></span>Transit<span class="sg-leg-val" id="sgLegendTransit">—</span></div>
+          <div class="sg-leg-item ns-sg-only" data-band="moon" title="The Moon above the horizon, denser the fuller it is"><span class="sg-leg-sw" style="background:#f4eab8"></span>Moon</div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
@@ -723,7 +724,9 @@
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <label class="chk-row" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
       <label class="chk-row" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
-      <label class="chk-row" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <label class="chk-row ns-sg-keep" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <!-- Sun Graph view only (.ns-sungraph, css/style.css): the line at the selected date. -->
+      <label class="chk-row ns-sg-only" title="Mark the selected date in the Sun Graph"><input type="checkbox" id="chkNightSkyCustomDate" checked> Custom date</label>
       <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
       <!-- Off by default (unlike every other Night Sky Display checkbox) - a genuinely different
            coordinate frame (RA/Dec) overlaid on top of the Az/Alt one, useful but not something you'd
@@ -731,13 +734,13 @@
       <label class="chk-row" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
       <label class="chk-row" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
       <label class="chk-row" title="Overlay the horizon"><input type="checkbox" id="chkNightSkyHorizon" checked> Horizon</label>
-      <label class="chk-row" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
+      <label class="chk-row ns-sg-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
       <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
         <span class="nightsky-sun-label">Sun's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
           title="Overlay the Sun's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
       </div>
-      <label class="chk-row" title="Overlay the Moon's real position and phase for the selected date/time"><input type="checkbox" id="chkNightSkyMoon" checked> Moon</label>
+      <label class="chk-row ns-sg-keep" title="Overlay the Moon's real position and phase for the selected date/time"><input type="checkbox" id="chkNightSkyMoon" checked> Moon</label>
       <div class="nightsky-sun-subrow" id="nightSkyMoonSubrow">
         <span class="nightsky-sun-label">Moon's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkyMoonPath" role="switch" aria-checked="false"
@@ -1012,23 +1015,24 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.12
 </div>
 
-<script src="js/core.js?perfdebug213"></script>
-<script src="js/render-2d.js?perfdebug213"></script>
-<script src="js/controls.js?perfdebug213"></script>
-<script src="js/render-sungraph.js?perfdebug213"></script>
-<script src="js/render-3d.js?perfdebug213"></script>
-<script src="js/render-skydome.js?perfdebug213"></script>
-<script src="js/render-moon.js?perfdebug213"></script>
-<script src="js/render-planets.js?perfdebug213"></script>
-<script src="js/render-nightsky.js?perfdebug213"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug213"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug213"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug213"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug213"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug213"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug213"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug213"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug213"></script>
-<script src="js/render-eclipse.js?perfdebug213"></script>
+<script src="js/core.js?perfdebug227"></script>
+<script src="js/render-2d.js?perfdebug227"></script>
+<script src="js/controls.js?perfdebug227"></script>
+<script src="js/render-sungraph.js?perfdebug227"></script>
+<script src="js/render-3d.js?perfdebug227"></script>
+<script src="js/render-skydome.js?perfdebug227"></script>
+<script src="js/render-moon.js?perfdebug227"></script>
+<script src="js/render-planets.js?perfdebug227"></script>
+<script src="js/render-nightsky.js?perfdebug227"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug227"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug227"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug227"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug227"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug227"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug227"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug227"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug227"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug227"></script>
+<script src="js/render-eclipse.js?perfdebug227"></script>
 </body>
 </html>
