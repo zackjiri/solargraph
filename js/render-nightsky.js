@@ -476,6 +476,8 @@ function exitNightSkyVisualization() {
   // function's own condition would keep the slider on screen.
   document.getElementById('nightSkyPlanetZoomCtl').style.display = 'none';
   document.getElementById('btnNightSkyPicker').style.display = 'none';
+  document.getElementById('nightSkyMap3DToggleRow').style.display = 'none';
+  if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) document.getElementById('skyMap3DZoomCtl').style.display = 'none';
   _nightSkyPickerSetActive(false);
   _nightSkyUpdatePresentationLock();
   // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
@@ -2102,6 +2104,7 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   if (ctl) ctl.style.display = shown ? 'flex' : 'none';
   document.getElementById('btnNightSkyPicker').style.display = shown ? 'flex' : 'none';
   if (!shown) _nightSkyPickerSetActive(false);
+  if (typeof _nightSkyUpdateMap3DControls === 'function') _nightSkyUpdateMap3DControls();   // Sky Map's 3D switch (render-nightsky-3d.js)
 }
 
 // Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
@@ -3056,8 +3059,8 @@ function _nightSkyClearReadout() {
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const w = cv.width / dpr, h = cv.height / dpr;
     const layout = nightSkySubmode === 'planetarium' ? _nightSkyPlanetLayout(w, h) : _nightSkyLayout(w, h);
-    const hit = nightSkySubmode === 'planetarium'
-      ? _nightSkyPlanetPixelToAzEl(layout, px, py)
+    const hit = nightSkySubmode === 'planetarium' ? _nightSkyPlanetPixelToAzEl(layout, px, py)
+      : (nightSkyMap3DOn && _nightSky3DLayout) ? _skyMap3DPixelToAzEl(_nightSky3DLayout, px, py)   // Sky Map 3D
       : _nightSkyPixelToAzEl(layout, px, py);
     // With a picker lock, the readout falls back to the locked point whenever the cursor is off
     // the sky vault (outside the sphere or over the ground) - see _nightSkyPickerShowLockReadout.
@@ -3090,7 +3093,8 @@ function drawNightSky() {
     // in one direction" concept to center on) - hide the thumbnail rather than leave it stuck
     // showing a stale position from the last Planetarium draw.
     document.getElementById('nightSkyFrameThumb').style.display = 'none';
-    _nightSkyDrawSkyMap(ctx, w, h);
+    if (nightSkyMap3DOn) _nightSkyDrawSkyMap3D(ctx, w, h);   // render-nightsky-3d.js
+    else _nightSkyDrawSkyMap(ctx, w, h);
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
     // Here rather than inside the Planetarium draw, which returns early while the star data is
