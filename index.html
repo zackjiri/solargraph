@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug257">
+  <link rel="stylesheet" href="css/style.css?perfdebug288">
 </head>
 <body>
 
@@ -505,6 +505,32 @@
       </div>
       <!-- Night Sky's Sky Map "3D" switch (render-nightsky-3d.js) - same pill as #skyMap3DToggleRow,
            shown only in Night Sky's Sky Map; the zoom slider below is shared. -->
+ <!-- Globe camera (render-nightsky-globe.js): distance from the Earth and field of view; the
+           mouse wheel / two fingers drive the row used last (highlighted). -->
+      <div id="nsGlobeCamCtl">
+        <div class="nsg-sliders">
+          <div class="nsg-row" data-k="dist" title="Camera distance from the Earth's centre, in Earth radii (log scale) - click to put the mouse wheel on it">
+            <span class="nsg-lbl">DIST</span>
+            <input type="range" id="nsGlobeDist" min="0" max="1" step="0.001">
+            <span class="nsg-val" id="nsGlobeDistVal">—</span>
+          </div>
+          <div class="nsg-row" data-k="fov" title="Field of view across the shorter side of the view (log scale) - click to put the mouse wheel on it">
+            <span class="nsg-lbl">FIELD</span>
+            <input type="range" id="nsGlobeFov" min="0" max="1" step="0.001">
+            <span class="nsg-val" id="nsGlobeFovVal">—</span>
+          </div>
+        </div>
+        <div class="nsg-moonfix" title="Draw the Moon at the Sun's size whatever the camera; its magnification shows beside it">
+          <span>MOON = SUN</span>
+          <button id="btnNsGlobeMoonFix" role="switch" aria-checked="false"></button>
+        </div>
+        <!-- What the view is levelled on: the Earth's equator, the ecliptic, or the place's horizon. -->
+        <div class="ns-toggle" id="nsGlobeFrameToggle">
+          <button class="ns-btn" data-v="equator" title="Level on the Earth's equator - the Earth turns under a fixed sky">EQU</button>
+          <button class="ns-btn active" data-v="ecliptic" title="Level on the ecliptic - fixed in space, the Earth's axis tilted, the Sun and the Moon moving along the level">ECL</button>
+          <button class="ns-btn" data-v="horizon" title="Level on the place's horizon - the globe stays put, the sky turns">HOR</button>
+        </div>
+      </div>
       <div id="nightSkyMap3DToggleRow" title="Show the Sky Map as an orbiting 3D sphere with the Sun and the Moon">
         <span class="nightsky-3d-label">3D</span>
         <button id="btnNightSkyMap3D" role="switch" aria-checked="false"></button>
@@ -574,6 +600,13 @@
         <span class="sg-view-lbl" data-v="times">TIMES</span>
         <button id="btnSgView" role="switch" aria-checked="false" title="Times of the day's phases, or their lengths"></button>
         <span class="sg-view-lbl dim" data-v="length">LENGTH</span>
+      </div>
+      <!-- Globe: what the camera orbits - the same pill in the same place as TIMES | LENGTH
+           (render-nightsky-globe.js, _nsGlobeSetBody). -->
+      <div id="nsGlobeBodySwitch" title="Orbit the Earth or the Moon">
+        <span class="sg-view-lbl" data-v="earth">EARTH</span>
+        <button id="btnNsGlobeBody" role="switch" aria-checked="false"></button>
+        <span class="sg-view-lbl dim" data-v="moon">MOON</span>
       </div>
       <div id="sgLegendWrap">
         <button id="sgLegendToggle" title="Hide / show the legend">▼</button>
@@ -744,25 +777,36 @@
          different content. -->
     <div class="sidebar-section" id="nightSkyDisplaySection">
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
-      <label class="chk-row" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
-      <label class="chk-row" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
-      <label class="chk-row ns-sg-keep" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <label class="chk-row ns-globe-keep" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
+      <label class="chk-row ns-globe-keep" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
+      <label class="chk-row ns-sg-keep ns-globe-keep" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
       <!-- Sun Graph view only (.ns-sungraph, css/style.css): the line at the selected date. -->
       <label class="chk-row ns-sg-only" title="Mark the selected date in the Sun Graph"><input type="checkbox" id="chkNightSkyCustomDate" checked> Custom date</label>
-      <label class="chk-row" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
+      <label class="chk-row ns-globe-keep" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
       <!-- Off by default (unlike every other Night Sky Display checkbox) - a genuinely different
            coordinate frame (RA/Dec) overlaid on top of the Az/Alt one, useful but not something you'd
            want cluttering the view every time. -->
-      <label class="chk-row" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
-      <label class="chk-row" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
-      <label class="chk-row" title="Overlay the horizon"><input type="checkbox" id="chkNightSkyHorizon" checked> Horizon</label>
-      <label class="chk-row ns-sg-keep ns-sg-sun" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
+      <label class="chk-row ns-globe-keep" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
+      <label class="chk-row ns-globe-keep" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
+      <label class="chk-row ns-sg-keep ns-sg-sun ns-globe-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
       <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
         <span class="nightsky-sun-label">Sun's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
           title="Overlay the Sun's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
       </div>
-      <label class="chk-row ns-sg-keep" title="Overlay the Moon's real position and phase for the selected date/time"><input type="checkbox" id="chkNightSkyMoon" checked> Moon</label>
+      <!-- Globe view only (.ns-globe-only), while Sun is on (render-nightsky-globe.js). -->
+      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeSubsolarSubrow">
+        <span class="nightsky-sun-label">Subsolar point</span>
+        <button class="nightsky-sun-switch" id="btnNsGlobeSubsolar" role="switch" aria-checked="false"
+          title="Mark the point on the Earth where the Sun stands at the zenith"></button>
+      </div>
+      <label class="chk-row ns-sg-keep ns-globe-keep" title="Overlay the Moon's real position and phase for the selected date/time"><input type="checkbox" id="chkNightSkyMoon" checked> Moon</label>
+      <!-- Globe view only (.ns-globe-only): the Moon's orbit line (render-nightsky-globe.js). -->
+      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeMoonOrbitSubrow">
+        <span class="nightsky-sun-label">Moon's orbit</span>
+        <button class="nightsky-sun-switch on" id="btnNsGlobeMoonOrbit" role="switch" aria-checked="true"
+          title="Draw the Moon's orbit around the Earth over one month around the selected date"></button>
+      </div>
       <div class="nightsky-sun-subrow" id="nightSkyMoonSubrow">
         <span class="nightsky-sun-label">Moon's path</span>
         <button class="nightsky-sun-switch" id="btnNightSkyMoonPath" role="switch" aria-checked="false"
@@ -787,7 +831,7 @@
         <button class="nightsky-sun-switch" id="btnNightSkyMoonless" role="switch" aria-checked="false"
           title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
       </div>
-      <label class="chk-row" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
+      <label class="chk-row ns-globe-keep" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
     </div>
 
     <div class="sidebar-section" id="calibrationSection">
@@ -1053,28 +1097,29 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.23
+  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.27
 </div>
 
-<script src="js/core.js?perfdebug257"></script>
-<script src="js/render-2d.js?perfdebug257"></script>
-<script src="js/controls.js?perfdebug257"></script>
-<script src="js/render-sungraph.js?perfdebug257"></script>
-<script src="js/render-3d.js?perfdebug257"></script>
-<script src="js/render-skydome.js?perfdebug257"></script>
-<script src="js/render-moon.js?perfdebug257"></script>
-<script src="js/render-planets.js?perfdebug257"></script>
-<script src="js/render-nightsky.js?perfdebug257"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug257"></script>
-<script src="js/render-nightsky-3d.js?perfdebug257"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug257"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug257"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug257"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug257"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug257"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug257"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug257"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug257"></script>
-<script src="js/render-eclipse.js?perfdebug257"></script>
+<script src="js/core.js?perfdebug288"></script>
+<script src="js/render-2d.js?perfdebug288"></script>
+<script src="js/controls.js?perfdebug288"></script>
+<script src="js/render-sungraph.js?perfdebug288"></script>
+<script src="js/render-3d.js?perfdebug288"></script>
+<script src="js/render-skydome.js?perfdebug288"></script>
+<script src="js/render-moon.js?perfdebug288"></script>
+<script src="js/render-planets.js?perfdebug288"></script>
+<script src="js/render-nightsky.js?perfdebug288"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug288"></script>
+<script src="js/render-nightsky-3d.js?perfdebug288"></script>
+<script src="js/render-nightsky-globe.js?perfdebug288"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug288"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug288"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug288"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug288"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug288"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug288"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug288"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug288"></script>
+<script src="js/render-eclipse.js?perfdebug288"></script>
 </body>
 </html>
