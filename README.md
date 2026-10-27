@@ -108,9 +108,17 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 🌑 **Eclipse mode** - a solar eclipse simulator for a handful of recent and upcoming events, picked by the author, computed from NASA/eclipsewise **Besselian elements**. Each element (x, y, d, l1, l2, μ) is a polynomial in time; local circumstances for any observer follow the standard reduction (Meeus ch. 54), including WGS84 flattening, ΔT applied to Earth's rotation, and topocentric parallax for the Moon's apparent size. Contact times C1–C4 come from root-finding on `m(t) − L1(t)` and `m(t) − |L2(t)|`. Validated against NASA's published Greatest Eclipse points to within ~100 m, and against the author's own eclipse photographs for five of the events. Magnitude for total and annular events differs from published figures by ~0.02–0.03 - a known limitation in the degree-scaling of the underlying elements. Unlike the rest of the app, Eclipse mode is geometric, without atmospheric refraction, because published contact times and magnitudes are geometric too; near the horizon it therefore shows the Sun up to ~0.5° lower than it is actually seen.
 
-🌠 **Night Sky mode** - the real sky for any place, date and time: 5,044 stars down to magnitude 6 and the 88 IAU constellations, as a flat or 3D Sky Map, an all-sky Planetarium, a Sun Graph of the whole year or a Globe of the Earth seen from space, all on one timeline that keeps animating across them. It needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next; star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). An info panel gives rise and set times and azimuths of the Sun and Moon, their distances from the observer, the day length and the Moon's phase and age.
+🌠 **Night Sky mode** - the real sky for any place, date and time: 5,044 stars down to magnitude 6, the 88 IAU constellations, the Milky Way and 132 deep sky objects, as a flat or 3D Sky Map, an all-sky Planetarium, a Sun Graph of the whole year or a Globe of the Earth seen from space, all on one timeline that keeps animating across them. It needs the actual calendar year, because local sidereal time at a fixed date and clock time drifts by about 6 hours from one year to the next; star positions follow from right ascension and declination through Greenwich sidereal time (Meeus ch. 12). An info panel gives rise and set times and azimuths of the Sun and Moon, their distances from the observer, the day length and the Moon's phase and age.
 
 - **Moon** - from the full lunar series in Meeus ch. 47, up to 5.1° off the ecliptic like the real one and corrected for topocentric parallax (up to ~1° near the horizon). The Sun and the Moon reach their true angular size when zoomed in; the phase faces the Sun and carries earthshine. During a lunar eclipse Earth's shadow crosses the disc, sized by Danjon's rule as in NASA's predictions: shadow radii and magnitudes agree with NASA to the fourth decimal, contact times to within a minute.
+
+- **Milky Way** - five brightness levels of the Milky Way Outline Catalog, filled once into a soft RA/Dec brightness map, with the Great Rift in Cygnus and the Coal Sack as dark lanes. Sky Map, Planetarium and the sky behind the Globe sample it pixel by pixel, so the horizon and the edge of the view cut the band without any clipping of its outlines.
+
+- **Limiting magnitude and star size** - in the Planetarium and the flat Sky Map, a Mag ≤ slider hides stars, planets, deep sky objects and the Milky Way's fainter levels below the limit (6+ shows everything), and three star sizes bring out the faint stars while keeping the bright ones larger, so the constellations stay readable. Zooming in enlarges the stars too.
+
+- **Atmosphere** - a switch for the Planetarium and the flat Sky Map that shows the sky as the eye sees it: nothing by day, the brightest stars from civil twilight, everything after astronomical twilight. Moonlight brightens the sky around the Moon (Krisciunas & Schaefer) and fades in a lunar eclipse, stars thin out near the horizon, and on the dark theme the sky takes its colour from its brightness.
+
+- **Deep sky** - the 110 Messier objects plus 22 showpieces Messier never listed: the Magellanic Clouds, ω Centauri, 47 Tucanae and η Carinae in the south, the Hyades, the Double Cluster and the Coathanger in the north. Atlas-style symbols per type (galaxy, open or globular cluster, nebula, planetary nebula) at true angular size, so a zoomed Planetarium shows M31 as large as it really is.
 
 - **Planets** - Mercury to Saturn from JPL's approximate Keplerian elements (Standish), corrected for light time; within a few arcseconds of JPL Horizons for Mercury and Venus, under 1′ for Mars and Jupiter, about 5′ for Saturn. Dot size follows brightness (Schlyter, including Saturn's rings), and Mercury and Venus show as silhouettes when they transit the Sun.
 
@@ -138,7 +146,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
    - The clock icon (top left) switches between apparent, mean and standard solar time.
    - Save your work with `Export` under Preset, and reload it later with `Import`.
 4. **Eclipse** - pick an event in the Catalog, then scrub the time slider or press play; click the speed label to change the rate. `Load gallery` marks the moments of real photographs, `Find the greatest point` moves you to where the eclipse was deepest.
-5. **Night Sky** - opens in the Planetarium at the current moment; drag to look around, switch to `Sky Map`, `Sun Graph` or `Globe` with the wheel picker. In the Globe, drag to orbit, use the wheel for distance or field of view and switch between the Earth and the Moon at the top. In the Sun Graph a click sets the date and time. The `Catalog` above lists the astrophotographs. The crosshair button picks a point by RA/Dec and locks the view on it.
+5. **Night Sky** - opens in the Planetarium at the current moment; drag to look around, switch to `Sky Map`, `Sun Graph` or `Globe` with the wheel picker. In the Globe, drag to orbit, use the wheel for distance or field of view and switch between the Earth and the Moon at the top. In the Sun Graph a click sets the date and time. Under Display, `Mag ≤` sets the faintest objects shown, the three stars pick the star size and `Atmosphere` turns on the real sky for the Sun's and the Moon's position. The `Catalog` above lists the astrophotographs. The crosshair button picks a point by RA/Dec and locks the view on it.
 
 ---
 
@@ -150,6 +158,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 - **`Split screen` is disabled** - it compares the Enhanced scan with a real scene photo, and not every image has one.
 - **A section disappeared** - click the ▼ / ▶ triangle by its heading; sections collapse their contents, never themselves.
 - **Date, location or time won't change in Night Sky** - they are locked while a Catalog photo is shown, so the frame stays true to it. Switch to another view or go back to the Catalog to unlock them.
+- **No stars in Night Sky** - with `Atmosphere` on, the sky shows only what the eye would see: nothing by day, few stars in twilight or under a bright Moon. Move the time into the night or switch `Atmosphere` off; also check `Mag ≤` is at `6+`.
 - **On a phone** - the layout stacks below ~640 px, but fine calibration is much easier on a tablet or desktop.
 - **Changes don't show up** - this is static HTML and JavaScript with no build step; a hard refresh clears most stale state.
 
@@ -169,7 +178,7 @@ All photographs published with the app - the solargraphs in the Gallery, the ecl
 
 Sunshine duration and air temperature measurements shown in the app come from the **open data** of the Czech Hydrometeorological Institute, licensed separately under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.cs).
 
-Star and constellation data in the Night Sky mode are vendored from [D3-Celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, licensed separately under **BSD-3-Clause** - see [`data/celestial/NOTICE.md`](data/celestial/NOTICE.md) for the full license text and original catalog sources.
+Star, constellation, Milky Way and deep sky data in the Night Sky mode are vendored from [D3-Celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, licensed separately under **BSD-3-Clause** - see [`data/celestial/NOTICE.md`](data/celestial/NOTICE.md) for the full license text and original catalog sources.
 
 Land outlines in the Globe (`data/earth/land-110m.json`) come from the [world-atlas](https://github.com/topojson/world-atlas) package by Mike Bostock, licensed under **ISC**, with geometry from [Natural Earth](https://www.naturalearthdata.com/), which is in the **public domain** - see [`data/earth/NOTICE.md`](data/earth/NOTICE.md).
 

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug288">
+  <link rel="stylesheet" href="css/style.css?perfdebug315">
 </head>
 <body>
 
@@ -778,8 +778,33 @@
     <div class="sidebar-section" id="nightSkyDisplaySection">
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <label class="chk-row ns-globe-keep" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
-      <label class="chk-row ns-globe-keep" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines" checked> Constellation lines</label>
-      <label class="chk-row ns-sg-keep ns-globe-keep" title="Labels: constellations (3-letter IAU designator), the Sun, the Moon, the planets, and the coordinates of whichever grids are on"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
+      <!-- Limiting magnitude and star size (render-nightsky.js: _nightSkyMagLimit, nightSkyStarScale),
+           Planetarium and the flat Sky Map only: hidden in Globe, greyed in Sky Map 3D. -->
+      <div class="chk-row nightsky-mag-row" id="nightSkyMagRow" title="Limiting magnitude: stars, planets and deep sky objects fainter than this are hidden; 6+ shows everything (deep sky objects go down to 11.5)">
+        <span class="nightsky-sun-label">Mag &le;</span>
+        <!-- The value rides inside the thumb, a pill wide enough for "6+ · −5.0", so the row never
+             changes width (render-nightsky.js: _nightSkyUpdateMagReadout). -->
+        <div class="nightsky-mag-slider">
+          <input type="range" id="nightSkyMagLimit" min="0" max="6.5" step="0.5" value="6.5">
+          <span class="nightsky-mag-thumb" id="nightSkyMagLimitVal">6+</span>
+        </div>
+      </div>
+      <div class="chk-row nightsky-mag-row" id="nightSkyStarScaleRow" title="Star size: small (original), medium or large; every step keeps the size differences between bright and faint stars and brings out the faint ones by brightness">
+        <span class="nightsky-sun-label">Star size</span>
+        <div class="ns-toggle" id="nightSkyStarScale">
+          <button class="ns-btn active" data-scale="0" title="Small">&#9733;</button>
+          <button class="ns-btn" data-scale="1" title="Medium">&#9733;</button>
+          <button class="ns-btn" data-scale="2" title="Large">&#9733;</button>
+        </div>
+      </div>
+      <div class="chk-row nightsky-mag-row" id="nightSkyAtmRow" title="Atmosphere: the limiting magnitude of the sky follows the Sun - nothing but the Sun and the Moon by day, the brightest stars from civil twilight, everything after astronomical twilight (Sun below -18°)">
+        <span class="nightsky-sun-label">Atmosphere</span>
+        <button class="nightsky-sun-switch" id="btnNightSkyAtmosphere" role="switch" aria-checked="false"></button>
+      </div>
+      <label class="chk-row ns-globe-keep" title="Show the Milky Way, five brightness levels from the vendored data (data/celestial/mw.json)"><input type="checkbox" id="chkNightSkyMilkyWay" checked> Milky Way</label>
+      <label class="chk-row ns-globe-keep" title="Show deep sky objects: the 110 Messier objects and 22 more showpieces of the whole sky (data/celestial/messier.json, dsos.bright.json); galaxies red, clusters yellow, nebulae green"><input type="checkbox" id="chkNightSkyDeepSky"> Deep sky</label>
+      <label class="chk-row ns-globe-keep" title="Overlay IAU constellation stick-figure lines"><input type="checkbox" id="chkNightSkyLines"> Constellation lines</label>
+      <label class="chk-row ns-sg-keep ns-globe-keep" title="Labels: constellations (3-letter IAU designator, with Constellation lines on), the Sun, the Moon, the planets, the coordinates of whichever grids are on, and in Globe the place from Location and the graticule"><input type="checkbox" id="chkNightSkyNames" checked> Labels</label>
       <!-- Sun Graph view only (.ns-sungraph, css/style.css): the line at the selected date. -->
       <label class="chk-row ns-sg-only" title="Mark the selected date in the Sun Graph"><input type="checkbox" id="chkNightSkyCustomDate" checked> Custom date</label>
       <label class="chk-row ns-globe-keep" title="Overlay an azimuth/altitude coordinate grid"><input type="checkbox" id="chkNightSkyGrid" checked> Az/Alt grid</label>
@@ -1100,26 +1125,29 @@
   © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.27
 </div>
 
-<script src="js/core.js?perfdebug288"></script>
-<script src="js/render-2d.js?perfdebug288"></script>
-<script src="js/controls.js?perfdebug288"></script>
-<script src="js/render-sungraph.js?perfdebug288"></script>
-<script src="js/render-3d.js?perfdebug288"></script>
-<script src="js/render-skydome.js?perfdebug288"></script>
-<script src="js/render-moon.js?perfdebug288"></script>
-<script src="js/render-planets.js?perfdebug288"></script>
-<script src="js/render-nightsky.js?perfdebug288"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug288"></script>
-<script src="js/render-nightsky-3d.js?perfdebug288"></script>
-<script src="js/render-nightsky-globe.js?perfdebug288"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug288"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug288"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug288"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug288"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug288"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug288"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug288"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug288"></script>
-<script src="js/render-eclipse.js?perfdebug288"></script>
+<script src="js/core.js?perfdebug315"></script>
+<script src="js/render-2d.js?perfdebug315"></script>
+<script src="js/controls.js?perfdebug315"></script>
+<script src="js/render-sungraph.js?perfdebug315"></script>
+<script src="js/render-3d.js?perfdebug315"></script>
+<script src="js/render-skydome.js?perfdebug315"></script>
+<script src="js/render-moon.js?perfdebug315"></script>
+<script src="js/render-planets.js?perfdebug315"></script>
+<script src="js/render-milkyway.js?perfdebug315"></script>
+<script src="js/render-deepsky.js?perfdebug315"></script>
+<script src="js/render-skyglow.js?perfdebug315"></script>
+<script src="js/render-nightsky.js?perfdebug315"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug315"></script>
+<script src="js/render-nightsky-3d.js?perfdebug315"></script>
+<script src="js/render-nightsky-globe.js?perfdebug315"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug315"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug315"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug315"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug315"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug315"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug315"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug315"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug315"></script>
+<script src="js/render-eclipse.js?perfdebug315"></script>
 </body>
 </html>
