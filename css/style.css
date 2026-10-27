@@ -3183,11 +3183,61 @@
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="green"],
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="red"],
   #sgLegendWrap.ns-sungraph .sg-leg-item[data-band="chmi"] { display: none; }
+  /* Globe camera sliders (render-nightsky-globe.js) - top-right under the sub-mode wheel, same panel
+     treatment as #skyMap3DToggleRow; the row the mouse wheel drives is highlighted. */
+  #nsGlobeCamCtl {
+    position: absolute; top: 48px; right: 12.5px; z-index: 12; display: none;
+    flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 8px 6px;
+    background: rgba(7,9,13,0.55); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--dim);
+    cursor: default;
+  }
+  body.light #nsGlobeCamCtl { background: rgba(220,228,236,0.82); }
+  #nsGlobeCamCtl .nsg-sliders { display: flex; justify-content: space-around; gap: 6px; }
+  #nsGlobeCamCtl .nsg-row { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; width: 52px; }
+  #nsGlobeCamCtl .nsg-val { color: var(--text); white-space: nowrap; }
+  #nsGlobeCamCtl input[type=range] {   /* vertical, the same way as #skyMap3DZoom */
+    writing-mode: vertical-lr; direction: rtl;
+    -webkit-appearance: slider-vertical; appearance: slider-vertical;
+    width: 10px; height: 150px; accent-color: var(--dim); cursor: pointer; touch-action: none;
+  }
+  #nsGlobeCamCtl .nsg-row.active .nsg-lbl { color: var(--accent); }
+  #nsGlobeCamCtl .nsg-row.active input[type=range] { accent-color: var(--accent); }
+  #nsGlobeCamCtl .nsg-moonfix { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--text); }
+  #btnNsGlobeMoonFix {
+    position: relative; flex: 0 0 auto; width: 30px; height: 17px; border-radius: 9px; border: none; padding: 0;
+    cursor: pointer; background: var(--control-fill-hover); transition: background 0.18s;
+  }
+  #btnNsGlobeMoonFix::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.4); transition: left 0.18s;
+  }
+  #btnNsGlobeMoonFix.on { background: #e8a020; }
+  #btnNsGlobeMoonFix.on::after { left: 15px; }
+  /* EQU | ECL | HOR: three equal buttons (the shared .ns-toggle/.ns-btn), only the active coloured. */
+  #nsGlobeFrameToggle { width: 100%; }
+  #nsGlobeFrameToggle .ns-btn { flex: 1; font-size: 9px; padding: 2px 0; text-align: center; }
+  /* Globe view (render-nightsky-globe.js): Display keeps the Sky Map's rows (not Custom date), the
+     Sun's and the Moon's path switches and Globe's own Subsolar point. */
+  #nightSkyDisplaySection.ns-globe .chk-row:not(.ns-globe-keep),
+  #nightSkyDisplaySection.ns-globe .nightsky-sun-subrow:not(.ns-globe-only):not(#nightSkySunSubrow):not(#nightSkyMoonSubrow) { display: none !important; }
+  .ns-globe-only { display: none; }
+  #nightSkyDisplaySection.ns-globe .ns-globe-only { display: flex; }
+  /* Globe always shows the Sun and the Moon: their checkboxes are shown ticked, disabled and greyed
+     (_nsGlobeSyncUI keeps the other views' state aside), their sub-options always shown. */
+  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkySun),
+  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkyMoon) { opacity: 0.45; pointer-events: none; }
+  #nightSkyDisplaySection.ns-globe #nightSkySunSubrow,
+  #nightSkyDisplaySection.ns-globe #nightSkyMoonSubrow,
+  #nightSkyDisplaySection.ns-globe #nsGlobeSubsolarSubrow { display: flex !important; }
   #nightSkyStatusWrap.ns-sungraph { left: auto; right: 12.5px; top: 52px; align-items: flex-end; }
   /* Sun Graph TIMES | LENGTH switch (render-sungraph.js sgViewMode), centred over the plot by JS.
      body.sg-length: the length view keeps only the band rows of the legend (and Night Sky's Moon),
      and Night Sky's Display only Labels, Custom date and Moon (the Sun's bands are always there). */
-  #sgViewSwitch {
+  /* Globe's EARTH | MOON (#nsGlobeBodySwitch) is the same panel in the same place, centred over
+     the view by JS (_nsGlobeSyncUI). */
+  #sgViewSwitch, #nsGlobeBodySwitch {
     position: absolute; transform: translateX(-50%);
     z-index: 13; display: none;          /* flex, shown by JS with either Sun Graph; above the info panels */
     align-items: center; gap: 6px;
@@ -3197,21 +3247,21 @@
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
     cursor: default;
   }
-  body.light #sgViewSwitch { background: rgba(220,228,236,0.82); }
-  #sgViewSwitch .sg-view-lbl { color: var(--text); cursor: pointer; }
-  #sgViewSwitch .sg-view-lbl.dim { color: var(--dim); }
-  #btnSgView {
+  body.light #sgViewSwitch, body.light #nsGlobeBodySwitch { background: rgba(220,228,236,0.82); }
+  #sgViewSwitch .sg-view-lbl, #nsGlobeBodySwitch .sg-view-lbl { color: var(--text); cursor: pointer; }
+  #sgViewSwitch .sg-view-lbl.dim, #nsGlobeBodySwitch .sg-view-lbl.dim { color: var(--dim); }
+  #btnSgView, #btnNsGlobeBody {
     position: relative; flex: 0 0 auto;
     width: 30px; height: 17px; border-radius: 9px; border: none; padding: 0;
     cursor: pointer; background: #e8a020;
   }
-  #btnSgView::after {
+  #btnSgView::after, #btnNsGlobeBody::after {
     content: ''; position: absolute; top: 2px; left: 2px;
     width: 13px; height: 13px; border-radius: 50%;
     background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  #btnSgView.on::after { left: 15px; }
+  #btnSgView.on::after, #btnNsGlobeBody.on::after { left: 15px; }
   body.sg-length #sgLegendWrap .sg-leg-sep,
   body.sg-length #sgLegendWrap .sg-leg-item[data-band="transit"],
   body.sg-length #sgLegendWrap .sg-leg-item[data-band="green"],
