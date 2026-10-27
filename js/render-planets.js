@@ -113,7 +113,10 @@ function _planetPositions(year, month, day, hourUT) {
 // the Moon never draw smaller than a fixed multiple of it (_nightSkyBodyMinR, render-moon.js).
 const PLANET_DOT_MAX_R = 5.5;
 function _planetDotRadius(mag) {
-  return Math.max(2.2, Math.min(PLANET_DOT_MAX_R, 3.6 - 0.45 * mag));
+  // Display star size and the Planetarium zoom (render-nightsky.js) scale the planets like the stars,
+  // kept under the Sun's and the Moon's minimum disc so they never outgrow them.
+  const r = Math.max(2.2, Math.min(PLANET_DOT_MAX_R, 3.6 - 0.45 * mag)) * _nightSkyStarScaleNow().f * _nightSkyStarZoomGain();
+  return Math.min(r, 0.95 * _nightSkyBodyMinR());
 }
 function _planetsWanted() {
   const c = document.getElementById('chkNightSkyPlanets');
@@ -186,8 +189,14 @@ function _planetDrawPart(ctx, part, project, sunRadiusPx) {
     const pt = project(q.az, q.el);
     if (!pt) continue;
     const onSun = sun && Math.hypot(pt.x - sun.x, pt.y - sun.y) < sun.r;
-    const r = onSun ? _planetDrawSilhouette(ctx, pt.x, pt.y, q.p, sun, pt.alpha) : _planetDrawDot(ctx, pt.x, pt.y, q.p, pt.alpha);
-    _planetDrawLabel(ctx, pt.x, pt.y, r, q.p, pt.alpha);
+    if (!onSun && !_nightSkyMagVisible(q.p.magnitude)) continue;   // Display "Mag ≤"; a transit always shows
+    // Atmosphere: twilight, moonlight and the dimming near the horizon (render-nightsky.js)
+    const em = q.p.magnitude + _nightSkyExtinctionMag(q.el);
+    const vis = onSun ? 1 : _nightSkyVisFactor(em, q.az, q.el);
+    if (!vis) continue;
+    const a = pt.alpha * vis;
+    const r = onSun ? _planetDrawSilhouette(ctx, pt.x, pt.y, q.p, sun, a) : _planetDrawDot(ctx, pt.x, pt.y, em === q.p.magnitude ? q.p : { ...q.p, magnitude: em }, a);
+    _planetDrawLabel(ctx, pt.x, pt.y, r, q.p, a);
   }
 }
 function _nightSkyDrawSkyMapPlanets(ctx, layout, part) {

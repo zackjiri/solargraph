@@ -394,24 +394,26 @@ function _nightSkyDrawGlobe(ctx, w, h) {
     }
   }
 
-  // Graticule every 30°, the equator a little stronger; coastlines on top.
+  // Graticule every 30°, the equator a little stronger (only with Display "Labels"); coastlines on top.
+  const showNames = document.getElementById('chkNightSkyNames').checked;
   ctx.lineWidth = 0.8; ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
-  for (let lon = -180; lon < 180; lon += 30) {
-    const vs = []; for (let lat = -90; lat <= 90; lat += 3) vs.push(_nsGlobeVec(lon, lat, theta));
-    _nsGlobeStroke(ctx, cam, L, vs);
-  }
-  for (let lat = -60; lat <= 60; lat += 30) {
-    ctx.strokeStyle = lat === 0 ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.16)';
-    const vs = []; for (let lon = -180; lon <= 180; lon += 3) vs.push(_nsGlobeVec(lon, lat, theta));
-    _nsGlobeStroke(ctx, cam, L, vs);
+  if (showNames) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    for (let lon = -180; lon < 180; lon += 30) {
+      const vs = []; for (let lat = -90; lat <= 90; lat += 3) vs.push(_nsGlobeVec(lon, lat, theta));
+      _nsGlobeStroke(ctx, cam, L, vs);
+    }
+    for (let lat = -60; lat <= 60; lat += 30) {
+      ctx.strokeStyle = lat === 0 ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.16)';
+      const vs = []; for (let lon = -180; lon <= 180; lon += 3) vs.push(_nsGlobeVec(lon, lat, theta));
+      _nsGlobeStroke(ctx, cam, L, vs);
+    }
   }
   if (_nsGlobeLand) {
     ctx.strokeStyle = 'rgba(225,235,220,0.45)'; ctx.lineWidth = 0.8;
     for (const r of _nsGlobeLand.rings) _nsGlobeStroke(ctx, cam, L, r.map(([lon, lat]) => _nsGlobeVec(lon, lat, theta)));
   }
 
-  const showNames = document.getElementById('chkNightSkyNames').checked;
   if (moon && _nsGlobe.orbit) _nsGlobeDrawMoonOrbit(ctx, L, cam, moon, true);
   ctx.font = "11px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   // The subsolar point (Display "Subsolar point" under Sun): where the Sun stands at the zenith - a
@@ -435,19 +437,18 @@ function _nightSkyDrawGlobe(ctx, w, h) {
   if (moon && !moon.behind) _nsGlobeDrawMoon(ctx, L, cam, moon, sunDir, w, h);
   _nsGlobePickerDrawMarker(ctx, L, cam);
 }
-// The place from Location.
+// The place from Location: the dot with its coordinates, both only with Display "Labels".
 function _nsGlobeDrawPlace(ctx, L, cam, theta, showNames, lt) {
+  if (!showNames) return;
   const pl = _nsGlobePlaceLonLat();
   const pp = _nsGlobeProject(cam, L, _nsGlobeVec(pl.lon, pl.lat, theta));
   if (pp.visible) {
     ctx.beginPath(); ctx.arc(pp.x, pp.y, 4.5, 0, Math.PI * 2);
     ctx.fillStyle = '#ff3b30'; ctx.fill();
     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
-    if (showNames) {
-      ctx.fillStyle = lt ? '#2a2a2a' : '#ffffff';
-      ctx.fillText(Math.abs(pl.lat).toFixed(2) + '° ' + (pl.lat >= 0 ? 'N' : 'S') + '  '
-        + Math.abs(pl.lon).toFixed(2) + '° ' + (pl.lon >= 0 ? 'E' : 'W'), pp.x + 9, pp.y);
-    }
+    ctx.fillStyle = lt ? '#2a2a2a' : '#ffffff';
+    ctx.fillText(Math.abs(pl.lat).toFixed(2) + '° ' + (pl.lat >= 0 ? 'N' : 'S') + '  '
+      + Math.abs(pl.lon).toFixed(2) + '° ' + (pl.lon >= 0 ? 'E' : 'W'), pp.x + 9, pp.y);
   }
 }
 
@@ -468,6 +469,7 @@ function _nsGlobeDrawSky(ctx, L, cam, sunDir) {
   const toDate = (v) => [m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2], m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]];
   const showNames = chk('chkNightSkyNames');
   ctx.font = "10px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  if (_mwShown()) _mwDrawGlobe(ctx, 2 * L.cx, 2 * L.cy, L, cam);   // render-milkyway.js
   _nsGlobeDrawSkyOverlays(ctx, L, cam, toDate);
   if (chk('chkNightSkyStars') && _skyDataLoaded) {
     if (!_nsGlobeStarVecs || _nsGlobeStarVecs.n !== _skyStars.length) {
@@ -480,6 +482,7 @@ function _nsGlobeDrawSky(ctx, L, cam, sunDir) {
       ctx.beginPath(); ctx.arc(p.x, p.y, st.r * 0.8, 0, Math.PI * 2); ctx.fill();
     }
   }
+  if (_dsoShown()) _dsoDrawGlobe(ctx, L, cam, toDate);   // render-deepsky.js
   if (chk('chkNightSkyPlanets')) {
     for (const pl of _planetPositions(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)) {
       const p = _nsGlobeProjectDir(cam, L, toDate(_skyDomeUnitVecRaDec({ ra: pl.raDeg, dec: pl.decDeg })));

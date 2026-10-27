@@ -250,6 +250,8 @@ function _skyLoadData() {
   return Promise.all([
     fetch('data/celestial/stars.6.json').then(r => r.json()),
     fetch('data/celestial/constellations.lines.json').then(r => r.json()),
+    _mwLoad(),   // the Milky Way (render-milkyway.js); never rejects, the sky draws without it
+    _dsoLoad(),  // deep sky objects (render-deepsky.js); the same
   ]).then(([starsGeo, constGeo]) => {
     _skyStars = starsGeo.features.map(f => ({
       id: f.id,
@@ -1749,18 +1751,239 @@ function _nightSkyDrawHorizon(ctx, layout) {
   ctx.restore();
 }
 
+// Display "Mag ≤" and star size apply to Planetarium and the flat Sky Map only; Sky Map 3D and Globe
+// keep every object and the original star sizes.
+function _nightSkyMagControlsOn() {
+  return nightSkyActive && nightSkyTopView === 'visualization'
+    && (nightSkySubmode === 'planetarium' || (nightSkySubmode === 'skymap' && !nightSkyMap3DOn));
+}
+// Display "Mag ≤" (#nightSkyMagLimit): stars, planets and deep sky objects fainter than the limit
+// are not drawn. 0..6 in steps of 0.5; its last step, 6+, is no limit (the star catalogue ends at
+// mag 6, deep sky objects go on to 11.5). The Sun, the Moon and a planet in transit are never hidden.
+const NIGHTSKY_MAG_LIMIT_OFF = 6.5;   // the slider value shown as "6+"
+function _nightSkySliderLimit() {
+  if (!_nightSkyMagControlsOn()) return Infinity;
+  const v = parseFloat(document.getElementById('nightSkyMagLimit').value);
+  return v >= NIGHTSKY_MAG_LIMIT_OFF ? Infinity : v;
+}
+// Display "Atmosphere" (#btnNightSkyAtmosphere, off by default; Planetarium and the flat Sky Map
+// only): the naked-eye limiting magnitude of the sky from the Sun's true altitude. Daylight shows
+// nothing but the Sun and the Moon; Venus and Jupiter come out just after sunset, the brightest
+// stars in civil twilight, the constellation figures by its end, nearly every star at the end of
+// nautical twilight (the first patches of the Milky Way with it) and everything at -18°. Linear
+// between the points [Sun altitude°, limiting mag]; the stricter of it and "Mag ≤" applies.
+let nightSkyAtmosphereOn = false;
+const NIGHTSKY_ATM_CURVE = [[0, -5], [-1, -2], [-3, 0.5], [-6, 2.5], [-9, 4], [-12, 5], [-15, 5.7], [-18, 6.5]];
+const NIGHTSKY_ATM_FADE = 0.5;   // mag: an object this much fainter than the sky's limit fades in
+function _nightSkyAtmLimit() {
+  if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return Infinity;
+  const h = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el;
+  const C = NIGHTSKY_ATM_CURVE;
+  if (h >= C[0][0]) return C[0][1];
+  for (let i = 1; i < C.length; i++) {
+    if (h >= C[i][0]) {
+      const t = (C[i - 1][0] - h) / (C[i - 1][0] - C[i][0]);
+      return C[i - 1][1] + t * (C[i][1] - C[i - 1][1]);
+    }
+  }
+  return Infinity;   // astronomical night
+}
+// The sky's limit (the Milky Way's levels, the readout beside the slider).
+function _nightSkySkyLimit() {
+  return Math.min(_nightSkySliderLimit(), _nightSkyAtmLimit());
+}
+// The cut for stars, planets and deep sky objects before their position is known: the slider's
+// limit as set, the twilight's NIGHTSKY_ATM_FADE fainter (moonlight only lowers it further, per
+// object in _nightSkyVisFactor).
+function _nightSkyMagLimit() {
+  return Math.min(_nightSkySliderLimit(), _nightSkyAtmLimit() + NIGHTSKY_ATM_FADE);
+}
+function _nightSkyMagVisible(mag) {
+  return !(mag > _nightSkyMagLimit());   // an unknown magnitude passes
+}
+// Moonlight (Atmosphere on): the sky brightness the Moon adds in each direction, after Krisciunas &
+// Schaefer (1991, PASP 103, 1033), summed with the twilight sky and turned into a limiting magnitude
+// for that direction, so the sky is emptiest around the Moon and darkest opposite it.
+//   Moon's magnitude  m = −12.73 + 0.026|α| + 4·10⁻⁹α⁴ (α phase angle, °); I* = 10^(−0.4(m + 16.57))
+//   scattering        f(ρ) = [10^5.36·(1.06 + cos²ρ) + 10^(6.15 − ρ/40)]·(1 + ρc²/ρ²), ρc = 5.74°:
+//                     K&S give the bracket for ρ > 10° and 6.2·10⁷/ρ² close to the Moon, which at
+//                     10° is only half the bracket (a step) and changes the slope abruptly (seen as
+//                     a ring); the product follows the bracket far out and 6.2·10⁷/ρ² near the
+//                     Moon (ρc² = 6.2·10⁷ / the bracket at 0°), smooth all the way
+//   airmass           X(Z) = (1 − 0.96 sin²Z)^−½
+//   brightness (nL)   B = f(ρ)·I*·10^(−0.4·k·X(Zmoon))·(1 − 10^(−0.4·k·X(Z)))
+// with ρ the angle between the Moon and the direction, Z its zenith distance and k the V-band
+// extinction (NIGHTSKY_EXTINCTION_K = 0.2 mag per airmass, between a mountain site's 0.17 and a
+// lowland's 0.25-0.3). The twilight limit (above) is turned back into a sky brightness and back
+// again with Schaefer's (1990) relation LM = 7.93 − 5·log₁₀(10^(4.316 − b/5) + 1), b in mag/arcsec²
+// (a moonless night, LM 6.5, is b = 21.7). A lunar eclipse dims the Moon (_nightSkyMoonEclipseLight).
+const NIGHTSKY_EXTINCTION_K = 0.2;
+const _nsNLFromB = (b) => 34.08 * Math.exp(20.7233 - 0.92104 * b);
+const _nsBFromNL = (nl) => (20.7233 - Math.log(nl / 34.08)) / 0.92104;
+const _nsLMFromB = (b) => 7.93 - 5 * Math.log10(Math.pow(10, 4.316 - b / 5) + 1);
+const _nsBFromLM = (lm) => 5 * (4.316 - Math.log10(Math.pow(10, (7.93 - lm) / 5) - 1));
+const _nsAirmass = (cosZ) => 1 / Math.sqrt(1 - 0.96 * (1 - cosZ * cosZ));
+// A lunar eclipse dims the moonlight: the share of full light the Moon's disc still gets, averaged
+// over the disc (NIGHTSKY_ECL_SAMPLES points spread evenly by area). The Earth's shadow from
+// _moonShadow (render-moon.js, Danjon's radii as in NASA's predictions), seen from here. A point
+// between the umbra's and the penumbra's edge sees the part of the Sun's disc left past the Earth's
+// limb, a circular segment whose height runs from 0 at the umbra's edge to the full disc at the
+// penumbra's (the same law as the Globe's eclipse, render-nightsky-globe.js); inside the umbra only
+// the light bent by the Earth's atmosphere is left, NIGHTSKY_ECL_UMBRA = 3·10⁻⁵ of full light, the
+// Moon about 11 mag fainter, as it is in a typical totality (Danjon L 2-3). 1 outside any eclipse.
+const NIGHTSKY_ECL_UMBRA = 3e-5;
+const NIGHTSKY_ECL_SAMPLES = (() => {   // unit-disc points: the centre and rings of equal area
+  const pts = [[0, 0]];
+  for (let r = 1; r <= 4; r++) {
+    const n = 6 * r, rad = r / 4.5;
+    for (let k = 0; k < n; k++) pts.push([rad * Math.cos(2 * Math.PI * k / n), rad * Math.sin(2 * Math.PI * k / n)]);
+  }
+  return pts;
+})();
+function _nightSkyMoonEclipseLight(m) {
+  const sh = _moonShadow(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, m);
+  const semi = _moonSemiDiamDeg(m);
+  const mv = _skyDomeUnitVec(m.az, m.el), cv = _skyDomeUnitVec(sh.az, sh.el);
+  const sep = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(mv, cv)))) * 180 / Math.PI;
+  if (sep >= sh.penumbraDeg + semi) return 1;
+  let sum = 0;
+  for (const [x, y] of NIGHTSKY_ECL_SAMPLES) {
+    // the sample's distance from the shadow axis, on the line from the Moon's centre to it
+    const d = Math.hypot(sep - x * semi, y * semi);
+    if (d >= sh.penumbraDeg) { sum += 1; continue; }
+    if (d <= sh.umbraDeg) { sum += NIGHTSKY_ECL_UMBRA; continue; }
+    const h = 2 * (d - sh.umbraDeg) / (sh.penumbraDeg - sh.umbraDeg);   // segment height, Sun radii
+    const seg = (Math.acos(1 - h) - (1 - h) * Math.sqrt(Math.max(0, 2 * h - h * h))) / Math.PI;
+    sum += Math.max(NIGHTSKY_ECL_UMBRA, seg);
+  }
+  return sum / NIGHTSKY_ECL_SAMPLES.length;
+}
+// Per redraw: the twilight limit, its sky brightness and, with the Moon above the horizon, its
+// direction (horizon frame, _skyDomeUnitVec) and the factor I*·10^(−0.4·k·X(Zmoon)), times the
+// share of light a lunar eclipse leaves (_nightSkyMoonEclipseLight).
+let _nsAtmCache = { key: null, s: null };
+function _nightSkyAtmState() {
+  if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return null;
+  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  if (_nsAtmCache.key === key) return _nsAtmCache.s;
+  const twiLM = _nightSkyAtmLimit();
+  const sun = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))), moon: null,
+    sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el } };   // the Sun for the sky's colour (render-skyglow.js)
+  const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  if (m.el > 0) {
+    const alpha = Math.abs(_moonPhase(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).i);
+    const mag = -12.73 + 0.026 * alpha + 4e-9 * Math.pow(alpha, 4);
+    const v = _skyDomeUnitVec(m.az, m.el);
+    const ecl = _nightSkyMoonEclipseLight(m);
+    s.moon = { v, ecl, c: ecl * Math.pow(10, -0.4 * (mag + 16.57)) * Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nsAirmass(v[2])) };
+  }
+  _nsAtmCache = { key, s };
+  return s;
+}
+// Limiting magnitude of the sky in direction v (horizon frame unit vector, above the horizon):
+// twilight and moonlight together; Infinity when nothing limits (a dark night, Atmosphere off).
+// The sky brightness the Moon adds in direction v (nL, 0 with the Moon down); s = _nightSkyAtmState().
+// rhoMin: the angle from the Moon is taken as at least this (°); the sky's colour grid passes its
+// glow core's radius, the core itself is drawn as a gradient (render-skyglow.js).
+const _NS_RHOC2 = 6.2e7 / (Math.pow(10, 5.36) * 2.06 + Math.pow(10, 6.15));   // ρc², °²
+function _nightSkyMoonNLAt(v, s, rhoMin) {
+  if (!s.moon) return 0;
+  const cosRho = Math.max(-1, Math.min(1, v[0] * s.moon.v[0] + v[1] * s.moon.v[1] + v[2] * s.moon.v[2]));
+  const rho = Math.max(rhoMin || 0.25, Math.acos(cosRho) * 180 / Math.PI);
+  const c = Math.cos(rho * Math.PI / 180);
+  const f = (Math.pow(10, 5.36) * (1.06 + c * c) + Math.pow(10, 6.15 - rho / 40)) * (1 + _NS_RHOC2 / (rho * rho));
+  return f * s.moon.c * (1 - Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nsAirmass(Math.max(0, v[2]))));
+}
+function _nightSkyAtmLimitAt(v) {
+  const s = _nightSkyAtmState();
+  if (!s) return Infinity;
+  if (!s.moon) return s.twiLM;
+  const lm = _nsLMFromB(_nsBFromNL(s.twiNL + _nightSkyMoonNLAt(v, s)));
+  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : Math.min(lm, s.twiLM);
+}
+// Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
+// k·(X − 1) mag, X the airmass after Kasten & Young (1989), X = 1/(cos Z + 0.50572·(96.07995 − Z)^−1.6364),
+// which holds down to the horizon (38 there) where the plain 1/cos Z does not. Relative to the zenith,
+// so the twilight curve and the moonlight model, both set for the zenith, keep their meaning. With
+// k = 0.2: 0.1 mag at 45°, 0.9 at 10°, 1.9 at 5°, 3.7 at 2°, 7.4 at the horizon.
+function _nightSkyAtmOn() {
+  return nightSkyAtmosphereOn && _nightSkyMagControlsOn();
+}
+function _nightSkyAirmass(el) {
+  const z = 90 - Math.max(0, Math.min(90, el));
+  return 1 / (Math.cos(z * Math.PI / 180) + 0.50572 * Math.pow(96.07995 - z, -1.6364));
+}
+function _nightSkyExtinctionMag(el) {
+  return _nightSkyAtmOn() ? NIGHTSKY_EXTINCTION_K * (_nightSkyAirmass(el) - 1) : 0;
+}
+// Opacity factor 0..1 for an object of magnitude mag at (az, el): 0 past "Mag ≤", by the
+// atmosphere 1 down to the sky's limit there and falling to 0 over the next NIGHTSKY_ATM_FADE, so
+// stars come out gradually as the Sun sinks or the Moon sets rather than popping in.
+// mag is the magnitude as seen, extinction included. With Atmosphere on even a dark night has a
+// limit, a moonless sky's 6.5 (NIGHTSKY_MAG_LIMIT_OFF), so a star dimmed near the horizon past it
+// goes too. A deep sky object (baseMag = its catalogue magnitude) is a chart mark rather than a
+// naked-eye object, so on a dark night its floor is its own magnitude plus NIGHTSKY_ATM_FADE: it
+// stays until extinction dims it by 0.5 mag (~17° up) and is gone at 1 mag (~10°); twilight and
+// moonlight still apply to it as to the stars.
+function _nightSkyVisFactor(mag, az, el, baseMag) {
+  if (mag > _nightSkySliderLimit()) return 0;
+  if (!_nightSkyAtmState()) return 1;
+  const floor = baseMag === undefined ? NIGHTSKY_MAG_LIMIT_OFF : Math.max(NIGHTSKY_MAG_LIMIT_OFF, baseMag + NIGHTSKY_ATM_FADE);
+  const L = Math.min(floor, _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el)));
+  if (!(mag > L)) return 1;
+  return Math.max(0, 1 - (mag - L) / NIGHTSKY_ATM_FADE);
+}
+// Display star size (#nightSkyStarScale, small / medium / large). Every step keeps the original size
+// law, 3.2 − 0.5·mag clamped to 0.6..4 px, and multiplies it by f, so a bright star stays as many
+// times larger than a faint one as before. Small is the original look (opacity 1 − mag/7, at least
+// 0.35). Medium and large lift the faint stars to a6 at mag 6 but keep a steep rise to full white at
+// mag 1 and brighter (a6 + (1 − a6)·t^1.5, t = (6 − mag)/5), so the bright stars stand out and the
+// sky never turns one even grey. Planets grow by the same factor (render-planets.js). The bright end
+// is capped below (NIGHTSKY_STAR_CAP_PX).
+const NIGHTSKY_STAR_ALPHA_GAMMA = 1.5;
+const NIGHTSKY_STAR_SCALES = [
+  { f: 1.0, a6: null },
+  { f: 1.2, a6: 0.4 },
+  { f: 1.4, a6: 0.55 },
+];
+let nightSkyStarScale = 0;   // small, the original
+function _nightSkyStarScaleNow() {
+  return NIGHTSKY_STAR_SCALES[_nightSkyMagControlsOn() ? nightSkyStarScale : 0];
+}
+// Planetarium zoom enlarges the stars too, more slowly than the sky (zoom^0.35: 1.27 at 2x, 1.62 at
+// 4x, 2.38 at 12x; never below 1 when zoomed out), under a cap that grows with it from 5.5 px on the
+// whole sky to 8 px, so a zoomed field shows even the faint stars while Sirius stays a point.
+const NIGHTSKY_STAR_ZOOM_EXP = 0.35, NIGHTSKY_STAR_CAP_PX = 5.5, NIGHTSKY_STAR_CAP_MAX_PX = 8;
+function _nightSkyStarZoomGain() {
+  if (nightSkySubmode !== 'planetarium' || !_nightSkyMagControlsOn()) return 1;
+  return Math.pow(Math.max(1, _nightSkyPlanet3D.zoom), NIGHTSKY_STAR_ZOOM_EXP);
+}
 function _nightSkyStarSize(mag) {
-  return Math.max(0.6, Math.min(4, 3.2 - mag * 0.5));
+  const g = _nightSkyStarZoomGain();
+  const r = _nightSkyStarScaleNow().f * g * Math.max(0.6, Math.min(4, 3.2 - mag * 0.5));
+  return Math.min(r, Math.min(NIGHTSKY_STAR_CAP_MAX_PX, NIGHTSKY_STAR_CAP_PX * g));
+}
+function _nightSkyStarAlpha(mag) {
+  const S = _nightSkyStarScaleNow();
+  if (S.a6 === null) return Math.max(0.35, Math.min(1, 1 - mag / 7));
+  const t = Math.max(0, Math.min(1, (6 - mag) / 5));
+  return S.a6 + (1 - S.a6) * Math.pow(t, NIGHTSKY_STAR_ALPHA_GAMMA);
 }
 
 function _nightSkyDrawStars(ctx, layout) {
   ctx.fillStyle = _nightSkyStarColor();
+  const limit = _nightSkyMagLimit();
   for (const s of _skyStars) {
+    if (s.mag > limit) continue;
     const p = _skyStarAzEl(s.raDeg, s.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
     if (p.el < 0) continue;
+    const em = s.mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
+    const vis = _nightSkyVisFactor(em, p.az, p.el);
+    if (!vis) continue;
     const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, p.az, p.el);
-    const r = _nightSkyStarSize(s.mag);
-    ctx.globalAlpha = Math.max(0.35, Math.min(1, 1 - s.mag / 7));
+    const r = _nightSkyStarSize(em);
+    ctx.globalAlpha = _nightSkyStarAlpha(em) * vis;
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, r, 0, 2 * Math.PI);
     ctx.fill();
@@ -2009,6 +2232,8 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   ctx.beginPath();
   ctx.arc(layout.cx, layout.cy, layout.R, 0, 2 * Math.PI);
   ctx.fill();
+  if (_glowShown()) _glowDrawSkyMap(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
+  if (_mwShown()) _mwDrawSkyMap(ctx, w, h, layout);   // render-milkyway.js
 
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
@@ -2021,8 +2246,10 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showGrid) _nightSkyDrawGrid(ctx, layout);
   if (showEquatorial) _nightSkyDrawEquatorialGrid(ctx, layout);
   if (showEcliptic) _nightSkyDrawEcliptic(ctx, layout);
-  if (showLines || showNames) _nightSkyDrawConstellations(ctx, layout, showLines, showNames);
+  // Constellation names (Labels) only together with their lines.
+  if (showLines) _nightSkyDrawConstellations(ctx, layout, true, showNames);
   if (showStars) _nightSkyDrawStars(ctx, layout);
+  if (_dsoShown()) _dsoDrawSkyMap(ctx, layout);   // render-deepsky.js
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawMoonPath(ctx, layout);
@@ -2426,13 +2653,18 @@ function _nightSkyDrawPlanetHorizon(ctx, layout) {
 
 function _nightSkyDrawPlanetStars(ctx, layout) {
   ctx.fillStyle = _nightSkyStarColor();
+  const limit = _nightSkyMagLimit();
   for (const s of _skyStars) {
+    if (s.mag > limit) continue;
     const p = _skyStarAzEl(s.raDeg, s.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
     if (p.el < 0) continue;
     const proj = _nightSkyPlanetProject(layout, p.az, p.el);
     if (!proj.visible) continue;
-    const r = _nightSkyStarSize(s.mag);
-    ctx.globalAlpha = Math.max(0.35, Math.min(1, 1 - s.mag / 7)) * proj.alpha;
+    const em = s.mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
+    const vis = _nightSkyVisFactor(em, p.az, p.el);
+    if (!vis) continue;
+    const r = _nightSkyStarSize(em);
+    ctx.globalAlpha = _nightSkyStarAlpha(em) * vis * proj.alpha;
     ctx.beginPath();
     ctx.arc(proj.x, proj.y, r, 0, 2 * Math.PI);
     ctx.fill();
@@ -2782,6 +3014,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   _nightSkyUpdatePlanetCamera();
   const layout = _nightSkyPlanetLayout(w, h);
   _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
+  if (_glowShown()) _glowDrawPlanetarium(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
+  if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout);   // render-milkyway.js
 
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
@@ -2794,8 +3028,10 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showGrid) _nightSkyDrawPlanetGrid(ctx, layout);
   if (showEquatorial) _nightSkyDrawPlanetEquatorialGrid(ctx, layout);
   if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
-  if (showLines || showNames) _nightSkyDrawPlanetConstellations(ctx, layout, showLines, showNames);
+  // Constellation names (Labels) only together with their lines.
+  if (showLines) _nightSkyDrawPlanetConstellations(ctx, layout, true, showNames);
   if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
+  if (_dsoShown()) _dsoDrawPlanetarium(ctx, layout);   // render-deepsky.js
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
   if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
   if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
@@ -3117,6 +3353,7 @@ function drawNightSky() {
     if (_nightSkyPicker.lock && !_nightSkyCursorOnSky) _nightSkyPickerShowLockReadout();
   }
   if (nightSkyTopView === 'visualization') _nightSkyUpdateStatusPanel();
+  _nightSkyUpdateMagReadout();   // the twilight limit moves with the time
 }
 
 // Top-level mode button, a peer of Gallery/Analyzer/Eclipse rather than an Analyzer sub-view -
@@ -3130,7 +3367,44 @@ document.getElementById('btnModeNightSky').addEventListener('click', () => {
   enterNightSky();
 });
 
+// Mag ≤ slider: the value beside it, "6+" at its last step (no limit); star size: three buttons.
+// With Atmosphere on and the sky's limit stricter than the slider, the readout adds it (6+ · 2.5).
+function _nightSkyUpdateMagReadout() {
+  const v = parseFloat(document.getElementById('nightSkyMagLimit').value);
+  const slider = v >= NIGHTSKY_MAG_LIMIT_OFF ? '6+' : v.toFixed(1);
+  const atm = _nightSkyAtmLimitAt([0, 0, 1]);   // at the zenith, twilight and moonlight
+  const el = document.getElementById('nightSkyMagLimitVal');
+  if (atm < Math.min(v, NIGHTSKY_MAG_LIMIT_OFF)) {
+    el.innerHTML = slider + '<span class="nightsky-mag-atm">· ' + atm.toFixed(1) + '</span>';
+    el.title = 'Slider limit · limiting magnitude of the sky at the zenith now (twilight and moonlight)';
+  } else {
+    el.textContent = slider;
+    el.title = '';
+  }
+  // The pill sits where the input's (transparent, same-width) thumb is: its travel is the track
+  // minus its own width.
+  const input = document.getElementById('nightSkyMagLimit');
+  const frac = (v - parseFloat(input.min)) / (parseFloat(input.max) - parseFloat(input.min));
+  el.style.left = (frac * Math.max(0, input.clientWidth - el.offsetWidth)) + 'px';
+}
+document.getElementById('nightSkyMagLimit').addEventListener('input', () => {
+  _nightSkyUpdateMagReadout();
+  if (nightSkyActive) drawNightSky();
+});
+document.getElementById('btnNightSkyAtmosphere').addEventListener('click', () => {
+  nightSkyAtmosphereOn = !nightSkyAtmosphereOn;
+  const btn = document.getElementById('btnNightSkyAtmosphere');
+  btn.classList.toggle('on', nightSkyAtmosphereOn);
+  btn.setAttribute('aria-checked', String(nightSkyAtmosphereOn));
+  if (nightSkyActive) drawNightSky();
+});
+document.querySelectorAll('#nightSkyStarScale .ns-btn').forEach(btn => btn.addEventListener('click', () => {
+  nightSkyStarScale = parseInt(btn.dataset.scale, 10);
+  document.querySelectorAll('#nightSkyStarScale .ns-btn').forEach(b => b.classList.toggle('active', b === btn));
+  if (nightSkyActive) drawNightSky();
+}));
+
 // Display checkboxes just redraw - no state beyond their own checked value (read directly in
 // drawNightSky() each time), same "read the checkbox live" approach as Eclipse's Display section.
-['chkNightSkyStars', 'chkNightSkyLines', 'chkNightSkyNames', 'chkNightSkyGrid', 'chkNightSkyEquatorial', 'chkNightSkyEcliptic']
+['chkNightSkyStars', 'chkNightSkyMilkyWay', 'chkNightSkyDeepSky', 'chkNightSkyLines', 'chkNightSkyNames', 'chkNightSkyGrid', 'chkNightSkyEquatorial', 'chkNightSkyEcliptic']
   .forEach(id => document.getElementById(id).addEventListener('change', () => { if (nightSkyActive) drawNightSky(); }));

@@ -23,13 +23,19 @@ function _nightSky3DActive() {
 // Analyzer's Sky Map 3D) while 3D is on.
 function _nightSkyUpdateMap3DControls() {
   const inSkyMap = nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'skymap';
-  // Stars and constellations aren't drawn in 3D: their Display rows are disabled (greyed) there.
+  // Stars, the Milky Way, deep sky objects and constellations aren't drawn in 3D: their Display
+  // rows are disabled (greyed) there.
   const off3D = inSkyMap && nightSkyMap3DOn;
-  for (const id of ['chkNightSkyStars', 'chkNightSkyLines']) {
+  for (const id of ['chkNightSkyStars', 'chkNightSkyMilkyWay', 'chkNightSkyDeepSky', 'chkNightSkyLines']) {
     const c = document.getElementById(id);
     c.disabled = off3D;
     c.parentElement.style.opacity = off3D ? '0.35' : '';
     c.parentElement.style.pointerEvents = off3D ? 'none' : '';
+  }
+  for (const id of ['nightSkyMagRow', 'nightSkyStarScaleRow', 'nightSkyAtmRow']) {   // Mag ≤ and star size: flat Sky Map only
+    const row = document.getElementById(id);
+    row.style.opacity = off3D ? '0.35' : '';
+    row.style.pointerEvents = off3D ? 'none' : '';
   }
   document.getElementById('nightSkyMap3DToggleRow').style.display = inSkyMap ? 'flex' : 'none';
   if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) {

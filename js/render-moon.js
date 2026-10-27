@@ -334,10 +334,12 @@ function _moonSunElevAtJD(jd) {
 // but never smaller than _nightSkyBodyMinR(): the same artificial factor for both bodies times the
 // largest planet dot (Venus's, PLANET_DOT_MAX_R in render-planets.js), so the two always look a
 // little bigger than the brightest planet. Sky Map has no zoom and shows the whole hemisphere at
-// ~3 px/deg, where the true disc would be under a pixel - it draws both at that minimum.
+// ~3 px/deg, where the true disc would be under a pixel - it draws both at that minimum. In the
+// Planetarium the minimum grows with the zoom like the stars and planets (_nightSkyStarZoomGain,
+// render-nightsky.js; 1 everywhere else), so the Sun and the Moon stay larger than any of them.
 const NIGHTSKY_BODY_SIZE_K = 1.2;
 function _nightSkyBodyMinR() {
-  return NIGHTSKY_BODY_SIZE_K * PLANET_DOT_MAX_R;
+  return NIGHTSKY_BODY_SIZE_K * PLANET_DOT_MAX_R * _nightSkyStarZoomGain();
 }
 // Topocentric semi-diameter of the Moon, degrees: its distance from the observer is shorter than
 // from the Earth's centre by ~R*sin(altitude) (Meeus ch. 55, first-order form), up to ~1.7% at the
