@@ -477,6 +477,8 @@ function exitNightSkyVisualization() {
   document.getElementById('nightSkyPlanetZoomCtl').style.display = 'none';
   document.getElementById('btnNightSkyPicker').style.display = 'none';
   document.getElementById('nightSkyMap3DToggleRow').style.display = 'none';
+  document.getElementById('nightSkyDisplaySection').classList.remove('ns-globe');
+  document.getElementById('nsGlobeCamCtl').style.display = 'none';
   if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) document.getElementById('skyMap3DZoomCtl').style.display = 'none';
   _nightSkyPickerSetActive(false);
   _nightSkyUpdatePresentationLock();
@@ -1448,8 +1450,8 @@ document.getElementById('nightSkyTimeToggle').addEventListener('click', (e) => {
 // the compass angle around it. Deliberately the SAME math as Sky Dome's own Sky Map projection
 // (_skyDomePoint, render-skydome.js) - reused directly rather than duplicated, so the two views of
 // "looking straight up" agree pixel-for-pixel. Stars/lines below the horizon (el<0) are never
-// drawn - a real sky map doesn't show what's below your feet, independent of the Horizon checkbox
-// (which only controls the rim/compass overlay, not visibility of content).
+// drawn - a real sky map doesn't show what's below your feet (the rim/compass overlay itself is
+// always drawn).
 function _nightSkyLayout(w, h) {
   const cx = w / 2, cy = h / 2;
   const R = Math.min(w, h) / 2 * 0.92;
@@ -1571,8 +1573,9 @@ function _nightSkyFmtDec(dec) { return dec === 0 ? '0°' : (dec > 0 ? '+' : '−
 function _nightSkyGridLabelsWanted() {
   return document.getElementById('chkNightSkyNames').checked;
 }
+// The N/E/S/W points are named by the horizon's compass letters (the horizon is always drawn).
 function _nightSkyAzLabelWanted(az) {
-  return !(az % 90 === 0 && document.getElementById('chkNightSkyHorizon').checked);
+  return az % 90 !== 0;
 }
 // Local meridian's right ascension (deg) - where declination labels sit in Sky Map.
 function _nightSkyMeridianRaDeg() {
@@ -1932,8 +1935,8 @@ function _nightSkyDrawSunDisc(ctx, layout) {
 // instead - see the dedicated section below _nightSkyDrawSkyMap(). The dispatch in drawNightSky()
 // further down is written to make adding a further sub-mode a matter of extending these two arrays
 // plus one new branch, not restructuring anything.
-const NIGHTSKY_SUBMODE_VALUES = ['skymap', 'planetarium', 'sungraph'];
-const NIGHTSKY_SUBMODE_LABELS = ['SKY MAP', 'PLANETARIUM', 'SUN GRAPH'];
+const NIGHTSKY_SUBMODE_VALUES = ['skymap', 'planetarium', 'sungraph', 'globe'];
+const NIGHTSKY_SUBMODE_LABELS = ['SKY MAP', 'PLANETARIUM', 'SUN GRAPH', 'GLOBE'];
 const NIGHTSKY_SUBMODE_N = NIGHTSKY_SUBMODE_VALUES.length;
 let nightSkySubmode = 'planetarium';   // the landing sub-mode (enterNightSky)
 let _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode);
@@ -2010,7 +2013,6 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
   const showEcliptic = document.getElementById('chkNightSkyEcliptic').checked;
-  const showHorizon = document.getElementById('chkNightSkyHorizon').checked;
   const showLines = document.getElementById('chkNightSkyLines').checked;
   const showNames = document.getElementById('chkNightSkyNames').checked;
   const showStars = document.getElementById('chkNightSkyStars').checked;
@@ -2029,7 +2031,7 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   if (showSun) _nightSkyDrawSunDisc(ctx, layout);
   _nightSkyDrawSkyMapPlanets(ctx, layout, 'front');
   if (showMoon) _nightSkyDrawMoonDisc(ctx, layout);   // after the Sun, so it covers it in an eclipse
-  if (showHorizon) _nightSkyDrawHorizon(ctx, layout);
+  _nightSkyDrawHorizon(ctx, layout);   // always (no Display switch since build 46_1)
   _nightSkyDrawGridLabels(ctx, layout);
   _nightSkyDrawSkyMapBodyLabels(ctx, layout);
 }
@@ -2098,13 +2100,20 @@ if (_nightSkyPlanetZoomEl) {
 }
 // Shown/hidden alongside the rest of this sub-mode's own state - see _nightSkyCommitSubmode() and
 // enterNightSky()/exitNightSky() below.
+// The RA/Dec picker serves Planetarium and Globe (render-nightsky-globe.js); a switch between the
+// two drops it, since a lock means something different in each.
+let _nightSkyPickerSubmode = null;
 function _nightSkyUpdatePlanetControlsVisibility() {
-  const shown = nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'planetarium';
+  const vis = nightSkyActive && nightSkyTopView === 'visualization';
+  const shown = vis && nightSkySubmode === 'planetarium';
+  const pickerShown = vis && (nightSkySubmode === 'planetarium' || nightSkySubmode === 'globe');
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
   if (ctl) ctl.style.display = shown ? 'flex' : 'none';
-  document.getElementById('btnNightSkyPicker').style.display = shown ? 'flex' : 'none';
-  if (!shown) _nightSkyPickerSetActive(false);
+  document.getElementById('btnNightSkyPicker').style.display = pickerShown ? 'flex' : 'none';
+  if (!pickerShown || _nightSkyPickerSubmode !== nightSkySubmode) _nightSkyPickerSetActive(false);
+  _nightSkyPickerSubmode = pickerShown ? nightSkySubmode : null;
   if (typeof _nightSkyUpdateMap3DControls === 'function') _nightSkyUpdateMap3DControls();   // Sky Map's 3D switch (render-nightsky-3d.js)
+  if (typeof _nsGlobeSyncUI === 'function') _nsGlobeSyncUI();   // Globe's controls (render-nightsky-globe.js)
 }
 
 // Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
@@ -2777,7 +2786,6 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
   const showEcliptic = document.getElementById('chkNightSkyEcliptic').checked;
-  const showHorizon = document.getElementById('chkNightSkyHorizon').checked;
   const showLines = document.getElementById('chkNightSkyLines').checked;
   const showNames = document.getElementById('chkNightSkyNames').checked;
   const showStars = document.getElementById('chkNightSkyStars').checked;
@@ -2796,7 +2804,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
   _nightSkyDrawPlanetPlanets(ctx, layout, 'front');
   if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
-  if (showHorizon) _nightSkyDrawPlanetHorizon(ctx, layout);
+  _nightSkyDrawPlanetHorizon(ctx, layout);   // always (no Display switch since build 46_1)
   _nightSkyDrawPlanetGridLabels(ctx, layout);
   _nightSkyDrawPlanetBodyLabels(ctx, layout);
   _nightSkyPickerDrawMarker(ctx, layout);
@@ -2897,6 +2905,7 @@ function _nightSkyLatSigned() {
 }
 // Canvas pointer event -> {az, el, ra, dec} under it, or null outside the projected sphere.
 function _nightSkyPickerHit(e) {
+  if (nightSkySubmode === 'globe') return _nsGlobePickerHit(e);   // render-nightsky-globe.js
   const cv = document.getElementById('nightSkyCanvas');
   const dpr = cv._res || 1, rect = cv.getBoundingClientRect();
   const layout = _nightSkyPlanetLayout(cv.width / dpr, cv.height / dpr);
@@ -2910,6 +2919,7 @@ function _nightSkyPickerPick(e) {
   const hit = _nightSkyPickerHit(e);
   if (!hit || hit.el < 0) return;   // only above the horizon
   _nightSkyPicker.lock = { ra: hit.ra, dec: hit.dec };
+  if (nightSkySubmode === 'globe') _nsGlobePickerRetarget();   // hold it where it was clicked
   document.getElementById('nightSkyPickerBox').style.display = 'none';
   drawNightSky();
 }
@@ -2949,6 +2959,7 @@ function _nightSkyPickerElAt(jd) {
 // locked point is still at or above the horizon (bisected to ~0.1 s) and stopped:true when it cut
 // the step short; without a lock (or if the point is somehow already below), jdTo unchanged.
 function _nightSkyPickerClampJD(jdFrom, jdTo) {
+  if (nightSkySubmode === 'globe') return { jd: jdTo, stopped: false };   // no horizon to stop at there
   if (!_nightSkyPicker.lock || _nightSkyPickerElAt(jdTo) >= 0) return { jd: jdTo, stopped: false };
   if (_nightSkyPickerElAt(jdFrom) < 0) return { jd: jdTo, stopped: false };
   let lo = jdFrom, hi = jdTo;   // el(lo) >= 0 > el(hi)
@@ -2992,7 +3003,7 @@ function _nightSkyPickerDrawMarker(ctx, layout) {
 (function () {
   const cv = document.getElementById('nightSkyCanvas'), box = document.getElementById('nightSkyPickerBox');
   cv.addEventListener('pointermove', (e) => {
-    if (!_nightSkyPicker.active || nightSkySubmode !== 'planetarium') return;
+    if (!_nightSkyPicker.active || (nightSkySubmode !== 'planetarium' && nightSkySubmode !== 'globe')) return;
     const hit = _nightSkyPickerHit(e);
     if (!hit || hit.el < 0) { box.style.display = 'none'; return; }
     box.innerHTML = 'RA&nbsp; ' + _nightSkyFmtRaHMS(hit.ra) + '<br>Dec ' + _nightSkyFmtDecDMS(hit.dec)
@@ -3059,7 +3070,8 @@ function _nightSkyClearReadout() {
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const w = cv.width / dpr, h = cv.height / dpr;
     const layout = nightSkySubmode === 'planetarium' ? _nightSkyPlanetLayout(w, h) : _nightSkyLayout(w, h);
-    const hit = nightSkySubmode === 'planetarium' ? _nightSkyPlanetPixelToAzEl(layout, px, py)
+    const hit = nightSkySubmode === 'globe' ? null   // a globe point is a place on Earth, not a sky direction
+      : nightSkySubmode === 'planetarium' ? _nightSkyPlanetPixelToAzEl(layout, px, py)
       : (nightSkyMap3DOn && _nightSky3DLayout) ? _skyMap3DPixelToAzEl(_nightSky3DLayout, px, py)   // Sky Map 3D
       : _nightSkyPixelToAzEl(layout, px, py);
     // With a picker lock, the readout falls back to the locked point whenever the cursor is off
@@ -3088,7 +3100,10 @@ function drawNightSky() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  if (nightSkySubmode === 'skymap') {
+  if (nightSkySubmode === 'globe') {   // render-nightsky-globe.js
+    document.getElementById('nightSkyFrameThumb').style.display = 'none';
+    _nightSkyDrawGlobe(ctx, w, h);
+  } else if (nightSkySubmode === 'skymap') {
     // The catalog frame/thumbnail are Planetarium-only (Sky Map has no equivalent "camera looking
     // in one direction" concept to center on) - hide the thumbnail rather than leave it stuck
     // showing a stale position from the last Planetarium draw.
@@ -3117,5 +3132,5 @@ document.getElementById('btnModeNightSky').addEventListener('click', () => {
 
 // Display checkboxes just redraw - no state beyond their own checked value (read directly in
 // drawNightSky() each time), same "read the checkbox live" approach as Eclipse's Display section.
-['chkNightSkyStars', 'chkNightSkyLines', 'chkNightSkyNames', 'chkNightSkyGrid', 'chkNightSkyEquatorial', 'chkNightSkyEcliptic', 'chkNightSkyHorizon']
+['chkNightSkyStars', 'chkNightSkyLines', 'chkNightSkyNames', 'chkNightSkyGrid', 'chkNightSkyEquatorial', 'chkNightSkyEcliptic']
   .forEach(id => document.getElementById(id).addEventListener('change', () => { if (nightSkyActive) drawNightSky(); }));

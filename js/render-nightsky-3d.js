@@ -6,8 +6,9 @@
 // Display checkboxes are disabled meanwhile). The Sun and the Moon (each with its Display
 // checkbox): an axis from the centre (the observer) to the body on the sphere, the disc there, and
 // with "Sun's path" / "Moon's path" on, the arc of the current pass on the sphere. The planets
-// (Display "Planets"): their dots only, no axis, depth-ordered against the Sun as in the Sky Map. The Az/Alt grid, Horizon, Equatorial grid and
-// Ecliptic checkboxes keep working; with the Equatorial grid on, the Earth's axis is drawn through
+// (Display "Planets"): their dots only, no axis, depth-ordered against the Sun as in the Sky Map.
+// The horizon ring is always drawn; the Az/Alt grid, Equatorial grid and Ecliptic checkboxes keep
+// working; with the Equatorial grid on, the Earth's axis is drawn through
 // the centre to the celestial poles. The camera (orbit angle and zoom) is the same object as the
 // Analyzer's Sky Map 3D - the two views are never on screen together.
 
@@ -127,7 +128,7 @@ function _nightSkyDrawSkyMap3D(ctx, w, h) {
   _skyMap3DDrawFloorAndCompass(ctx, layout, pal, lt);
   _nightSky3DDrawShell(ctx, layout, pal.shell);
 
-  if (chk('chkNightSkyHorizon')) {
+  {   // the horizon ring, always
     const pts = []; for (let az = 0; az <= 360; az += 5) pts.push(_skyMap3DProject(layout, az, 0));
     ctx.lineWidth = 1.5; ctx.setLineDash([]);
     _skyMap3DStrokePolyline(ctx, pts, pal.rim);
