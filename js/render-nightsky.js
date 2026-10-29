@@ -1777,7 +1777,129 @@ const NIGHTSKY_ATM_CURVE = [[0, -5], [-1, -2], [-3, 0.5], [-6, 2.5], [-9, 4], [-
 const NIGHTSKY_ATM_FADE = 0.5;   // mag: an object this much fainter than the sky's limit fades in
 function _nightSkyAtmLimit() {
   if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return Infinity;
-  const h = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el;
+  const lm = _nightSkyTwilightLM(_nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el);
+  const e = _nightSkySolarEclipse();
+  if (!e || lm === Infinity) return lm;
+  // a solar eclipse dims the daylit sky by the zenith's factor (_nightSkySolarEclipse's sky)
+  const lme = _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(Math.min(lm, NIGHTSKY_MAG_LIMIT_OFF))) * e.sky));
+  return lme > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : lme;
+}
+// A solar eclipse from Night Sky's own positions (the topocentric, refracted Sun and Moon of the
+// drawing): null without an overlap, else {O, U, d, rs, rm, total, annular, w, T, sky, grid, sun, moon}.
+//  - O the share of the Sun's disc covered (two-circle overlap, the formula of the Eclipse mode),
+//    U = 1 − O the share still shining.
+//  - sky: the factor on the daylit sky's brightness at the zenith, grid: the same for every direction
+//    (_nightSkyEclSkyAt). The sky in a direction is lit by the air along the line of sight, and that
+//    air by what is left of the Sun where it is: the factor is the share of the Sun's disc uncovered
+//    at NIGHTSKY_ECL_LOS points along the line of sight (equal shares of the air column, weighted by
+//    density, scale height NIGHTSKY_ECL_H; at the horizon they reach ~600 km out, overhead only the
+//    air right above), averaged, but at least NIGHTSKY_ECL_SKY_FLOOR (the light scattered on into the
+//    shadow and the corona). The Sun's share at a point comes from the Moon's parallax: moved by D,
+//    the observer sees the Moon at the direction of dist·m − D, the Sun stays put. So the Moon's
+//    shadow, 100-250 km across and racing east at 0.5-1 km/s, darkens the horizon on its side first,
+//    sweeps over the zenith at second contact and leaves on the other side; in totality the sky is
+//    darkest overhead and brightest low where the shadow's edge is nearest. Through the log of the
+//    colour ramp and the limiting magnitude this barely shows until ~90 % (2.5 mag) and darkens
+//    fast over the last per cent; in totality the zenith drops ~7 mag, as bright as the sky at the
+//    end of civil twilight, with the planets out and the brightest stars only faintly (limit ~1.9:
+//    the eye, adapted to daylight minutes before, sees the Plough's stars at best barely), the
+//    horizon brighter still.
+//  - w (°): with the Moon the larger, the width of the Sun's crescent left, d − (rm − rs): > 0 before
+//    second contact, < 0 inside totality (its depth); T 0..1, totality coming on over the last
+//    NIGHTSKY_ECL_RAMP·rs of crescent (~40 s): the corona, the horizon glow.
+const NIGHTSKY_ECL_SKY_FLOOR = 1.5e-3, NIGHTSKY_ECL_RAMP = 0.03;
+const NIGHTSKY_ECL_H = 8, NIGHTSKY_ECL_LOS = 8, NIGHTSKY_ECL_AZ = 36;   // km, points, azimuths (10°)
+const NIGHTSKY_ECL_EL = [0, 1, 2, 3, 5, 7, 10, 14, 19, 25, 32, 40, 50, 62, 76, 90];
+let _nsEclLos = null;
+// Per altitude of NIGHTSKY_ECL_EL: the distances (km) along the line of sight that split the air
+// column into NIGHTSKY_ECL_LOS equal shares, the middle of each (height l·sin el + (l·cos el)²/2R).
+function _nightSkyEclLos() {
+  if (_nsEclLos) return _nsEclLos;
+  const R = 6371, dl = 0.25, N = NIGHTSKY_ECL_LOS;
+  _nsEclLos = NIGHTSKY_ECL_EL.map(el => {
+    const se = Math.sin(el * Math.PI / 180), ce = Math.cos(el * Math.PI / 180);
+    const cum = [0];
+    for (let l = dl; l <= 1500; l += dl) {
+      const z = l * se + (l * ce) ** 2 / (2 * R);
+      cum.push(cum[cum.length - 1] + Math.exp(-z / NIGHTSKY_ECL_H) * dl);
+    }
+    const W = cum[cum.length - 1], out = [];
+    for (let k = 0, i = 0; k < N; k++) {
+      while (cum[i] < (k + 0.5) / N * W) i++;
+      out.push(i * dl);
+    }
+    return out;
+  });
+  return _nsEclLos;
+}
+// The share of the Sun's disc (radius rs) covered by the Moon's (rm) at centre distance d (°).
+function _nightSkyDiscOverlap(d, rs, rm) {
+  if (d >= rs + rm) return 0;
+  if (d <= Math.abs(rs - rm)) return Math.min(1, (Math.min(rs, rm) / rs) ** 2);
+  const d1 = (d * d - rm * rm + rs * rs) / (2 * d), d2 = d - d1;
+  const area = rs * rs * Math.acos(Math.max(-1, Math.min(1, d1 / rs))) - d1 * Math.sqrt(Math.max(0, rs * rs - d1 * d1))
+             + rm * rm * Math.acos(Math.max(-1, Math.min(1, d2 / rm))) - d2 * Math.sqrt(Math.max(0, rm * rm - d2 * d2));
+  return Math.max(0, Math.min(1, area / (Math.PI * rs * rs)));
+}
+// The eclipse's sky factor in direction v (horizon frame), from e.grid (altitude nodes by azimuth).
+function _nightSkyEclSkyAt(e, v) {
+  const el = Math.asin(Math.max(0, Math.min(1, v[2]))) * 180 / Math.PI, E = NIGHTSKY_ECL_EL;
+  let ie = 0;
+  while (ie < E.length - 2 && el > E[ie + 1]) ie++;
+  const te = Math.min(1, (el - E[ie]) / (E[ie + 1] - E[ie]));
+  let fa = Math.atan2(v[0], v[1]) * 180 / Math.PI / (360 / NIGHTSKY_ECL_AZ);
+  if (fa < 0) fa += NIGHTSKY_ECL_AZ;
+  const a0 = Math.min(NIGHTSKY_ECL_AZ - 1, fa | 0), a1 = (a0 + 1) % NIGHTSKY_ECL_AZ, ta = fa - a0;
+  const g = e.grid, A = NIGHTSKY_ECL_AZ, r0 = ie * A, r1 = r0 + A;
+  return (g[r0 + a0] * (1 - ta) + g[r0 + a1] * ta) * (1 - te) + (g[r1 + a0] * (1 - ta) + g[r1 + a1] * ta) * te;
+}
+// Relative to the zenith (whose factor the twilight sky, _nightSkyAtmState().twiNL, already holds),
+// to the power NIGHTSKY_ECL_DIR_GAMMA: single scattering alone makes the shadow stand out far more
+// than it does on film and in reports, light scattered again from the sunlit air all round fills
+// it in, so the contrast between directions is halved in magnitudes (the zenith keeps its value).
+const NIGHTSKY_ECL_DIR_GAMMA = 0.5;
+function _nightSkyEclRatioAt(e, v) {
+  return e ? Math.pow(_nightSkyEclSkyAt(e, v) / e.sky, NIGHTSKY_ECL_DIR_GAMMA) : 1;
+}
+let _nsEclCache = { key: null, e: null };
+function _nightSkySolarEclipse() {
+  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  if (_nsEclCache.key === key) return _nsEclCache.e;
+  let e = null;
+  const sun = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const moon = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const rs = _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT), rm = _moonSemiDiamDeg(moon);
+  const a = _skyDomeUnitVec(sun.az, sun.el), b = _skyDomeUnitVec(moon.az, moon.el);
+  const d = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(a, b)))) * 180 / Math.PI;
+  if (d < rs + rm && sun.el > -2) {
+    const O = _nightSkyDiscOverlap(d, rs, rm);
+    const total = rm >= rs && d <= rm - rs, annular = rm < rs && d <= rs - rm;
+    const w = rm >= rs ? d - (rm - rs) : Infinity;
+    const T = rm >= rs ? Math.max(0, Math.min(1, 1 - w / (NIGHTSKY_ECL_RAMP * rs))) : 0;
+    const U = total ? 0 : 1 - O;
+    // the uncovered share at a point D (km, horizon frame) from here
+    const dm = moon.dist - 6378.14 * Math.sin(moon.el * Math.PI / 180);
+    const uAt = (D) => {
+      const mx = b[0] * dm - D[0], my = b[1] * dm - D[1], mz = b[2] * dm - D[2], ml = Math.hypot(mx, my, mz);
+      const dd = Math.acos(Math.max(-1, Math.min(1, (a[0] * mx + a[1] * my + a[2] * mz) / ml))) * 180 / Math.PI;
+      return rm >= rs && dd <= rm - rs ? 0 : 1 - _nightSkyDiscOverlap(dd, rs, rm);
+    };
+    const los = _nightSkyEclLos(), A = NIGHTSKY_ECL_AZ, grid = new Float32Array(NIGHTSKY_ECL_EL.length * A);
+    for (let ie = 0; ie < NIGHTSKY_ECL_EL.length; ie++) {
+      for (let ia = 0; ia < A; ia++) {
+        const v = _skyDomeUnitVec(ia * 360 / A, NIGHTSKY_ECL_EL[ie]);
+        let sum = 0;
+        for (const l of los[ie]) sum += uAt([l * v[0], l * v[1], l * v[2]]);
+        grid[ie * A + ia] = Math.max(NIGHTSKY_ECL_SKY_FLOOR, sum / los[ie].length);
+      }
+    }
+    e = { O, U, d, rs, rm, total, annular, w, T, sky: grid[(NIGHTSKY_ECL_EL.length - 1) * A], grid, sun, moon };
+  }
+  _nsEclCache = { key, e };
+  return e;
+}
+// The curve itself, for any Sun altitude h (°); also the Sky Dome's sky colour (render-skyglow.js).
+function _nightSkyTwilightLM(h) {
   const C = NIGHTSKY_ATM_CURVE;
   if (h >= C[0][0]) return C[0][1];
   for (let i = 1; i < C.length; i++) {
@@ -1869,7 +1991,8 @@ function _nightSkyAtmState() {
   const twiLM = _nightSkyAtmLimit();
   const sun = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))), moon: null,
-    sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el } };   // the Sun for the sky's colour (render-skyglow.js)
+    sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el },   // the Sun for the sky's colour (render-skyglow.js)
+    ecl: _nightSkySolarEclipse() };                             // a solar eclipse going on, or null
   const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   if (m.el > 0) {
     const alpha = Math.abs(_moonPhase(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).i);
@@ -1898,9 +2021,10 @@ function _nightSkyMoonNLAt(v, s, rhoMin) {
 function _nightSkyAtmLimitAt(v) {
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
-  if (!s.moon) return s.twiLM;
-  const lm = _nsLMFromB(_nsBFromNL(s.twiNL + _nightSkyMoonNLAt(v, s)));
-  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : Math.min(lm, s.twiLM);
+  if (!s.moon && !s.ecl) return s.twiLM;
+  // a solar eclipse: the twilight sky as bright as this direction's air is lit (_nightSkyEclSkyAt)
+  const lm = _nsLMFromB(_nsBFromNL(s.twiNL * _nightSkyEclRatioAt(s.ecl, v) + _nightSkyMoonNLAt(v, s)));
+  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : s.ecl ? lm : Math.min(lm, s.twiLM);
 }
 // Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
 // k·(X − 1) mag, X the airmass after Kasten & Young (1989), X = 1/(cos Z + 0.50572·(96.07995 − Z)^−1.6364),
@@ -2076,8 +2200,65 @@ document.getElementById('btnNightSkySunPath').addEventListener('click', () => {
 // Disc radius: a small fixed symbol in Sky Map, the true angular size in Planetarium (both rules
 // shared with the Moon - _nightSkyBodyMinR/_nightSkyPlanetDiscRadiusPx, render-moon.js, loaded
 // first). The glow scales with the disc, so at high zoom it doesn't hide how the Moon actually
-// overlaps the Sun. The Solargraph views keep their own 4.5px Sun.
+// overlaps the Sun. The Solargraph views keep their own 4.5px Sun. The glow is added to the sky
+// ('lighter' compositing), as light is: amber on the dark sky, a whitening halo on the bright day
+// sky of Atmosphere, where drawn over it the amber would only turn the blue grey. On the light
+// theme's white chart sky it is drawn over as before (added to white it would vanish).
 const NIGHTSKY_SUN_GLOW_RATIO = 25 / 8;
+// Refraction flattening of a disc of true semi-diameter semi (°) whose centre is at apparent altitude
+// elApp (°): the lower limb is lifted more than the upper one, so the vertical diameter shrinks to
+// (upper − lower apparent limb altitude) / (2·semi) of the horizontal, from the same refraction the
+// positions use (_skyRefractionDeg, core.js). About 0.8 with the centre on the horizon, 0.9 at
+// ~1.5°, 0.97 at ~5°, 1 high up.
+function _nightSkyRefrFlattening(elApp, semi) {
+  const hT = _skyTrueFromApparentEl(elApp);
+  const lo = hT - semi + _skyRefractionDeg(hT - semi), hi = hT + semi + _skyRefractionDeg(hT + semi);
+  return Math.max(0.5, Math.min(1, (hi - lo) / (2 * semi)));
+}
+// Screen angle (canvas, y down) of rising altitude at (az, el) in a view's projection.
+function _nightSkyUpAngle(project, az, el) {
+  const a = project(az, el), b = project(az, Math.min(89.9, el + 0.5));
+  return a && b ? Math.atan2(b.y - a.y, b.x - a.x) : -Math.PI / 2;
+}
+// Sets ctx to draw a disc centred on (0, 0) at (x, y), squashed to flat along upAngle.
+function _nightSkySquash(ctx, x, y, flat, upAngle) {
+  ctx.translate(x, y);
+  if (flat === undefined || flat >= 0.999) return;
+  ctx.rotate(upAngle); ctx.scale(flat, 1); ctx.rotate(-upAngle);
+}
+// The Sun's disc at (x, y), radius r px, altitude h°. With the real-sky colour on (Atmosphere, dark
+// theme, render-skyglow.js) it is drawn as the Sun looks: a bright disc in the Sun's own light
+// (warm white high, golden low, _glowSunTint) with a soft edge, its glow being the sky's aureole;
+// otherwise the chart symbol, an amber dot with a black rim and a small amber glow. flat (vertical /
+// horizontal, _nightSkyRefrFlattening) and upAngle (the screen direction of rising altitude) squash
+// the real disc along the vertical, as refraction does near the horizon.
+function _nightSkyPaintSun(ctx, x, y, r, h, flat, upAngle) {
+  if (typeof _glowShown === 'function' && _glowShown()) {
+    const c = _glowSunTint(h).map(Math.round);
+    // the photosphere with only a narrow soft limb (to 1.12 r): wider, it would show round a Moon
+    // that covers the Sun in an eclipse as a false ring; the glow beyond is the sky's aureole
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.12);
+    g.addColorStop(0, `rgb(${c[0]},${c[1]},${c[2]})`);
+    g.addColorStop(0.86, `rgb(${c[0]},${c[1]},${c[2]})`);
+    g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    _nightSkySquash(ctx, x, y, flat, upAngle);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return;
+  }
+  const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, glR);
+  glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
+  if (!document.body.classList.contains('light')) ctx.globalCompositeOperation = 'lighter';   // light adds (not on the white chart sky)
+  ctx.fillStyle = glow; ctx.fillRect(x - glR, y - glR, glR * 2, glR * 2);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#e8a020'; ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+}
 
 // The Moon's own Display toggles, same pattern as the Sun's just above: "Moon" (#chkNightSkyMoon,
 // on by default) and its "Moon's path" sub-option (#btnNightSkyMoonPath, off by default), shown only
@@ -2137,14 +2318,9 @@ function _nightSkyDrawSunDisc(ctx, layout) {
   const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, s.az, s.el);
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
-  const r = _nightSkyBodyMinR();
-  const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
-  const glow = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glR);
-  glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
-  ctx.fillStyle = glow; ctx.fillRect(pt.x - glR, pt.y - glR, glR * 2, glR * 2);
-  ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = '#e8a020'; ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  const prS = (az, el) => _skyDomePoint(layout.cx, layout.cy, layout.R, az, el);
+  _nightSkyPaintSun(ctx, pt.x, pt.y, _nightSkyBodyMinR(), s.el,
+    _nightSkyRefrFlattening(s.el, _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)), _nightSkyUpAngle(prS, s.az, s.el));
   ctx.restore();
 }
 
@@ -2745,13 +2921,8 @@ function _nightSkyDrawPlanetSun(ctx, layout) {
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
   ctx.globalAlpha = proj.alpha;
-  const glR = r * NIGHTSKY_SUN_GLOW_RATIO;
-  const glow = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, glR);
-  glow.addColorStop(0, 'rgba(232,160,32,0.60)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
-  ctx.fillStyle = glow; ctx.fillRect(proj.x - glR, proj.y - glR, glR * 2, glR * 2);
-  ctx.beginPath(); ctx.arc(proj.x, proj.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = '#e8a020'; ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  const prP = (az, el) => { const p = _nightSkyPlanetProject(layout, az, el); return p.visible ? p : null; };
+  _nightSkyPaintSun(ctx, proj.x, proj.y, r, s.el, _nightSkyRefrFlattening(s.el, semi), _nightSkyUpAngle(prP, s.az, s.el));
   ctx.restore();
 }
 

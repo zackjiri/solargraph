@@ -382,12 +382,9 @@ function _eclipseLabelBg(ctx, text, x, y, bgStyle) {
   ctx.fillRect(bx, by, w + padX * 2, lineH + padY * 2);
 }
 
-// Twilight sky background colour model - ported from Sky Map 3D's ambient sky colour
-// (_skyPlanetAmbientColorAt, render-skydome.js), which itself depends only on elevation (never
-// azimuth): blue by day, fading to near-black night, with a warm dusk/dawn band right at the
-// horizon. Kept as plain, canvas-free functions here (not shared with render-skydome.js) so this
-// file doesn't take on a load-order dependency on it - the palette/thresholds are copied verbatim.
-// Deliberately excludes the dome's separate sun-halo glow - only the sky colour itself is reused.
+// Twilight sky background colour model, by the Sun's elevation only (never azimuth): blue by day,
+// fading to near-black night, with a warm dusk/dawn band right at the horizon. Plain, canvas-free
+// functions kept in this file, so it takes on no load-order dependency.
 function _eclipseLerp3(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]; }
 // Blue-by-elevation base colour: pale/hazy near the horizon, deeper blue toward the zenith.
 function _eclipseShellColorAt(elDeg) {
@@ -590,8 +587,7 @@ function drawEclipse(t, canvasEl, updateReadout = true) {
   // position and by the code below it.
   const circ = _eclipseLocalCirc(t);
 
-  // Twilight sky background - same palette/thresholds as Sky Map 3D's ambient sky colour
-  // (_eclipseAmbientColorAt below, ported from _skyPlanetAmbientColorAt in render-skydome.js).
+  // Twilight sky background (_eclipseAmbientColorAt above).
   // Blue stays blue through the day and only tunes into the dusk palette near the horizon - the
   // Sun's own glow/halo is deliberately NOT reproduced here, just the sky colour itself. On top of
   // that, the eclipse's own phase dims the sky further (_eclipseBrightnessFactor), blending toward

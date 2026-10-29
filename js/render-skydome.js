@@ -2204,64 +2204,12 @@ function _skyDomePlanet3DStrokePolyline(ctx, pts, color) {
   if (!first) strokeSeg();
 }
 
-// ── Planetarium sky shell: sun halo + time-of-day ambient (mirrors Sky Map 3D's cladding, but
-// driven by the sun's actual current position instead of a fixed daytime gradient) ──────────────
-// Two independent effects, layered:
-//  1. A halo around the sun itself - a soft white glow right at the sun, fading over ~10° to the
-//     ambient sky colour (both requirements from the brief: "bílá záře kolem Slunce" + "gradient
-//     do 10 stupňů do polední modré"). Drawn as its own canvas radial gradient centred on the
-//     sun's projected position, NOT baked into the shell mesh below - the mesh patches are ~2-4°
-//     wide, too coarse to approximate a falloff that's centred on an arbitrary point and changes
-//     over the same ~10° span without visible banding, whereas a radial gradient is perfectly
-//     smooth at any resolution.
-//  2. The ambient sky itself, which depends only on elevation (not azimuth - see
-//     _skyPlanetAmbientColorAt) and on how high the sun currently is: normal daytime blue
-//     (_skyMap3DShellColorAt, reused as-is) fades down through a warm dusk/dawn tint - hugging the
-//     horizon, per the brief's "gradient u nízkých elevací, kdy působí vliv atmosféry" - into a
-//     dark night sky as the sun crosses into astronomical twilight (reusing render-sungraph.js's
-//     own _SG_THRESH.astro=-18° for the same "fully dark" cutoff the rest of the app already uses).
-//     Because this stays azimuth-independent, the existing per-patch linear-gradient trick (exact
-//     colour match at every patch's shared edge, see _skyMap3DDrawShell) still applies unchanged.
-function _lerp3(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
-// 0 once the sun is in astronomical twilight or below, 1 once it's comfortably risen (+10°).
-function _skyDaylightFactor(sunElDeg) {
-  return Math.max(0, Math.min(1, (sunElDeg - _SG_THRESH.astro) / (10 - _SG_THRESH.astro)));
-}
-// Peaks (1) with the sun sitting right on the horizon, fades to 0 by ±18° either way - the window
-// a real sunrise/sunset's warm colours actually show.
-function _skyDuskFactor(sunElDeg) {
-  return Math.max(0, Math.min(1, 1 - Math.abs(sunElDeg) / 18));
-}
-function _skyPlanetAmbientColorAt(elDeg, sunElDeg) {
-  const dayCol = _skyMap3DShellColorAt(elDeg);
-  const nightCol = [6, 10, 24];
-  let col = _lerp3(nightCol, dayCol, _skyDaylightFactor(sunElDeg));
-  const horizonBand = Math.max(0, Math.min(1, 1 - elDeg / 22));
-  const glowStrength = _skyDuskFactor(sunElDeg) * horizonBand * 0.55;
-  return _lerp3(col, [235, 140, 70], glowStrength);
-}
-
-// The ambient sky is coloured per pixel into a small offscreen buffer and drawn scaled up in one
-// drawImage, instead of a mesh of gradient-filled patches. Every buffer pixel inverts the fisheye
-// projection (as _skyDomePlanet3DPixelToAzEl does) to its view direction; only the direction's
-// vertical component sin(el) matters, since the colour depends just on elevation and the sun's
-// elevation (see above). The trig is all in lookup tables: sin(θ)/θ and cos(θ) by the angle θ from
-// the view centre (fixed), and the colour by sin(el) (rebuilt each frame for the current sun). The previous mesh (~2000 patches of 4°, each with its own
-// CanvasGradient, fill and seam-hiding stroke) took ~60 ms/frame at 1440x900, most of a Planetarium
-// frame; this takes a few ms and has no patch seams at all. The colour field is smooth, so the
-// browser's bilinear upscale hides the coarse buffer completely.
-const SKY_PLANET3D_SHELL_PX = 3;            // canvas px per buffer px
-const SKY_PLANET3D_SHELL_PX_INTERACT = 4;   // while dragging/pinching (_skyDomePlanet3DInteracting)
-const _skyPlanetShellBuf = { canvas: null, ctx: null, img: null };
-const SKY_PLANET3D_SHELL_THETA_N = 4096, SKY_PLANET3D_SHELL_SIN_N = 4096;
-const _skyPlanetShellTheta = (() => {   // [sin(θ)/θ, cos(θ)] for θ in [0, PLANET3D_FADE_OUTER]
-  const t = new Float64Array((SKY_PLANET3D_SHELL_THETA_N + 1) * 2);
-  for (let n = 0; n <= SKY_PLANET3D_SHELL_THETA_N; n++) {
-    const th = n / SKY_PLANET3D_SHELL_THETA_N * PLANET3D_FADE_OUTER;
-    t[n * 2] = n ? Math.sin(th) / th : 1; t[n * 2 + 1] = Math.cos(th);
-  }
-  return t;
-})();
+// ── Planetarium sky shell: the sky's colour + the glow round the sun ─────────────────────────
+// The sky itself is Night Sky's sky model (render-skyglow.js, _glowDrawSkyDomePlanet): colour from
+// the sky brightness for the sun's altitude (day, golden hour, twilight with its warm glow over the
+// sun, the Earth's shadow and the Belt of Venus opposite it, night), read per pixel from a table
+// fixed to the sky, with the sun's aureole (the scattered light climbing steeply towards the sun)
+// as in Night Sky. The sun's own marker stays the solargraph's.
 // Clips ctx to the sky side of the horizon. Along a ray from the view centre at screen angle φ,
 // the view direction at angle θ from the centre has vertical component
 //   sin(el) = A·sin θ + B·cos θ,  A = cos φ·RIGHT.z + sin φ·UP.z,  B = FWD.z,
@@ -2291,79 +2239,10 @@ function _skyDomePlanet3DClipAboveHorizon(ctx, layout) {
 }
 function _skyDomePlanet3DDrawShell(ctx, layout, sunAz, sunEl, W, H) {
   // Wired to the same "cladding" checkbox as the 3D Model theater's cylinder cladding and Sky Map
-  // 3D's own shell (#chkCladding/show3DCladding, render-3d.js) - off hides this ambient sky fill
-  // entirely, mirroring what that checkbox already does in the other two views.
+  // 3D's own shell (#chkCladding/show3DCladding, render-3d.js) - off hides this sky fill entirely,
+  // mirroring what that checkbox already does in the other two views.
   if (typeof show3DCladding !== 'undefined' && !show3DCladding) return;
-  const step = _skyDomePlanet3DInteracting ? SKY_PLANET3D_SHELL_PX_INTERACT : SKY_PLANET3D_SHELL_PX;
-  const bw = Math.ceil(W / step), bh = Math.ceil(H / step);
-  const B = _skyPlanetShellBuf;
-  if (!B.canvas) { B.canvas = document.createElement('canvas'); B.ctx = B.canvas.getContext('2d'); }
-  if (B.canvas.width !== bw || B.canvas.height !== bh) {
-    B.canvas.width = bw; B.canvas.height = bh;
-    B.img = B.ctx.createImageData(bw, bh);
-  }
-  const d = B.img.data;
-
-  // colour by sin(el) for the current sun, sin(el) in [0, 1]
-  const SN = SKY_PLANET3D_SHELL_SIN_N, lut = new Uint8ClampedArray((SN + 1) * 3);
-  for (let n = 0; n <= SN; n++) {
-    const c = _skyPlanetAmbientColorAt(Math.asin(n / SN) * 180 / Math.PI, sunEl);
-    lut[n * 3] = c[0]; lut[n * 3 + 1] = c[1]; lut[n * 3 + 2] = c[2];
-  }
-  const TH = _skyPlanetShellTheta, thScale = SKY_PLANET3D_SHELL_THETA_N / PLANET3D_FADE_OUTER;
-
-  const inv = 1 / (layout.scale * _skyDomePlanet3D.FOCAL);   // canvas px -> image-plane angle (rad)
-  const R = _skyDomePlanet3D.RIGHT, U = _skyDomePlanet3D.UP, F = _skyDomePlanet3D.FWD;
-  const fadeSpan = PLANET3D_FADE_OUTER - PLANET3D_FADE_INNER;
-  // The buffer keeps the sky colour a little below the horizon (1.5 buffer px, in sin(el) ~ el
-  // radians) and the crisp edge comes from clipping the upscaled image to the horizon below, so the
-  // bilinear upscale never blurs the edge.
-  const belowHorizon = -1.5 * step * inv;
-  for (let j = 0; j < bh; j++) {
-    const sy = -((j + 0.5) * step - layout.cy) * inv;
-    let o = j * bw * 4;
-    for (let i = 0; i < bw; i++, o += 4) {
-      const sx = ((i + 0.5) * step - layout.cx) * inv;
-      const theta = Math.sqrt(sx * sx + sy * sy);
-      if (theta >= PLANET3D_FADE_OUTER) { d[o + 3] = 0; continue; }
-      const t2 = (theta * thScale) << 1, k = TH[t2];
-      const vz = sx * k * R[2] + sy * k * U[2] + TH[t2 + 1] * F[2];   // sin(el)
-      if (vz < belowHorizon) { d[o + 3] = 0; continue; }   // below the horizon: left to the background
-      const fade = theta <= PLANET3D_FADE_INNER ? 1 : 1 - (theta - PLANET3D_FADE_INNER) / fadeSpan;
-      const n = vz >= 1 ? SN : vz <= 0 ? 0 : (vz * SN + 0.5) | 0;
-      d[o] = lut[n * 3]; d[o + 1] = lut[n * 3 + 1]; d[o + 2] = lut[n * 3 + 2];
-      d[o + 3] = 255 * fade;
-    }
-  }
-  B.ctx.putImageData(B.img, 0, 0);
-  ctx.save();
-  _skyDomePlanet3DClipAboveHorizon(ctx, layout);
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(B.canvas, 0, 0, bw * step, bh * step);
-  ctx.restore();
-
-  // Sun halo overlay - only while the sun is above (or just below) the horizon; a sun deep in
-  // astronomical twilight isn't lighting the sky enough to show one.
-  if (sunEl > -20) {
-    const sunPt = _skyDomePlanet3DProject(layout, sunAz, sunEl);
-    if (sunPt.visible !== false) {
-      // Radius of the ~10° falloff in *screen* pixels at the sun's current position - measured
-      // directly (project a point 10° away and take the on-screen distance) rather than assumed
-      // constant, since the fisheye mapping's pixels-per-degree isn't uniform across the frame.
-      const abovePt = _skyDomePlanet3DProject(layout, sunAz, Math.min(90, sunEl + 10));
-      const radiusPx = Math.max(8, abovePt.visible !== false
-        ? Math.hypot(abovePt.x - sunPt.x, abovePt.y - sunPt.y)
-        : layout.scale * 0.3);
-      const haloCore = _lerp3([255, 150, 60], [255, 255, 255], _skyDaylightFactor(sunEl));
-      const haloStrength = Math.max(0, Math.min(1, (sunEl + 20) / 20));
-      const grad = ctx.createRadialGradient(sunPt.x, sunPt.y, 0, sunPt.x, sunPt.y, radiusPx);
-      grad.addColorStop(0,    `rgba(${haloCore[0] | 0},${haloCore[1] | 0},${haloCore[2] | 0},${(0.95 * haloStrength).toFixed(3)})`);
-      grad.addColorStop(0.35, `rgba(${haloCore[0] | 0},${haloCore[1] | 0},${haloCore[2] | 0},${(0.55 * haloStrength).toFixed(3)})`);
-      grad.addColorStop(1,    `rgba(${haloCore[0] | 0},${haloCore[1] | 0},${haloCore[2] | 0},0)`);
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, radiusPx, 0, Math.PI * 2); ctx.fill();
-    }
-  }
+  _glowDrawSkyDomePlanet(ctx, layout, sunAz, sunEl, W, H);   // render-skyglow.js
 }
 
 // ── Planetarium "render image" (pilot): warp the calibrated photo onto the sky dome ────────────

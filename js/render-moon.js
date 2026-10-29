@@ -435,6 +435,246 @@ function _moonDrawDisc(ctx, x, y, r, k, brightAngle, shadow) {
   ctx.strokeStyle = c.outline; ctx.lineWidth = 1; ctx.stroke();
   ctx.restore();
 }
+// ── The Moon as it looks (Atmosphere on, dark theme: render-skyglow.js _glowShown) ─────────────
+// Instead of the chart disc, every pixel of the disc is worked out from the real geometry: the
+// point of the Moon's sphere it shows (normal N, from the screen offset and the line of sight m),
+// lit from the Sun's actual direction. So the terminator, the tilt of the phase and its mirror image
+// in the flat Sky Map all come out by themselves.
+//  - Brightness by the Lommel-Seeliger law the Moon follows, 2·μ0/(μ0 + μ) (μ0 = N·sun, μ = N
+//    towards the observer): a nearly flat disc that only darkens near the terminator, not a shaded
+//    ball; a soft terminator over a few degrees of μ0.
+//  - Albedo from NASA's map in a 256 × 128 thumbnail of the Globe's (data/moon/lroc_color_256.jpg,
+//    13.7 KB; the disc is at most ~38 px across, ~4.7° of longitude a pixel, the thumbnail 1.4° a
+//    texel), oriented by the Globe's IAU rotation model with libration (_nsGlobeMoonFrame), the maria
+//    ~55 % darker than the highlands (MOON_REAL_ALBEDO_LO); a plain disc until it has loaded.
+//  - The unlit part is left out (the sky shows through) but for earthshine, sunlight sent back by
+//    the Earth: uniform over the dark side, MOON_REAL_EARTHSHINE·(1 − k)³ of the lit side's
+//    brightness, so plain on a thin crescent, barely there by first quarter (next to the bright
+//    half the eye does not see it) and gone by full moon.
+//  - Colour of the moonlight by altitude: silvery white high up, yellow to orange low (light through
+//    more air), as the Sun's (_glowSunTint) but paler.
+//  - Laid on the sky as light ('screen' blending, which on a dark sky is nearly adding, but keeps a
+//    low Moon's colour instead of burning it out to white on a twilight sky): bright at night, pale
+//    in daylight; the earthshine shows only on a dark enough sky.
+//  - Flattened by refraction near the horizon like the Sun (_nightSkyRefrFlattening), squashed along
+//    the screen's vertical.
+//  - In a lunar eclipse the direct light is the part of the Sun's disc left past the Earth's limb
+//    (a circular segment from 0 at the umbra's edge to the full disc at the penumbra's, as in
+//    _nightSkyMoonEclipseLight); in the umbra the light bent by the Earth's air, copper, coming up
+//    with the eclipse's depth (grey and faint while most of the disc is still lit, full copper in
+//    totality, as the Globe shows it).
+const MOON_REAL_ALBEDO_LO = 0.45, MOON_REAL_EARTHSHINE = 0.13;
+const MOON_REAL_HIGH = [236, 236, 228], MOON_REAL_LOW = [255, 205, 140], MOON_REAL_COPPER = [205, 78, 34];
+const _moonRealBuf = { canvas: null, ctx: null };
+// The thumbnail map, loaded once on first use: per texel an albedo 0..255, the luminance stretched
+// between its 2nd and 98th percentile (maria to highlands).
+let _moonMiniTex = null, _moonMiniLoading = false;
+function _moonLoadMini() {
+  if (_moonMiniTex || _moonMiniLoading) return;
+  _moonMiniLoading = true;
+  const img = new Image();
+  img.onload = () => {
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d'); c.drawImage(img, 0, 0);
+    const src = c.getImageData(0, 0, W, H).data, n = W * H;
+    const lum = new Float32Array(n);
+    for (let i = 0; i < n; i++) lum[i] = 0.2126 * src[i * 4] + 0.7152 * src[i * 4 + 1] + 0.0722 * src[i * 4 + 2];
+    const sorted = Float32Array.from(lum).sort();
+    const lo = sorted[Math.floor(0.02 * n)], hi = Math.max(lo + 1, sorted[Math.floor(0.98 * n)]);
+    const u = new Uint8Array(n);
+    for (let i = 0; i < n; i++) u[i] = Math.round(255 * Math.max(0, Math.min(1, (lum[i] - lo) / (hi - lo))));
+    _moonMiniTex = { w: W, h: H, u };
+    if (nightSkyActive) drawNightSky();
+  };
+  img.onerror = () => console.warn('Night Sky: failed to load the Moon thumbnail map');
+  img.src = 'data/moon/lroc_color_256.jpg';
+}
+function _moonRealTint(el) {
+  const t = Math.max(0, Math.min(1, el / 20));
+  return MOON_REAL_LOW.map((c, k) => c + t * (MOON_REAL_HIGH[k] - c));
+}
+// Horizon frame (x east, y north, z up) -> equator of date, for the place in Location now.
+function _moonHorizonToDate() {
+  const D2R = Math.PI / 180;
+  const latMag = LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT;
+  const phi = hemisphere * latMag * D2R;
+  const th = _skySiderealTimeHours(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, lonHemisphere * LONG) * 15 * D2R;
+  const sp = Math.sin(phi), cp = Math.cos(phi), st = Math.sin(th), ct = Math.cos(th);
+  const E = [-st, ct, 0], N = [-sp * ct, -sp * st, cp], Z = [cp * ct, cp * st, sp];
+  return (v) => [0, 1, 2].map(i => v[0] * E[i] + v[1] * N[i] + v[2] * Z[i]);
+}
+// Draws the Moon at screen point (x, y), radius r px. moon/sun: {az, el}; project(az, el) -> {x, y}
+// with the view's own projection; shadow: _moonShadowOnDisc's {dx, dy, rU, rP} or null.
+function _moonDrawReal(ctx, x, y, r, moon, sun, project, shadow) {
+  // refraction flattening near the horizon (render-nightsky.js), along the screen's vertical
+  const flat = _nightSkyRefrFlattening(moon.el, _moonSemiDiamDeg(moon)), up = _nightSkyUpAngle(project, moon.az, moon.el);
+  _moonLoadMini();
+  const D2R = Math.PI / 180;
+  const m = _skyDomeUnitVec(moon.az, moon.el), S = _skyDomeUnitVec(sun.az, sun.el);
+  // screen offsets of small steps in azimuth and altitude -> the sky tangent for a screen offset
+  const d = 0.2, c0 = project(moon.az, moon.el);
+  const pa = project(moon.az + d / Math.max(0.05, Math.cos(moon.el * D2R)), moon.el), pe = project(moon.az, moon.el + d);
+  if (!c0 || !pa || !pe) return;
+  const ea = [Math.cos(moon.az * D2R), -Math.sin(moon.az * D2R), 0];   // east-ward tangent (horizon frame)
+  const ee = _sd3Cross(ea, m);                                         // up-ward tangent (d m / d el)
+  const a11 = pa.x - c0.x, a21 = pa.y - c0.y, a12 = pe.x - c0.x, a22 = pe.y - c0.y, det = a11 * a22 - a12 * a21;
+  if (Math.abs(det) < 1e-9) return;
+  const toDate = _moonHorizonToDate();
+  const MT = _moonMiniTex, MF = MT ? _nsGlobeMoonFrame() : null;
+  const k = _moonPhase(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).k;
+  const shine = MOON_REAL_EARTHSHINE * Math.pow(1 - k, 3);
+  const tint = _moonRealTint(moon.el);
+  // eclipse depth: the share of the Moon's diameter inside the umbra
+  let tintVis = 0;
+  if (shadow) {
+    const dc = Math.hypot(shadow.dx, shadow.dy);
+    tintVis = Math.pow(Math.max(0, Math.min(1, (shadow.rU - (dc - r)) / (2 * r))), 3);
+  }
+  const copperI = 0.05 + 0.25 * tintVis;
+  const copper = [0, 1, 2].map(i => 150 + tintVis * (MOON_REAL_COPPER[i] - 150));
+  const R = Math.ceil(r) + 1, n = 2 * R;
+  const B = _moonRealBuf;
+  if (!B.canvas) { B.canvas = document.createElement('canvas'); B.ctx = B.canvas.getContext('2d'); }
+  if (B.canvas.width !== n || B.canvas.height !== n) { B.canvas.width = n; B.canvas.height = n; }
+  const img = B.ctx.createImageData(n, n), px = img.data;
+  for (let j = 0; j < n; j++) {
+    const oy = j + 0.5 - R;
+    for (let i = 0; i < n; i++) {
+      const ox = i + 0.5 - R, q = Math.hypot(ox, oy) / r;
+      const cover = Math.max(0, Math.min(1, (1 - q) * r + 0.5));   // anti-aliased limb
+      if (cover <= 0) continue;
+      const s = Math.min(1, q);
+      // sky tangent for this offset: solve [a11 a12; a21 a22]·[p q] = [ox oy]
+      const pp = (a22 * ox - a12 * oy) / det, qq = (a11 * oy - a21 * ox) / det;
+      let u = [pp * ea[0] + qq * ee[0], pp * ea[1] + qq * ee[1], pp * ea[2] + qq * ee[2]];
+      const ul = Math.hypot(u[0], u[1], u[2]);
+      u = ul > 1e-12 ? u.map(v => v / ul) : [0, 0, 0];
+      const cz = Math.sqrt(Math.max(0, 1 - s * s));
+      const N = [s * u[0] - cz * m[0], s * u[1] - cz * m[1], s * u[2] - cz * m[2]];
+      const mu = cz, mu0 = N[0] * S[0] + N[1] * S[1] + N[2] * S[2];
+      let alb = 1;
+      if (MT) {
+        const Nd = toDate(N);
+        const sl = Math.atan2(Nd[0] * MF.Y[0] + Nd[1] * MF.Y[1] + Nd[2] * MF.Y[2], Nd[0] * MF.X[0] + Nd[1] * MF.X[1] + Nd[2] * MF.X[2]) / D2R;
+        const sb = Math.asin(Math.max(-1, Math.min(1, Nd[0] * MF.Z[0] + Nd[1] * MF.Z[1] + Nd[2] * MF.Z[2]))) / D2R;
+        // bilinear between texels (the thumbnail is coarse enough for it to matter at full zoom)
+        const fx = ((sl + 180) / 360) * MT.w - 0.5, fy = Math.max(0, Math.min(MT.h - 1.001, ((90 - sb) / 180) * MT.h - 0.5));
+        const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+        const xa = (x0 + MT.w) % MT.w, xb = (x0 + 1) % MT.w, r0 = y0 * MT.w, r1 = r0 + MT.w;
+        const u2 = ((MT.u[r0 + xa] * (1 - tx) + MT.u[r0 + xb] * tx) * (1 - ty) + (MT.u[r1 + xa] * (1 - tx) + MT.u[r1 + xb] * tx) * ty) / 255;
+        alb = MOON_REAL_ALBEDO_LO + (1 - MOON_REAL_ALBEDO_LO) * u2;
+      }
+      // sunlit: Lommel-Seeliger with a soft terminator
+      const term = Math.max(0, Math.min(1, (mu0 + 0.03) / 0.06));
+      let lit = mu0 > -0.03 ? term * Math.min(1.25, 2 * Math.max(0.02, mu0) / (Math.max(0.02, mu0) + Math.max(0.05, mu))) : 0;
+      let direct = 1, refr = 0;
+      if (shadow && lit > 0) {
+        const ds = Math.hypot(ox - shadow.dx, oy - shadow.dy);
+        if (ds < shadow.rP) {
+          if (ds <= shadow.rU) { direct = 0; refr = 1; }
+          else {
+            const hh = 2 * (ds - shadow.rU) / (shadow.rP - shadow.rU);
+            direct = (Math.acos(1 - hh) - (1 - hh) * Math.sqrt(Math.max(0, 2 * hh - hh * hh))) / Math.PI;
+            refr = Math.max(0, 1 - (ds - shadow.rU) / (0.08 * (shadow.rP - shadow.rU)));
+          }
+        }
+      }
+      const a = 0.92 * alb;
+      const L = lit * direct, Lr = lit * refr * copperI, Le = (1 - term) * shine;
+      for (let c = 0; c < 3; c++) {
+        px[(j * n + i) * 4 + c] = Math.min(255, a * (tint[c] * (L + Le) + copper[c] * Lr));
+      }
+      px[(j * n + i) * 4 + 3] = 255 * cover;
+    }
+  }
+  B.ctx.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  _nightSkySquash(ctx, x, y, flat, up);
+  ctx.drawImage(B.canvas, -R, -R);
+  ctx.restore();
+}
+
+// ── A solar eclipse with the Moon drawn as it looks (Atmosphere) ──────────────────────────────
+// _nightSkySolarEclipse (render-nightsky.js) gives the overlap from Night Sky's own positions. The
+// Sun and the Moon share one degrees-to-pixels scale while they overlap (the Sun's drawn radius over
+// its semi-diameter), so a whole-sky view, where both are blown up to the minimum disc size, still
+// shows the true overlap: the Moon is drawn at the Sun plus its true offset times that scale, with
+// the radius it has on it. Then, in this order:
+//  - the corona (img/eclipse/corona.png, the Eclipse mode's, the Sun's limb at 135 of its 600 px)
+//    round the Sun, coming on with the totality factor T;
+//  - the Moon as a silhouette, filled with the sky's own colour behind it (_glowSkyColorAt), so it
+//    shows only where it covers the Sun, its aureole and the corona, darker in totality;
+//  - the diamond ring: the last bead of photosphere on the Sun's limb opposite the Moon's offset,
+//    a glare growing over the last 3 % of the Sun's radius of crescent (~40 s) and gone at second
+//    contact (the same in reverse at third);
+//  - the chromosphere: a thin pink arc on the Moon's limb on that side for the first and last few
+//    seconds of totality.
+// The disc is squashed by refraction like the Sun's (_nightSkySquash).
+const MOON_ECL_DIAMOND = 0.03, MOON_ECL_CHROMO = 0.012;
+const _moonCoronaImg = new Image();
+let _moonCoronaLoaded = false;
+function _moonEclipseDraw(ctx, e, sunX, sunY, rSun, x, y, r, flat, up) {
+  if (!_moonCoronaLoaded && !_moonCoronaImg.src) {
+    _moonCoronaImg.onload = () => { _moonCoronaLoaded = true; if (nightSkyActive) drawNightSky(); };
+    _moonCoronaImg.src = 'img/eclipse/corona.png';
+  }
+  if (e.T > 0 && _moonCoronaLoaded) {
+    const size = 600 * rSun / 135;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = e.T;
+    _nightSkySquash(ctx, sunX, sunY, flat, up);
+    ctx.drawImage(_moonCoronaImg, -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+  // the silhouette
+  const col = _glowSkyColorAt(_skyDomeUnitVec(e.moon.az, e.moon.el)).map(c => Math.round(c * (1 - 0.6 * e.T)));
+  ctx.save();
+  _nightSkySquash(ctx, x, y, flat, up);
+  ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+  ctx.beginPath(); ctx.arc(0, 0, r + 0.6, 0, Math.PI * 2); ctx.fill();   // +0.6 px: no anti-aliased seam of Sun
+  ctx.restore();
+  if (!(e.rm >= e.rs)) return;   // annular or partial: the ring or crescent is the Sun showing past the silhouette
+  let dx = sunX - x, dy = sunY - y;
+  const dl = Math.hypot(dx, dy);
+  if (dl < 1e-6) { dx = 0; dy = -1; } else { dx /= dl; dy /= dl; }
+  const tint = _glowSunTint(e.sun.el);
+  // the diamond ring
+  const fD = e.w > 0 ? Math.max(0, 1 - e.w / (MOON_ECL_DIAMOND * e.rs)) : 0;
+  if (fD > 0) {
+    const bx = sunX + dx * rSun, by = sunY + dy * rSun, gr = rSun * (0.4 + 1.6 * fD);
+    const g = ctx.createRadialGradient(bx, by, 0, bx, by, gr);
+    g.addColorStop(0, `rgba(255,255,255,${(0.95 * fD).toFixed(3)})`);
+    g.addColorStop(0.12, `rgba(${tint[0] | 0},${tint[1] | 0},${tint[2] | 0},${(0.75 * fD).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(255,240,220,0)');
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(bx, by, gr, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // the chromosphere
+  const c = MOON_ECL_CHROMO * e.rs, fC = Math.max(0, 1 - Math.abs(e.w + 0.3 * c) / c);
+  if (fC > 0) {
+    const a = Math.atan2(dy, dx);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    _nightSkySquash(ctx, x, y, flat, up);
+    ctx.strokeStyle = `rgba(255,70,120,${(0.85 * fC).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1.2, 0.05 * rSun);
+    ctx.beginPath(); ctx.arc(0, 0, r, a - 0.9, a + 0.9); ctx.stroke();
+    ctx.restore();
+  }
+}
+// Where and how large to draw the Moon in an eclipse: the shared scale above (sunPx, rSun as drawn,
+// pxPerDeg the view's true scale). Returns {x, y, r}.
+function _moonEclipsePlace(e, sunPx, rSun, moonPx, pxPerDeg) {
+  const S = rSun / e.rs, k = S / pxPerDeg;
+  return { x: sunPx.x + (moonPx.x - sunPx.x) * k, y: sunPx.y + (moonPx.y - sunPx.y) * k, r: e.rm * S };
+}
+
 // Earth's shadow over the disc (_moonShadowOnDisc), clipped to it: one radial gradient from the
 // shadow centre - deep blood-brown in the middle, blood-orange towards the umbra's edge, grey at the
 // edge itself, then the penumbra's faint grey fading out - semi-transparent, so it blends with the
@@ -469,7 +709,13 @@ function _nightSkyDrawMoonDisc(ctx, layout) {
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
   const r = _nightSkyBodyMinR();
-  _moonDrawDisc(ctx, pt.x, pt.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
+  const e = typeof _glowShown === 'function' && _glowShown() ? _nightSkySolarEclipse() : null;
+  if (e) {   // a solar eclipse: the Moon in the Sun's scale, its silhouette and totality's effects
+    const sp = project(sun.az, sun.el), pl = _moonEclipsePlace(e, sp, _nightSkyBodyMinR(), pt, layout.R / 90);
+    _moonEclipseDraw(ctx, e, sp.x, sp.y, _nightSkyBodyMinR(), pl.x, pl.y, pl.r,
+      _nightSkyRefrFlattening(moon.el, _moonSemiDiamDeg(moon)), _nightSkyUpAngle(project, moon.az, moon.el));
+  } else if (typeof _glowShown === 'function' && _glowShown()) _moonDrawReal(ctx, pt.x, pt.y, r, moon, sun, project, _moonShadowOnDisc(moon, r, project));
+  else _moonDrawDisc(ctx, pt.x, pt.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
   ctx.restore();
 }
 function _nightSkyDrawMoonPath(ctx, layout) {
@@ -502,7 +748,15 @@ function _nightSkyDrawPlanetMoon(ctx, layout) {
   _nightSkyClipToSky(ctx, layout);
   ctx.globalAlpha = proj.alpha;
   const r = _nightSkyPlanetDiscRadiusPx(layout, semi);
-  _moonDrawDisc(ctx, proj.x, proj.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
+  const e = typeof _glowShown === 'function' && _glowShown() ? _nightSkySolarEclipse() : null;
+  const sp = e ? project(sun.az, sun.el) : null;
+  if (e && sp) {   // a solar eclipse: the Moon in the Sun's scale, its silhouette and totality's effects
+    const rSun = _nightSkyPlanetDiscRadiusPx(layout, e.rs);
+    const pl = _moonEclipsePlace(e, sp, rSun, proj, _nightSkyPlanet3D.FOCAL * layout.scale * Math.PI / 180);
+    _moonEclipseDraw(ctx, e, sp.x, sp.y, rSun, pl.x, pl.y, pl.r,
+      _nightSkyRefrFlattening(moon.el, semi), _nightSkyUpAngle(project, moon.az, moon.el));
+  } else if (typeof _glowShown === 'function' && _glowShown()) _moonDrawReal(ctx, proj.x, proj.y, r, moon, sun, project, _moonShadowOnDisc(moon, r, project));
+  else _moonDrawDisc(ctx, proj.x, proj.y, r, k, _moonBrightLimbAngle(moon, sun, project), _moonShadowOnDisc(moon, r, project));
   ctx.restore();
 }
 // Same horizon-crossing construction as _nightSkyPlanetBuildSunPathPts, with the Moon's position,
