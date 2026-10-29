@@ -176,6 +176,68 @@ function _nsSgMoonlessSolarDay(year, d) {
   _nsSgMoonlessSolarCache = { key, ivs };
   return ivs;
 }
+// Galactic center: the parts of Moonless night (above) when the centre of the Milky Way (Sgr A*,
+// J2000 RA 17h45m40s, Dec −29°00′28″, precessed and refracted as a star, _skyStarAzEl) stands at
+// least 0°, 5° and 10° above the horizon - three nested levels, as the core is low and dimmed by the
+// air from mid-northern latitudes (from 49° N it culminates at only ~12°). Per local day: [ivs ≥0°,
+// ivs ≥5°, ivs ≥10°], each [[from, to], ...] in clock hours; its altitude sampled every 15 min,
+// crossings interpolated. Drawn over Moonless night in one warm hue, denser the higher the level,
+// so the best hours read as the strongest. Cached per year, place and Time zone.
+const NS_SG_GC = { ra: 266.41683, dec: -29.00781 };
+const NS_SG_GC_LEVELS = [0, 5, 10];
+const NS_SG_GC_RGB = [236, 204, 148];
+const NS_SG_GC_ALPHA = [0.32, 0.58, 0.88];
+let showNightSkyGalCenter = false;
+let _nsSgGcCache = { key: null, days: null, seasons: null };
+// Clock-hour intervals of one day starting at jd0 when the centre is at least each level high.
+function _nsSgGcUp(jd0) {
+  const n = Math.round(24 / NS_SG_MOON_STEP_H), out = NS_SG_GC_LEVELS.map(() => []);
+  const alt = (jd) => { const r = _skyFromJulianDateUT(jd); return _skyStarAzEl(NS_SG_GC.ra, NS_SG_GC.dec, r.year, r.month, r.day, r.hourUT).el; };
+  const a = [];
+  for (let s = 0; s <= n; s++) a.push(alt(jd0 + s * NS_SG_MOON_STEP_H / 24));
+  NS_SG_GC_LEVELS.forEach((lv, k) => {
+    let from = a[0] >= lv ? 0 : null;
+    for (let s = 1; s <= n; s++) {
+      if ((a[s - 1] >= lv) === (a[s] >= lv)) continue;
+      const hx = (s - 1 + (lv - a[s - 1]) / (a[s] - a[s - 1])) * NS_SG_MOON_STEP_H;
+      if (a[s] >= lv) from = hx; else { out[k].push([from, hx]); from = null; }
+    }
+    if (from !== null) out[k].push([from, 24]);
+  });
+  return out;
+}
+// Intervals a ∩ b.
+function _nsSgIntersect(a, b) {
+  const out = [];
+  for (const [p, q] of a) for (const [r, t] of b) { const lo = Math.max(p, r), hi = Math.min(q, t); if (hi - lo > 1e-6) out.push([lo, hi]); }
+  return out;
+}
+function _nsSgGcDays(year) {
+  const tz = _nightSkyTzHours();
+  const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
+  if (_nsSgGcCache.key === key) return _nsSgGcCache;
+  const N = _nsSgYearDays(year), moonless = _nsSgMoonlessDays(year);
+  const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;
+  const days = new Array(N + 1), seasons = NS_SG_GC_LEVELS.map(() => ({ first: null, last: null }));
+  for (let d = 1; d <= N; d++) {
+    days[d] = _nsSgGcUp(jan1 + d - 1).map(ivs => _nsSgIntersect(moonless[d], ivs));
+    days[d].forEach((ivs, k) => { if (ivs.length) { if (seasons[k].first === null) seasons[k].first = d; seasons[k].last = d; } });
+  }
+  _nsSgGcCache = { key, days, seasons };
+  return _nsSgGcCache;
+}
+// The same for the strip's SOLAR day: its Moonless night (_nsSgMoonlessSolarDay) at each level.
+function _nsSgGcSolarDay(year, d) {
+  const c = _nsSgDate(year, d);
+  const start = _skyToJulianDateUT(c.year, c.month, c.day, -_nsSgEotNoon(year, d) / 60 - lonHemisphere * LONG / 15);
+  const ml = _nsSgMoonlessSolarDay(year, d);
+  return _nsSgGcUp(start).map(ivs => _nsSgIntersect(ml, ivs));
+}
+function _nsSgGcFill(k, emph) {
+  const a = Math.min(1, NS_SG_GC_ALPHA[k] + (emph ? 0.12 : 0));
+  return `rgba(${NS_SG_GC_RGB[0]},${NS_SG_GC_RGB[1]},${NS_SG_GC_RGB[2]},${a})`;
+}
+
 // Light yellow, the Moon's own disc colour; denser the fuller it is, and stronger when the Sun is
 // off (strong) and its bands fade back.
 function _nsSgMoonFill(k, emph, strong) {
@@ -340,6 +402,128 @@ function _nsSgDrawQuarters(ctx, g, year) {
     _moonDrawDisc(ctx, x, y, r, k, angle, shadow);
   }
 }
+// ── Thin crescent around the new Moon (with the lunar calendar) ──────────────────────────────────
+// Odeh's criterion (2004, Experimental Astronomy 18, 39-64), fitted to 737 observations: at the best
+// time - sunset + 4/9 of the lag to moonset in the evening, sunrise - 4/9 of the lag from moonrise in
+// the morning (Yallop's) - from the topocentric, airless altitudes and elongation:
+//   ARCV = Moon's altitude − Sun's altitude,  W = crescent width (′) = SD′ · (1 − cos ARCL),
+//   V = ARCV − (−0.1018 W³ + 0.7319 W² − 6.3226 W + 7.1651)
+//   A  V ≥ 5.65            visible by the naked eye
+//   B  2.00 ≤ V < 5.65     visible with optical aid, could be seen by the naked eye
+//   C  −0.96 ≤ V < 2.00    visible with optical aid only
+//   D  V < −0.96           not visible even with optical aid (also a Moon setting before the Sun,
+//                          rising after it)
+// For every new Moon of the year: the evenings of the 0-3 days after it (sunset after the new Moon,
+// within 3.6 days) and the mornings of the 0-3 days before (sunrise before it); a new Moon between
+// sunrise and sunset gives its day both, two very young crescents. The marker sits at that day's
+// best time to look, in the twilight after sunset or before sunrise, in the zone's colour
+// (NS_SG_CRESCENT_COLORS); with no best time (the Moon down) on the sunset or sunrise. Moonset and moonrise
+// by the upper limb with refraction (_moonElevAtJD), found in 5-min steps and bisected.
+// Sunsets/sunrises from the app's shared Sun (_nightSkySunRiseSetOnLocalDay). Cached per year,
+// place and Time zone.
+const NS_SG_CRESCENT_COLORS = { A: '#50dc78', B: '#e8d040', C: '#e8902c', D: '#8a9098' };
+// One medal per series (the evenings after a new Moon, or the mornings before it): the youngest
+// crescent of the series that the eye can see (zone A or B), its metal by how young it is - gold
+// under 24 h (a rare chance; the naked-eye records are around 15 h), silver under 36 h, bronze under
+// 48 h, none older. Drawn as a ring round the marker in the metal's colour, set off by a dark edge,
+// the dot itself keeping its zone's colour; the legend's table repeats the marker.
+const NS_SG_CRESCENT_MEDALS = [[24, 'gold', '#f2c230'], [36, 'silver', '#d4dbe2'], [48, 'bronze', '#cd7f32']];
+// The zones in the observer's words: for the legend's table, and as a sentence for its tooltip.
+const NS_SG_CRESCENT_WORDS = { A: 'naked eye', B: 'binoculars, maybe naked eye', C: 'binoculars only', D: 'not visible' };
+const NS_SG_CRESCENT_WORDS_FULL = { A: 'naked eye', B: 'with binoculars, maybe the naked eye', C: 'with binoculars only', D: 'not visible' };
+const NS_SG_CRESCENT_MAX_DAYS = 3.6;
+let _nsSgCrescentCache = { key: null, list: null };
+function _nsSgCrescentZone(V) { return V >= 5.65 ? 'A' : V >= 2 ? 'B' : V >= -0.96 ? 'C' : 'D'; }
+// Odeh's V at the instant jd (UT), with the parts it is made of.
+function _nsSgCrescentV(jd) {
+  const r = _skyFromJulianDateUT(jd), D2R = Math.PI / 180;
+  const sun = _nightSkySunAzElTrue(r.year, r.month, r.day, r.hourUT), moon = _moonAzEl(r.year, r.month, r.day, r.hourUT);
+  const s = _skyDomeUnitVec(sun.az, sun.el), m = _skyDomeUnitVec(moon.az, moon.elTrue);
+  const arcl = Math.acos(Math.max(-1, Math.min(1, s[0] * m[0] + s[1] * m[1] + s[2] * m[2]))) / D2R;
+  const arcv = moon.elTrue - sun.el, W = _moonSemiDiamDeg(moon) * 60 * (1 - Math.cos(arcl * D2R));
+  const V = arcv - (-0.1018 * W ** 3 + 0.7319 * W ** 2 - 6.3226 * W + 7.1651);
+  return { V, arcv, arcl, W };
+}
+// The Moon's upper limb crossing the horizon from jd towards jd + dir·12 h (dir +1 forwards for the
+// evening's moonset, −1 backwards for the morning's moonrise); null if it is already below at jd.
+function _nsSgCrescentLimbCross(jd, dir) {
+  const el = (t) => _moonElevAtJD(t).el, step = 5 / 1440;
+  if (el(jd) < 0) return null;
+  let a = jd;
+  for (let i = 1; i <= 144; i++) {
+    const b = jd + dir * i * step;
+    if (el(b) < 0) {
+      let lo = a, hi = b;   // el(lo) >= 0 > el(hi)
+      for (let k = 0; k < 20; k++) { const mid = (lo + hi) / 2; if (el(mid) >= 0) lo = mid; else hi = mid; }
+      return (lo + hi) / 2;
+    }
+    a = b;
+  }
+  return null;
+}
+function _nsSgCrescents(year) {
+  const tz = _nightSkyTzHours();
+  const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
+  if (_nsSgCrescentCache.key === key) return _nsSgCrescentCache.list;
+  const N = _nsSgYearDays(year), list = [];
+  const localNoon = (d) => { const c = _nsSgDate(year, d); return _skyToJulianDateUT(c.year, c.month, c.day, 12) - tz / 24; };
+  const clockHour = (jd) => { const r = _skyFromJulianDateUT(jd + tz / 24); return r.hourUT; };
+  for (const nm of _nsSgQuarters(year)) {
+    if (nm.q !== 0) continue;
+    // the day of the new Moon itself has both: its morning if the new Moon comes after sunrise,
+    // its evening if it came before sunset
+    for (const [k, eve] of [[-3, false], [-2, false], [-1, false], [0, false], [0, true], [1, true], [2, true], [3, true]]) {
+      const d = nm.d + k;
+      if (d < 1 || d > N) continue;
+      const rs = _nightSkySunRiseSetOnLocalDay(localNoon(d));
+      const sun = eve ? rs.set : rs.rise;
+      if (!sun) continue;
+      const age = sun.jd - nm.jd;   // days from the new Moon, > 0 in the evening
+      if (eve ? (age <= 0 || age > NS_SG_CRESCENT_MAX_DAYS) : (age >= 0 || age < -NS_SG_CRESCENT_MAX_DAYS)) continue;
+      const moonJd = _nsSgCrescentLimbCross(sun.jd, eve ? 1 : -1);   // moonset after / moonrise before
+      let c = { V: -Infinity, arcv: null, arcl: null, W: null }, best = null, look = null;
+      if (moonJd !== null) {
+        best = sun.jd + (moonJd - sun.jd) * 4 / 9;
+        c = _nsSgCrescentV(best);
+        const b = _skyFromJulianDateUT(best), m = _moonAzEl(b.year, b.month, b.day, b.hourUT);
+        look = { hour: clockHour(best), az: m.az, el: m.el };   // where to look then (refracted)
+      }
+      list.push({ d, kind: eve ? 'eve' : 'morn', nm: nm.jd, hour: clockHour(sun.jd), age, best, look, zone: _nsSgCrescentZone(c.V), medal: null, ...c });
+    }
+  }
+  // the medal of each series: its youngest crescent seen by the eye (A, B)
+  const series = new Map();
+  for (const c of list) {
+    if (c.zone !== 'A' && c.zone !== 'B') continue;
+    const k = c.nm + c.kind, cur = series.get(k);
+    if (!cur || Math.abs(c.age) < Math.abs(cur.age)) series.set(k, c);
+  }
+  for (const c of series.values()) {
+    const m = NS_SG_CRESCENT_MEDALS.find(([h]) => Math.abs(c.age) * 24 < h);
+    if (m) c.medal = { name: m[1], color: m[2] };
+  }
+  _nsSgCrescentCache = { key, list };
+  return list;
+}
+function _nsSgDrawCrescents(ctx, g, year) {
+  const r = Math.max(3, 0.55 * _nightSkyBodyMinR());
+  ctx.save();
+  for (const c of _nsSgCrescents(year)) {
+    // at the best time to look; with none (the Moon sets before the Sun / rises after it) on the
+    // sunset / sunrise itself
+    const x = g.dayCenter(c.d), y = g.hourToY(c.look ? c.look.hour : c.hour);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = NS_SG_CRESCENT_COLORS[c.zone]; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+    if (c.medal) {   // the series' medal: a ring in its metal, set off by a dark edge
+      ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3.5; ctx.stroke();
+      ctx.strokeStyle = c.medal.color; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 // The instant (JD UT) of a solar eclipse's maximum seen from this place, near the new Moon jdNM,
 // with the Sun above the horizon (the Planetarium's rule, _nightSkyDiscAboveHorizon): the greatest
 // magnitude of the topocentric Moon against the Sun, searched over +-4 h in 1-min steps, then
@@ -426,6 +610,7 @@ function _nsSgSource() {
   const customOn = document.getElementById('chkNightSkyCustomDate').checked;
   const moonDays = moonOn ? _nsSgMoonDays(year) : null;
   const moonless = moonOn && showNightSkyMoonless ? _nsSgMoonlessDays(year) : null;
+  const gc = moonOn && showNightSkyGalCenter ? _nsSgGcDays(year) : null;   // within Moonless night
   const eotNoon = new Array(N + 2);
   const clock = (trueH, d, eot) => {
     if (eot === undefined) eot = eotNoon[d] !== undefined ? eotNoon[d] : (eotNoon[d] = _nsSgEotNoon(year, d));
@@ -454,7 +639,7 @@ function _nsSgSource() {
     drawMarkers: (sunOn || moonOn) ? (ctx, g) => {
       ctx.save();
       ctx.beginPath(); ctx.rect(g.px0, g.py0, g.pw, g.ph); ctx.clip();
-      if (moonOn && showNightSkyLunarCalendar) _nsSgDrawQuarters(ctx, g, year);
+      if (moonOn && showNightSkyLunarCalendar) { _nsSgDrawCrescents(ctx, g, year); _nsSgDrawQuarters(ctx, g, year); }
       if (customOn) _nsSgDrawBodies(ctx, g.dayCenter(today), g.hourToY(L.hour), sunOn, moonOn);
       ctx.restore();
     } : null,
@@ -489,6 +674,10 @@ function _nsSgSource() {
             ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
           }
         }
+        if (gc) gc.days[d].forEach((ivs, k) => {   // the three levels, the higher over the lower
+          ctx.fillStyle = _nsSgGcFill(k, _sgEmphBand === 'gc' + NS_SG_GC_LEVELS[k]);
+          for (const iv of ivs) ctx.fillRect(x0, g.hourToY(iv[1]), x1 - x0, g.hourToY(iv[0]) - g.hourToY(iv[1]));
+        });
       }
       ctx.restore();
     } : null,
@@ -531,6 +720,7 @@ function _nsSgSource() {
     // Legend Moon row for the active day: rise / set (times), or hours above the horizon (length).
     legendExtra: moonDays ? (d, lengthMode) => {
       const ml = moonless ? { moonless: _sgHM(moonless[d].reduce((a, iv) => a + iv[1] - iv[0], 0)) } : {};   // hours that day
+
       if (lengthMode) return Object.assign({ moon: _sgHM(moonDays[d].reduce((a, iv) => a + iv[1] - iv[0], 0)) }, ml);
       const c = _nsSgDate(year, d);
       const rs = _moonRiseSetCached(_skyToJulianDateUT(c.year, c.month, c.day, 12) - _nightSkyTzHours() / 24).moon;
@@ -559,6 +749,10 @@ function _nsSgSource() {
           ctx.fillRect(g.xh(iv[0]), g.laneY, g.xh(iv[1]) - g.xh(iv[0]), g.recapH);
         }
       }
+      if (gc) _nsSgGcSolarDay(year, g.activeDay).forEach((ivs, k) => {   // Galactic center over it
+        ctx.fillStyle = _nsSgGcFill(k, _sgEmphBand === 'gc' + NS_SG_GC_LEVELS[k]);
+        for (const iv of ivs) ctx.fillRect(g.xh(iv[0]), g.laneY, g.xh(iv[1]) - g.xh(iv[0]), g.recapH);
+      });
       // The selected instant on the strip (true solar time), when the strip shows the selected day.
       const tSun = L.hour - clock(0, today);
       if (customOn && (sunOn || moonOn) && g.activeDay === today && tSun >= 0 && tSun <= 24) {
@@ -569,6 +763,54 @@ function _nsSgSource() {
     },
     afterDraw: (activeDay) => {
       if (_nsSgCursorPt) _nsSgReadout(_nsSgCursorPt);   // keep the cursor's date/time on the readout
+      // Legend: under the "Thin crescent" row (its swatch and label only) the active day's crescents
+      // in the observer's words, as a small table: per crescent (one, or two on the day of a new Moon
+      // between sunrise and sunset) two lines in three columns - when (eve / morn), the best time to
+      // look and whether it can be seen (in the zone's colour); then how high and which way the
+      // Moon is then and its age (before the new Moon negative, under an hour in minutes):
+      //   eve   19:05   naked eye
+      //         10° W   40 h
+      // Each crescent's two lines sit on a light tint of its zone's colour (a subgrid block, so the
+      // columns stay aligned across crescents). "—" with no crescent that day. The tooltip says it
+      // in full, with the criterion's numbers.
+      if (moonOn && showNightSkyLunarCalendar) {
+        const el = document.getElementById('sgLegendCrescent');
+        el.textContent = ''; el.title = '';
+        if (customOn) {
+          const cs = _nsSgCrescents(year).filter(c => c.d === activeDay);
+          const cell = (into, text) => { const s = document.createElement('span'); s.textContent = text; into.appendChild(s); return s; };
+          if (!cs.length) cell(el, '—').className = 'ns-cres-none';
+          cs.forEach((c, i) => {
+            const eve = c.kind === 'eve', h = Math.round(Math.abs(c.age) * 24), min = Math.round(Math.abs(c.age) * 1440);
+            const ageTxt = min < 60 ? min + ' min' : h + ' h';   // under an hour in minutes
+            const block = document.createElement('div'), col = NS_SG_CRESCENT_COLORS[c.zone];
+            block.className = 'ns-cres-block';
+            block.style.background = col + '26';                  // the zone's colour at ~15 %
+            el.appendChild(block);
+            const kind = cell(block, eve ? 'eve' : 'morn');
+            // the marker as in the chart: the zone's dot and, with a medal, its ring
+            const dot = document.createElement('i');
+            dot.className = 'ns-cres-dot'; dot.style.background = col;
+            if (c.medal) { dot.style.boxShadow = `0 0 0 1px rgba(0,0,0,0.75), 0 0 0 3px ${c.medal.color}, 0 0 0 4px rgba(0,0,0,0.75)`; dot.title = c.medal.name; }
+            kind.prepend(dot);
+            cell(block, c.look ? _sgHM(c.look.hour) : '—');
+            cell(block, NS_SG_CRESCENT_WORDS[c.zone]).style.color = col;
+            cell(block, '');
+            cell(block, c.look ? Math.round(c.look.el) + '° ' + azimutToDir(c.look.az) : '—');
+            cell(block, (eve ? '' : '−') + ageTxt);
+            el.title += (i ? '\n' : '') + (eve ? 'Evening' : 'Morning') + ', ' + ageTxt + ' ' + (eve ? 'after' : 'before') + ' the new Moon: '
+              + NS_SG_CRESCENT_WORDS_FULL[c.zone]
+              + (c.medal ? ` - ${c.medal.name}: the youngest crescent of this ${eve ? 'evening' : 'morning'} series the eye can see` : '')
+              + (c.look ? `, best at ${_sgHM(c.look.hour)} with the Moon ${Math.round(c.look.el)}° up in the ${azimutToDir(c.look.az)}`
+                        : (eve ? ' - the Moon sets before the Sun' : ' - the Moon rises after the Sun'))
+              + (isFinite(c.V) ? ` (Odeh V ${c.V.toFixed(2)}, zone ${c.zone}; Moon ${c.arcv.toFixed(1)}° above the Sun, ${c.arcl.toFixed(1)}° from it, crescent ${c.W.toFixed(2)}′ wide)` : '');
+          });
+        }
+      }
+      if (gc) NS_SG_GC_LEVELS.forEach((lv, k) => {   // legend: each level's season, first to last night
+        const sn = gc.seasons[k], el = document.getElementById('sgLegendGc' + lv);
+        el.textContent = sn.first === null ? '—' : dayLabel(sn.first) + ' – ' + dayLabel(sn.last);
+      });
       // Info panel and legend transit for the active day, at the selected clock time.
       const c = _nsSgDate(year, activeDay);
       _nightSkyUpdateStatusPanel(_skyToJulianDateUT(c.year, c.month, c.day, L.hour) - _nightSkyTzHours() / 24);
@@ -688,7 +930,10 @@ function _nsSgUpdateLunarCalSubrow() {
   document.getElementById('nightSkyLunarCalSubrow').style.display = moonOn ? '' : 'none';
   document.getElementById('nightSkyEclipseCalRow').style.display = moonOn && showNightSkyLunarCalendar ? '' : 'none';
   document.getElementById('nightSkyMoonlessSubrow').style.display = moonOn ? '' : 'none';
+  document.getElementById('nightSkyGalCenterSubrow').style.display = moonOn ? '' : 'none';
   document.body.classList.toggle('ns-moonless', moonOn && showNightSkyMoonless);   // legend row
+  document.body.classList.toggle('ns-gc', moonOn && showNightSkyGalCenter);         // legend rows
+  document.body.classList.toggle('ns-crescent', moonOn && showNightSkyLunarCalendar);   // thin crescent legend row
 }
 _nsSgUpdateLunarCalSubrow();
 document.getElementById('chkNightSkyMoon').addEventListener('change', _nsSgUpdateLunarCalSubrow);
@@ -706,6 +951,16 @@ document.getElementById('btnNightSkyMoonless').addEventListener('click', () => {
   const btn = document.getElementById('btnNightSkyMoonless');
   btn.classList.toggle('on', showNightSkyMoonless);
   btn.setAttribute('aria-checked', String(showNightSkyMoonless));
+  _nsSgUpdateLunarCalSubrow();
+  if (_nsSgActive()) _nsSgDraw();
+});
+// "Galactic center" switch under Moonless night (Sun Graph times view and the day strip): the hours
+// of Moonless night with the centre of the Milky Way at least 0°, 5° and 10° up.
+document.getElementById('btnNightSkyGalCenter').addEventListener('click', () => {
+  showNightSkyGalCenter = !showNightSkyGalCenter;
+  const btn = document.getElementById('btnNightSkyGalCenter');
+  btn.classList.toggle('on', showNightSkyGalCenter);
+  btn.setAttribute('aria-checked', String(showNightSkyGalCenter));
   _nsSgUpdateLunarCalSubrow();
   if (_nsSgActive()) _nsSgDraw();
 });
