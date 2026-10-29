@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug350">
+  <link rel="stylesheet" href="css/style.css?perfdebug384">
 </head>
 <body>
 
@@ -336,6 +336,36 @@
             <span class="ts-lbl">age</span>
             <span class="ts-val" id="nsMoonAge">—</span>
           </div>
+          <!-- The object found with the search while it is locked on (Planetarium, Globe), marked
+               (Sky Map) or, below the horizon, shown here only - render-search.js:
+               _nsSearchFillStatus(). Hidden otherwise; framed red (.never) for an object that never
+               rises at this place. -->
+          <div id="nsTgtBlock">
+            <div class="ts-row ns-row-target" id="nsTgtNameRow" title="The object found with the search">
+              <span class="ts-lbl">object</span>
+              <span class="ts-val" id="nsTgtName">—</span>
+            </div>
+            <div class="ts-row ns-row-target" id="nsTgtNowRow" title="Azimuth and altitude now (refraction included)">
+              <span class="ts-lbl">now</span>
+              <span class="ts-val" id="nsTgtNow">—</span>
+            </div>
+            <div class="ts-row ns-row-target" id="nsTgtRiseRow" title="Rise / set on this local day (its centre on the horizon, refraction included; the Sun and the Moon by the upper limb, as above); &quot;never rises here&quot; for an object this place cannot see">
+              <span class="ts-lbl">rise/set</span>
+              <span class="ts-val" id="nsTgtRise">—</span>
+            </div>
+            <div class="ts-row ns-row-target" id="nsTgtTransitRow" title="Highest on this local day: time and altitude">
+              <span class="ts-lbl">transit</span>
+              <span class="ts-val" id="nsTgtTransit">—</span>
+            </div>
+            <div class="ts-row ns-row-target" id="nsTgtVisRow" title="Visible to the naked eye now: its magnitude, dimmed near the horizon, against the sky's limit there (Atmosphere: twilight, moonlight)">
+              <span class="ts-lbl">visible</span>
+              <span class="ts-val" id="nsTgtVis">—</span>
+            </div>
+            <div class="ts-row ns-row-target" id="nsTgtTypeRow" title="Kind, magnitude and size">
+              <span class="ts-lbl">type</span>
+              <span class="ts-val" id="nsTgtType">—</span>
+            </div>
+          </div>
         </div>
         <button id="nightSkyStatusToggle" title="Hide / show the info panel">▲</button>
       </div>
@@ -354,6 +384,21 @@
         </svg>
       </button>
       <div id="nightSkyPickerBox"></div>
+      <!-- Planetarium object search - round button left of the picker (magnifier), shown only in
+           Planetarium. Opens #nightSkySearchPanel over the canvas: a text box and the matches below
+           it, five rows visible, filtered on every keystroke; a pick locks the view on the object
+           (js/render-search.js). -->
+      <button id="btnNightSkySearch" title="Find an object and lock the view on it" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="14.8" y1="14.8" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div id="nightSkySearchPanel" role="dialog" aria-label="Find an object">
+        <input type="text" id="nightSkySearchInput" placeholder="M31, NGC 224, Andromeda, Vega, Mars..." autocomplete="off" spellcheck="false" aria-controls="nightSkySearchList">
+        <ul id="nightSkySearchList" role="listbox"></ul>
+        <div id="nightSkySearchNote"></div>
+      </div>
       <div id="nightSkyPlanetZoomCtl" title="Zoom the Planetarium view">
         <input type="range" id="nightSkyPlanetZoom" min="-1" max="3.585" step="0.005" value="0" title="Zoom the Planetarium view (0.5x-12x; the Sun and the Moon are drawn at their true size)">
         <span id="nightSkyPlanetZoomVal">1.0×</span>
@@ -529,6 +574,18 @@
           <button class="ns-btn" data-v="equator" title="Level on the Earth's equator - the Earth turns under a fixed sky">EQU</button>
           <button class="ns-btn active" data-v="ecliptic" title="Level on the ecliptic - fixed in space, the Earth's axis tilted, the Sun and the Moon moving along the level">ECL</button>
           <button class="ns-btn" data-v="horizon" title="Level on the place's horizon - the globe stays put, the sky turns">HOR</button>
+        </div>
+      </div>
+      <!-- Globe orientation rose (render-nightsky-globe.js: _nsGlobeDrawRose) - under the camera
+           panel, as wide as it; a click doubles its size, hovering shows the legend. -->
+      <div id="nsGlobeRose" role="img" aria-label="Orientation of the Sun, the ecliptic and the Earth's axis">
+        <canvas id="nsGlobeRoseCanvas"></canvas>
+        <div class="nsg-rose-legend">
+          <div><i style="background:#e85656"></i>ecliptic, the Sun's yearly path; <b>ecl</b> its axis</div>
+          <div><i style="background:#8fb8ff"></i>celestial equator; <b>NCP</b> the Earth's axis to the north celestial pole</div>
+          <div><i style="background:#f0a830"></i>the Sun; the chevron on the ecliptic shows where it moves over the year</div>
+          <div><i style="background:#8cb478"></i>the horizon of the place (with Az/Alt grid), the dot in the middle is you</div>
+          <div class="nsg-rose-hint">click to enlarge / shrink</div>
         </div>
       </div>
       <div id="nightSkyMap3DToggleRow" title="Show the Sky Map as an orbiting 3D sphere with the Sun and the Moon">
@@ -857,6 +914,13 @@
           title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
       </div>
       <label class="chk-row ns-globe-keep" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
+      <!-- Under Planets, while it is on (render-nightsky.js): on, only the planets seen with the naked
+           eye; off, Uranus and Neptune too. -->
+      <div class="nightsky-sun-subrow ns-globe-keep" id="nightSkyPlanetsSubrow">
+        <span class="nightsky-sun-label">Only naked eye</span>
+        <button class="nightsky-sun-switch on" id="btnNightSkyFaintPlanets" role="switch" aria-checked="true"
+          title="Only the planets seen with the naked eye, Mercury to Saturn - off: Uranus (~5.7 mag, at the naked-eye limit) and Neptune (~7.8 mag, binoculars) too"></button>
+      </div>
     </div>
 
     <div class="sidebar-section" id="calibrationSection">
@@ -1122,32 +1186,33 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zach.jiri@email.cz" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.29
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.29
 </div>
 
-<script src="js/core.js?perfdebug350"></script>
-<script src="js/render-2d.js?perfdebug350"></script>
-<script src="js/controls.js?perfdebug350"></script>
-<script src="js/render-sungraph.js?perfdebug350"></script>
-<script src="js/render-3d.js?perfdebug350"></script>
-<script src="js/render-skydome.js?perfdebug350"></script>
-<script src="js/render-moon.js?perfdebug350"></script>
-<script src="js/render-planets.js?perfdebug350"></script>
-<script src="js/render-milkyway.js?perfdebug350"></script>
-<script src="js/render-deepsky.js?perfdebug350"></script>
-<script src="js/render-skyglow.js?perfdebug350"></script>
-<script src="js/render-nightsky.js?perfdebug350"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug350"></script>
-<script src="js/render-nightsky-3d.js?perfdebug350"></script>
-<script src="js/render-nightsky-globe.js?perfdebug350"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug350"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug350"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug350"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug350"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug350"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug350"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug350"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug350"></script>
-<script src="js/render-eclipse.js?perfdebug350"></script>
+<script src="js/core.js?perfdebug384"></script>
+<script src="js/render-2d.js?perfdebug384"></script>
+<script src="js/controls.js?perfdebug384"></script>
+<script src="js/render-sungraph.js?perfdebug384"></script>
+<script src="js/render-3d.js?perfdebug384"></script>
+<script src="js/render-skydome.js?perfdebug384"></script>
+<script src="js/render-moon.js?perfdebug384"></script>
+<script src="js/render-planets.js?perfdebug384"></script>
+<script src="js/render-milkyway.js?perfdebug384"></script>
+<script src="js/render-deepsky.js?perfdebug384"></script>
+<script src="js/render-skyglow.js?perfdebug384"></script>
+<script src="js/render-nightsky.js?perfdebug384"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug384"></script>
+<script src="js/render-nightsky-3d.js?perfdebug384"></script>
+<script src="js/render-nightsky-globe.js?perfdebug384"></script>
+<script src="js/render-search.js?perfdebug384"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug384"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug384"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug384"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug384"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug384"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug384"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug384"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug384"></script>
+<script src="js/render-eclipse.js?perfdebug384"></script>
 </body>
 </html>
