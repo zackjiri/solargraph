@@ -19,6 +19,10 @@
 // exactly 0 at the core's edge, so the grid's own colour (with its airmass and twilight in every
 // direction) shows through unchanged there and the edge can never come out darker than the sky
 // beyond it. It follows the Moon exactly, whatever the view does.
+//
+// The Moon's share (grid and core alike) takes the colour of the moonlight, not the ramp's blue:
+// its luminance is kept and laid on in the Moon's own tint by altitude (_moonRealTint, render-moon.js,
+// as its disc), a neutral silvery white high up turning yellow to orange towards the horizon.
 const GLOW_GRID_PX = 24;
 // Brightness (mag/arcsec²) -> colour: night blue at 21.5 and darker, light day blue at 9 and brighter.
 // Brighter than 9 is daylight with the Sun up (_glowDayNL): the sky at sunset level 9, noon ~5.
@@ -233,9 +237,22 @@ function _glowBuildLut(s, key, slot) {
   T.key = key; T.d = d; T.na = NA;
   return d;
 }
-// The Moon's share on the coarse screen grid: RGB (with − without), or null with the Moon down.
+// The Moon's share d = RGB (with − without) recoloured in tint (normalised to luminance 1), d's
+// luminance kept.
+function _glowMoonTint(s) {
+  const t = _moonRealTint(Math.asin(Math.max(-1, Math.min(1, s.moon.v[2]))) * 180 / Math.PI);
+  const l = 0.3 * t[0] + 0.59 * t[1] + 0.11 * t[2];
+  return t.map(c => c / l);
+}
+function _glowMoonTinted(d, tint) {
+  const l = Math.max(0, 0.3 * d[0] + 0.59 * d[1] + 0.11 * d[2]);
+  return tint.map(c => c * l);
+}
+// The Moon's share on the coarse screen grid: RGB (with − without) in the moonlight's tint, or null
+// with the Moon down.
 function _glowMoonGrid(s, w, h, dirAt) {
   if (!s.moon) return null;
+  const tint = _glowMoonTint(s);
   const gw = Math.ceil(w / GLOW_GRID_PX) + 1, gh = Math.ceil(h / GLOW_GRID_PX) + 1;
   const s0 = Object.assign({}, s, { moon: null }), gZen = _glowZenFactor(s);
   const g = new Float32Array(gw * gh * 3), out = [0, 0, 0];
@@ -244,8 +261,9 @@ function _glowMoonGrid(s, w, h, dirAt) {
       dirAt(i * GLOW_GRID_PX, j * GLOW_GRID_PX, out);
       _glowOntoSky(out);
       const a = _glowColorAt(out, s, gZen, GLOW_MOON_CORE_DEG), b = _glowColorAt(out, s0, gZen);
+      const c = _glowMoonTinted([a[0] - b[0], a[1] - b[1], a[2] - b[2]], tint);
       const o = (j * gw + i) * 3;
-      g[o] = a[0] - b[0]; g[o + 1] = a[1] - b[1]; g[o + 2] = a[2] - b[2];
+      g[o] = c[0]; g[o + 1] = c[1]; g[o + 2] = c[2];
     }
   }
   return { gw, gh, g };
@@ -326,7 +344,7 @@ function _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, slotName,
   ctx.drawImage(B.canvas, 0, 0, bw * bufPx, bh * bufPx);
   const m = s.moon && moonAt && moonAt();
   if (m) {
-    const gZen = _glowZenFactor(s);
+    const gZen = _glowZenFactor(s), tint = _glowMoonTint(s);
     const mv = s.moon.v;
     let up = [-mv[2] * mv[0], -mv[2] * mv[1], 1 - mv[2] * mv[2]];   // towards the zenith, across mv
     const ul = Math.hypot(up[0], up[1], up[2]);
@@ -337,7 +355,7 @@ function _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, slotName,
       const r = rho * Math.PI / 180, cr = Math.cos(r), sr = Math.sin(r);
       const dir = [mv[0] * cr + up[0] * sr, mv[1] * cr + up[1] * sr, mv[2] * cr + up[2] * sr];
       const full = _glowColorAt(dir, s, gZen), cap = _glowColorAt(dir, s, gZen, GLOW_MOON_CORE_DEG);
-      const d = full.map((x, k) => Math.max(0, Math.round(x - cap[k])));
+      const d = _glowMoonTinted(full.map((x, k) => x - cap[k]), tint).map(x => Math.max(0, Math.round(x)));
       g.addColorStop(rho / GLOW_MOON_CORE_DEG, `rgb(${d[0]},${d[1]},${d[2]})`);
     }
     ctx.globalCompositeOperation = 'lighter';

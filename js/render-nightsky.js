@@ -1933,12 +1933,16 @@ function _nightSkyMagVisible(mag) {
 //                     a ring); the product follows the bracket far out and 6.2·10⁷/ρ² near the
 //                     Moon (ρc² = 6.2·10⁷ / the bracket at 0°), smooth all the way
 //   airmass           X(Z) = (1 − 0.96 sin²Z)^−½
-//   brightness (nL)   B = f(ρ)·I*·10^(−0.4·k·X(Zmoon))·(1 − 10^(−0.4·k·X(Z)))
+//   brightness (nL)   B = f(ρ)·I*·10^(−0.4·k·X_KY(Zmoon))·(1 − 10^(−0.4·k·X(Z)))
 // with ρ the angle between the Moon and the direction, Z its zenith distance and k the V-band
 // extinction (NIGHTSKY_EXTINCTION_K = 0.2 mag per airmass, between a mountain site's 0.17 and a
 // lowland's 0.25-0.3). The twilight limit (above) is turned back into a sky brightness and back
 // again with Schaefer's (1990) relation LM = 7.93 − 5·log₁₀(10^(4.316 − b/5) + 1), b in mag/arcsec²
 // (a moonless night, LM 6.5, is b = 21.7). A lunar eclipse dims the Moon (_nightSkyMoonEclipseLight).
+// The Moon's own light is dimmed with the Kasten & Young airmass X_KY (_nightSkyAirmass, below), not
+// K&S's X: theirs is 5 at the horizon, so the Moon lit the sky at half its overhead strength the
+// moment it rose. X_KY is 38 there and the moonlight grows gradually as the Moon climbs: of its
+// strength overhead 0.1% at 0°, 3% at 2°, 18% at 5°, 43% at 10°, 70% at 20°; from ~40° up the two agree.
 const NIGHTSKY_EXTINCTION_K = 0.2;
 const _nsNLFromB = (b) => 34.08 * Math.exp(20.7233 - 0.92104 * b);
 const _nsBFromNL = (nl) => (20.7233 - Math.log(nl / 34.08)) / 0.92104;
@@ -1999,7 +2003,7 @@ function _nightSkyAtmState() {
     const mag = -12.73 + 0.026 * alpha + 4e-9 * Math.pow(alpha, 4);
     const v = _skyDomeUnitVec(m.az, m.el);
     const ecl = _nightSkyMoonEclipseLight(m);
-    s.moon = { v, ecl, c: ecl * Math.pow(10, -0.4 * (mag + 16.57)) * Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nsAirmass(v[2])) };
+    s.moon = { v, ecl, c: ecl * Math.pow(10, -0.4 * (mag + 16.57)) * Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nightSkyAirmass(m.el)) };
   }
   _nsAtmCache = { key, s };
   return s;
