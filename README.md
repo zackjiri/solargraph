@@ -102,7 +102,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 📈 **Sun Graph** - the whole year in one chart: daylight and the civil, nautical and astronomical twilight (−6 / −12 / −18°), either as the times each phase starts and ends or as their lengths stacked into a 100 % chart of the day. Overlaid with the exposure interval and the days the Sun actually reached the paper; 29 February appears only when the exposure contains it.
 
-🌌 **Sky Dome** - the same sun paths in true compass projections: a Sky Map, an azimuth-elevation planetarium chart, an orbiting 3D view, and an experimental warp of the calibrated photo onto the dome itself. While the photo is shown on the dome, **Show flat** opens it straightened into a cylindrical panorama with the current calibration: azimuth across, the horizon level and vertical edges upright.
+🌌 **Sky Dome** - the same sun paths in true compass projections: a Sky Map, an azimuth-elevation planetarium chart (its sky coloured by the Sun's height as in Night Sky, from day through the twilight glow and the Belt of Venus to night), an orbiting 3D view, and an experimental warp of the calibrated photo onto the dome itself. While the photo is shown on the dome, **Show flat** opens it straightened into a cylindrical panorama with the current calibration: azimuth across, the horizon level and vertical edges upright.
 
 🌦 **CHMI weather data** - measured sunshine duration or air temperature from the nearest Czech Hydrometeorological Institute station, in 10-minute resolution. It colours the sun path directly on the photo, or covers the whole exposure period at once, and appears in the Sun Graph too - so the modelled clear-sky day can be held against what the weather actually did.
 
@@ -116,7 +116,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 - **Limiting magnitude and star size** - in the Planetarium and the flat Sky Map, a Mag ≤ slider hides stars, planets, deep sky objects and the Milky Way's fainter levels below the limit (6+ shows everything), and three star sizes bring out the faint stars while keeping the bright ones larger, so the constellations stay readable. Zooming in enlarges the stars too.
 
-- **Atmosphere** - a switch for the Planetarium and the flat Sky Map that shows the sky as the eye sees it: nothing by day, the brightest stars from civil twilight, everything after astronomical twilight. Moonlight brightens the sky around the Moon (Krisciunas & Schaefer) and fades in a lunar eclipse, stars thin out near the horizon, and on the dark theme the sky takes its colour from its brightness.
+- **Atmosphere** - in the Planetarium and the flat Sky Map, the sky as the eye sees it: no stars by day, the brightest from civil twilight, all after astronomical twilight, fewer near the Moon (Krisciunas & Schaefer) and the horizon. On the dark theme the sky takes its colour from its brightness, the Moon shows only its sunlit part, and a solar eclipse darkens the sky as the Moon's shadow passes, with the corona in totality.
 
 - **Deep sky** - the 110 Messier objects plus 22 showpieces Messier never listed: the Magellanic Clouds, ω Centauri, 47 Tucanae and η Carinae in the south, the Hyades, the Double Cluster and the Coathanger in the north. Atlas-style symbols per type (galaxy, open or globular cluster, nebula, planetary nebula) at true angular size, so a zoomed Planetarium shows M31 as large as it really is.
 
