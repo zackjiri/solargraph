@@ -1,5 +1,7 @@
 // ─── Planets (Night Sky) ────────────────────────────────────────────────────────────────────────
-// Mercury, Venus, Mars, Jupiter and Saturn for Night Sky, both sub-modes (Sky Map, Planetarium).
+// Mercury, Venus, Mars, Jupiter and Saturn for Night Sky, both sub-modes (Sky Map, Planetarium);
+// Uranus and Neptune too, only with Display "Only naked eye" (under Planets, on by default) off:
+// Uranus at ~5.7 mag is at the naked-eye limit, Neptune at ~7.8 beyond it - faint: true.
 // The draw entry points are called from render-nightsky.js next to the Sun's and the Moon's.
 //
 // Position: JPL "Keplerian Elements for Approximate Positions of the Major Planets" (E. M. Standish,
@@ -32,6 +34,10 @@ const PLANET_ELEMENTS = {
             [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106]],
   saturn:  [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
             [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]],
+  uranus:  [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
+            [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]],
+  neptune: [[30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574],
+            [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664]],
 };
 // Display: name, dot colour (each planet's familiar naked-eye tint), magnitude law, radius (km,
 // for its silhouette in a transit)
@@ -41,7 +47,12 @@ const PLANETS = [
   { key: 'mars',    name: 'Mars',    radiusKm: 3389.5,    color: '#ff8a5c', mag: (r, R, fv) => -1.51 + 5 * Math.log10(r * R) + 0.016 * fv },
   { key: 'jupiter', name: 'Jupiter', radiusKm: 69911, color: '#f3dfb8', mag: (r, R, fv) => -9.25 + 5 * Math.log10(r * R) + 0.014 * fv },
   { key: 'saturn',  name: 'Saturn',  radiusKm: 58232,  color: '#e9cf86', mag: (r, R, fv, ring) => -9.0 + 5 * Math.log10(r * R) + 0.044 * fv + ring },
+  { key: 'uranus',  name: 'Uranus',  radiusKm: 25362,  color: '#b8e6ea', faint: true, mag: (r, R, fv) => -7.15 + 5 * Math.log10(r * R) + 0.001 * fv },
+  { key: 'neptune', name: 'Neptune', radiusKm: 24622,  color: '#93b4ff', faint: true, mag: (r, R, fv) => -6.90 + 5 * Math.log10(r * R) + 0.001 * fv },
 ];
+// Uranus and Neptune shown: Display "Only naked eye" (#btnNightSkyFaintPlanets, under Planets) off.
+let showNightSkyFaintPlanets = false;
+function _planetShown(p) { return !p.faint || showNightSkyFaintPlanets; }
 const PLANET_LIGHT_DAYS_PER_AU = 0.0057755183;
 const PLANET_OBLIQUITY_J2000 = 23.43928 * Math.PI / 180;
 
@@ -125,6 +136,7 @@ function _planetsWanted() {
 // Each planet's {planet, az, el} at the current Night Sky instant, above the horizon only.
 function _planetsAboveHorizon() {
   return _planetPositions(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)
+    .filter(_planetShown)
     .map(p => ({ p, ...(_skyStarAzEl(p.raDeg, p.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)) }))
     .filter(q => q.el >= 0);
 }

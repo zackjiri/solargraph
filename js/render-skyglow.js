@@ -24,10 +24,11 @@
 // its luminance is kept and laid on in the Moon's own tint by altitude (_moonRealTint, render-moon.js,
 // as its disc), a neutral silvery white high up turning yellow to orange towards the horizon.
 const GLOW_GRID_PX = 24;
-// Brightness (mag/arcsec²) -> colour: night blue at 21.5 and darker, light day blue at 9 and brighter.
+// Brightness (mag/arcsec²) -> colour: night blue (#000c22, the sky's fill without Atmosphere) at 21.5
+// and darker, light day blue at 9 and brighter.
 // Brighter than 9 is daylight with the Sun up (_glowDayNL): the sky at sunset level 9, noon ~5.
 const GLOW_RAMP = [
-  [21.5, [0, 21, 56]], [19.5, [6, 30, 78]], [17.5, [16, 48, 110]],
+  [21.5, [0, 12, 34]], [19.5, [6, 30, 78]], [17.5, [16, 48, 110]],
   [15, [38, 82, 150]], [12, [70, 120, 190]], [9, [100, 150, 212]],
   [7.5, [106, 162, 230]], [5.5, [110, 170, 238]],
 ];
@@ -108,8 +109,13 @@ function _glowTotalityHorizon(c, e, v, el) {
 // The twilight curve holds the sky at one daylight level whenever the Sun is up; for the colour the
 // sky keeps brightening with the Sun's altitude (×(1 + h/2): 2.5 mag at 10°, 3.7 at 60°), so noon
 // is the brightest, deepest blue and the sky dims towards sunset, continuous at the horizon.
+// In a total solar eclipse the boost goes with the totality factor T: the sky in the Moon's shadow is
+// lit from beyond it, not by the Sun's altitude, and with the Sun high the boost alone (×14 at 26°)
+// would keep totality's sky a daytime blue. Colour only: the limiting magnitude (stars, planets) is
+// _nightSkyAtmLimit's, unchanged.
 function _glowDayNL(s) {
-  return s.sun.el > 0 ? s.twiNL * (1 + s.sun.el / 2) : s.twiNL;
+  const T = s.ecl ? s.ecl.T : 0;
+  return s.sun.el > 0 ? s.twiNL * (1 + s.sun.el / 2 * (1 - T)) : s.twiNL;
 }
 // Around sunset and sunrise the sky is pale, a washed-out grey-blue rather than the day's deep blue:
 // the colour is pulled towards a slightly bluish grey of its own brightness, fully with the Sun from
@@ -475,6 +481,6 @@ function _glowDrawSkyDomePlanet(ctx, layout, sunAz, sunEl, W, H) {
 // in a solar eclipse (render-moon.js).
 function _glowSkyColorAt(v) {
   const s = _nightSkyAtmState();
-  return s ? _glowColorAt(v, s, _glowZenFactor(s)) : [0, 21, 56];
+  return s ? _glowColorAt(v, s, _glowZenFactor(s)) : [0, 12, 34];
 }
 

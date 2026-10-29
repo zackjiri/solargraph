@@ -603,16 +603,22 @@ function _moonDrawReal(ctx, x, y, r, moon, sun, project, shadow) {
 // shows the true overlap: the Moon is drawn at the Sun plus its true offset times that scale, with
 // the radius it has on it. Then, in this order:
 //  - the corona (img/eclipse/corona.png, the Eclipse mode's, the Sun's limb at 135 of its 600 px)
-//    round the Sun, coming on with the totality factor T;
-//  - the Moon as a silhouette, filled with the sky's own colour behind it (_glowSkyColorAt), so it
-//    shows only where it covers the Sun, its aureole and the corona, darker in totality;
+//    round the Sun, coming on with T^MOON_ECL_CORONA_POW: T starts about a minute before second
+//    contact (the sky's ramp), and with T itself the corona's bright inner edge would ring the
+//    Moon while the crescent still shines, like an annular eclipse. With T³ it is a trace 30 s before
+//    (T ~0.5: 0.13) and comes up over the last ~15 s with the diamond ring, as in the real sky;
+//  - in the partial and annular phases no Moon at all: the Sun is painted with the Moon's disc cut
+//    out of it (_moonEclipseClipSun, called before the Sun is drawn), so the sky behind, aureole,
+//    grid and all, shows where the Moon covers the Sun, as it does in the real sky;
+//  - towards totality the Moon as a silhouette, filled with the sky's own colour behind it
+//    (_glowSkyColorAt) darkened, coming in with the totality factor T over the corona;
 //  - the diamond ring: the last bead of photosphere on the Sun's limb opposite the Moon's offset,
 //    a glare growing over the last 3 % of the Sun's radius of crescent (~40 s) and gone at second
 //    contact (the same in reverse at third);
 //  - the chromosphere: a thin pink arc on the Moon's limb on that side for the first and last few
 //    seconds of totality.
 // The disc is squashed by refraction like the Sun's (_nightSkySquash).
-const MOON_ECL_DIAMOND = 0.03, MOON_ECL_CHROMO = 0.012;
+const MOON_ECL_DIAMOND = 0.03, MOON_ECL_CHROMO = 0.012, MOON_ECL_CORONA_POW = 3;
 const _moonCoronaImg = new Image();
 let _moonCoronaLoaded = false;
 function _moonEclipseDraw(ctx, e, sunX, sunY, rSun, x, y, r, flat, up) {
@@ -624,19 +630,22 @@ function _moonEclipseDraw(ctx, e, sunX, sunY, rSun, x, y, r, flat, up) {
     const size = 600 * rSun / 135;
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = e.T;
+    ctx.globalAlpha = Math.pow(e.T, MOON_ECL_CORONA_POW);
     _nightSkySquash(ctx, sunX, sunY, flat, up);
     ctx.drawImage(_moonCoronaImg, -size / 2, -size / 2, size, size);
     ctx.restore();
   }
-  // the silhouette
-  const col = _glowSkyColorAt(_skyDomeUnitVec(e.moon.az, e.moon.el)).map(c => Math.round(c * (1 - 0.6 * e.T)));
-  ctx.save();
-  _nightSkySquash(ctx, x, y, flat, up);
-  ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
-  ctx.beginPath(); ctx.arc(0, 0, r + 0.6, 0, Math.PI * 2); ctx.fill();   // +0.6 px: no anti-aliased seam of Sun
-  ctx.restore();
-  if (!(e.rm >= e.rs)) return;   // annular or partial: the ring or crescent is the Sun showing past the silhouette
+  // the silhouette, only towards totality (before that the Moon is the hole cut out of the Sun)
+  if (e.T > 0) {
+    const col = _glowSkyColorAt(_skyDomeUnitVec(e.moon.az, e.moon.el)).map(c => Math.round(c * (1 - 0.6 * e.T)));
+    ctx.save();
+    ctx.globalAlpha *= e.T;
+    _nightSkySquash(ctx, x, y, flat, up);
+    ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+    ctx.beginPath(); ctx.arc(0, 0, r + 0.6, 0, Math.PI * 2); ctx.fill();   // +0.6 px: no anti-aliased seam of Sun
+    ctx.restore();
+  }
+  if (!(e.rm >= e.rs)) return;   // annular or partial: the ring or crescent is the Sun showing past the Moon
   let dx = sunX - x, dy = sunY - y;
   const dl = Math.hypot(dx, dy);
   if (dl < 1e-6) { dx = 0; dy = -1; } else { dx /= dl; dy /= dl; }
@@ -673,6 +682,27 @@ function _moonEclipseDraw(ctx, e, sunX, sunY, rSun, x, y, r, flat, up) {
 function _moonEclipsePlace(e, sunPx, rSun, moonPx, pxPerDeg) {
   const S = rSun / e.rs, k = S / pxPerDeg;
   return { x: sunPx.x + (moonPx.x - sunPx.x) * k, y: sunPx.y + (moonPx.y - sunPx.y) * k, r: e.rm * S };
+}
+
+// Before the Sun is painted in a solar eclipse (Atmosphere on): clips everything but the Moon's
+// disc, placed as _moonEclipsePlace and squashed as the Moon is drawn, so the Sun shows only past
+// it. project(az, el) is the view's projection ({x, y} or null), rSun the Sun's drawn radius and
+// pxPerDeg the view's true scale. With the Moon the larger (a total eclipse) the hole is 0.6 px
+// wider, as its silhouette, so no anti-aliased seam of Sun is left round it in totality. Call
+// inside the caller's save()/restore().
+function _moonEclipseClipSun(ctx, project, rSun, pxPerDeg) {
+  const e = typeof _glowShown === 'function' && _glowShown() ? _nightSkySolarEclipse() : null;
+  if (!e) return;
+  const sp = project(e.sun.az, e.sun.el), mp = project(e.moon.az, e.moon.el);
+  if (!sp || !mp) return;
+  const pl = _moonEclipsePlace(e, sp, rSun, mp, pxPerDeg);
+  ctx.beginPath();
+  ctx.rect(-1e5, -1e5, 2e5, 2e5);
+  ctx.save();   // the path is not part of the saved state: the squash only shapes the Moon's ellipse
+  _nightSkySquash(ctx, pl.x, pl.y, _nightSkyRefrFlattening(e.moon.el, _moonSemiDiamDeg(e.moon)), _nightSkyUpAngle(project, e.moon.az, e.moon.el));
+  ctx.arc(0, 0, pl.r + (e.rm >= e.rs ? 0.6 : 0), 0, Math.PI * 2);
+  ctx.restore();
+  ctx.clip('evenodd');
 }
 
 // Earth's shadow over the disc (_moonShadowOnDisc), clipped to it: one radial gradient from the
@@ -1005,6 +1035,7 @@ function _nightSkyUpdateStatusPanel(jdAt) {
   el('nsMoonDist').textContent = fmtKm(moonPos.dist - 6378.14 * Math.sin(moonPos.elTrue * _MOON_D2R));
   const sunElTrue = _nightSkySunAzElTrue(at.year, at.month, at.day, at.hourUT).el;
   el('nsSunDist').textContent = fmtKm(_skySunEclipticOfDate(jde).dist - 6378.14 * Math.sin(sunElTrue * _MOON_D2R));
+  if (typeof _nsSearchFillStatus === 'function') _nsSearchFillStatus();   // the found object (render-search.js)
 }
 let _nightSkyStatusCollapsed = false;
 function _nightSkySetStatusCollapsed(c) {

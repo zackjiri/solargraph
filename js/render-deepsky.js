@@ -12,8 +12,10 @@
 // arcminutes) with a floor, so a zoomed Planetarium shows M31 or the Magellanic Clouds at true size.
 // The data has no position angle, so a galaxy's ellipse keeps its axis ratio but lies level on
 // screen. Labels (Display "Labels"): "M31" for a Messier object, otherwise its common name, else its
-// designation.
-let _dsoList = [];   // [{ra, dec, kind, semiDeg, ratio, mag, label}]
+// designation. The search (render-search.js) also reads id (M31, Cr 140), desig (NGC 224) and the
+// common name (dsonames.json by designation, "Andromeda Galaxy"; else messier.json's own, shorter
+// "Andromeda").
+let _dsoList = [];   // [{ra, dec, kind, semiDeg, ratio, mag, label, id, desig, name, dim: [a, b] arcmin}]
 
 const DSO_KIND = {
   g: 'galaxy', gg: 'galaxy', s: 'galaxy', s0: 'galaxy', sd: 'galaxy', i: 'galaxy', e: 'galaxy',
@@ -28,9 +30,10 @@ function _dsoDim(s) {
   const a = p[0] > 0 ? p[0] : 0, b = p[1] > 0 ? p[1] : a;
   return [a, b];
 }
-function _dsoEntry(f, label) {
+function _dsoEntry(f, label, name) {
   const [a, b] = _dsoDim(f.properties.dim);
   return {
+    id: String(f.id), desig: f.properties.desig || '', name: name || '', dim: [a, b],
     ra: f.geometry.coordinates[0], dec: f.geometry.coordinates[1],
     kind: DSO_KIND[f.properties.type] || 'other',
     semiDeg: a / 120, ratio: a > 0 ? Math.max(0.35, b / a) : 1,
@@ -46,12 +49,13 @@ function _dsoLoad() {
       const taken = new Set();
       const list = messier.features.map(f => {
         taken.add(key(f.id)); if (f.properties.desig) taken.add(key(f.properties.desig));
-        return _dsoEntry(f, f.properties.name || f.id);
+        const n = names[f.properties.desig];
+        return _dsoEntry(f, f.properties.name || f.id, (n && n.name) || f.properties.alt);
       });
       for (const f of bright.features) {
         if (taken.has(key(f.id))) continue;
         const n = names[f.id];
-        list.push(_dsoEntry(f, (n && n.name) || f.properties.desig || f.id));
+        list.push(_dsoEntry(f, (n && n.name) || f.properties.desig || f.id, n && n.name));
       }
       _dsoList = list;
     })

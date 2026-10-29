@@ -43,7 +43,9 @@ let _nsGlobeLoading = false;
 // place's zenith is up and camAz/camEl are azimuth / altitude in the place's horizon frame, which
 // turns with the Earth - the globe then stays put and the sky turns.
 // orbit: Display "Moon's orbit" (Globe only, under Moon).
-const _nsGlobe = { camAz: 0, camEl: 0.85, dist: 5, fov: 50, active: 'dist', aimed: false, interacting: false, subsolar: false, moonFixed: false, frame: 'ecliptic', orbit: true, body: 'earth', saved: {} };
+// roseBig: the orientation rose at twice its size (a click on it toggles, _nsGlobeDrawRose).
+// gridKept: Az/Alt grid's own state while the MOON view greys it out (_nsGlobeSyncUI), else null.
+const _nsGlobe = { camAz: 0, camEl: 0.85, dist: 5, fov: 50, active: 'dist', aimed: false, interacting: false, subsolar: false, moonFixed: false, frame: 'ecliptic', orbit: true, body: 'earth', saved: {}, roseBig: false, gridKept: null };
 function _nsGlobeSunR() { return _nightSkyBodyMinR() * 1.4; }   // the Sun's disc in the background, px
 // The camera's elevation stops just short of the up axis (89.7°), where its sideways direction would
 // be undefined - near enough that a held picked point (_nsGlobePickerApplyLock) can follow the sky
@@ -436,6 +438,209 @@ function _nightSkyDrawGlobe(ctx, w, h) {
   // A Moon nearer than the Earth's centre goes over the globe and everything marked on it.
   if (moon && !moon.behind) _nsGlobeDrawMoon(ctx, L, cam, moon, sunDir, w, h);
   _nsGlobePickerDrawMarker(ctx, L, cam);
+  _nsGlobeDrawRose(cam, sunDir, lt);
+}
+
+// The orientation rose, always shown: its own canvas (#nsGlobeRose) in a panel like the camera's,
+// under it and as wide as it (twice as wide after a click, growing to the left; another click
+// shrinks it back), turned with the camera like the scene, so it tells at a glance where the Sun
+// is and how the ecliptic lies, whatever the frame (EQU, ECL, HOR) or the body (EARTH, MOON).
+// Hovering shows a legend to its left. Directions only, in parallel projection, round the place
+// from Location:
+//  - with Display "Az/Alt grid" on, its sky: the horizon as a disc with N, E, S, W at its rim, a
+//    dot in the middle for the observer, and the vault of the sky over it, a translucent dome lit
+//    from the upper left; with the grid off, none of this and nothing faded as below the horizon;
+//  - the ecliptic (red) and the celestial equator (blue, thinner) as whole great circles: solid
+//    on the near side, dashed on the far side, fainter below the horizon; small dots where they
+//    cross (the equinoxes);
+//  - the ecliptic's axis as a plain red line through the centre ("ecl" at its north end), the
+//    Earth's axis as a blue arrow to the north celestial pole ("NCP", at the place's latitude above
+//    the north point, 23.4° from the ecliptic's pole), its south end a plain line;
+//  - the Sun as an orange line from the centre ending in a disc (drawn last of all, over the labels,
+//    which keep clear of it, and always fully opaque, behind the viewer or below the horizon
+//    too), and an orange chevron on the
+//    ecliptic 30° ahead of it, pointing the way the Sun moves along it over the year;
+//  - under the figure the Sun's azimuth (with its compass point) and altitude at the place.
+// Whatever points away from the viewer is drawn before the dome, whatever points towards it after;
+// labels go on last, pushed apart where they would overlap and kept inside the panel.
+const NS_GLOBE_ROSE_GAP = 8;       // px between the camera panel and the rose
+const NS_GLOBE_ROSE_ARROW = 1.35;  // arrow length, dome radii
+const NS_GLOBE_ROSE_CAPTION = 16;  // px under the figure for the Sun's position
+function _nsGlobeDrawRose(cam, sunDir, lt) {
+  const ctl = document.getElementById('nsGlobeCamCtl'), box = document.getElementById('nsGlobeRose');
+  const cv = document.getElementById('nsGlobeRoseCanvas');
+  if (!ctl || ctl.offsetParent === null) { box.style.display = 'none'; return; }
+  // as wide as the camera panel (twice when enlarged), but never past the bottom of the view
+  const top = ctl.offsetTop + ctl.offsetHeight + NS_GLOBE_ROSE_GAP;
+  const room = (ctl.offsetParent ? ctl.offsetParent.clientHeight : Infinity) - top - NS_GLOBE_ROSE_GAP - NS_GLOBE_ROSE_CAPTION - 2;
+  const W = Math.max(60, Math.min(Math.round(ctl.offsetWidth * (_nsGlobe.roseBig ? 2 : 1)) - 2, room));
+  const H = W + NS_GLOBE_ROSE_CAPTION;
+  box.style.display = 'block';
+  box.style.top = top + 'px';
+  box.classList.toggle('big', !!_nsGlobe.roseBig);
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const k = W / 100;   // scale of strokes and text with the rose's size
+  const cx = W / 2, cy = W / 2, R = W * 0.28;
+  const P = (v, s) => ({ x: cx + s * R * _sd3Dot(v, cam.right), y: cy - s * R * _sd3Dot(v, cam.up), z: _sd3Dot(v, cam.fwd) });
+  const { Z, N, E } = _nsGlobeLocalFrame(_nsGlobeTheta());
+  const dome = document.getElementById('chkNightSkyGrid').checked;
+  const EC = _nsGlobeEclFrame();
+  const comb = (A, B, t) => [0, 1, 2].map(i => Math.cos(t) * A[i] + Math.sin(t) * B[i]);
+  const circle = (A, B, step) => {
+    const out = [];
+    for (let t = 0; t <= 360; t += step) out.push(comb(A, B, t * Math.PI / 180));
+    return out;
+  };
+  const onSky = (vs) => vs.map(v => ({ ...P(v, 1), alt: _sd3Dot(v, Z) }));
+  const horizon = circle(N, E, 4).map(v => P(v, 1));
+  // the dome's outline: the horizon and the part of the vault's limb above it (convex: their hull)
+  const limb = circle(cam.right, cam.up, 3).filter(v => _sd3Dot(v, Z) >= 0).map(v => P(v, 1));
+  const hull = (pts) => {
+    const s = pts.map(q => [q.x, q.y]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const q of s) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of s.slice().reverse()) { while (up.length > 1 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+    return lo.slice(0, -1).concat(up.slice(0, -1)).map(([x, y]) => ({ x, y }));
+  };
+  const EQ = { X: [1, 0, 0], Y: [0, 1, 0] };   // the celestial equator of date
+  const ecl = onSky(circle(EC.X, EC.Y, 3)), equ = onSky(circle(EQ.X, EQ.Y, 3));
+  const eclCol = lt ? '#b02626' : '#e85656';
+  const axisCol = lt ? '#1d5fa8' : '#8fb8ff', sunCol = lt ? '#b56d00' : '#f0a830', textCol = lt ? '#0c1820' : '#c8d4e0';
+  const below = (v) => dome && _sd3Dot(v, Z) < 0;
+  // lines from the centre: [direction, colour, label, head ('arrow' | 'sun' | null), length in dome radii]
+  const lines = [
+    [EC.Z, eclCol, 'ecl', null, NS_GLOBE_ROSE_ARROW * 0.9],
+    [EC.Z.map(c => -c), eclCol, '', null, NS_GLOBE_ROSE_ARROW * 0.9],
+    [[0, 0, 1], axisCol, 'NCP', 'arrow', NS_GLOBE_ROSE_ARROW],
+    [[0, 0, -1], axisCol, '', null, NS_GLOBE_ROSE_ARROW * 0.8],
+    [sunDir, sunCol, '', 'sun', NS_GLOBE_ROSE_ARROW],
+  ].map(([v, col, label, head, s]) => ({ col, label, head, tip: P(v, s), below: below(v) }));
+  // the Sun's way along the ecliptic: a chevron 30° ahead of it, towards growing longitude
+  const lamS = Math.atan2(_sd3Dot(sunDir, EC.Y), _sd3Dot(sunDir, EC.X)), lamC = lamS + Math.PI / 6;
+  const cv3 = comb(EC.X, EC.Y, lamC), cTan = comb(EC.X, EC.Y, lamC + Math.PI / 2);
+  const chev = { at: P(cv3, 1), dir: P(cTan, 1), below: below(cv3) };
+  const labels = [];   // [text, x, y, colour, direction to push it (unit)]
+  const head = (t, ux, uy, size) => {
+    ctx.beginPath();
+    ctx.moveTo(t.x, t.y);
+    ctx.lineTo(t.x - size * ux - size / 2 * uy, t.y - size * uy + size / 2 * ux);
+    ctx.lineTo(t.x - size * ux + size / 2 * uy, t.y - size * uy - size / 2 * ux);
+    ctx.closePath(); ctx.fill();
+  };
+  const drawLine = (l, back) => {
+    const t = l.tip;
+    ctx.globalAlpha = back || l.below ? 0.45 : 1;
+    ctx.strokeStyle = l.col; ctx.fillStyle = l.col; ctx.lineWidth = 1.8 * Math.sqrt(k);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(t.x, t.y); ctx.stroke();
+    const dx = t.x - cx, dy = t.y - cy, len = Math.hypot(dx, dy);
+    const ux = len > 1 ? dx / len : 0, uy = len > 1 ? dy / len : -1;
+    if (l.head === 'arrow' && len > 6) head(t, ux, uy, 7 * Math.sqrt(k));
+    if (l.label) labels.push([l.label, t.x + ux * 10 * k, t.y + uy * 10 * k, textCol, ux, uy]);
+    ctx.globalAlpha = 1;
+  };
+  const arcs = (pts, far, low) => {
+    ctx.beginPath();
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if ((a.z + b.z > 0) !== far || (dome && a.alt + b.alt < 0) !== low) continue;
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  };
+  const circles = (far) => {   // both great circles, one side of the view
+    for (const [pts, col, wdt] of [[equ, axisCol, 1.1], [ecl, eclCol, 1.8]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = (far ? wdt * 0.7 : wdt) * Math.sqrt(k);
+      ctx.setLineDash(far ? [3 * k, 3 * k] : []);
+      ctx.globalAlpha = far ? 0.6 : 1; arcs(pts, far, false);
+      ctx.globalAlpha = far ? 0.4 : 0.6; arcs(pts, far, true);
+    }
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+  };
+  const path = (pts) => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath(); };
+  ctx.font = `${Math.round(10 * Math.sqrt(k))}px 'Share Tech Mono', monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  for (const l of lines) if (l.tip.z > 0) drawLine(l, true);
+  if (dome) {   // the horizon disc
+    path(horizon);
+    ctx.fillStyle = lt ? 'rgba(120,140,110,0.35)' : 'rgba(90,120,80,0.35)'; ctx.fill();
+    ctx.strokeStyle = lt ? 'rgba(40,60,40,0.7)' : 'rgba(170,200,160,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+  circles(true);
+  if (dome) {   // the vault over it
+    const g = ctx.createRadialGradient(cx - 0.35 * R, cy - 0.45 * R, 0.1 * R, cx, cy, R);
+    g.addColorStop(0, lt ? 'rgba(250,252,255,0.6)' : 'rgba(110,140,180,0.45)');
+    g.addColorStop(1, lt ? 'rgba(160,180,200,0.45)' : 'rgba(30,45,70,0.45)');
+    path(hull(horizon.concat(limb)));
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = lt ? 'rgba(60,80,100,0.55)' : 'rgba(150,175,205,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+  circles(false);
+  // the equinoxes: where the two circles cross
+  ctx.fillStyle = textCol;
+  for (const v of [EC.X, EC.X.map(c => -c)]) {
+    const q = P(v, 1);
+    ctx.globalAlpha = q.z > 0 || below(v) ? 0.45 : 1;
+    ctx.beginPath(); ctx.arc(q.x, q.y, 1.8 * Math.sqrt(k), 0, Math.PI * 2); ctx.fill();
+  }
+  // the chevron of the Sun's yearly motion
+  {
+    const dx = chev.dir.x - cx, dy = chev.dir.y - cy, len = Math.hypot(dx, dy);
+    if (len > 1) {
+      ctx.globalAlpha = chev.at.z > 0 || chev.below ? 0.45 : 1;
+      ctx.fillStyle = sunCol;
+      head({ x: chev.at.x + 4 * k * dx / len, y: chev.at.y + 4 * k * dy / len }, dx / len, dy / len, 7 * Math.sqrt(k));
+      ctx.globalAlpha = 1;
+    }
+  }
+  if (dome) {   // the observer, and the compass points on the horizon
+    ctx.beginPath(); ctx.arc(cx, cy, 2.6 * Math.sqrt(k), 0, Math.PI * 2);
+    ctx.fillStyle = lt ? '#0c1820' : '#ffffff'; ctx.fill();
+    for (const [t, d] of [['N', N], ['E', E], ['S', N.map(c => -c)], ['W', E.map(c => -c)]]) {
+      const q = P(d, 1.18), dx = q.x - cx, dy = q.y - cy, len = Math.hypot(dx, dy) || 1;
+      labels.push([t, q.x, q.y, lt ? '#3a5a32' : '#a8c89a', dx / len, dy / len]);
+    }
+  }
+  for (const l of lines) if (l.tip.z <= 0) drawLine(l, false);
+  // labels: kept inside the figure's square (a margin of 3 px plus half the text) and, where one
+  // would sit on a label already placed, moved by growing steps outwards from the tip or to either
+  // side of it, the first free spot taken (outwards alone can stall at the edge of the square)
+  // the Sun's disc counts as taken, so no label is put over it
+  const sunTip = lines.find(l => l.head === 'sun').tip, sunR = 4.5 * Math.sqrt(k);
+  const placed = [{ x: sunTip.x, y: sunTip.y, w: 2 * sunR + 2 }], m = 3;
+  for (const [text, x0, y0, col, ux, uy] of labels) {
+    const tw = ctx.measureText(text).width, th = Math.round(10 * Math.sqrt(k));
+    const clamp = (x, y) => [Math.max(m + tw / 2, Math.min(W - m - tw / 2, x)), Math.max(m + th / 2, Math.min(W - m - th / 2, y))];
+    const free = ([x, y]) => !placed.some(q => Math.abs(q.x - x) < (q.w + tw) / 2 + 2 && Math.abs(q.y - y) < th);
+    let at = clamp(x0, y0);
+    for (let s = 6; !free(at) && s <= 48; s += 6) {
+      const tries = [[ux, uy], [-uy, ux], [uy, -ux]].map(([a, b]) => clamp(x0 + a * s, y0 + b * s));
+      const ok = tries.find(free);
+      if (ok) at = ok;
+    }
+    placed.push({ x: at[0], y: at[1], w: tw });
+    ctx.fillStyle = col; ctx.fillText(text, at[0], at[1]);
+  }
+  // the Sun's disc last and always fully opaque, wherever its line points
+  ctx.globalAlpha = 1; ctx.fillStyle = sunCol;
+  ctx.beginPath(); ctx.arc(sunTip.x, sunTip.y, sunR, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = lt ? 'rgba(0,0,0,0.35)' : 'rgba(255,240,200,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  // the Sun's place in the sky of the place, fitted to the panel's width
+  const sp = _nightSkySunAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const cap = `Sun ${Math.round(sp.az)}° ${azimutToDir(sp.az)} ${sp.el >= 0 ? '+' : '−'}${Math.abs(sp.el).toFixed(1)}°`;
+  let fs = Math.round(10 * Math.sqrt(k));
+  ctx.font = `${fs}px 'Share Tech Mono', monospace`;
+  while (fs > 7 && ctx.measureText(cap).width > W - 2 * m) { fs--; ctx.font = `${fs}px 'Share Tech Mono', monospace`; }
+  ctx.fillStyle = sp.el >= 0 ? sunCol : textCol;
+  ctx.fillText(cap, W / 2, W + NS_GLOBE_ROSE_CAPTION / 2 - 2);
 }
 // The place from Location: the dot with its coordinates, both only with Display "Labels".
 function _nsGlobeDrawPlace(ctx, L, cam, theta, showNames, lt) {
@@ -484,7 +689,7 @@ function _nsGlobeDrawSky(ctx, L, cam, sunDir) {
   }
   if (_dsoShown()) _dsoDrawGlobe(ctx, L, cam, toDate);   // render-deepsky.js
   if (chk('chkNightSkyPlanets')) {
-    for (const pl of _planetPositions(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)) {
+    for (const pl of _planetPositions(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).filter(_planetShown)) {
       const p = _nsGlobeProjectDir(cam, L, toDate(_skyDomeUnitVecRaDec({ ra: pl.raDeg, dec: pl.decDeg })));
       if (!p) continue;
       const r = _planetDrawDot(ctx, p.x, p.y, pl, 1);
@@ -993,8 +1198,18 @@ function _nsGlobeDrawSurface(ctx, L, EL, cam, rs, theta, sun, w, h, moon, tex) {
 // (Newton, 2x2) so the point projects there again - in HOR, where the sky turns, the view turns
 // with it; in EQU the sky already stands still. A drag moves the held position with it.
 const _nsGlobePicker = { tx: 0, ty: 0 };
-function _nsGlobeLockDir() {
+// The locked direction (equatorial of date): a picked or found J2000 point; from the search also a
+// body's own direction of date (gdir: the Sun, a planet), or the Moon or (in the MOON view) the
+// Earth, near enough to be seen in a different direction from every camera position: then from
+// cam's.
+function _nsGlobeLockDir(cam) {
   const Lk = _nightSkyPicker.lock;
+  if (Lk.moon || Lk.earth) {
+    const M = Lk.moon ? _nsGlobeMoonNow() : [0, 0, 0], P = (cam || _nsGlobeCamera()).pos;
+    const d = [M[0] - P[0], M[1] - P[1], M[2] - P[2]], l = Math.hypot(d[0], d[1], d[2]) || 1;
+    return d.map(v => v / l);
+  }
+  if (Lk.gdir) return Lk.gdir();
   const q = _skyJ2000ToDate(Lk.ra, Lk.dec, _moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
   return _skyDomeUnitVecRaDec(q);
 }
@@ -1024,13 +1239,16 @@ function _nsGlobePickerHit(e) {
 }
 function _nsGlobePickerRetarget() {
   if (!_nightSkyPicker.lock) return;
-  const c = _nsGlobeCamXY(_nsGlobeCamera(), _nsGlobeLockDir());
+  const cam = _nsGlobeCamera(), c = _nsGlobeCamXY(cam, _nsGlobeLockDir(cam));
   _nsGlobePicker.tx = c[0]; _nsGlobePicker.ty = c[1];
 }
 function _nsGlobePickerApplyLock() {
   if (!_nightSkyPicker.lock) return;
-  const D = _nsGlobeLockDir();
-  const err = () => { const c = _nsGlobeCamXY(_nsGlobeCamera(), D); return [c[0] - _nsGlobePicker.tx, c[1] - _nsGlobePicker.ty]; };
+  const fixed = !_nightSkyPicker.lock.moon && !_nightSkyPicker.lock.earth, D = fixed ? _nsGlobeLockDir() : null;
+  const err = () => {
+    const cam = _nsGlobeCamera(), c = _nsGlobeCamXY(cam, fixed ? D : _nsGlobeLockDir(cam));
+    return [c[0] - _nsGlobePicker.tx, c[1] - _nsGlobePicker.ty];
+  };
   for (let it = 0; it < 8; it++) {
     const e0 = err();
     if (Math.hypot(e0[0], e0[1]) < 1e-7) break;
@@ -1046,7 +1264,7 @@ function _nsGlobePickerApplyLock() {
 }
 function _nsGlobePickerDrawMarker(ctx, L, cam) {
   if (!_nightSkyPicker.lock) return;
-  const p = _nsGlobeProjectDir(cam, L, _nsGlobeLockDir());
+  const Lk = _nightSkyPicker.lock, p = _nsGlobeProjectDir(cam, L, _nsGlobeLockDir(cam));
   if (!p) return;
   ctx.save();
   ctx.strokeStyle = '#ff5050'; ctx.lineWidth = 1.5;
@@ -1054,6 +1272,11 @@ function _nsGlobePickerDrawMarker(ctx, L, cam) {
   ctx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
   for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(p.x + dx * 3, p.y + dy * 3); ctx.lineTo(p.x + dx * 11, p.y + dy * 11); }
   ctx.stroke();
+  if (Lk.label) {   // found by the search (render-search.js)
+    ctx.fillStyle = '#ff5050';
+    ctx.font = "11px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(Lk.label, p.x + 15, p.y - 11);
+  }
   ctx.restore();
 }
 
@@ -1113,6 +1336,8 @@ function _nsGlobeSetBody(body) {
     Object.assign(_nsGlobe, { camAz: sv.camAz, camEl: sv.camEl, dist: sv.dist, frame: sv.frame });
     _nsGlobeSetFrame(f);   // in the frame now chosen
   } else { _nsGlobe.dist = 5; _nsGlobeAimAtPlace(); }
+  // the Earth found from the Moon (render-search.js) means nothing from the Earth: the lock goes
+  if (_nightSkyPicker.lock && _nightSkyPicker.lock.earth && body === 'earth') _nightSkyPicker.lock = null;
   _nsGlobePickerRetarget();
   const moon = body === 'moon';
   const b = document.getElementById('btnNsGlobeBody');
@@ -1147,6 +1372,10 @@ for (const k of ['dist', 'fov']) {
 document.querySelectorAll('#nsGlobeCamCtl .nsg-row').forEach(r => r.addEventListener('click', () => _nsGlobeSetActive(r.dataset.k)));
 _nsGlobeSyncCamCtl();
 _nsGlobeSetActive(_nsGlobe.active);
+document.getElementById('nsGlobeRose').addEventListener('click', () => {
+  _nsGlobe.roseBig = !_nsGlobe.roseBig;
+  if (_nsGlobeActive()) drawNightSky();
+});
 
 // ── Interaction: orbit drag, wheel / pinch on the active slider, double click back to the place ──
 (function () {
@@ -1213,7 +1442,21 @@ function _nsGlobeSyncUI() {
     }
   }
   sec.classList.toggle('ns-globe', on);
+  // Az/Alt grid belongs to an observer at the place on Earth, and the MOON view has none: there it
+  // is unticked and greyed (the rose then draws no horizon or vault either), and gets back the
+  // state it had when the view returns to EARTH or Globe is left (_nsGlobe.gridKept).
+  const grid = document.getElementById('chkNightSkyGrid'), gridOff = on && _nsGlobe.body === 'moon';
+  if (gridOff && _nsGlobe.gridKept === null) {
+    _nsGlobe.gridKept = grid.checked;
+    grid.checked = false; grid.disabled = true;
+    grid.parentElement.style.opacity = '0.35'; grid.parentElement.style.pointerEvents = 'none';
+  } else if (!gridOff && _nsGlobe.gridKept !== null) {
+    grid.checked = _nsGlobe.gridKept; grid.disabled = false;
+    grid.parentElement.style.opacity = ''; grid.parentElement.style.pointerEvents = '';
+    _nsGlobe.gridKept = null;
+  }
   document.getElementById('nsGlobeCamCtl').style.display = on ? 'flex' : 'none';
+  if (!on) document.getElementById('nsGlobeRose').style.display = 'none';   // shown by _nsGlobeDrawRose
   // EARTH | MOON where Sun Graph has TIMES | LENGTH: centred over the view, on the title row.
   const bs = document.getElementById('nsGlobeBodySwitch');
   bs.style.display = on ? 'flex' : 'none';

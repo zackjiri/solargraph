@@ -122,7 +122,7 @@ function _nightSkyDrawSkyMap3D(ctx, w, h) {
   const lt = document.body.classList.contains('light');
   const pal = lt
     ? { ring: 'rgba(0,0,0,0.16)', rim: 'rgba(0,0,0,0.55)', text: '#445a6e', shell: 'rgba(190,204,222,0.45)' }
-    : { ring: 'rgba(255,255,255,0.20)', rim: 'rgba(255,255,255,0.6)', text: '#9fb2c4', shell: 'rgba(0,21,56,0.62)' };
+    : { ring: 'rgba(255,255,255,0.20)', rim: 'rgba(255,255,255,0.6)', text: '#9fb2c4', shell: 'rgba(0,12,34,0.62)' };
   const mTop = 40, mSide = 34, mBottom = 26;
   const scale = Math.max(10, Math.min(w - 2 * mSide, h - mTop - mBottom) / 2);
   const layout = { mode: 'skymap3d', cx: w / 2, cy: mTop + (h - mTop - mBottom) / 2, scale };
@@ -275,7 +275,7 @@ document.getElementById('btnNightSkyMap3D').addEventListener('click', () => {
   const btn = document.getElementById('btnNightSkyMap3D');
   btn.classList.toggle('on', nightSkyMap3DOn);
   btn.setAttribute('aria-checked', String(nightSkyMap3DOn));
-  _nightSkyUpdateMap3DControls();
+  _nightSkyUpdatePlanetControlsVisibility();   // render-nightsky.js: 3D controls, and the search (flat map only)
   if (nightSkyActive) drawNightSky();
 });
 (function () {

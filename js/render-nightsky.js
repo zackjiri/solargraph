@@ -1072,7 +1072,7 @@ function _nightSkySunAlt(year, month, day, hourUT) {
 // "darkening sky" to the naked eye in the first place, not an arbitrary narrower cut.
 const NIGHTSKY_COLOR_DAY   = [58, 123, 213];   // #3a7bd5
 const NIGHTSKY_COLOR_DUSK  = [20, 30, 70];     // #141e46
-const NIGHTSKY_COLOR_NIGHT = [0, 21, 56];      // #001538, matches the sky circle's own fill in
+const NIGHTSKY_COLOR_NIGHT = [0, 12, 34];      // #000c22, matches the sky circle's own fill in
                                                 // _nightSkyDrawSkyMap() - was the canvas's outer
                                                 // background (#05070d) instead, per the user's own
                                                 // request to match the actual sky colour, not the
@@ -1648,6 +1648,40 @@ function _nightSkyDrawPlanetGridLabels(ctx, layout) {
   ctx.save();
   ctx.font = '9px Helvetica, Arial, sans-serif';
   ctx.textBaseline = 'middle';
+  const plan = _nightSkyPlanetGridPlan(layout);
+  if (plan) {   // zoomed in: the lines _nightSkyDrawPlanetGrid / ...EquatorialGrid draw
+    const { s } = plan;
+    if (showGrid) {
+      ctx.fillStyle = col.azAlt;
+      ctx.textAlign = 'left';
+      for (const el of _nightSkyGridValues(Math.max(plan.el[0], s), Math.min(plan.el[1], 90 - s / 2), s)) {
+        _nightSkyPlanetLabelAt(ctx, layout, plan.center.az, el, _nightSkyFmtGridAngle(el, s), 4, -6);
+      }
+      ctx.textAlign = 'center';
+      const wide = plan.az[1] - plan.az[0] >= 360;
+      for (const az of _nightSkyGridValues(plan.az[0], plan.az[1] - (wide ? plan.azStep : 0), plan.azStep)) {
+        const a = ((az % 360) + 360) % 360;
+        if (plan.labelEl === 0 && Math.abs(a % 90) < 1e-6) continue;   // N, E, S, W are on the horizon already
+        _nightSkyPlanetLabelAt(ctx, layout, a, plan.labelEl, _nightSkyFmtGridAngle(a, plan.azStep), 0, plan.labelEl === 0 ? -9 : -6);
+      }
+    }
+    if (showEq) {
+      ctx.fillStyle = col.eq;
+      ctx.textAlign = 'right';
+      for (const dec of _nightSkyGridValues(Math.max(plan.dec[0], -90 + s / 2), Math.min(plan.dec[1], 90 - s / 2), s)) {
+        const q = _skyOfDateAzEl(plan.cEq.ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+        if (q.el >= 0) _nightSkyPlanetLabelAt(ctx, layout, q.az, q.el, _nightSkyFmtGridAngle(dec, s, true), -4, -6);
+      }
+      ctx.textAlign = 'left';
+      const wide = plan.ra[1] - plan.ra[0] >= 360;
+      for (const ra of _nightSkyGridValues(plan.ra[0], plan.ra[1] - (wide ? plan.raStep : 0), plan.raStep)) {
+        const q = _skyOfDateAzEl(((ra % 360) + 360) % 360, plan.labelDec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+        if (q.el >= 0) _nightSkyPlanetLabelAt(ctx, layout, q.az, q.el, _nightSkyFmtGridRA(ra, plan.raStep), 3, 7);
+      }
+    }
+    ctx.restore();
+    return;
+  }
   if (showGrid) {
     ctx.fillStyle = col.azAlt;
     ctx.textAlign = 'left';
@@ -2239,17 +2273,19 @@ function _nightSkySquash(ctx, x, y, flat, upAngle) {
 function _nightSkyPaintSun(ctx, x, y, r, h, flat, upAngle) {
   if (typeof _glowShown === 'function' && _glowShown()) {
     const c = _glowSunTint(h).map(Math.round);
-    // the photosphere with only a narrow soft limb (to 1.12 r): wider, it would show round a Moon
-    // that covers the Sun in an eclipse as a false ring; the glow beyond is the sky's aureole
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.12);
+    // the photosphere with a soft limb that stays inside the disc: full to 0.9 r, gone half a pixel
+    // past r. A limb reaching past r would show round a total eclipse's Moon, only ~2-6 % larger
+    // than the Sun, as a false annular ring; the glow beyond is the sky's aureole
+    const R = r + 0.5;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
     g.addColorStop(0, `rgb(${c[0]},${c[1]},${c[2]})`);
-    g.addColorStop(0.86, `rgb(${c[0]},${c[1]},${c[2]})`);
+    g.addColorStop(0.9 * r / R, `rgb(${c[0]},${c[1]},${c[2]})`);
     g.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     _nightSkySquash(ctx, x, y, flat, upAngle);
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     return;
   }
@@ -2277,9 +2313,24 @@ document.getElementById('chkNightSkyMoon').addEventListener('change', () => {
   _nightSkyUpdateMoonSubrow();
   if (nightSkyActive) drawNightSky();
 });
+// Planets (#chkNightSkyPlanets, on by default) and under it "Only naked eye"
+// (#btnNightSkyFaintPlanets, on by default; off adds Uranus and Neptune), shown while Planets is on.
+function _nightSkyUpdatePlanetsSubrow() {
+  document.getElementById('nightSkyPlanetsSubrow').style.display = document.getElementById('chkNightSkyPlanets').checked ? 'flex' : 'none';
+}
+function _nightSkySetFaintPlanets(on) {   // on: Uranus and Neptune shown, the switch "Only naked eye" off
+  showNightSkyFaintPlanets = on;   // render-planets.js
+  const btn = document.getElementById('btnNightSkyFaintPlanets');
+  btn.classList.toggle('on', !on);
+  btn.setAttribute('aria-checked', String(!on));
+  if (nightSkyActive) drawNightSky();
+}
+_nightSkyUpdatePlanetsSubrow();
 document.getElementById('chkNightSkyPlanets').addEventListener('change', () => {
+  _nightSkyUpdatePlanetsSubrow();
   if (nightSkyActive) drawNightSky();
 });
+document.getElementById('btnNightSkyFaintPlanets').addEventListener('click', () => _nightSkySetFaintPlanets(!showNightSkyFaintPlanets));
 document.getElementById('btnNightSkyMoonPath').addEventListener('click', () => {
   showNightSkyMoonPath = !showNightSkyMoonPath;
   const btn = document.getElementById('btnNightSkyMoonPath');
@@ -2323,6 +2374,7 @@ function _nightSkyDrawSunDisc(ctx, layout) {
   ctx.save();
   _nightSkyClipToSky(ctx, layout);
   const prS = (az, el) => _skyDomePoint(layout.cx, layout.cy, layout.R, az, el);
+  _moonEclipseClipSun(ctx, prS, _nightSkyBodyMinR(), layout.R / 90);   // render-moon.js
   _nightSkyPaintSun(ctx, pt.x, pt.y, _nightSkyBodyMinR(), s.el,
     _nightSkyRefrFlattening(s.el, _skySunSemiDiamDeg(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)), _nightSkyUpAngle(prS, s.az, s.el));
   ctx.restore();
@@ -2381,7 +2433,7 @@ _nightSkySubmodeWheel.render();
 // of vanishing into a same-colour background. Shared by the Sky Map sub-mode's own circle fill
 // below and the Planetarium's own sky region (_nightSkyDrawPlanetSkyGround) so the two always agree.
 function _nightSkySkyColor() {
-  return document.body.classList.contains('light') ? '#ffffff' : '#001538';
+  return document.body.classList.contains('light') ? '#ffffff' : '#000c22';
 }
 // Stars invert with the sky rather than staying fixed white throughout - white on the dark sky,
 // black on the light one (the user's own correction after seeing white-on-white read as simply
@@ -2441,6 +2493,7 @@ function _nightSkyDrawSkyMap(ctx, w, h) {
   _nightSkyDrawHorizon(ctx, layout);   // always (no Display switch since build 46_1)
   _nightSkyDrawGridLabels(ctx, layout);
   _nightSkyDrawSkyMapBodyLabels(ctx, layout);
+  if (typeof _nsSearchDrawSkyMapMark === 'function') _nsSearchDrawSkyMapMark(ctx, layout);   // render-search.js
 }
 
 // ─── Planetarium sub-mode ──────────────────────────────────────────────────────────────────────
@@ -2517,6 +2570,17 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
   if (ctl) ctl.style.display = shown ? 'flex' : 'none';
   document.getElementById('btnNightSkyPicker').style.display = pickerShown ? 'flex' : 'none';
+  // the search (render-search.js): Planetarium, Globe and the flat Sky Map (there in the picker's
+  // place, as the Sky Map has no picker); its Sky Map mark goes when the Sky Map is left
+  const skyMap = vis && nightSkySubmode === 'skymap' && !nightSkyMap3DOn;
+  const searchShown = pickerShown || skyMap;
+  const search = document.getElementById('btnNightSkySearch');
+  search.style.display = searchShown ? 'flex' : 'none';
+  search.classList.toggle('solo', skyMap);
+  if (typeof _nsSearchSetOpen === 'function') {
+    if (!searchShown) _nsSearchSetOpen(false);
+    if (!skyMap) _nsSearch.mark = null;
+  }
   if (!pickerShown || _nightSkyPickerSubmode !== nightSkySubmode) _nightSkyPickerSetActive(false);
   _nightSkyPickerSubmode = pickerShown ? nightSkySubmode : null;
   if (typeof _nightSkyUpdateMap3DControls === 'function') _nightSkyUpdateMap3DControls();   // Sky Map's 3D switch (render-nightsky-3d.js)
@@ -2548,6 +2612,10 @@ function _nightSkyUpdatePresentationLock() {
   picker.title = presenting ? 'Picker unavailable while a Catalog photo is shown'
     : 'Pick a point by RA/Dec and lock the view on it';
   if (presenting) _nightSkyPickerSetActive(false);
+  const search = document.getElementById('btnNightSkySearch');
+  search.disabled = presenting;
+  search.title = presenting ? 'Search unavailable while a Catalog photo is shown' : 'Find an object and lock the view on it';
+  if (presenting && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
 }
 
 // Fisheye (equidistant) projection - screen radius proportional to the angle theta from the view
@@ -2768,7 +2836,112 @@ function _nightSkyPlanetStrokeRun(ctx, layout, azElPoints, color) {
   if (started) strokeSeg(lastAlpha);
 }
 
+// ── Planetarium grids at any zoom ───────────────────────────────────────────────────────────────
+// The Az/Alt and equatorial grids keep their fixed 30° lines while the view is wide (zoom ~1× and
+// below). Zoomed in, the step comes from the field of view across the shorter side of the view, the
+// smallest "nice" step that leaves at most NIGHTSKY_GRID_LINES lines across it (NIGHTSKY_GRID_LADDER:
+// 15°, 10°, 5°, 2°, 1°, 30′, 15′, 10′, 5′, 2′, 1′), and only the lines that can show are drawn: the
+// range of altitude and azimuth (declination and right ascension) under a 9 × 9 net of points over
+// the view, all round when the zenith (a pole) is in it. Meridians (hour circles) are spaced wider
+// towards the zenith (pole), by the step over the cosine of the highest altitude (declination) in
+// view, so they don't crowd together there; right ascension in its own ladder of hours and minutes
+// (NIGHTSKY_RA_LADDER). The lines are sampled at an eighth of the step. Labels as for the wide grid,
+// with minutes when the step is under a degree (35°30′, 4h12m): altitudes and declinations along
+// the meridian through the middle of the view, azimuths and right ascensions along the line of
+// constant altitude (declination) at the bottom of the view, or the horizon when it is in view.
+const NIGHTSKY_GRID_LINES = 6;
+const NIGHTSKY_GRID_LADDER = [30, 15, 10, 5, 2, 1, 1 / 2, 1 / 4, 1 / 6, 1 / 12, 1 / 30, 1 / 60];   // degrees
+const NIGHTSKY_RA_LADDER = [30, 15, 7.5, 3.75, 2.5, 1.25, 0.5, 0.25, 0.125, 1 / 24];              // 2h .. 10s, degrees
+function _nightSkyGridNice(v, ladder) {   // the smallest step of the ladder not under v (its largest if none)
+  let step = ladder[0];
+  for (const x of ladder) if (x >= v) step = x;
+  return step;
+}
+// Degrees as 35° (a step of a degree or more) or 35°30′; signed: +/− (declination).
+function _nightSkyFmtGridAngle(v, step, signed) {
+  const sign = signed ? (v > 1e-9 ? '+' : v < -1e-9 ? '−' : '') : '';
+  if (step >= 1) return sign + Math.round(Math.abs(v)) + '°';
+  const tm = Math.round(Math.abs(v) * 60), d = Math.floor(tm / 60), m = tm % 60;
+  return sign + d + '°' + (m ? String(m).padStart(2, '0') + '′' : '');
+}
+// Right ascension (degrees) as 4h, 4h30m or 4h12m30s, by the step.
+function _nightSkyFmtGridRA(ra, step) {
+  const t = Math.round(((ra % 360) + 360) % 360 / 15 * 3600) % 86400;
+  const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  if (step >= 15 || (!m && !sec)) return h + 'h';
+  if (step >= 0.25 || !sec) return h + 'h' + String(m).padStart(2, '0') + 'm';
+  return h + 'h' + String(m).padStart(2, '0') + 'm' + String(sec).padStart(2, '0') + 's';
+}
+// The zoomed-in grid's plan for this view, or null while it is wide (the fixed 30° grid).
+function _nightSkyPlanetGridPlan(layout) {
+  const C = _nightSkyPlanet3D, w = layout.cx * 2, h = layout.cy * 2;
+  const fov = Math.min(w, h) / (layout.scale * C.FOCAL) * 180 / Math.PI;   // across the shorter side, degrees
+  const s = _nightSkyGridNice(fov / NIGHTSKY_GRID_LINES, NIGHTSKY_GRID_LADDER);
+  if (s >= 30) return null;
+  const lst = _nightSkyLstNow(), lat = _nightSkyLatSigned();
+  const wrap = (d) => ((d + 540) % 360) - 180;
+  const center = _nightSkyPlanetPixelToAzEl(layout, layout.cx, layout.cy);
+  const cEq = _skyAzElToRaDec(center.az, center.el, lst, lat);
+  let elMin = 90, elMax = -90, dMin = 180, dMax = -180, decMin = 90, decMax = -90, rMin = 180, rMax = -180;
+  for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++) {
+    const q = _nightSkyPlanetPixelToAzEl(layout, w * i / 8, h * j / 8);
+    if (!q) continue;
+    elMin = Math.min(elMin, q.el); elMax = Math.max(elMax, q.el);
+    const d = wrap(q.az - center.az); dMin = Math.min(dMin, d); dMax = Math.max(dMax, d);
+    const e = _skyAzElToRaDec(q.az, q.el, lst, lat);
+    decMin = Math.min(decMin, e.dec); decMax = Math.max(decMax, e.dec);
+    const r = wrap(e.ra - cEq.ra); rMin = Math.min(rMin, r); rMax = Math.max(rMax, r);
+  }
+  const inView = (az, el) => {   // a direction inside the canvas
+    const p = _nightSkyPlanetProject(layout, az, el);
+    return p.visible && p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h;
+  };
+  const zenith = inView(0, 90);
+  const ncp = _skyOfDateAzEl(0, 89.999, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const scp = _skyOfDateAzEl(0, -89.999, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const pole = (ncp.el >= 0 && inView(ncp.az, ncp.el)) || (scp.el >= 0 && inView(scp.az, scp.el));
+  if (zenith) elMax = 90;
+  if (pole) { if (decMax > 0) decMax = 90; if (decMin < 0) decMin = -90; }
+  const cosTop = (v) => Math.max(0.05, Math.cos(Math.min(85, v) * Math.PI / 180));
+  const azStep = zenith ? 30 : _nightSkyGridNice(s / cosTop(elMax), NIGHTSKY_GRID_LADDER);
+  const raStep = pole ? 30 : _nightSkyGridNice(s / cosTop(Math.max(Math.abs(decMin), Math.abs(decMax))), NIGHTSKY_RA_LADDER);
+  // the bottom of the view, for the azimuth and right ascension labels
+  const bot = _nightSkyPlanetPixelToAzEl(layout, layout.cx, h - 16);
+  const labelEl = bot ? Math.max(0, bot.el + s * 0.15) : 0;
+  const botEq = bot ? _skyAzElToRaDec(bot.az, Math.max(0, bot.el), lst, lat) : cEq;
+  return {
+    s, azStep, raStep, center, cEq, labelEl, labelDec: botEq.dec,
+    el: [Math.max(0, elMin), elMax],
+    az: zenith ? [0, 360] : [center.az + dMin, center.az + dMax],
+    dec: [decMin, decMax],
+    ra: pole ? [0, 360] : [cEq.ra + rMin, cEq.ra + rMax],
+  };
+}
+// Multiples of step from a to b (inclusive), b - a at most a full turn.
+function _nightSkyGridValues(a, b, step) {
+  const out = [];
+  for (let v = Math.ceil(a / step - 1e-9) * step; v <= b + 1e-9; v += step) out.push(v);
+  return out;
+}
 function _nightSkyDrawPlanetGrid(ctx, layout) {
+  const plan = _nightSkyPlanetGridPlan(layout);
+  if (plan) {   // zoomed in
+    const { s, azStep } = plan, col = _nightSkyGridLineColor(), d = Math.max(s / 8, 1 / 240);
+    ctx.save();
+    ctx.lineWidth = 1;
+    for (const el of _nightSkyGridValues(Math.max(plan.el[0], s), Math.min(plan.el[1], 90 - s / 2), s)) {
+      const da = Math.min(4, d / Math.max(0.05, Math.cos(el * Math.PI / 180))), pts = [];
+      for (let az = plan.az[0] - azStep; az <= plan.az[1] + azStep + 1e-9; az += da) pts.push({ az: ((az % 360) + 360) % 360, el });
+      _nightSkyPlanetStrokeRun(ctx, layout, pts, col);
+    }
+    for (const az of _nightSkyGridValues(plan.az[0], plan.az[1] - (plan.az[1] - plan.az[0] >= 360 ? azStep : 0), azStep)) {
+      const pts = [];
+      for (let el = Math.max(0, plan.el[0] - s); el <= Math.min(90, plan.el[1] + s) + 1e-9; el += d) pts.push({ az: ((az % 360) + 360) % 360, el: Math.min(90, el) });
+      _nightSkyPlanetStrokeRun(ctx, layout, pts, col);
+    }
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.lineWidth = 1;
   for (const el of [30, 60]) {
@@ -2785,6 +2958,21 @@ function _nightSkyDrawPlanetGrid(ctx, layout) {
 }
 
 function _nightSkyDrawPlanetEquatorialGrid(ctx, layout) {
+  const plan = _nightSkyPlanetGridPlan(layout);
+  if (plan) {   // zoomed in
+    const { s, raStep } = plan, col = 'rgba(224,120,120,0.45)', d = Math.max(s / 8, 1 / 240);
+    for (const dec of _nightSkyGridValues(Math.max(plan.dec[0], -90 + s / 2), Math.min(plan.dec[1], 90 - s / 2), s)) {
+      const dr = Math.min(4, d / Math.max(0.05, Math.cos(dec * Math.PI / 180))), pts = [];
+      for (let ra = plan.ra[0] - raStep; ra <= plan.ra[1] + raStep + 1e-9; ra += dr) pts.push([((ra % 360) + 360) % 360, dec]);
+      _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, col, true);
+    }
+    for (const ra of _nightSkyGridValues(plan.ra[0], plan.ra[1] - (plan.ra[1] - plan.ra[0] >= 360 ? raStep : 0), raStep)) {
+      const pts = [];
+      for (let dec = Math.max(-90, plan.dec[0] - s); dec <= Math.min(90, plan.dec[1] + s) + 1e-9; dec += d) pts.push([((ra % 360) + 360) % 360, Math.min(90, dec)]);
+      _nightSkyPlanetStrokeRaDecRun(ctx, layout, pts, col, true);
+    }
+    return;
+  }
   for (const dec of [-60, -30, 0, 30, 60]) {
     const pts = [];
     for (let ra = 0; ra <= 360; ra += 4) pts.push([ra, dec]);
@@ -2926,6 +3114,7 @@ function _nightSkyDrawPlanetSun(ctx, layout) {
   _nightSkyClipToSky(ctx, layout);
   ctx.globalAlpha = proj.alpha;
   const prP = (az, el) => { const p = _nightSkyPlanetProject(layout, az, el); return p.visible ? p : null; };
+  _moonEclipseClipSun(ctx, prP, r, _nightSkyPlanet3D.FOCAL * layout.scale * Math.PI / 180);   // render-moon.js
   _nightSkyPaintSun(ctx, proj.x, proj.y, r, s.el, _nightSkyRefrFlattening(s.el, semi), _nightSkyUpAngle(prP, s.az, s.el));
   ctx.restore();
 }
@@ -3286,12 +3475,15 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
 // (_nightSkyPickerClampJD); a jump that lands it below (date/year controls, SET NOW, Location)
 // releases the lock instead - the picker stays on for a new pick. Unavailable while a Catalog
 // photo is presented (_nightSkyUpdatePresentationLock), and switched off whenever Planetarium
-// isn't showing. A small red crosshair marks the locked point.
-const _nightSkyPicker = { active: false, lock: null };   // lock: {ra, dec} (J2000 deg) | null
-// Az/El of the locked J2000 point at a given instant (precessed to that date, like a star).
+// isn't showing. A small red crosshair marks the locked point. The search (render-search.js) locks
+// the same way on the object picked, with its name beside the crosshair; a body that moves on the
+// sky (the Sun, the Moon, a planet) brings its own position, at().
+const _nightSkyPicker = { active: false, lock: null };   // lock: {ra, dec} (J2000 deg) | {at} , label? | null
+// Az/El of the locked point at a given instant: a J2000 point precessed to that date, like a star,
+// or the body's own position.
 function _nightSkyPickerAzElAt(year, month, day, hourUT) {
   const L = _nightSkyPicker.lock;
-  return _skyStarAzEl(L.ra, L.dec, year, month, day, hourUT);
+  return L.at ? L.at(year, month, day, hourUT) : _skyStarAzEl(L.ra, L.dec, year, month, day, hourUT);
 }
 function _nightSkyPickerSetActive(on) {
   _nightSkyPicker.active = on;
@@ -3388,6 +3580,7 @@ let _nightSkyCursorOnSky = false;
 function _nightSkyPickerShowLockReadout() {
   const L = _nightSkyPicker.lock;
   if (!L) return;
+  if (!L.at && L.ra === undefined) { _nightSkyClearReadout(); return; }   // the Earth, found from the Moon (render-search.js)
   const p = _nightSkyPickerAzElAt(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   document.getElementById('valAz').textContent = p.az.toFixed(1) + '°';
   document.getElementById('valAlt').textContent = (p.el >= 0 ? '+' : '') + p.el.toFixed(1) + '°';
@@ -3408,6 +3601,11 @@ function _nightSkyPickerDrawMarker(ctx, layout) {
     ctx.lineTo(q.x + dx * 11, q.y + dy * 11);
   }
   ctx.stroke();
+  if (L.label) {
+    ctx.fillStyle = '#ff5050';
+    ctx.font = "11px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(L.label, q.x + 15, q.y - 11);
+  }
   ctx.restore();
 }
 // The box follows the cursor, down and to the right of the crosshair, while the picker is on.
