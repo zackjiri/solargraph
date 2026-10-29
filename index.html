@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug384">
+  <link rel="stylesheet" href="css/style.css?perfdebug401">
 </head>
 <body>
 
@@ -677,6 +677,16 @@
           <div class="sg-leg-item" data-band="transit"><span class="sg-leg-sw" style="background:#e04040"></span>Transit<span class="sg-leg-val" id="sgLegendTransit">—</span></div>
           <div class="sg-leg-item ns-sg-only" data-band="moon" title="The Moon above the horizon, denser the fuller it is"><span class="sg-leg-sw" style="background:#f4eab8"></span>Moon<span class="sg-leg-val" data-val="moon"></span></div>
           <div class="sg-leg-item ns-sg-moonless" data-band="moonless" title="Astronomical night with the Moon below the horizon; the value is its length that day"><span class="sg-leg-sw" style="background:rgb(126,92,232)"></span>Moonless night<span class="sg-leg-val" data-val="moonless"></span></div>
+          <!-- Thin crescent around the new Moon (Odeh), with the lunar calendar (body.ns-crescent): the row
+               itself only the swatch and label; under it (with Custom date) a small table of that day's
+               crescents in the observer's words, two lines each (#sgLegendCrescent). -->
+          <div class="sg-leg-item ns-sg-crescent" data-band="crescent" title="Thin crescent by Odeh's criterion, on the sunset after / sunrise before each new Moon: green - naked eye, yellow - optical aid, could be seen by the naked eye, orange - optical aid only, grey - not visible. A gold, silver or bronze ring marks the youngest crescent of each series the eye can see: under 24, 36 or 48 hours old. Below it: when and where to look that day"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#50dc78 25%,#e8d040 25% 50%,#e8902c 50% 75%,#8a9098 75%)"></span>Thin crescent</div>
+          <div class="ns-sg-crescent" id="sgLegendCrescent"></div>
+          <!-- Galactic center (render-nightsky-sungraph.js), switch on (body.ns-gc): one row per level,
+               the value its season in the year shown, first to last night. -->
+          <div class="sg-leg-item ns-sg-gc" data-band="gc0" title="Moonless night with the centre of the Milky Way above the horizon; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.32)"></span>Galactic center ≥ 0°<span class="sg-leg-val" id="sgLegendGc0"></span></div>
+          <div class="sg-leg-item ns-sg-gc" data-band="gc5" title="Moonless night with the centre of the Milky Way at least 5° up"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.58)"></span>Galactic center ≥ 5°<span class="sg-leg-val" id="sgLegendGc5"></span></div>
+          <div class="sg-leg-item ns-sg-gc" data-band="gc10" title="Moonless night with the centre of the Milky Way at least 10° up"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.88)"></span>Galactic center ≥ 10°<span class="sg-leg-val" id="sgLegendGc10"></span></div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
@@ -912,6 +922,12 @@
         <span class="nightsky-sun-label">Moonless night</span>
         <button class="nightsky-sun-switch" id="btnNightSkyMoonless" role="switch" aria-checked="false"
           title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
+      </div>
+      <!-- Sun Graph times view only, while Moon is on: Moonless night with the galactic centre up. -->
+      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyGalCenterSubrow">
+        <span class="nightsky-sun-label">Galactic center</span>
+        <button class="nightsky-sun-switch" id="btnNightSkyGalCenter" role="switch" aria-checked="false"
+          title="Mark the hours of moonless astronomical night with the centre of the Milky Way at least 0°, 5° and 10° above the horizon - three shades, the strongest the best"></button>
       </div>
       <label class="chk-row ns-globe-keep" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
       <!-- Under Planets, while it is on (render-nightsky.js): on, only the planets seen with the naked
@@ -1186,33 +1202,33 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.29
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.30
 </div>
 
-<script src="js/core.js?perfdebug384"></script>
-<script src="js/render-2d.js?perfdebug384"></script>
-<script src="js/controls.js?perfdebug384"></script>
-<script src="js/render-sungraph.js?perfdebug384"></script>
-<script src="js/render-3d.js?perfdebug384"></script>
-<script src="js/render-skydome.js?perfdebug384"></script>
-<script src="js/render-moon.js?perfdebug384"></script>
-<script src="js/render-planets.js?perfdebug384"></script>
-<script src="js/render-milkyway.js?perfdebug384"></script>
-<script src="js/render-deepsky.js?perfdebug384"></script>
-<script src="js/render-skyglow.js?perfdebug384"></script>
-<script src="js/render-nightsky.js?perfdebug384"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug384"></script>
-<script src="js/render-nightsky-3d.js?perfdebug384"></script>
-<script src="js/render-nightsky-globe.js?perfdebug384"></script>
-<script src="js/render-search.js?perfdebug384"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug384"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug384"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug384"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug384"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug384"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug384"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug384"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug384"></script>
-<script src="js/render-eclipse.js?perfdebug384"></script>
+<script src="js/core.js?perfdebug401"></script>
+<script src="js/render-2d.js?perfdebug401"></script>
+<script src="js/controls.js?perfdebug401"></script>
+<script src="js/render-sungraph.js?perfdebug401"></script>
+<script src="js/render-3d.js?perfdebug401"></script>
+<script src="js/render-skydome.js?perfdebug401"></script>
+<script src="js/render-moon.js?perfdebug401"></script>
+<script src="js/render-planets.js?perfdebug401"></script>
+<script src="js/render-milkyway.js?perfdebug401"></script>
+<script src="js/render-deepsky.js?perfdebug401"></script>
+<script src="js/render-skyglow.js?perfdebug401"></script>
+<script src="js/render-nightsky.js?perfdebug401"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug401"></script>
+<script src="js/render-nightsky-3d.js?perfdebug401"></script>
+<script src="js/render-nightsky-globe.js?perfdebug401"></script>
+<script src="js/render-search.js?perfdebug401"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug401"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug401"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug401"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug401"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug401"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug401"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug401"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug401"></script>
+<script src="js/render-eclipse.js?perfdebug401"></script>
 </body>
 </html>
