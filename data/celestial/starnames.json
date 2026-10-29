@@ -1,0 +1,464 @@
+{
+    "32349": {
+        "name": "Sirius"
+    },
+    "30438": {
+        "name": "Canopus"
+    },
+    "71683": {
+        "name": "Rigil Kentaurus"
+    },
+    "69673": {
+        "name": "Arcturus"
+    },
+    "91262": {
+        "name": "Vega"
+    },
+    "24608": {
+        "name": "Capella"
+    },
+    "24436": {
+        "name": "Rigel"
+    },
+    "37279": {
+        "name": "Procyon"
+    },
+    "7588": {
+        "name": "Achernar"
+    },
+    "27989": {
+        "name": "Betelgeuse"
+    },
+    "68702": {
+        "name": "Hadar"
+    },
+    "97649": {
+        "name": "Altair"
+    },
+    "60718": {
+        "name": "Acrux"
+    },
+    "21421": {
+        "name": "Aldebaran"
+    },
+    "80763": {
+        "name": "Antares"
+    },
+    "65474": {
+        "name": "Spica"
+    },
+    "37826": {
+        "name": "Pollux"
+    },
+    "113368": {
+        "name": "Fomalhaut"
+    },
+    "102098": {
+        "name": "Deneb"
+    },
+    "62434": {
+        "name": "Mimosa"
+    },
+    "49669": {
+        "name": "Regulus"
+    },
+    "33579": {
+        "name": "Adhara"
+    },
+    "36850": {
+        "name": "Castor"
+    },
+    "61084": {
+        "name": "Gacrux"
+    },
+    "85927": {
+        "name": "Shaula"
+    },
+    "25336": {
+        "name": "Bellatrix"
+    },
+    "25428": {
+        "name": "Elnath"
+    },
+    "45238": {
+        "name": "Miaplacidus"
+    },
+    "26311": {
+        "name": "Alnilam"
+    },
+    "109268": {
+        "name": "Alnair"
+    },
+    "26727": {
+        "name": "Alnitak"
+    },
+    "62956": {
+        "name": "Alioth"
+    },
+    "54061": {
+        "name": "Dubhe"
+    },
+    "15863": {
+        "name": "Mirfak"
+    },
+    "34444": {
+        "name": "Wezen"
+    },
+    "86228": {
+        "name": "Sargas"
+    },
+    "90185": {
+        "name": "Kaus Australis"
+    },
+    "41037": {
+        "name": "Avior"
+    },
+    "67301": {
+        "name": "Alkaid"
+    },
+    "28360": {
+        "name": "Menkalinan"
+    },
+    "82273": {
+        "name": "Atria"
+    },
+    "31681": {
+        "name": "Alhena"
+    },
+    "100751": {
+        "name": "Peacock"
+    },
+    "11767": {
+        "name": "Polaris"
+    },
+    "30324": {
+        "name": "Mirzam"
+    },
+    "46390": {
+        "name": "Alphard"
+    },
+    "9884": {
+        "name": "Hamal"
+    },
+    "50583": {
+        "name": "Algieba"
+    },
+    "3419": {
+        "name": "Diphda"
+    },
+    "92855": {
+        "name": "Nunki"
+    },
+    "68933": {
+        "name": "Menkent"
+    },
+    "5447": {
+        "name": "Mirach"
+    },
+    "677": {
+        "name": "Alpheratz"
+    },
+    "86032": {
+        "name": "Rasalhague"
+    },
+    "72607": {
+        "name": "Kochab"
+    },
+    "27366": {
+        "name": "Saiph"
+    },
+    "57632": {
+        "name": "Denebola"
+    },
+    "14576": {
+        "name": "Algol"
+    },
+    "112122": {
+        "name": "Tiaki"
+    },
+    "61932": {
+        "name": "Muhlifain"
+    },
+    "45556": {
+        "name": "Aspidiske"
+    },
+    "44816": {
+        "name": "Suhail"
+    },
+    "76267": {
+        "name": "Alphecca"
+    },
+    "25930": {
+        "name": "Mintaka"
+    },
+    "100453": {
+        "name": "Sadr"
+    },
+    "87833": {
+        "name": "Eltanin"
+    },
+    "3179": {
+        "name": "Schedar"
+    },
+    "39429": {
+        "name": "Naos"
+    },
+    "9640": {
+        "name": "Almach"
+    },
+    "746": {
+        "name": "Caph"
+    },
+    "72105": {
+        "name": "Izar"
+    },
+    "78401": {
+        "name": "Dschubba"
+    },
+    "82396": {
+        "name": "Larawag"
+    },
+    "53910": {
+        "name": "Merak"
+    },
+    "2081": {
+        "name": "Ankaa"
+    },
+    "86670": {
+        "name": "Girtab"
+    },
+    "107315": {
+        "name": "Enif"
+    },
+    "113881": {
+        "name": "Scheat"
+    },
+    "84012": {
+        "name": "Sabik"
+    },
+    "58001": {
+        "name": "Phecda"
+    },
+    "35904": {
+        "name": "Aludra"
+    },
+    "45941": {
+        "name": "Markeb"
+    },
+    "4427": {
+        "name": "Navi"
+    },
+    "113963": {
+        "name": "Markab"
+    },
+    "102488": {
+        "name": "Aljanah"
+    },
+    "78820": {
+        "name": "Acrab"
+    },
+    "74785": {
+        "name": "Zubeneschamali"
+    },
+    "72622": {
+        "name": "Zubenelgenubi"
+    },
+    "77070": {
+        "name": "Unukalhai"
+    },
+    "65378": {
+        "name": "Mizar"
+    },
+    "65477": {
+        "name": "Alcor"
+    },
+    "68756": {
+        "name": "Thuban"
+    },
+    "63608": {
+        "name": "Vindemiatrix"
+    },
+    "106278": {
+        "name": "Sadalsuud"
+    },
+    "109074": {
+        "name": "Sadalmelik"
+    },
+    "95947": {
+        "name": "Albireo"
+    },
+    "17702": {
+        "name": "Alcyone"
+    },
+    "6686": {
+        "name": "Ruchbah"
+    },
+    "59803": {
+        "name": "Gienah"
+    },
+    "60965": {
+        "name": "Algorab"
+    },
+    "61359": {
+        "name": "Kraz"
+    },
+    "84345": {
+        "name": "Rasalgethi"
+    },
+    "105199": {
+        "name": "Alderamin"
+    },
+    "116727": {
+        "name": "Errai"
+    },
+    "14135": {
+        "name": "Menkar"
+    },
+    "54872": {
+        "name": "Zosma"
+    },
+    "54879": {
+        "name": "Chertan"
+    },
+    "106985": {
+        "name": "Nashira"
+    },
+    "107556": {
+        "name": "Deneb Algedi"
+    },
+    "97278": {
+        "name": "Tarazed"
+    },
+    "98036": {
+        "name": "Alshain"
+    },
+    "63125": {
+        "name": "Cor Caroli"
+    },
+    "9487": {
+        "name": "Alrescha"
+    },
+    "8903": {
+        "name": "Sheratan"
+    },
+    "32246": {
+        "name": "Mebsuta"
+    },
+    "30343": {
+        "name": "Tejat"
+    },
+    "35550": {
+        "name": "Wasat"
+    },
+    "29655": {
+        "name": "Propus"
+    },
+    "25985": {
+        "name": "Arneb"
+    },
+    "25606": {
+        "name": "Nihal"
+    },
+    "26634": {
+        "name": "Phact"
+    },
+    "27628": {
+        "name": "Wazn"
+    },
+    "30122": {
+        "name": "Furud"
+    },
+    "34045": {
+        "name": "Muliphein"
+    },
+    "23015": {
+        "name": "Hassaleh"
+    },
+    "18543": {
+        "name": "Zaurak"
+    },
+    "13847": {
+        "name": "Acamar"
+    },
+    "36188": {
+        "name": "Gomeisa"
+    },
+    "93506": {
+        "name": "Ascella"
+    },
+    "89931": {
+        "name": "Kaus Media"
+    },
+    "90496": {
+        "name": "Kaus Borealis"
+    },
+    "88635": {
+        "name": "Alnasl"
+    },
+    "92420": {
+        "name": "Sheliak"
+    },
+    "93194": {
+        "name": "Sulafat"
+    },
+    "101769": {
+        "name": "Rotanev"
+    },
+    "101958": {
+        "name": "Sualocin"
+    },
+    "53740": {
+        "name": "Alkes"
+    },
+    "61941": {
+        "name": "Porrima"
+    },
+    "80816": {
+        "name": "Kornephoros"
+    },
+    "84379": {
+        "name": "Sarin"
+    },
+    "1067": {
+        "name": "Algenib"
+    },
+    "59774": {
+        "name": "Megrez"
+    },
+    "75097": {
+        "name": "Pherkad"
+    },
+    "106032": {
+        "name": "Alfirk"
+    },
+    "18614": {
+        "name": "Menkib"
+    },
+    "17448": {
+        "name": "Atik"
+    },
+    "17499": {
+        "name": "Electra"
+    },
+    "17573": {
+        "name": "Maia"
+    },
+    "17608": {
+        "name": "Merope"
+    },
+    "17531": {
+        "name": "Taygeta"
+    },
+    "17847": {
+        "name": "Atlas"
+    },
+    "17851": {
+        "name": "Pleione"
+    },
+    "20889": {
+        "name": "Ain"
+    },
+    "20205": {
+        "name": "Hyadum I"
+    }
+}
