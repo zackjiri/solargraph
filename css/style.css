@@ -3283,6 +3283,30 @@
   /* Moonless night legend row: Night Sky's Sun Graph, switch on (body.ns-moonless). */
   .ns-sg-moonless { display: none; }
   body.ns-moonless #sgLegendWrap.ns-sungraph .ns-sg-moonless { display: flex; }
+  /* Thin crescent legend row: lunar calendar on (body.ns-crescent), times view only. */
+  .ns-sg-crescent { display: none; }
+  body.ns-crescent:not(.sg-length) #sgLegendWrap.ns-sungraph .ns-sg-crescent { display: flex; }
+  /* the day's crescents under the row: three columns (when, time / place, visibility / age),
+     indented to the label */
+  body.ns-crescent:not(.sg-length) #sgLegendWrap.ns-sungraph #sgLegendCrescent {
+    display: grid; grid-template-columns: auto auto 1fr; column-gap: 12px; row-gap: 0;
+    padding-left: 18px; white-space: nowrap; color: var(--text);   /* swatch 11 px + gap 7 px */
+  }
+  body.ns-crescent:not(.sg-length) #sgLegendWrap.ns-sungraph #sgLegendCrescent:empty { display: none; }
+  /* one crescent: its two lines on a tint of its zone's colour, the columns shared (subgrid) */
+  #sgLegendCrescent .ns-cres-block {
+    grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: 1px;
+    padding: 2px 5px; margin-left: -5px; border-radius: 3px;
+  }
+  #sgLegendCrescent .ns-cres-block + .ns-cres-block { margin-top: 3px; }
+  #sgLegendCrescent .ns-cres-none { grid-column: 1 / -1; }
+  #sgLegendCrescent .ns-cres-dot {   /* the chart's marker: the zone's dot, a medal's ring as box-shadow */
+    display: inline-block; width: 7px; height: 7px; margin: 0 7px 0 4px; vertical-align: -1px;
+    border: 1px solid rgba(0,0,0,0.7); border-radius: 50%; box-sizing: content-box;
+  }
+  /* Galactic center legend rows: switch on (body.ns-gc), times view only. */
+  .ns-sg-gc { display: none; }
+  body.ns-gc:not(.sg-length) #sgLegendWrap.ns-sungraph .ns-sg-gc { display: flex; }
   #nightSkyDisplaySection.ns-sungraph .chk-row:not(.ns-sg-keep):not(.ns-sg-only),
   #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow:not(.ns-sg-only) { display: none !important; }
   #sgLegendWrap.ns-sungraph .sg-leg-sep,
