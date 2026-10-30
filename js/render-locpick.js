@@ -9,7 +9,7 @@
 // the Location there (_locHereApply, controls.js, the same path as SET HERE) and a pressure wave
 // spreads from the point over the globe: three rings growing along the surface; when it ends the
 // fields turn from grey to their normal colour. Any other change of the Location (fields, arrows,
-// N|S and E|W, SET HERE) moves the pin too (_locHereStale, controls.js). The window closes with its
+// N|S and E|W, SET HERE, the calibration reset) moves the pin too (_locHereStale, controls.js). The window closes with its
 // × or another click on SELECT (light blue while the window is open), Escape, or when the view
 // under it changes: another mode, sub-view, sub-mode, 3D switch, event, or Gallery image
 // (_locPickViewKey, checked after every click, change, key and pointer release).
@@ -17,6 +17,7 @@
 // limb a little darker, a graticule (30°, 10° and 5° as the zoom grows) and the Location's pin.
 // The same window shows the Eclipse map (render-eclipse-map.js, opened from Eclipse
 // Visualization): the event's path and lines over the Earth, picking the same way.
+// In both, the round button in the corner (#btnLocPickZones) lays the time zones over the Earth.
 const LOC_PICK_ZOOM_MIN = 1, LOC_PICK_ZOOM_MAX = 20;
 const LOC_PICK_MAX_PX = 1600000;       // buffer pixels at most at rest (beyond: smoothed up)
 const LOC_PICK_MAX_PX_MOVING = 220000; // while dragged or pinched
@@ -25,6 +26,7 @@ const LOC_PICK_WAVE_DEG = 14;          // angular radius a ring reaches at zoom 
 const _locPick = {
   open: false, lon0: 0, lat0: 0, zoom: 1,
   ecl: null,           // the event id while the window shows its Eclipse map
+  zones: false,        // the time zones over the Earth (#btnLocPickZones), kept while the page is open
   drag: null,          // {x, y, lon0, lat0, moved}
   hover: null,         // {lat, lon} under the pin, or null
   wave: null,          // {lat, lon, t0, zoom}
@@ -72,9 +74,31 @@ function _locPickUnproject(V, x, y) {   // a canvas point -> {lat, lon}, or null
 // is interpolated between the four nearest cells (the texture's edge cells hold their antialiased
 // share) and cut at a half over about one screen pixel, so zoomed in the edge stays sharp instead
 // of showing blurred steps.
+// The time zones (#btnLocPickZones, off at first): each point's zone (tz-lookup.js) at its offset
+// at the mode's moment (_tzModeOffsets, the offset a click would set), at sea the nautical zone.
+// A colour per offset on a wheel that goes once round in 24 h, so the zones run round the Earth
+// as a spectrum, whole hours alternately lighter and darker so that neighbours part; laid over
+// land more strongly than over the sea, and fainter under the Eclipse map. A dark line where the
+// offset changes, a fainter one between two zones of the same offset on land; the lines only at
+// rest.
+const LOC_PICK_ZONE_ALPHA = { land: 0.66, sea: 0.3, ecl: 0.55 };
+const _locPickZoneRGBs = new Map();
+function _locPickZoneRGB(h) {
+  let c = _locPickZoneRGBs.get(h);
+  if (c) return c;
+  const hue = (((h + 12) / 24) % 1 + 1) % 1 * 6, s = 0.8, l = (Math.floor(h) & 1) ? 0.66 : 0.4;
+  const ch = (1 - Math.abs(2 * l - 1)) * s, x = ch * (1 - Math.abs(hue % 2 - 1)), m = l - ch / 2;
+  const rgb = [[ch, x, 0], [x, ch, 0], [0, ch, x], [0, x, ch], [x, 0, ch], [ch, 0, x]][Math.floor(hue) % 6];
+  c = rgb.map(v => (v + m) * 255);
+  _locPickZoneRGBs.set(h, c);
+  return c;
+}
 function _locPickDrawEarth(w, h, res, V) {
   const lt = document.body.classList.contains('light');
-  const key = [w, h, res, _locPick.lon0, _locPick.lat0, _locPick.zoom, lt, !!_nsGlobeTex, _locPick.moving].join('|');
+  const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;   // tz-lookup.js
+  const offs = G ? _tzModeOffsets(G) : null;
+  const key = [w, h, res, _locPick.lon0, _locPick.lat0, _locPick.zoom, lt, !!_nsGlobeTex, _locPick.moving,
+    offs ? offs.key : '', !!_locPick.ecl].join('|');
   const C = _locPick.cache;
   if (C.key === key) return C.cv;
   const cv = C.cv || (C.cv = document.createElement('canvas'));
@@ -92,6 +116,9 @@ function _locPickDrawEarth(w, h, res, V) {
     const O = NS_GLOBE_OCEAN, Ld = NS_GLOBE_LAND, span = Ld[0] - O[0];
     const share = (x, y) => (T[(y * TW + x) * 4] - O[0]) / span;   // 0 sea .. 1 land
     const texPerPx = TW / (2 * Math.PI) / (q * V.R);   // texture cells per buffer pixel at the centre
+    // the time zones: per pixel the zone (land) or the nautical band (sea), and its offset
+    const ids = G ? new Int32Array(sw * sh).fill(-1) : null, hs = G ? new Float32Array(sw * sh) : null;
+    const zoneA = LOC_PICK_ZONE_ALPHA, eclA = _locPick.ecl ? zoneA.ecl : 1;
     for (let j = 0; j < sh; j++) {
       const v = -((y0 + (j + 0.5) / q) - V.cy) / V.R;
       for (let i = 0; i < sw; i++) {
@@ -113,10 +140,34 @@ function _locPickDrawEarth(w, h, res, V) {
         let a = (f - 0.5 + hw) / (2 * hw); a = a <= 0 ? 0 : a >= 1 ? 1 : a * a * (3 - 2 * a);
         const k = 0.62 + 0.38 * z;   // limb darkening: reads as a sphere
         const o = (j * sw + i) * 4;
-        px[o] = (O[0] + (Ld[0] - O[0]) * a) * k;
-        px[o + 1] = (O[1] + (Ld[1] - O[1]) * a) * k;
-        px[o + 2] = (O[2] + (Ld[2] - O[2]) * a) * k;
+        let r = O[0] + (Ld[0] - O[0]) * a, g = O[1] + (Ld[1] - O[1]) * a, b = O[2] + (Ld[2] - O[2]) * a;
+        if (G) {
+          let s = _tzIndexAt(G, lat, lon), zh = s ? offs.off[s] : NaN;
+          if (zh !== zh) { s = 0; zh = _tzNautical(lon); }   // at sea, or a zone the browser does not know
+          ids[j * sw + i] = s || 100000 + Math.round(zh * 4);
+          hs[j * sw + i] = zh;
+          const c = _locPickZoneRGB(zh), al = (zoneA.sea + (zoneA.land - zoneA.sea) * a) * eclA;
+          r += (c[0] - r) * al; g += (c[1] - g) * al; b += (c[2] - b) * al;
+        }
+        px[o] = r * k;
+        px[o + 1] = g * k;
+        px[o + 2] = b * k;
         px[o + 3] = 255;
+      }
+    }
+    // the lines: towards the right and the lower neighbour; not while dragged or pinched, as the
+    // buffer is coarse then and smoothed up, which blurs thin lines far more than the fill
+    if (G && !_locPick.moving) {
+      for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) {
+        const n = j * sw + i, id = ids[n];
+        if (id < 0) continue;
+        let f = 1;
+        for (const m of [i + 1 < sw ? n + 1 : -1, j + 1 < sh ? n + sw : -1]) {
+          if (m < 0 || ids[m] < 0 || ids[m] === id) continue;
+          if (hs[m] !== hs[n]) f = Math.min(f, 0.45);
+          else if (id < 100000 && ids[m] < 100000) f = Math.min(f, 0.8);
+        }
+        if (f < 1) { const o = n * 4; px[o] *= f; px[o + 1] *= f; px[o + 2] *= f; }
       }
     }
     const off = document.createElement('canvas'); off.width = sw; off.height = sh;
@@ -239,7 +290,19 @@ function _locPickShowHemi(latSigned, lonSigned) {
   document.getElementById('btnE').className = e ? 'ns-btn active' : 'ns-btn';
   document.getElementById('btnW').className = e ? 'ns-btn' : 'ns-btn active-s';
 }
+// With the time zones on, the head's hint gives the zone and offset of the point under the pin
+// (at sea the nautical zone); off the Earth, or with them off, the hint again.
+function _locPickZoneHint(p) {
+  const span = document.querySelector('.loc-pick-head span');
+  if (span.dataset.hint === undefined) span.dataset.hint = span.textContent;
+  const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;
+  if (!G || !p) { span.textContent = span.dataset.hint; return; }
+  const s = _tzIndexAt(G, p.lat, p.lon), h = s ? _tzModeOffsets(G).off[s] : NaN;
+  span.textContent = h === h ? `${G.zones[s - 1]} · UTC${_fmtTimeZone(h)}`
+    : `${s ? G.zones[s - 1] + ' unknown to this browser, nautical' : 'sea, nautical'} · UTC${_fmtTimeZone(_tzNautical(p.lon))}`;
+}
 function _locPickPreview(p) {
+  _locPickZoneHint(p);
   if (_locPick.wave) return;   // the picked values stay until the wave ends
   const lat = document.getElementById('inpLat'), lon = document.getElementById('inpLong');
   if (p) {
@@ -308,10 +371,12 @@ function _locPickSetOpen(on, ecl) {
       _locPick.zoom = 1;
     }
     _locPick.hover = null;
+    _locPickZoneHint(null);
     _nsGlobeLoad();
     _locPickRequest();
   } else {
     _locPick.drag = null; _locPick.hover = null;
+    _locPickZoneHint(null);
     if (_locPick.wave) _locPick.wave = null;
     _locPickRestoreFields();
   }
@@ -381,7 +446,9 @@ function _locPickPoint(e) {
     const p = _locPickPoint(e).p;
     if (!p) { _locPickPreview(null); return; }
     _locHereApply(p.lat, p.lon);   // controls.js: hemispheres + applyLat/applyLong, every view redraws
-    _locHereInfo(`Set to ${_locHereShown()} from the globe.`);
+    const text = `Set to ${_locHereShown()} from the globe.`;
+    _locHereInfo(text);
+    _tzFollowLocation(p.lat, p.lon, text);   // tz-lookup.js: the Time zone follows
     document.getElementById('inpLat').classList.add('loc-preview');
     document.getElementById('inpLong').classList.add('loc-preview');
     _locPick.wave = { lat: p.lat, lon: p.lon, t0: performance.now(), zoom: _locPick.zoom };
@@ -412,6 +479,14 @@ function _locPickPoint(e) {
 })();
 document.getElementById('btnLocSelect').addEventListener('click', () => _locPickSetOpen(!_locPick.open));
 document.getElementById('btnLocPickClose').addEventListener('click', () => _locPickSetOpen(false));
+document.getElementById('btnLocPickZones').addEventListener('click', (e) => {
+  _locPick.zones = !_locPick.zones;
+  e.currentTarget.setAttribute('aria-pressed', String(_locPick.zones));
+  e.currentTarget.title = _locPick.zones ? 'Hide the time zones' : 'Show the time zones';
+  if (_locPick.zones) _tzLoad().then(() => _locPickRequest());   // the first time: the grid comes in
+  _locPickZoneHint(_locPick.hover);
+  _locPickRequest();
+});
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && _locPick.open && !e.defaultPrevented) _locPickSetOpen(false);
 });

@@ -115,13 +115,12 @@ function _eclMapRingPath(path, V, ring) {
   }
   path.closePath();
 }
-function _eclMapFillBand(ctx, V, north, south) {
-  const path = new Path2D();
+// The path's band, filled as a zone (G lies on its central line): a band wholly behind the Earth
+// that goes round the view (seen from near the antipode of a point of the path) fills nothing.
+function _eclMapFillBand(ctx, V, north, south, G) {
   const ring = north.concat(south.slice().reverse());
   ring.push(ring[0]);
-  _eclMapRingPath(path, V, ring);
-  ctx.fillStyle = ECLIPSE_MAP_PATH_FILL;
-  ctx.fill(path);
+  _eclMapFillZone(ctx, V, [ring], G, ECLIPSE_MAP_PATH_FILL);
 }
 // Whether the great-circle arcs a-b and c-d cross (unit vectors)
 function _eclMapArcsCross(a, b, c, d) {
@@ -139,7 +138,7 @@ function _eclMapArcsCross(a, b, c, d) {
 // closed along the limb (_eclMapRingPath), split the disc into an inside and an outside; the side to fill is the one the view's centre falls
 // on if the centre and G lie on the same side on the sphere (an even number of crossings of the
 // arc from G to the centre with the rings), else the other.
-function _eclMapFillZone(ctx, V, rings, G) {
+function _eclMapFillZone(ctx, V, rings, G, fill) {
   const path = new Path2D();
   for (const ring of rings) _eclMapRingPath(path, V, ring);
   // the map opens turned to G: with the centre on it there is no arc (and no crossing) to count
@@ -150,12 +149,12 @@ function _eclMapFillZone(ctx, V, rings, G) {
   }
   const centreIn = crossings % 2 === 0;
   if (ctx.isPointInPath(path, V.cx, V.cy, 'evenodd') === centreIn) {
-    ctx.fillStyle = ECLIPSE_MAP_ZONE; ctx.fill(path, 'evenodd');
+    ctx.fillStyle = fill; ctx.fill(path, 'evenodd');
   } else {   // the disc but the rings' inside
     const rest = new Path2D();
     rest.arc(V.cx, V.cy, V.R, 0, Math.PI * 2);
     rest.addPath(path);
-    ctx.fillStyle = ECLIPSE_MAP_ZONE; ctx.fill(rest, 'evenodd');
+    ctx.fillStyle = fill; ctx.fill(rest, 'evenodd');
   }
 }
 function _eclMapLabel(ctx, text, x, y, col) {
@@ -219,13 +218,13 @@ function _eclMapDraw(ctx, V, w, h) {
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   const g = ev.greatestEclipse;
   const G = _locPickVec(g.lonHemisphere * g.lon, g.hemisphere * g.lat);
-  // isPointInPath works in the canvas's own pixels: the zones under an identity transform
+  // isPointInPath works in the canvas's own pixels: the zones and the band under an identity transform
   const res = ctx.getTransform().a;
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   const Vp = Object.assign({}, V, { cx: V.cx * res, cy: V.cy * res, R: V.R * res });
-  for (const k in M.mag) if (M.mag[k].length) _eclMapFillZone(ctx, Vp, M.mag[k], G);
+  for (const k in M.mag) if (M.mag[k].length) _eclMapFillZone(ctx, Vp, M.mag[k], G, ECLIPSE_MAP_ZONE);
+  if (M.north && M.south && M.north.length > 1 && M.south.length > 1) _eclMapFillBand(ctx, Vp, M.north, M.south, G);
   ctx.restore();
-  if (M.north && M.south && M.north.length > 1 && M.south.length > 1) _eclMapFillBand(ctx, V, M.north, M.south);
   // magnitude lines, the edge of visibility stronger
   ctx.lineJoin = 'round';
   for (const k in M.mag) {

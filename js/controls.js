@@ -341,6 +341,7 @@ function doCalibReset() {
   // 3. Single draw with ALL values in their final state
   updateScanH();
   refreshCalibLimits();
+  _locHereStale();   // as any change of Location: the info line goes, the open globe's pin moves
   draw(); draw3D();
   if (typeof sunGraphActive !== 'undefined' && sunGraphActive) drawSunGraph();
 }
@@ -762,7 +763,8 @@ document.getElementById('btnTimeZoneInc').addEventListener('click', () => {
 // km) and the IP goes to a third-party service. Runs only on click, never on load, so the
 // browser doesn't prompt for location the moment the page opens. #locHereInfo reports what was set
 // and from what; any later change to Location clears it (_locHereStale), as it no longer applies.
-// Time zone is left alone.
+// The Time zone follows the new Location (_tzFollowLocation, tz-lookup.js), its zone added to the
+// info line.
 const LOC_IP_SERVICES = [
   { url: 'https://ipapi.co/json/',
     parse: j => ({ lat: +j.latitude, lon: +j.longitude, place: [j.city, j.country_name].filter(Boolean).join(', ') }) },
@@ -835,15 +837,19 @@ document.getElementById('btnLocSetHere').addEventListener('click', async () => {
       const d = await _locHereDevice();
       _locHereApply(d.lat, d.lon);
       const acc = d.acc >= 1000 ? `±${(d.acc / 1000).toFixed(1)} km` : `±${Math.round(d.acc)} m`;
-      _locHereInfo(`Set to ${_locHereShown()} from this device's location (${acc}).`);
+      const text = `Set to ${_locHereShown()} from this device's location (${acc}).`;
+      _locHereInfo(text);
+      _tzFollowLocation(d.lat, d.lon, text);   // tz-lookup.js
       return;
     } catch (reason) { why = reason; }
     _locHereInfo(`Device location ${why}, trying the IP address…`);
     const ip = await _locHereIP();
     if (!ip) { _locHereInfo(`Location not set: device location ${why}, IP address lookup failed.`, true); return; }
     _locHereApply(ip.lat, ip.lon);
-    _locHereInfo(`Set to ${_locHereShown()} from the IP address${ip.place ? ' (' + ip.place + ')' : ''}, ` +
-      `approximate, city level at best. Device location ${why}.`);
+    const text = `Set to ${_locHereShown()} from the IP address${ip.place ? ' (' + ip.place + ')' : ''}, ` +
+      `approximate, city level at best. Device location ${why}.`;
+    _locHereInfo(text);
+    _tzFollowLocation(ip.lat, ip.lon, text);
   } finally {
     btn.disabled = false;
   }
