@@ -3,7 +3,7 @@
 The files in this folder are **vendored, unmodified copies**: the land from the
 [world-atlas](https://github.com/topojson/world-atlas) package by Mike Bostock (version 2.0.2,
 fetched from jsDelivr) and the lakes straight from [Natural Earth](https://www.naturalearthdata.com/),
-used here only as a data source for Night Sky's Globe view and the Location globe (SELECT). No code from
+used here only as a data source for Night Sky's Orbit view and the Location globe (SELECT). No code from
 that package is used; the TopoJSON is decoded by this project's own renderer
 (`js/render-nightsky-globe.js`).
 
