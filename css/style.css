@@ -3405,6 +3405,27 @@
   }
   #btnEclipseMap:hover { border-color: var(--accent2); }
   body.light #btnEclipseMap { background: rgba(220,228,236,0.82); }
+  /* Time zones over the globe (js/render-locpick.js): the round button in the globe window's
+     corner, in SELECT and on the Eclipse map; active: filled, with a soft glow */
+  #btnLocPickZones {
+    position: absolute; right: 12.5px; bottom: 12.5px;
+    z-index: 2; display: flex;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: var(--accent2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  #btnLocPickZones:hover { border-color: var(--accent2); }
+  #btnLocPickZones[aria-pressed="true"] {
+    background: var(--accent2); color: #fff; border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
+  }
+  body.light #btnLocPickZones[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
   #btnLocPickClose {
     position: absolute; right: 8px; top: 6px;
     width: 26px; height: 26px; padding: 0;
