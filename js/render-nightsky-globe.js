@@ -58,7 +58,7 @@ const NS_GLOBE_RE_KM = 6378.14, NS_GLOBE_MOON_RADIUS = 1737.4 / 6378.14, NS_GLOB
 const NS_GLOBE_OCEAN = [24, 64, 108], NS_GLOBE_LAND = [98, 128, 82];
 
 function _nsGlobeActive() {
-  return nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'globe';
+  return nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'globe' && !_nightSkyLeavingVis;
 }
 
 // ── Data: TopoJSON -> rings -> equirectangular texture ──────────────────────────────────────────

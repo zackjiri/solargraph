@@ -457,7 +457,12 @@ function enterNightSkyVisualization() {
     drawNightSky();
   }
 }
+let _nightSkyLeavingVis = false;   // read by _nsGlobeActive (render-nightsky-globe.js)
 function exitNightSkyVisualization() {
+  // Orbit counts as off from here: a redraw on the way out (the picker reset below) would show its
+  // camera panel and rose again and take the Sun and Moon switches over a second time, losing
+  // their own state; _nsGlobeSyncUI at the end hides the controls and gives the switches back
+  _nightSkyLeavingVis = true;
   // A catalog photo's frame is only ever loadable via the Catalog tile that set it (user's own
   // requirement) - it never persists across leaving Visualization, whether to Catalog, to Sky Map
   // (see _nightSkyCommitSubmode's own clear, the other half of this), or out of Night Sky entirely
@@ -478,9 +483,13 @@ function exitNightSkyVisualization() {
   // function's own condition would keep the slider on screen.
   document.getElementById('nightSkyPlanetZoomCtl').style.display = 'none';
   document.getElementById('btnNightSkyPicker').style.display = 'none';
+  // the search, the Sky Map's rotate button and the export, with their panels
+  document.getElementById('btnNightSkySearch').style.display = 'none';
+  document.getElementById('btnNightSkyMapRotate').style.display = 'none';
+  document.getElementById('btnNightSkyExport').style.display = 'none';
+  if (typeof _nsSearchSetOpen === 'function') { _nsSearchSetOpen(false); _nsSearch.mark = null; }
+  if (typeof _nsExportSetOpen === 'function') _nsExportSetOpen(false);
   document.getElementById('nightSkyMap3DToggleRow').style.display = 'none';
-  document.getElementById('nightSkyDisplaySection').classList.remove('ns-globe');
-  document.getElementById('nsGlobeCamCtl').style.display = 'none';
   if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) document.getElementById('skyMap3DZoomCtl').style.display = 'none';
   _nightSkyPickerSetActive(false);
   _nightSkyUpdatePresentationLock();
@@ -491,6 +500,8 @@ function exitNightSkyVisualization() {
   document.getElementById('valDay').textContent = '—';
   document.getElementById('valTime').textContent = '—';
   document.getElementById('nightSkyFrameThumb').style.display = 'none';
+  if (typeof _nsGlobeSyncUI === 'function') _nsGlobeSyncUI();
+  _nightSkyLeavingVis = false;
 }
 
 // ─── Astro Catalog (build 40_1) - tile grid of astrophotography shots (filelist_astro.json),

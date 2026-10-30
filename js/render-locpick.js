@@ -3,15 +3,20 @@
 // view (render-nightsky-globe.js: Natural Earth 1:110m land and lakes, its equirectangular
 // texture), with no external map service. An orthographic view, centred at first on the current
 // Location: drag (one finger) turns it, the wheel or two fingers zoom (1x-20x), a click or tap sets
-// the Location. The cursor is a pin with its tip on the point.
+// the Location. Over the Earth the cursor is a pin with its tip on the point, off it the arrow.
 // Over the Earth the point under the tip shows in the Latitude / Longitude fields in grey and the
 // N|S and E|W switches follow it; off the Earth the fields return to the Location. A click sets
 // the Location there (_locHereApply, controls.js, the same path as SET HERE) and a pressure wave
 // spreads from the point over the globe: three rings growing along the surface; when it ends the
-// fields turn from grey to their normal colour. The window closes with its × or another click on
-// SELECT (light blue while the window is open), or Escape.
+// fields turn from grey to their normal colour. Any other change of the Location (fields, arrows,
+// N|S and E|W, SET HERE) moves the pin too (_locHereStale, controls.js). The window closes with its
+// × or another click on SELECT (light blue while the window is open), Escape, or when the view
+// under it changes: another mode, sub-view, sub-mode, 3D switch, event, or Gallery image
+// (_locPickViewKey, checked after every click, change, key and pointer release).
 // Drawn here, not through the Globe renderer: no Sun, Moon or sky, the texture without snow, the
 // limb a little darker, a graticule (30°, 10° and 5° as the zoom grows) and the Location's pin.
+// The same window shows the Eclipse map (render-eclipse-map.js, opened from Eclipse
+// Visualization): the event's path and lines over the Earth, picking the same way.
 const LOC_PICK_ZOOM_MIN = 1, LOC_PICK_ZOOM_MAX = 20;
 const LOC_PICK_MAX_PX = 1600000;       // buffer pixels at most at rest (beyond: smoothed up)
 const LOC_PICK_MAX_PX_MOVING = 220000; // while dragged or pinched
@@ -19,6 +24,7 @@ const LOC_PICK_WAVE_MS = 1300, LOC_PICK_WAVE_RINGS = 3, LOC_PICK_WAVE_GAP_MS = 1
 const LOC_PICK_WAVE_DEG = 14;          // angular radius a ring reaches at zoom 1 (less when zoomed)
 const _locPick = {
   open: false, lon0: 0, lat0: 0, zoom: 1,
+  ecl: null,           // the event id while the window shows its Eclipse map
   drag: null,          // {x, y, lon0, lat0, moved}
   hover: null,         // {lat, lon} under the pin, or null
   wave: null,          // {lat, lon, t0, zoom}
@@ -202,6 +208,7 @@ function _locPickDraw() {
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   _locPickGraticule(ctx, V);
   ctx.restore();
+  if (_locPick.ecl && typeof _eclMapDraw === 'function') _eclMapDraw(ctx, V, w, h);
   _locPickDrawPin(ctx, V, hemisphere * LAT, lonHemisphere * LONG, '#e84040');   // the Location
   const W = _locPick.wave;
   if (W) {   // the pressure wave: rings growing along the surface, fading as they go
@@ -255,16 +262,51 @@ function _locPickSettled() {   // the wave is over: the fields to their normal c
 }
 
 // ── Opening, closing, input ─────────────────────────────────────────────────────────────────────
-function _locPickSetOpen(on) {
+// ecl: an event id for its Eclipse map, else the plain globe of SELECT. Opened again while open,
+// the window only changes what it shows, the view stays; the Eclipse map, newly shown, turns to
+// the Greatest Eclipse point.
+// What the canvas column shows, as a string: the window closes when it changes.
+function _locPickViewKey() {
+  const v = (f) => { try { return f(); } catch (e) { return null; } };
+  return [
+    v(() => currentMode), v(() => _modeWheelIndex), v(() => theaterMode3D), v(() => sunGraphActive),
+    v(() => skyDomeActive), v(() => skyDomeProjection), v(() => skyMap3DOn),
+    v(() => eclipseActive), v(() => eclipseSubView), v(() => _eclipseActiveEvent && _eclipseActiveEvent.id),
+    v(() => nightSkyActive), v(() => nightSkyTopView), v(() => nightSkySubmode), v(() => nightSkyMap3DOn),
+    v(() => galleryState.genId), v(() => galleryState.imageIndex), v(() => galleryState.layer),
+  ].join('|');
+}
+function _locPickSetOpen(on, ecl) {
+  const was = _locPick.open, wasEcl = _locPick.ecl;
+  if (on) _locPick.viewKey = _locPickViewKey();
   _locPick.open = on;
+  _locPick.ecl = on ? (ecl || null) : null;
   document.getElementById('locPickWin').classList.toggle('open', on);
+  document.getElementById('locPickWin').classList.toggle('ecl', !!_locPick.ecl);
+  const plain = on && !_locPick.ecl;
   const btn = document.getElementById('btnLocSelect');
-  btn.classList.toggle('open', on);
-  btn.setAttribute('aria-pressed', String(on));
-  btn.title = on ? 'Close the globe' : 'Select the Location on a globe of the Earth';
+  btn.classList.toggle('open', plain);
+  btn.setAttribute('aria-pressed', String(plain));
+  // the Eclipse map picks the Location itself: SELECT is off while it is open
+  btn.disabled = on && !!_locPick.ecl;
+  btn.title = plain ? 'Close the globe' : btn.disabled ? 'The eclipse map sets the Location: click on it'
+    : 'Select the Location on a globe of the Earth';
+  const head = document.getElementById('locPickTitle');
+  if (_locPick.ecl && typeof _eclipseActiveEvent !== 'undefined') {
+    const ev = _eclipseActiveEvent;
+    head.textContent = 'ECLIPSE MAP ' + ev.year + ' ' + MONTH_NAMES[ev.dayMonth - 1] + ' ' + ev.dayDay;
+  } else head.textContent = 'SELECT LOCATION';
   if (on) {
-    _locPick.lon0 = lonHemisphere * LONG;
-    _locPick.lat0 = hemisphere * LAT;
+    if (!was) {
+      _locPick.lon0 = lonHemisphere * LONG;
+      _locPick.lat0 = hemisphere * LAT;
+    }
+    if (_locPick.ecl && _locPick.ecl !== wasEcl) {
+      const g = _eclipseActiveEvent.greatestEclipse;
+      _locPick.lon0 = g.lonHemisphere * g.lon;
+      _locPick.lat0 = Math.max(-89, Math.min(89, g.hemisphere * g.lat));
+      _locPick.zoom = 1;
+    }
     _locPick.hover = null;
     _nsGlobeLoad();
     _locPickRequest();
@@ -327,6 +369,7 @@ function _locPickPoint(e) {
       }
     }
     if (e.pointerType === 'mouse' || D) { _locPick.hover = _locPickPoint(e).p; _locPickPreview(_locPick.hover); }
+    cv.classList.toggle('off-earth', !_locPickPoint(e).p);
   });
   cv.addEventListener('pointerup', (e) => {
     pts.delete(e.pointerId);
@@ -362,6 +405,7 @@ function _locPickPoint(e) {
     wheelRest = setTimeout(() => { if (!_locPick.drag && !pinch) { _locPick.moving = false; _locPickRequest(); } }, 180);
     _locPick.hover = _locPickPoint(e).p;
     _locPickPreview(_locPick.hover);
+    cv.classList.toggle('off-earth', !_locPick.hover);   // the disc grows or shrinks under the cursor
     _locPickRequest();
   }, { passive: false });
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (_locPick.open) _locPickRequest(); }).observe(cv);
@@ -371,3 +415,7 @@ document.getElementById('btnLocPickClose').addEventListener('click', () => _locP
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && _locPick.open && !e.defaultPrevented) _locPickSetOpen(false);
 });
+// after the handlers of the event that may have switched the view (bubbling, the document last)
+['click', 'change', 'keyup', 'pointerup'].forEach((type) => document.addEventListener(type, () => {
+  if (_locPick.open && _locPickViewKey() !== _locPick.viewKey) _locPickSetOpen(false);
+}));

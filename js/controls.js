@@ -777,7 +777,11 @@ function _locHereInfo(text, isErr) {
   el.classList.toggle('err', !!isErr);
   el.hidden = !text;
 }
-function _locHereStale() { if (!_locHereApplying) _locHereInfo(''); }
+// Also every Location change's hook for the open globe window (render-locpick.js): its pin moves.
+function _locHereStale() {
+  if (!_locHereApplying) _locHereInfo('');
+  if (typeof _locPick !== 'undefined' && _locPick.open) _locPickRequest();
+}
 // Signed degrees -> hemisphere state + the normal applyLat/applyLong path (same as the Eclipse
 // "Find the greatest point" button), so clamping, step rounding and redraws all happen as usual.
 function _locHereApply(lat, lon) {

@@ -1338,6 +1338,7 @@ function enterEclipseVisualization() {
   document.getElementById('eclipseCanvas').style.display = 'block';
   document.getElementById('eclipseSliderRow').style.display = 'flex';
   document.getElementById('btnEclipseEQLock').style.display = 'flex';
+  document.getElementById('btnEclipseMap').style.display = 'flex';   // render-eclipse-map.js
   document.getElementById('eclipsePanel').classList.add('visible');
   // Was a hardcoded "2026 Aug 12 Eclipse" string, so opening any OTHER catalog event kept showing
   // 2026's own date here - noticed during earlier §21.41 testing, now fixed for real.
@@ -1378,6 +1379,8 @@ function exitEclipseVisualization() {
   document.getElementById('eclipseCanvas').style.display = 'none';
   document.getElementById('eclipseSliderRow').style.display = 'none';
   document.getElementById('btnEclipseEQLock').style.display = 'none';
+  document.getElementById('btnEclipseMap').style.display = 'none';
+  if (typeof _locPick !== 'undefined' && _locPick.ecl) _locPickSetOpen(false);   // the map belongs to the event
   document.getElementById('eclipsePanel').classList.remove('visible');
   document.getElementById('btnEclipseVisExit').style.display = 'none';
   document.getElementById('btnEclipseMaxPhase').style.display = 'none';
