@@ -282,7 +282,7 @@ function _mwDrawSkyMap(ctx, w, h, layout) {
     const dx = px - cx, dy = py - cy, r = Math.hypot(dx, dy);
     if (r > R) return 0;
     const el = (1 - r / R) * Math.PI / 2, ce = Math.cos(el);
-    const sa = r > 1e-9 ? -dx / r : 0, ca = r > 1e-9 ? -dy / r : 1;
+    const [sa, ca] = _nightSkyMapRotDir(r > 1e-9 ? -dx / r : 0, r > 1e-9 ? -dy / r : 1);   // the map's rotation undone
     out[0] = ce * sa; out[1] = ce * ca; out[2] = Math.sin(el);
     return 1;
   }, true);

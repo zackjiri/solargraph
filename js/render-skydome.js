@@ -169,9 +169,13 @@ function resizeSkyDome() {
 // mirrored left-right from an ordinary ground map for the same reason a planisphere is always
 // mirrored relative to a terrestrial map (you're viewing the same fixed compass rose from the
 // inside of the sphere looking out, instead of from outside looking in).
+// _skyDomePointRotDeg turns the whole chart clockwise by that many degrees: Night Sky's Sky Map
+// sets it to its rotation (nightSkyMapRot) only while it draws, so every position on it turns
+// together; 0 for everything else.
+let _skyDomePointRotDeg = 0;
 function _skyDomePoint(cx0, cy0, R, az, el) {
   const r = R * (90 - el) / 90;
-  const a = az * Math.PI / 180;
+  const a = (az - _skyDomePointRotDeg) * Math.PI / 180;
   return { x: cx0 - r * Math.sin(a), y: cy0 - r * Math.cos(a) };
 }
 
@@ -2028,6 +2032,9 @@ let _skyDomePlanet3DDragging = false;
 // One listener on the shared canvas, dispatched the same way as the #skyMap3DZoom slider above.
 (function () {
   const cv = document.getElementById('skyDomeCanvas');
+  // Safari's own pinch (page zoom) would fight the 3D views' pinch; touch-action: none (CSS) covers
+  // the other browsers
+  cv.addEventListener('gesturestart', (e) => e.preventDefault());
   // One tick = one slider step (±0.1, additive - not a relative %), same as the 3D Model theater's
   // own wheel handler, so wheel and the shared #skyMap3DZoom slider move in lockstep. Rounded to
   // avoid float drift across many ticks; Math.sign(0)=0 makes a stray deltaY=0 event a no-op.

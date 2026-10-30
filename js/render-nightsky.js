@@ -734,7 +734,7 @@ function _nightSkyApplyCatalogTile(entry) {
   _nightSkyPlanet3D.roll = 0;
   _nightSkyTrackJD = null;   // tracking starts from the photo's instant, at the centred camera below
 
-  nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = 1;
+  nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf('planetarium');
   _nightSkySubmodeWheel.render();
   _nightSkyUpdatePlanetControlsVisibility();
   _nightSkyUpdatePresentationLock();
@@ -2390,8 +2390,8 @@ function _nightSkyDrawSunDisc(ctx, layout) {
 // instead - see the dedicated section below _nightSkyDrawSkyMap(). The dispatch in drawNightSky()
 // further down is written to make adding a further sub-mode a matter of extending these two arrays
 // plus one new branch, not restructuring anything.
-const NIGHTSKY_SUBMODE_VALUES = ['skymap', 'planetarium', 'sungraph', 'globe'];
-const NIGHTSKY_SUBMODE_LABELS = ['SKY MAP', 'PLANETARIUM', 'SUN GRAPH', 'GLOBE'];
+const NIGHTSKY_SUBMODE_VALUES = ['planetarium', 'skymap', 'globe', 'sungraph'];
+const NIGHTSKY_SUBMODE_LABELS = ['PLANETARIUM', 'SKY MAP', 'GLOBE', 'SUN GRAPH'];
 const NIGHTSKY_SUBMODE_N = NIGHTSKY_SUBMODE_VALUES.length;
 let nightSkySubmode = 'planetarium';   // the landing sub-mode (enterNightSky)
 let _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode);
@@ -2446,6 +2446,23 @@ function _nightSkyStarColor() {
 
 // The "Sky Map" sub-mode's own renderer - this IS the whole of drawNightSky() from Phase 5, just
 // renamed and no longer the sole thing drawNightSky() can do (see the dispatcher just below it).
+// Sky Map rotation: the round button right of the search (#btnNightSkyMapRotate, flat Sky Map
+// only) turns the map 90° clockwise per click - N at the top, then at the right, at the bottom, at
+// the left, and back (the top then E, S, W: the map is mirrored, E on the left at the start). The whole map turns, through _skyDomePoint (_skyDomePointRotDeg, set while it
+// draws) and the inverse mappings (the cursor's _nightSkyPixelToAzEl, the sky colour's and the
+// Milky Way's pixel directions); the labels stay upright.
+let nightSkyMapRot = 0;   // degrees clockwise: 0, 90, 180, 270
+const NIGHTSKY_MAP_ROT_TOP = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };   // the point at the top (E is on the left at 0)
+function _nightSkyMapRotDir(sa, ca) {   // a screen direction (sin, cos of its angle) -> the sky's, rotation undone
+  const t = nightSkyMapRot * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  return [sa * c + ca * s, ca * c - sa * s];
+}
+document.getElementById('btnNightSkyMapRotate').addEventListener('click', (e) => {
+  e.stopPropagation();
+  nightSkyMapRot = (nightSkyMapRot + 90) % 360;
+  e.currentTarget.title = 'Turn the map 90° clockwise (now ' + NIGHTSKY_MAP_ROT_TOP[nightSkyMapRot] + ' at the top)';
+  if (nightSkyActive) drawNightSky();
+});
 function _nightSkyDrawSkyMap(ctx, w, h) {
   if (!_skyDataLoaded) {
     ctx.fillStyle = '#8899aa';
@@ -2570,13 +2587,18 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   const ctl = document.getElementById('nightSkyPlanetZoomCtl');
   if (ctl) ctl.style.display = shown ? 'flex' : 'none';
   document.getElementById('btnNightSkyPicker').style.display = pickerShown ? 'flex' : 'none';
-  // the search (render-search.js): Planetarium, Globe and the flat Sky Map (there in the picker's
-  // place, as the Sky Map has no picker); its Sky Map mark goes when the Sky Map is left
+  // the search (render-search.js): Planetarium, Globe and the flat Sky Map (there left of the
+  // rotate button, which takes the picker's place); its Sky Map mark goes when the Sky Map is left
   const skyMap = vis && nightSkySubmode === 'skymap' && !nightSkyMap3DOn;
   const searchShown = pickerShown || skyMap;
   const search = document.getElementById('btnNightSkySearch');
   search.style.display = searchShown ? 'flex' : 'none';
-  search.classList.toggle('solo', skyMap);
+  // the flat Sky Map's rotate button sits in the picker's place, right of the search
+  document.getElementById('btnNightSkyMapRotate').style.display = skyMap ? 'flex' : 'none';
+  // the export button (render-export.js) takes the corner in Sky Map and Sun Graph, the flat Sky
+  // Map's search and rotate move one place left
+  search.style.right = skyMap ? '104.5px' : '';
+  if (typeof _nsExportSyncUI === 'function') _nsExportSyncUI();
   if (typeof _nsSearchSetOpen === 'function') {
     if (!searchShown) _nsSearchSetOpen(false);
     if (!skyMap) _nsSearch.mark = null;
@@ -3443,16 +3465,36 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     cv.style.cursor = _nightSkyPicker.active ? 'crosshair' : 'default';
   }
 
+  // Two fingers pinch-zoom (Pointer Events, any pointer type): the zoom at their first spread,
+  // times the change of their distance; a lone finger then only drags again after a new touch.
+  const pts = new Map();
+  let pinch = null;
+  const spread = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
   cv.addEventListener('pointerdown', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
-    if (_nightSkyPicker.active) { _nightSkyPickerPick(e); e.preventDefault(); return; }
-    dragStart(e.clientX, e.clientY);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { cv.setPointerCapture(e.pointerId); } catch (err) { /* synthetic/test events lack a real pointer session */ }
     e.preventDefault();
+    if (pts.size === 2) { dragEnd(); pinch = { d: spread(), z: _nightSkyPlanet3D.zoom }; return; }
+    if (pts.size > 2) return;
+    if (_nightSkyPicker.active) { _nightSkyPickerPick(e); return; }
+    dragStart(e.clientX, e.clientY);
   });
-  cv.addEventListener('pointermove', (e) => dragMove(e.clientX, e.clientY));
-  cv.addEventListener('pointerup', dragEnd);
-  cv.addEventListener('pointercancel', dragEnd);
+  cv.addEventListener('pointermove', (e) => {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) { if (pts.size === 2) setNightSkyPlanetZoom(pinch.z * spread() / pinch.d); return; }
+    dragMove(e.clientX, e.clientY);
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    dragEnd();
+  };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+  // Safari's own pinch (page zoom) would fight the views' pinch (here, Sky Map 3D, Globe); the CSS
+  // touch-action: none covers the other browsers
+  cv.addEventListener('gesturestart', (e) => e.preventDefault());
 
   // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: ~37 ticks from
   // 0.5x to 12x. The exponent is snapped to whole eighths so repeated ticks don't drift.
@@ -3637,8 +3679,9 @@ function _nightSkyPixelToAzEl(layout, px, py) {
   if (r > layout.R) return null;
   const el = 90 - 90 * r / layout.R;
   // Same mirrored-x inverse as _skyDomePixelToAzEl's own flat-dome branch - _skyDomePoint (shared
-  // by both) draws with dx = -r*sin(az), so recovering az needs atan2(-dx,-dy), not atan2(dx,-dy).
-  const az = r < 0.5 ? null : ((Math.atan2(-dx, -dy) * 180 / Math.PI) + 360) % 360;
+  // by both) draws with dx = -r*sin(az), so recovering az needs atan2(-dx,-dy), not atan2(dx,-dy);
+  // plus the map's rotation (nightSkyMapRot), which turned it clockwise.
+  const az = r < 0.5 ? null : ((Math.atan2(-dx, -dy) * 180 / Math.PI) + nightSkyMapRot + 720) % 360;
   return { az, el };
 }
 // Inverse of _nightSkyPlanetProject - a near-identical version briefly existed for the sky/ground
@@ -3718,7 +3761,10 @@ function drawNightSky() {
     // showing a stale position from the last Planetarium draw.
     document.getElementById('nightSkyFrameThumb').style.display = 'none';
     if (nightSkyMap3DOn) _nightSkyDrawSkyMap3D(ctx, w, h);   // render-nightsky-3d.js
-    else _nightSkyDrawSkyMap(ctx, w, h);
+    else {   // turned by the rotate button: every _skyDomePoint of the map at once
+      _skyDomePointRotDeg = nightSkyMapRot;
+      try { _nightSkyDrawSkyMap(ctx, w, h); } finally { _skyDomePointRotDeg = 0; }
+    }
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
     // Here rather than inside the Planetarium draw, which returns early while the star data is

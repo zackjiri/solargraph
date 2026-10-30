@@ -411,9 +411,9 @@ function _glowDrawSkyMap(ctx, w, h, layout) {
   _glowDraw(ctx, w, h, (px, py, out) => {
     const dx = px - cx, dy = py - cy, r = Math.hypot(dx, dy);
     const el = Math.max(0, 1 - r / R) * Math.PI / 2, ce = Math.cos(el);
-    const sa = r > 1e-9 ? -dx / r : 0, ca = r > 1e-9 ? -dy / r : 1;
+    const [sa, ca] = _nightSkyMapRotDir(r > 1e-9 ? -dx / r : 0, r > 1e-9 ? -dy / r : 1);   // the map's rotation undone
     out[0] = ce * sa; out[1] = ce * ca; out[2] = Math.sin(el);
-  }, () => _nightSkyClipToSky(ctx, layout), 'map', () => {
+  }, () => _nightSkyClipToSky(ctx, layout), 'map' + nightSkyMapRot, () => {
     const mo = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
     if (mo.el < 0) return null;
     const p = _skyDomePoint(cx, cy, R, mo.az, mo.el);

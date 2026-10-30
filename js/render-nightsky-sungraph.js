@@ -101,31 +101,24 @@ function _nsSgMoonSolarDay(year, d) {
   _nsSgMoonSolarCache = { key, ivs };
   return ivs;
 }
-// Moonless night: the parts of each local day when the Sun is below -18 deg (astronomical night,
-// on its true altitude, the same threshold as the bands) AND the Moon is below the horizon (the
-// Moon-up intervals of _nsSgMoonDays) - the darkest sky the place gets. [[from, to], ...] in clock
-// hours 0..24 per day. The Sun is sampled every 15 min with linear interpolation of the crossings,
-// like the Moon. Cached per year, place and Time zone.
-const NS_SG_MOONLESS_FILL = 'rgba(126,92,232,0.62)';
-let showNightSkyMoonless = false;
-let _nsSgMoonlessCache = { key: null, days: null };
-function _nsSgMoonlessDays(year) {
+// Astronomical night: the parts of each local day when the Sun is below -18 deg (on its true
+// altitude, the same threshold as the bands). [[from, to], ...] in clock hours 0..24 per day. The
+// Sun is sampled every 15 min with linear interpolation of the crossings, like the Moon. Cached
+// per year, place and Time zone.
+let _nsSgAstroNightCache = { key: null, days: null };
+function _nsSgAstroNightDays(year) {
   const tz = _nightSkyTzHours();
   const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
-  if (_nsSgMoonlessCache.key === key) return _nsSgMoonlessCache.days;
-  const N = _nsSgYearDays(year), n = Math.round(24 / NS_SG_MOON_STEP_H), moon = _nsSgMoonDays(year);
+  if (_nsSgAstroNightCache.key === key) return _nsSgAstroNightCache.days;
+  const N = _nsSgYearDays(year), n = Math.round(24 / NS_SG_MOON_STEP_H);
   const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;
-  const depth = (jd) => {   // > 0 while the Sun is deeper than -18 deg
-    const r = _skyFromJulianDateUT(jd);
-    return -18 - _nightSkySunAzElTrue(r.year, r.month, r.day, r.hourUT).el;
-  };
   const days = new Array(N + 1);
-  let prev = depth(jan1);
+  let prev = _nsSgSunDepth(jan1);
   for (let d = 1; d <= N; d++) {
     const start = jan1 + d - 1, night = [];
     let from = prev > 0 ? 0 : null;
     for (let s = 1; s <= n; s++) {
-      const h = s * NS_SG_MOON_STEP_H, v = depth(start + h / 24);
+      const h = s * NS_SG_MOON_STEP_H, v = _nsSgSunDepth(start + h / 24);
       if ((prev > 0) !== (v > 0)) {
         const hx = h - NS_SG_MOON_STEP_H * v / (v - prev);
         if (v > 0) from = hx; else { night.push([from, hx]); from = null; }
@@ -133,8 +126,26 @@ function _nsSgMoonlessDays(year) {
       prev = v;
     }
     if (from !== null) night.push([from, 24]);
-    days[d] = _nsSgSubtract(night, moon[d]);   // night minus the Moon above the horizon
+    days[d] = night;
   }
+  _nsSgAstroNightCache = { key, days };
+  return days;
+}
+function _nsSgSunDepth(jd) {   // > 0 while the Sun is deeper than -18 deg
+  const r = _skyFromJulianDateUT(jd);
+  return -18 - _nightSkySunAzElTrue(r.year, r.month, r.day, r.hourUT).el;
+}
+// Moonless night: astronomical night (above) AND the Moon below the horizon (the Moon-up
+// intervals of _nsSgMoonDays) - the darkest sky the place gets. Same form, cached alike.
+const NS_SG_MOONLESS_FILL = 'rgba(126,92,232,0.62)';
+let showNightSkyMoonless = false;
+let _nsSgMoonlessCache = { key: null, days: null };
+function _nsSgMoonlessDays(year) {
+  const tz = _nightSkyTzHours();
+  const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
+  if (_nsSgMoonlessCache.key === key) return _nsSgMoonlessCache.days;
+  const night = _nsSgAstroNightDays(year), moon = _nsSgMoonDays(year);
+  const days = night.map((ivs, d) => _nsSgSubtract(ivs, moon[d]));   // night minus the Moon above the horizon
   _nsSgMoonlessCache = { key, days };
   return days;
 }
@@ -152,19 +163,19 @@ function _nsSgSubtract(ivs, cut) {
   }
   return free.filter(([a, b]) => b - a > 1e-6);
 }
-// The same for one SOLAR day (true solar 0-24 h of date d), for the day strip - as
-// _nsSgMoonSolarDay. Only the active day, cached by the last one.
-let _nsSgMoonlessSolarCache = { key: null, ivs: null };
-function _nsSgMoonlessSolarDay(year, d) {
+// The same for one SOLAR day (true solar 0-24 h of date d), for the day strip
+// (astronomical night and Moonless night), as _nsSgMoonSolarDay. Only the active day, cached by
+// the last one.
+let _nsSgAstroNightSolarCache = { key: null, ivs: null };
+function _nsSgAstroNightSolarDay(year, d) {
   const key = [year, d, LAT, hemisphere, LONG, lonHemisphere].join('|');
-  if (_nsSgMoonlessSolarCache.key === key) return _nsSgMoonlessSolarCache.ivs;
+  if (_nsSgAstroNightSolarCache.key === key) return _nsSgAstroNightSolarCache.ivs;
   const c = _nsSgDate(year, d), n = Math.round(24 / NS_SG_MOON_STEP_H);
   const start = _skyToJulianDateUT(c.year, c.month, c.day, -_nsSgEotNoon(year, d) / 60 - lonHemisphere * LONG / 15);
-  const depth = (jd) => { const r = _skyFromJulianDateUT(jd); return -18 - _nightSkySunAzElTrue(r.year, r.month, r.day, r.hourUT).el; };
   const night = [];
-  let prev = depth(start), from = prev > 0 ? 0 : null;
+  let prev = _nsSgSunDepth(start), from = prev > 0 ? 0 : null;
   for (let s = 1; s <= n; s++) {
-    const h = s * NS_SG_MOON_STEP_H, v = depth(start + h / 24);
+    const h = s * NS_SG_MOON_STEP_H, v = _nsSgSunDepth(start + h / 24);
     if ((prev > 0) !== (v > 0)) {
       const hx = h - NS_SG_MOON_STEP_H * v / (v - prev);
       if (v > 0) from = hx; else { night.push([from, hx]); from = null; }
@@ -172,22 +183,30 @@ function _nsSgMoonlessSolarDay(year, d) {
     prev = v;
   }
   if (from !== null) night.push([from, 24]);
-  const ivs = _nsSgSubtract(night, _nsSgMoonSolarDay(year, d));
-  _nsSgMoonlessSolarCache = { key, ivs };
-  return ivs;
+  _nsSgAstroNightSolarCache = { key, ivs: night };
+  return night;
 }
-// Galactic center: the parts of Moonless night (above) when the centre of the Milky Way (Sgr A*,
+function _nsSgMoonlessSolarDay(year, d) {
+  return _nsSgSubtract(_nsSgAstroNightSolarDay(year, d), _nsSgMoonSolarDay(year, d));
+}
+// Galactic center: the parts of astronomical night (above) when the centre of the Milky Way (Sgr A*,
 // J2000 RA 17h45m40s, Dec −29°00′28″, precessed and refracted as a star, _skyStarAzEl) stands at
 // least 0°, 5° and 10° above the horizon - three nested levels, as the core is low and dimmed by the
 // air from mid-northern latitudes (from 49° N it culminates at only ~12°). Per local day: [ivs ≥0°,
 // ivs ≥5°, ivs ≥10°], each [[from, to], ...] in clock hours; its altitude sampled every 15 min,
-// crossings interpolated. Drawn over Moonless night in one warm hue, denser the higher the level,
-// so the best hours read as the strongest. Cached per year, place and Time zone.
+// crossings interpolated. The core shows in moonlight too: on its own the series runs through the
+// Moon's hours; with Moonless night on it keeps to Moonless night, drawn over it. One warm hue,
+// denser the higher the level, so the best hours read as the strongest. Cached per year, place,
+// Time zone and that choice.
 const NS_SG_GC = { ra: 266.41683, dec: -29.00781 };
 const NS_SG_GC_LEVELS = [0, 5, 10];
 const NS_SG_GC_RGB = [236, 204, 148];
 const NS_SG_GC_ALPHA = [0.32, 0.58, 0.88];
 let showNightSkyGalCenter = false;
+// The galactic centre keeps to Moonless night only while that is shown (it sits under Moon).
+function _nsSgGcOnMoonless() {
+  return showNightSkyMoonless && document.getElementById('chkNightSkyMoon').checked;
+}
 let _nsSgGcCache = { key: null, days: null, seasons: null };
 // Clock-hour intervals of one day starting at jd0 when the centre is at least each level high.
 function _nsSgGcUp(jd0) {
@@ -214,24 +233,25 @@ function _nsSgIntersect(a, b) {
 }
 function _nsSgGcDays(year) {
   const tz = _nightSkyTzHours();
-  const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
+  const onMoonless = _nsSgGcOnMoonless();
+  const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz, onMoonless].join('|');
   if (_nsSgGcCache.key === key) return _nsSgGcCache;
-  const N = _nsSgYearDays(year), moonless = _nsSgMoonlessDays(year);
+  const N = _nsSgYearDays(year), dark = onMoonless ? _nsSgMoonlessDays(year) : _nsSgAstroNightDays(year);
   const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;
   const days = new Array(N + 1), seasons = NS_SG_GC_LEVELS.map(() => ({ first: null, last: null }));
   for (let d = 1; d <= N; d++) {
-    days[d] = _nsSgGcUp(jan1 + d - 1).map(ivs => _nsSgIntersect(moonless[d], ivs));
+    days[d] = _nsSgGcUp(jan1 + d - 1).map(ivs => _nsSgIntersect(dark[d], ivs));
     days[d].forEach((ivs, k) => { if (ivs.length) { if (seasons[k].first === null) seasons[k].first = d; seasons[k].last = d; } });
   }
   _nsSgGcCache = { key, days, seasons };
   return _nsSgGcCache;
 }
-// The same for the strip's SOLAR day: its Moonless night (_nsSgMoonlessSolarDay) at each level.
+// The same for the strip's SOLAR day, in its astronomical night or Moonless night.
 function _nsSgGcSolarDay(year, d) {
   const c = _nsSgDate(year, d);
   const start = _skyToJulianDateUT(c.year, c.month, c.day, -_nsSgEotNoon(year, d) / 60 - lonHemisphere * LONG / 15);
-  const ml = _nsSgMoonlessSolarDay(year, d);
-  return _nsSgGcUp(start).map(ivs => _nsSgIntersect(ml, ivs));
+  const dark = _nsSgGcOnMoonless() ? _nsSgMoonlessSolarDay(year, d) : _nsSgAstroNightSolarDay(year, d);
+  return _nsSgGcUp(start).map(ivs => _nsSgIntersect(dark, ivs));
 }
 function _nsSgGcFill(k, emph) {
   const a = Math.min(1, NS_SG_GC_ALPHA[k] + (emph ? 0.12 : 0));
@@ -515,10 +535,11 @@ function _nsSgDrawCrescents(ctx, g, year) {
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = NS_SG_CRESCENT_COLORS[c.zone]; ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1; ctx.stroke();
-    if (c.medal) {   // the series' medal: a ring in its metal, set off by a dark edge
-      ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3.5; ctx.stroke();
-      ctx.strokeStyle = c.medal.color; ctx.lineWidth = 2; ctx.stroke();
+    if (c.medal) {   // the series' medal: a 2 px ring in its metal right on the dot's edge, a dark edge outside it
+      ctx.beginPath(); ctx.arc(x, y, r + 1.875, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 2.75; ctx.stroke();   // r+0.5 .. r+3.25
+      ctx.beginPath(); ctx.arc(x, y, r + 1.5, 0, Math.PI * 2);
+      ctx.strokeStyle = c.medal.color; ctx.lineWidth = 2; ctx.stroke();            // r+0.5 .. r+2.5
     }
   }
   ctx.restore();
@@ -610,7 +631,7 @@ function _nsSgSource() {
   const customOn = document.getElementById('chkNightSkyCustomDate').checked;
   const moonDays = moonOn ? _nsSgMoonDays(year) : null;
   const moonless = moonOn && showNightSkyMoonless ? _nsSgMoonlessDays(year) : null;
-  const gc = moonOn && showNightSkyGalCenter ? _nsSgGcDays(year) : null;   // within Moonless night
+  const gc = showNightSkyGalCenter ? _nsSgGcDays(year) : null;   // within astronomical / Moonless night
   const eotNoon = new Array(N + 2);
   const clock = (trueH, d, eot) => {
     if (eot === undefined) eot = eotNoon[d] !== undefined ? eotNoon[d] : (eotNoon[d] = _nsSgEotNoon(year, d));
@@ -639,14 +660,18 @@ function _nsSgSource() {
     drawMarkers: (sunOn || moonOn) ? (ctx, g) => {
       ctx.save();
       ctx.beginPath(); ctx.rect(g.px0, g.py0, g.pw, g.ph); ctx.clip();
-      if (moonOn && showNightSkyLunarCalendar) { _nsSgDrawCrescents(ctx, g, year); _nsSgDrawQuarters(ctx, g, year); }
+      if (moonOn && showNightSkyLunarCalendar) {
+        if (showNightSkyThinCrescent) _nsSgDrawCrescents(ctx, g, year);
+        _nsSgDrawQuarters(ctx, g, year);
+      }
       if (customOn) _nsSgDrawBodies(ctx, g.dayCenter(today), g.hourToY(L.hour), sunOn, moonOn);
       ctx.restore();
     } : null,
     dayLabel,
     showLabels: document.getElementById('chkNightSkyNames').checked,
-    // The time strip (#nightSkyTimeWrap) sits over the bottom-left corner: keep the chart above it.
-    bottomPad: document.getElementById('nightSkyTimeWrap').offsetHeight + 8,
+    // The time strip (#nightSkyTimeWrap) sits over the bottom-left corner: keep the chart above it
+    // (not in an exported image, render-export.js).
+    bottomPad: _nsExportBusy ? 0 : document.getElementById('nightSkyTimeWrap').offsetHeight + 8,
     lengthCaption: () => 'lengths · ' + year + ' · ' + LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S'),
     caption: () => {
       const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
@@ -655,14 +680,14 @@ function _nsSgSource() {
            + ' · ' + LONG.toFixed(1) + '° ' + (lonHemisphere >= 0 ? 'E' : 'W')
            + ' · UTC' + _fmtTimeZone(_nightSkyTzHours());
     },
-    drawExtra: moonDays ? (ctx, g) => {
+    drawExtra: (moonDays || gc) ? (ctx, g) => {
       const emph = _sgEmphBand === 'moon';
       ctx.save();
       ctx.beginPath(); ctx.rect(g.px0, g.py0, g.pw, g.ph); ctx.clip();
       for (let d = 1; d <= g.NDAYS; d++) {
         const x0 = Math.round(g.dayToX(d)), x1 = Math.round(g.dayToX(d + 1));
         if (x1 <= x0) continue;
-        for (const iv of moonDays[d]) {
+        if (moonDays) for (const iv of moonDays[d]) {
           const yTop = g.hourToY(iv[1]), yBot = g.hourToY(iv[0]);
           ctx.fillStyle = _nsSgMoonFill(iv[2], emph, moonOnly);
           ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
@@ -685,10 +710,11 @@ function _nsSgSource() {
     // the bottom over the Sun's bands (denser the fuller the Moon, as its bands in the times view),
     // its top traced by a line so the curve reads over any band.
     // With Moonless night on, its hours hang from the top (24 h) down into the Night band, of
-    // which they are a part.
-    drawLengthExtra: moonDays ? (ctx, g) => {
+    // which they are a part, and with Galactic center on its three levels over them, from the top
+    // too: the hours of Moonless night with the core at least 0, 5 and 10 deg up, nested.
+    drawLengthExtra: (moonDays || gc) ? (ctx, g) => {
       const emph = _sgEmphBand === 'moon';
-      const hours = (d) => moonDays[d].reduce((a, iv) => a + iv[1] - iv[0], 0);
+      const hours = (d) => moonDays ? moonDays[d].reduce((a, iv) => a + iv[1] - iv[0], 0) : 0;
       ctx.save();
       ctx.beginPath(); ctx.rect(g.px0, g.py0, g.pw, g.ph); ctx.clip();
       if (moonless) {
@@ -699,7 +725,17 @@ function _nsSgSource() {
           if (x1 > x0 && h > 0) ctx.fillRect(x0, g.hourToY(24), x1 - x0, g.hourToY(24 - h) - g.hourToY(24));
         }
       }
-      for (let d = 1; d <= g.NDAYS; d++) {
+      if (gc) for (let d = 1; d <= g.NDAYS; d++) {
+        const x0 = Math.round(g.dayToX(d)), x1 = Math.round(g.dayToX(d + 1));
+        if (x1 <= x0) continue;
+        gc.days[d].forEach((ivs, k) => {
+          const h = ivs.reduce((a, iv) => a + iv[1] - iv[0], 0);
+          if (h <= 0) return;
+          ctx.fillStyle = _nsSgGcFill(k, _sgEmphBand === 'gc' + NS_SG_GC_LEVELS[k]);
+          ctx.fillRect(x0, g.hourToY(24), x1 - x0, g.hourToY(24 - h) - g.hourToY(24));
+        });
+      }
+      if (moonDays) for (let d = 1; d <= g.NDAYS; d++) {
         const x0 = Math.round(g.dayToX(d)), x1 = Math.round(g.dayToX(d + 1));
         if (x1 <= x0) continue;
         const ivs = moonDays[d], h = hours(d);
@@ -708,13 +744,15 @@ function _nsSgSource() {
         ctx.fillStyle = _nsSgMoonFill(k, emph, false);
         ctx.fillRect(x0, g.hourToY(h), x1 - x0, g.hourToY(0) - g.hourToY(h));
       }
-      ctx.strokeStyle = '#f4eab8'; ctx.lineWidth = emph ? 2 : 1.25;
-      ctx.beginPath();
-      for (let d = 1; d <= g.NDAYS; d++) {
-        const x = (g.dayToX(d) + g.dayToX(d + 1)) / 2, y = g.hourToY(hours(d));
-        if (d === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      if (moonDays) {
+        ctx.strokeStyle = '#f4eab8'; ctx.lineWidth = emph ? 2 : 1.25;
+        ctx.beginPath();
+        for (let d = 1; d <= g.NDAYS; d++) {
+          const x = (g.dayToX(d) + g.dayToX(d + 1)) / 2, y = g.hourToY(hours(d));
+          if (d === 1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
       ctx.restore();
     } : null,
     // Legend Moon row for the active day: rise / set (times), or hours above the horizon (length).
@@ -773,7 +811,7 @@ function _nsSgSource() {
       // Each crescent's two lines sit on a light tint of its zone's colour (a subgrid block, so the
       // columns stay aligned across crescents). "—" with no crescent that day. The tooltip says it
       // in full, with the criterion's numbers.
-      if (moonOn && showNightSkyLunarCalendar) {
+      if (moonOn && showNightSkyLunarCalendar && showNightSkyThinCrescent) {
         const el = document.getElementById('sgLegendCrescent');
         el.textContent = ''; el.title = '';
         if (customOn) {
@@ -791,7 +829,7 @@ function _nsSgSource() {
             // the marker as in the chart: the zone's dot and, with a medal, its ring
             const dot = document.createElement('i');
             dot.className = 'ns-cres-dot'; dot.style.background = col;
-            if (c.medal) { dot.style.boxShadow = `0 0 0 1px rgba(0,0,0,0.75), 0 0 0 3px ${c.medal.color}, 0 0 0 4px rgba(0,0,0,0.75)`; dot.title = c.medal.name; }
+            if (c.medal) { dot.style.boxShadow = `0 0 0 2px ${c.medal.color}, 0 0 0 3px rgba(0,0,0,0.75)`; dot.title = c.medal.name; }
             kind.prepend(dot);
             cell(block, c.look ? _sgHM(c.look.hour) : '—');
             cell(block, NS_SG_CRESCENT_WORDS[c.zone]).style.color = col;
@@ -807,9 +845,18 @@ function _nsSgSource() {
           });
         }
       }
-      if (gc) NS_SG_GC_LEVELS.forEach((lv, k) => {   // legend: each level's season, first to last night
+      // legend: each level's season, first to last night; in the length view its hours that day
+      if (gc) NS_SG_GC_LEVELS.forEach((lv, k) => {
         const sn = gc.seasons[k], el = document.getElementById('sgLegendGc' + lv);
-        el.textContent = sn.first === null ? '—' : dayLabel(sn.first) + ' – ' + dayLabel(sn.last);
+        const what = (_nsSgGcOnMoonless() ? 'Moonless night' : 'Astronomical night, with or without the Moon,')
+          + ' with the centre of the Milky Way at least ' + lv + '° up; the value is ';
+        if (sgViewMode === 'length') {
+          el.textContent = _sgHM(gc.days[activeDay][k].reduce((a, iv) => a + iv[1] - iv[0], 0));
+          el.parentElement.title = what + 'its length that day';
+        } else {
+          el.textContent = sn.first === null ? '—' : dayLabel(sn.first) + ' – ' + dayLabel(sn.last);
+          el.parentElement.title = what + 'the season, first to last night';
+        }
       });
       // Info panel and legend transit for the active day, at the selected clock time.
       const c = _nsSgDate(year, activeDay);
@@ -924,16 +971,18 @@ function _nsSgReadout(p) {
 })();
 document.getElementById('chkNightSkyCustomDate').addEventListener('change', () => { if (_nsSgActive()) _nsSgDraw(); });
 // "Lunar calendar" switch under Moon (Sun Graph only, shown while Moon is on - the same sub-option
-// pattern as Moon's path in Sky Map / Planetarium).
+// pattern as Moon's path in Sky Map / Planetarium), with "Thin crescent" under it while it is on.
+let showNightSkyThinCrescent = true;
 function _nsSgUpdateLunarCalSubrow() {
   const moonOn = document.getElementById('chkNightSkyMoon').checked;
+  const cal = moonOn && showNightSkyLunarCalendar;
   document.getElementById('nightSkyLunarCalSubrow').style.display = moonOn ? '' : 'none';
-  document.getElementById('nightSkyEclipseCalRow').style.display = moonOn && showNightSkyLunarCalendar ? '' : 'none';
+  document.getElementById('nightSkyThinCrescentSubrow').style.display = cal ? '' : 'none';
+  document.getElementById('nightSkyEclipseCalRow').style.display = cal ? '' : 'none';
   document.getElementById('nightSkyMoonlessSubrow').style.display = moonOn ? '' : 'none';
-  document.getElementById('nightSkyGalCenterSubrow').style.display = moonOn ? '' : 'none';
   document.body.classList.toggle('ns-moonless', moonOn && showNightSkyMoonless);   // legend row
-  document.body.classList.toggle('ns-gc', moonOn && showNightSkyGalCenter);         // legend rows
-  document.body.classList.toggle('ns-crescent', moonOn && showNightSkyLunarCalendar);   // thin crescent legend row
+  document.body.classList.toggle('ns-gc', showNightSkyGalCenter);                   // legend rows
+  document.body.classList.toggle('ns-crescent', cal && showNightSkyThinCrescent);   // thin crescent legend row
 }
 _nsSgUpdateLunarCalSubrow();
 document.getElementById('chkNightSkyMoon').addEventListener('change', _nsSgUpdateLunarCalSubrow);
@@ -954,13 +1003,20 @@ document.getElementById('btnNightSkyMoonless').addEventListener('click', () => {
   _nsSgUpdateLunarCalSubrow();
   if (_nsSgActive()) _nsSgDraw();
 });
-// "Galactic center" switch under Moonless night (Sun Graph times view and the day strip): the hours
-// of Moonless night with the centre of the Milky Way at least 0°, 5° and 10° up.
-document.getElementById('btnNightSkyGalCenter').addEventListener('click', () => {
-  showNightSkyGalCenter = !showNightSkyGalCenter;
-  const btn = document.getElementById('btnNightSkyGalCenter');
-  btn.classList.toggle('on', showNightSkyGalCenter);
-  btn.setAttribute('aria-checked', String(showNightSkyGalCenter));
+// "Thin crescent" switch under Lunar calendar: Odeh's marks round each new Moon and their legend.
+document.getElementById('btnNightSkyThinCrescent').addEventListener('click', () => {
+  showNightSkyThinCrescent = !showNightSkyThinCrescent;
+  const btn = document.getElementById('btnNightSkyThinCrescent');
+  btn.classList.toggle('on', showNightSkyThinCrescent);
+  btn.setAttribute('aria-checked', String(showNightSkyThinCrescent));
+  _nsSgUpdateLunarCalSubrow();
+  if (_nsSgActive()) _nsSgDraw();
+});
+// "Galactic center" checkbox, its own Display item (Sun Graph, both views, and the day strip): the
+// hours of astronomical night (with Moonless night shown, of Moonless night) with the centre of the
+// Milky Way at least 0°, 5° and 10° up.
+document.getElementById('chkNightSkyGalCenter').addEventListener('change', (e) => {
+  showNightSkyGalCenter = e.target.checked;
   _nsSgUpdateLunarCalSubrow();
   if (_nsSgActive()) _nsSgDraw();
 });

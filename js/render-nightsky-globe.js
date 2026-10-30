@@ -1,6 +1,8 @@
 // ─── Night Sky: Globe (fourth Visualization sub-mode) ───────────────────────────────────────────
 // The Earth seen from space at the selected instant, in the same kind of orbiting 3D view as the
 // Sky Map 3D: land from Natural Earth 1:110m (data/earth/land-110m.json, TopoJSON decoded here),
+// with its 24 largest lakes as water (data/earth/ne_110m_lakes.geojson; the Caspian Sea is a hole
+// in the land itself),
 // a graticule, the place from Location, and the real day and night - the
 // Sun's altitude worked out for every pixel of the globe, from full daylight through the
 // civil/nautical/astronomical twilight to night, with an orange tint (hue only) just past the
@@ -23,7 +25,7 @@
 // view, and the wheel or two fingers drive whichever of the two was used last; a double click
 // turns the view back to the place. The camera starts aimed at the place at the time Globe is first opened.
 
-let _nsGlobeLand = null;          // { rings: [[ [lon, lat], ... ], ...], polys: [[ring, ...], ...] }
+let _nsGlobeLand = null;          // { rings: [[ [lon, lat], ... ], ...], polys: [[ring, ...], ...], lakes: [[ring, ...], ...] }
 let _nsGlobeTex = null;           // { w, h, data } equirectangular land/ocean colours
 let _nsGlobeLoading = false;
 // The camera: dist = its distance from the Earth's centre (Earth radii), fov = the full field of
@@ -88,7 +90,9 @@ function _nsGlobeDecode(topo) {
 // and its fill comes out inverted. So each ring is unwrapped - consecutive longitudes kept within
 // 180° of each other, the ring may then run past ±180° - and one that ends a full turn from where
 // it began (it circles a pole) is closed over that pole; every polygon is drawn three times, 360°
-// apart, so whatever lies past ±180° lands on the map's other edge.
+// apart, so whatever lies past ±180° lands on the map's other edge. A polygon's holes (the Caspian
+// Sea in Eurasia) are moved by whole turns into the span of its unwrapped outer ring, which may
+// itself have been shifted by a turn (Eurasia runs from -378° to -170°), so the fill cuts them out.
 function _nsGlobeUnwrapRing(ring) {
   const out = [];
   let prev = null, shift = 0;
@@ -111,19 +115,32 @@ function _nsGlobeBuildTexture(land) {
   const W = 2048, H = 1024;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
+  const fillPolys = (polys) => {
+    for (const poly of polys) {
+      const rings = poly.map(_nsGlobeUnwrapRing);
+      const lons = rings[0].map(p => p[0]), lo = Math.min(...lons), hi = Math.max(...lons);
+      for (let k = 1; k < rings.length; k++) {   // holes into the outer ring's span
+        const m = rings[k].reduce((a, p) => a + p[0], 0) / rings[k].length;
+        let sh = 0;
+        while (m + sh < lo) sh += 360;
+        while (m + sh > hi) sh -= 360;
+        if (sh) rings[k] = rings[k].map(([lon, lat]) => [lon + sh, lat]);
+      }
+      for (const off of [-360, 0, 360]) {
+        c.beginPath();
+        for (const r of rings) r.forEach(([lon, lat], k) => {
+          const x = (lon + off + 180) / 360 * W, y = (90 - lat) / 180 * H;
+          if (k) c.lineTo(x, y); else c.moveTo(x, y);
+        });
+        c.fill('evenodd');
+      }
+    }
+  };
   c.fillStyle = `rgb(${NS_GLOBE_OCEAN})`; c.fillRect(0, 0, W, H);
   c.fillStyle = `rgb(${NS_GLOBE_LAND})`;
-  for (const poly of land.polys) {
-    const rings = poly.map(_nsGlobeUnwrapRing);
-    for (const off of [-360, 0, 360]) {
-      c.beginPath();
-      for (const r of rings) r.forEach(([lon, lat], k) => {
-        const x = (lon + off + 180) / 360 * W, y = (90 - lat) / 180 * H;
-        if (k) c.lineTo(x, y); else c.moveTo(x, y);
-      });
-      c.fill('evenodd');
-    }
-  }
+  fillPolys(land.polys);
+  c.fillStyle = `rgb(${NS_GLOBE_OCEAN})`;   // the lakes: water, the same as the sea
+  fillPolys(land.lakes || []);
   return { w: W, h: H, data: c.getImageData(0, 0, W, H).data };
 }
 // ── Snow and sea ice ───────────────────────────────────────────────────────────────────────────
@@ -230,8 +247,13 @@ function _nsGlobeSeasonTex(lam) {
 function _nsGlobeLoad() {
   if (_nsGlobeLand || _nsGlobeLoading) return;
   _nsGlobeLoading = true;
-  fetch('data/earth/land-110m.json').then(r => r.json()).then(topo => {
+  const lakes = fetch('data/earth/ne_110m_lakes.geojson').then(r => r.json())
+    .then(gj => gj.features.flatMap(f => f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [f.geometry.coordinates]))
+    .catch(err => { console.warn('Globe: failed to load lake data', err); return []; });
+  Promise.all([fetch('data/earth/land-110m.json').then(r => r.json()), lakes]).then(([topo, lakePolys]) => {
     _nsGlobeLand = _nsGlobeDecode(topo);
+    _nsGlobeLand.lakes = lakePolys;
+    _nsGlobeLand.rings = _nsGlobeLand.rings.concat(lakePolys.flat());   // shores drawn with the coasts
     _nsGlobeTex = _nsGlobeBuildTexture(_nsGlobeLand);
     if (_nsGlobeActive()) drawNightSky();
   }).catch(err => console.warn('Globe: failed to load land data', err))

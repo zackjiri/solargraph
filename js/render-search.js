@@ -1,6 +1,6 @@
 // ─── Planetarium object search ──────────────────────────────────────────────────────────────────
 // Round magnifier button left of the RA/Dec picker (#btnNightSkySearch), in Planetarium, the flat
-// Sky Map and Globe (in the Sky Map, which has no picker, in the picker's place). It opens
+// Sky Map and Globe (in the Sky Map, which has no picker, left of the map's rotate button). It opens
 // #nightSkySearchPanel over the canvas: a text box and the matches below it (five rows visible, a
 // scrollbar for the rest), filtered again on every change of the text. Searched:
 //  - deep sky objects (_dsoList, render-deepsky.js): Messier number (M31), designation (NGC 224,
@@ -147,6 +147,7 @@ function _nsSearchSetOpen(on) {
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', String(on));
   if (on) {
+    if (typeof _nsExportSetOpen === 'function' && _nsExport.open) _nsExportSetOpen(false);   // render-export.js
     if (_nsSearch.mark || _nsSearch.info) { _nsSearch.mark = _nsSearch.info = null; if (nightSkyActive) drawNightSky(); }   // a new search
     _nsSearchLoadData();
     const inp = document.getElementById('nightSkySearchInput');
