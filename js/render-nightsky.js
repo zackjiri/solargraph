@@ -2391,7 +2391,7 @@ function _nightSkyDrawSunDisc(ctx, layout) {
 // further down is written to make adding a further sub-mode a matter of extending these two arrays
 // plus one new branch, not restructuring anything.
 const NIGHTSKY_SUBMODE_VALUES = ['planetarium', 'skymap', 'globe', 'sungraph'];
-const NIGHTSKY_SUBMODE_LABELS = ['PLANETARIUM', 'SKY MAP', 'GLOBE', 'SUN GRAPH'];
+const NIGHTSKY_SUBMODE_LABELS = ['PLANETARIUM', 'SKY MAP', 'ORBIT', 'SUN GRAPH'];   // 'globe' shows as ORBIT
 const NIGHTSKY_SUBMODE_N = NIGHTSKY_SUBMODE_VALUES.length;
 let nightSkySubmode = 'planetarium';   // the landing sub-mode (enterNightSky)
 let _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode);
