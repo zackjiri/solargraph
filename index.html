@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug401">
+  <link rel="stylesheet" href="css/style.css?perfdebug422">
 </head>
 <body>
 
@@ -269,6 +269,13 @@
 
   <!-- Canvas column -->
   <div class="canvas-col">
+    <!-- Location from the globe (js/render-locpick.js): opened by SELECT in Location, over the
+         whole column whatever mode is active. -->
+    <div id="locPickWin" role="dialog" aria-label="Select the Location on the globe">
+      <canvas id="locPickCanvas"></canvas>
+      <div class="loc-pick-head">SELECT LOCATION<span>drag to turn · wheel to zoom · click to set</span></div>
+      <button id="btnLocPickClose" title="Close the globe" aria-label="Close">×</button>
+    </div>
     <div class="upload-zone" id="uploadZone">
       <p>Drop scan here or <span>click to select file</span></p>
       <p style="margin-top:4px;font-size:10px">Longer side normalised to 1280 px</p>
@@ -394,10 +401,42 @@
           <line x1="14.8" y1="14.8" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
       </button>
+      <!-- Sky Map rotation (render-nightsky.js) - round button in the picker's place, right of the
+           search, flat Sky Map only: each click turns the map, its compass points, 90° clockwise. -->
+      <button id="btnNightSkyMapRotate" title="Turn the map 90° clockwise (now N at the top)">
+        <!-- a compass rose (N in red) with a clockwise arc arrow along the icon's edge, from its north
+             point round to its east -->
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path d="M12 3 L13.6 12 L10.4 12 Z" fill="#e84040"/>
+          <path d="M12 21 L13.6 12 L10.4 12 Z" fill="currentColor"/>
+          <path d="M3 12 L12 10.4 L12 13.6 Z M21 12 L12 10.4 L12 13.6 Z" fill="currentColor" opacity="0.6"/>
+          <circle cx="12" cy="12" r="1.1" fill="currentColor"/>
+          <path d="M15.59 2.13 A10.5 10.5 0 0 1 21.09 6.75" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M22.84 9.78 L23.19 4.38 L17.99 7.38 Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <div id="nightSkySearchPanel" role="dialog" aria-label="Find an object">
         <input type="text" id="nightSkySearchInput" placeholder="M31, NGC 224, Andromeda, Vega, Mars..." autocomplete="off" spellcheck="false" aria-controls="nightSkySearchList">
         <ul id="nightSkySearchList" role="listbox"></ul>
         <div id="nightSkySearchNote"></div>
+      </div>
+      <!-- Image export (js/render-export.js) - round button at the right of the round buttons, Sky
+           Map and Sun Graph only. Opens #nightSkyExportPanel above them: a resolution, a format and
+           DOWNLOAD. -->
+      <button id="btnNightSkyExport" title="Export the view as an image" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M12 3 V14.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M7 10 L12 15.5 L17 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 15.5 V20 H20 V15.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div id="nightSkyExportPanel" role="dialog" aria-label="Export the view as an image">
+        <div class="ns-exp-label">Resolution</div>
+        <div id="nightSkyExportRes" class="ns-exp-group"></div>
+        <div class="ns-exp-label">Format</div>
+        <div id="nightSkyExportFmt" class="ns-exp-group ns-exp-fmt"></div>
+        <button type="button" id="btnNightSkyExportGo">DOWNLOAD</button>
+        <div id="nightSkyExportNote"></div>
       </div>
       <div id="nightSkyPlanetZoomCtl" title="Zoom the Planetarium view">
         <input type="range" id="nightSkyPlanetZoom" min="-1" max="3.585" step="0.005" value="0" title="Zoom the Planetarium view (0.5x-12x; the Sun and the Moon are drawn at their true size)">
@@ -684,9 +723,9 @@
           <div class="ns-sg-crescent" id="sgLegendCrescent"></div>
           <!-- Galactic center (render-nightsky-sungraph.js), switch on (body.ns-gc): one row per level,
                the value its season in the year shown, first to last night. -->
-          <div class="sg-leg-item ns-sg-gc" data-band="gc0" title="Moonless night with the centre of the Milky Way above the horizon; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.32)"></span>Galactic center ≥ 0°<span class="sg-leg-val" id="sgLegendGc0"></span></div>
-          <div class="sg-leg-item ns-sg-gc" data-band="gc5" title="Moonless night with the centre of the Milky Way at least 5° up"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.58)"></span>Galactic center ≥ 5°<span class="sg-leg-val" id="sgLegendGc5"></span></div>
-          <div class="sg-leg-item ns-sg-gc" data-band="gc10" title="Moonless night with the centre of the Milky Way at least 10° up"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.88)"></span>Galactic center ≥ 10°<span class="sg-leg-val" id="sgLegendGc10"></span></div>
+          <div class="sg-leg-item ns-sg-gc" data-band="gc0" title="Astronomical night, with or without the Moon, with the centre of the Milky Way at least 0° up; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.32)"></span>Galactic center ≥ 0°<span class="sg-leg-val" id="sgLegendGc0"></span></div>
+          <div class="sg-leg-item ns-sg-gc" data-band="gc5" title="Astronomical night, with or without the Moon, with the centre of the Milky Way at least 5° up; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.58)"></span>Galactic center ≥ 5°<span class="sg-leg-val" id="sgLegendGc5"></span></div>
+          <div class="sg-leg-item ns-sg-gc" data-band="gc10" title="Astronomical night, with or without the Moon, with the centre of the Milky Way at least 10° up; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.88)"></span>Galactic center ≥ 10°<span class="sg-leg-val" id="sgLegendGc10"></span></div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
           <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
@@ -910,6 +949,12 @@
         <button class="nightsky-sun-switch" id="btnNightSkyLunarCal" role="switch" aria-checked="false"
           title="Mark every new Moon, first quarter, full Moon and last quarter of the year at its date and time"></button>
       </div>
+      <!-- Shown while Lunar calendar is on: the thin crescent's visibility round each new Moon. -->
+      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyThinCrescentSubrow">
+        <span class="nightsky-sun-label">Thin crescent</span>
+        <button class="nightsky-sun-switch on" id="btnNightSkyThinCrescent" role="switch" aria-checked="true"
+          title="Rate the chance of seeing the thin crescent after and before each new Moon by Odeh's criterion, at the best time to look; a medal for the youngest one the eye can see in each series"></button>
+      </div>
       <!-- Shown while Lunar calendar is on: where a solar eclipse is placed - at the new Moon (red
            button offers the switch to the maximum) or at the local maximum (yellow offers the way
            back). -->
@@ -923,12 +968,9 @@
         <button class="nightsky-sun-switch" id="btnNightSkyMoonless" role="switch" aria-checked="false"
           title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
       </div>
-      <!-- Sun Graph times view only, while Moon is on: Moonless night with the galactic centre up. -->
-      <div class="nightsky-sun-subrow ns-sg-only" id="nightSkyGalCenterSubrow">
-        <span class="nightsky-sun-label">Galactic center</span>
-        <button class="nightsky-sun-switch" id="btnNightSkyGalCenter" role="switch" aria-checked="false"
-          title="Mark the hours of moonless astronomical night with the centre of the Milky Way at least 0°, 5° and 10° above the horizon - three shades, the strongest the best"></button>
-      </div>
+      <!-- Sun Graph only, its own item: astronomical night (with Moon and Moonless night on, Moonless
+           night) with the galactic centre up. -->
+      <label class="chk-row ns-sg-only" title="Mark the hours of astronomical night with the centre of the Milky Way at least 0°, 5° and 10° above the horizon, moonlit hours included (with Moonless night on, only those) - three shades, the strongest the best"><input type="checkbox" id="chkNightSkyGalCenter"> Galactic center</label>
       <label class="chk-row ns-globe-keep" title="Overlay Mercury, Venus, Mars, Jupiter and Saturn at their real positions, dot size by brightness"><input type="checkbox" id="chkNightSkyPlanets" checked> Planets</label>
       <!-- Under Planets, while it is on (render-nightsky.js): on, only the planets seen with the naked
            eye; off, Uranus and Neptune too. -->
@@ -1043,14 +1085,20 @@
           <span class="slider-label" style="color:var(--accent-red)">Location</span>
         </div>
       </div>
-      <!-- SET HERE (left) + DEC|DM location format (right), one row under the "Location" heading,
-           shared across every mode. SET HERE asks the browser for the device position and falls
-           back to an IP address lookup (js/controls.js, "SET HERE"); what was set and from what is
-           reported in #locHereInfo at the end of this block. DEC|DM: decimal degrees (2 dp) vs
+      <!-- SET HERE and SELECT (left) + DEC|DM location format (right), one row under the "Location"
+           heading, shared across every mode. SET HERE asks the browser for the device position and
+           falls back to an IP address lookup (js/controls.js, "SET HERE"); SELECT opens a globe of
+           the Earth over the canvas to pick the Location on (js/render-locpick.js); what was set
+           and from what is reported in #locHereInfo at the end of this block. DEC|DM: decimal degrees (2 dp) vs
            degrees+arc-minutes for #inpLat/#inpLong (_locFormatInput() and friends). -->
       <div class="lat-row loc-here-row" style="margin-top:2px">
-        <div class="ns-toggle" title="Set Location from this device's position; if that is refused or unavailable, from the IP address">
-          <button class="ns-btn active" id="btnLocSetHere">SET HERE</button>
+        <div class="loc-here-btns">
+          <div class="ns-toggle" title="Set Location from this device's position; if that is refused or unavailable, from the IP address">
+            <button class="ns-btn active" id="btnLocSetHere">SET HERE</button>
+          </div>
+          <div class="ns-toggle">
+            <button class="ns-btn" id="btnLocSelect" aria-pressed="false" title="Select the Location on a globe of the Earth">SELECT</button>
+          </div>
         </div>
         <div class="ns-toggle" id="locFormatRow" title="Location display format">
           <button class="ns-btn active" id="btnLocDec" title="Decimal degrees">DEC</button>
@@ -1205,30 +1253,32 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.30
 </div>
 
-<script src="js/core.js?perfdebug401"></script>
-<script src="js/render-2d.js?perfdebug401"></script>
-<script src="js/controls.js?perfdebug401"></script>
-<script src="js/render-sungraph.js?perfdebug401"></script>
-<script src="js/render-3d.js?perfdebug401"></script>
-<script src="js/render-skydome.js?perfdebug401"></script>
-<script src="js/render-moon.js?perfdebug401"></script>
-<script src="js/render-planets.js?perfdebug401"></script>
-<script src="js/render-milkyway.js?perfdebug401"></script>
-<script src="js/render-deepsky.js?perfdebug401"></script>
-<script src="js/render-skyglow.js?perfdebug401"></script>
-<script src="js/render-nightsky.js?perfdebug401"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug401"></script>
-<script src="js/render-nightsky-3d.js?perfdebug401"></script>
-<script src="js/render-nightsky-globe.js?perfdebug401"></script>
-<script src="js/render-search.js?perfdebug401"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug401"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug401"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug401"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug401"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug401"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug401"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug401"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug401"></script>
-<script src="js/render-eclipse.js?perfdebug401"></script>
+<script src="js/core.js?perfdebug422"></script>
+<script src="js/render-2d.js?perfdebug422"></script>
+<script src="js/controls.js?perfdebug422"></script>
+<script src="js/render-sungraph.js?perfdebug422"></script>
+<script src="js/render-3d.js?perfdebug422"></script>
+<script src="js/render-skydome.js?perfdebug422"></script>
+<script src="js/render-moon.js?perfdebug422"></script>
+<script src="js/render-planets.js?perfdebug422"></script>
+<script src="js/render-milkyway.js?perfdebug422"></script>
+<script src="js/render-deepsky.js?perfdebug422"></script>
+<script src="js/render-skyglow.js?perfdebug422"></script>
+<script src="js/render-nightsky.js?perfdebug422"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug422"></script>
+<script src="js/render-nightsky-3d.js?perfdebug422"></script>
+<script src="js/render-nightsky-globe.js?perfdebug422"></script>
+<script src="js/render-search.js?perfdebug422"></script>
+<script src="js/render-locpick.js?perfdebug422"></script>
+<script src="js/render-export.js?perfdebug422"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug422"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug422"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug422"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug422"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug422"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug422"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug422"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug422"></script>
+<script src="js/render-eclipse.js?perfdebug422"></script>
 </body>
 </html>
