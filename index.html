@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug453">
+  <link rel="stylesheet" href="css/style.css?perfdebug459">
 </head>
 <body>
 
@@ -493,6 +493,15 @@
            _nightSkySyncControls() in render-nightsky.js). Shown only while Night Sky is active. -->
       <div id="nightSkyTimeWrap">
         <button id="nightSkyTimeToggle" title="Hide / show the time control">▼</button>
+        <!-- While Atmosphere (Display) is off where it works (Planetarium, flat Sky Map): a yellow bar
+             above the time control, the sky being drawn dark at any hour whatever the Sun and the
+             Moon; its text turns Atmosphere on, its × closes it for the browser's
+             session (sessionStorage) (_nightSkyAtmHintSync, render-nightsky.js). -->
+        <div id="nightSkyAtmHint" hidden>
+          <button id="nightSkyAtmHintOn" type="button"
+            title="Atmosphere is off: the sky is drawn dark at any hour, without daylight, twilight, moonlight or the dimming near the horizon. Click to turn it on">Real sky brightness is off · turn on Atmosphere</button>
+          <button id="nightSkyAtmHintClose" type="button" title="Hide this note (Atmosphere stays in Display)" aria-label="Hide">×</button>
+        </div>
         <div id="nightSkyTimeBox">
           <!-- No "Date / Time" label - self-explanatory from the value alone, per the user's own
                request; kept as a .slider-header row (not a bare span) so the value still sits flush
@@ -1305,35 +1314,35 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.30
 </div>
 
-<script src="js/core.js?perfdebug453"></script>
-<script src="js/render-2d.js?perfdebug453"></script>
-<script src="js/controls.js?perfdebug453"></script>
-<script src="js/render-sungraph.js?perfdebug453"></script>
-<script src="js/render-3d.js?perfdebug453"></script>
-<script src="js/render-skydome.js?perfdebug453"></script>
-<script src="js/render-moon.js?perfdebug453"></script>
-<script src="js/render-planets.js?perfdebug453"></script>
-<script src="js/render-milkyway.js?perfdebug453"></script>
-<script src="js/render-deepsky.js?perfdebug453"></script>
-<script src="js/render-skyglow.js?perfdebug453"></script>
-<script src="js/render-nightsky.js?perfdebug453"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug453"></script>
-<script src="js/render-nightsky-3d.js?perfdebug453"></script>
-<script src="js/render-nightsky-globe.js?perfdebug453"></script>
-<script src="js/render-search.js?perfdebug453"></script>
-<script src="js/render-locpick.js?perfdebug453"></script>
-<script src="js/tz-lookup.js?perfdebug453"></script>
-<script src="js/render-tzsearch.js?perfdebug453"></script>
-<script src="js/render-eclipse-map.js?perfdebug453"></script>
-<script src="js/render-export.js?perfdebug453"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug453"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug453"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug453"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug453"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug453"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug453"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug453"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug453"></script>
-<script src="js/render-eclipse.js?perfdebug453"></script>
+<script src="js/core.js?perfdebug459"></script>
+<script src="js/render-2d.js?perfdebug459"></script>
+<script src="js/controls.js?perfdebug459"></script>
+<script src="js/render-sungraph.js?perfdebug459"></script>
+<script src="js/render-3d.js?perfdebug459"></script>
+<script src="js/render-skydome.js?perfdebug459"></script>
+<script src="js/render-moon.js?perfdebug459"></script>
+<script src="js/render-planets.js?perfdebug459"></script>
+<script src="js/render-milkyway.js?perfdebug459"></script>
+<script src="js/render-deepsky.js?perfdebug459"></script>
+<script src="js/render-skyglow.js?perfdebug459"></script>
+<script src="js/render-nightsky.js?perfdebug459"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug459"></script>
+<script src="js/render-nightsky-3d.js?perfdebug459"></script>
+<script src="js/render-nightsky-globe.js?perfdebug459"></script>
+<script src="js/render-search.js?perfdebug459"></script>
+<script src="js/render-locpick.js?perfdebug459"></script>
+<script src="js/tz-lookup.js?perfdebug459"></script>
+<script src="js/render-tzsearch.js?perfdebug459"></script>
+<script src="js/render-eclipse-map.js?perfdebug459"></script>
+<script src="js/render-export.js?perfdebug459"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug459"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug459"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug459"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug459"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug459"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug459"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug459"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug459"></script>
+<script src="js/render-eclipse.js?perfdebug459"></script>
 </body>
 </html>
