@@ -10,8 +10,8 @@
 //  - the lines of equal greatest magnitude 0.2, 0.4, 0.6 and 0.8, labelled, and the line of
 //    magnitude 0, the edge of the area where the eclipse is seen at all;
 //  - the Greatest Eclipse point;
-//  - a legend in the bottom left corner, with the path's width and the central duration at the
-//    Greatest Eclipse point.
+//  - a legend in the top left corner under the window's head, with the path's width and the
+//    central duration at the Greatest Eclipse point.
 // The lines are not computed here: tools/eclipse-map.js computes them once from the event's
 // Besselian elements and writes js/eclipse-data/<id>.map.js (window.ECLIPSE_MAPS), loaded on the
 // first opening of the event's map. Greatest magnitude means while the Sun is up, so near the
@@ -252,7 +252,8 @@ function _eclMapDraw(ctx, V, w, h) {
   ctx.restore();
   _eclMapLegend(ctx, M, ev, h);
 }
-// The legend's rows and box (bottom left), also kept free of the line labels
+// The legend's rows and box (top left, under the window's head however that wraps; the bottom left
+// is the time zones' legend), also kept free of the line labels
 function _eclMapLegendLayout(ctx, M, ev, h) {
   const central = ev.type === 'annular' ? 'annularity' : 'totality';
   const rows = [];
@@ -271,7 +272,7 @@ function _eclMapLegendLayout(ctx, M, ev, h) {
   rows.push({ kind: 'ge', text: 'Greatest eclipse' });
   const lineH = 15, pad = 8;
   const H = pad * 2 + rows.reduce((s, r) => s + lineH + (r.sub ? 12 : 0), 0) - 3;
-  const x0 = 12, y0 = h - 12 - H;
+  const x0 = 12, y0 = _locPickHeadBottom() + 8;   // render-locpick.js
   ctx.font = "10px 'Share Tech Mono', monospace";
   const W = pad * 2 + 22 + Math.max(...rows.map(r => Math.max(ctx.measureText(r.text).width, r.sub ? ctx.measureText(r.sub).width * 0.9 : 0)));
   return { rows, x0, y0, W, H, lineH, pad };

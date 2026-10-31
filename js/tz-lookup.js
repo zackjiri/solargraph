@@ -101,16 +101,40 @@ function _tzModeInstant() {
   }
   return ms !== null && ms >= Date.UTC(1970, 0, 1) ? ms : null;
 }
+// The moment whose date the globe's time zones compare (same date as the Location), or null; it
+// follows the animations and sliders: Eclipse the time slider (hours from t0), Night Sky its
+// calendar (any year). Solargraph has none: its offsets are the standard time, which would put
+// the date an hour off round midnight wherever summer time runs.
+function _tzDateInstant() {
+  if (typeof eclipseActive !== 'undefined' && eclipseActive && _eclipseActiveEvent) {
+    const ev = _eclipseActiveEvent, sl = document.getElementById('rngEclipseTime');
+    const t = sl ? parseFloat(sl.value) || 0 : 0;
+    return Date.UTC(ev.year, ev.dayMonth - 1, ev.dayDay) + (ev.t0UtcHours + t) * 3600000;
+  }
+  if (typeof nightSkyActive !== 'undefined' && nightSkyActive) {
+    return Date.UTC(nightSkyYear, nightSkyMonth - 1, nightSkyDay) + nightSkyHourUT * 3600000;
+  }
+  return null;
+}
+// The day number (days since 1970) at an offset [h] at the instant ms
+function _tzDayAt(ms, h) {
+  return Math.floor((ms + h * 3600000) / 86400000);
+}
 // The offset of one zone at the mode's moment (_tzModeInstant), or null if the browser does not
 // know the zone
 function _tzModeOffset(zone) {
   const ms = _tzModeInstant();
   return ms === null ? _tzStandardOffset(zone) : _tzOffsetAt(zone, ms);
 }
-// Every zone's offset at the mode's moment, indexed as _tzIndexAt (NaN: unknown to the browser),
-// with a key that changes with that moment; kept until it does (the globe asks per frame).
+// Every zone's offset at the mode's moment, indexed as _tzIndexAt (NaN: unknown to the browser).
+// The moment is taken down to its quarter hour of UTC: the offsets change only on those (every
+// summer time switch falls on a whole or half hour of UTC), and Night Sky's moment moves with
+// its playback, where a table per frame (301 zones through Intl, ~12 ms) would weigh on it. key
+// changes with that quarter, sig only with the offsets themselves (what the globe's disc keys on).
+const TZ_OFFSETS_STEP_MS = 15 * 60000;
 function _tzModeOffsets(g) {
-  const ms = _tzModeInstant();
+  let ms = _tzModeInstant();
+  if (ms !== null) ms = Math.floor(ms / TZ_OFFSETS_STEP_MS) * TZ_OFFSETS_STEP_MS;
   const key = ms === null ? 'std' + new Date().getUTCFullYear() : String(ms);
   if (_tzGrid.offsets && _tzGrid.offsets.key === key) return _tzGrid.offsets;
   const off = new Float64Array(g.zones.length + 1);
@@ -118,7 +142,7 @@ function _tzModeOffsets(g) {
     const h = ms === null ? _tzStandardOffset(z) : _tzOffsetAt(z, ms);
     off[i + 1] = h === null ? NaN : h;
   });
-  return (_tzGrid.offsets = { key, off });
+  return (_tzGrid.offsets = { key, off, sig: off.join(',') });
 }
 // Sets the Time zone for a point (signed degrees); resolves to the info line's sentence about it,
 // or '' if the grid could not be loaded (the Time zone then stays).

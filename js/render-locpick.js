@@ -27,6 +27,11 @@ const _locPick = {
   open: false, lon0: 0, lat0: 0, zoom: 1,
   ecl: null,           // the event id while the window shows its Eclipse map
   zones: false,        // the time zones over the Earth (#btnLocPickZones), kept while the page is open
+  // their parts, each switched in the legend (#locPickZoneLegend); the same date off at first, as
+  // it watches the time (_locPickDays)
+  zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true },
+  zoneLabels: [],      // the offsets' labels of the cached disc: {x, y, text}, none while moving
+  daySig: '',          // the same date's signature the cached disc was drawn with (_locPickDays)
   drag: null,          // {x, y, lon0, lat0, moved}
   hover: null,         // {lat, lon} under the pin, or null
   wave: null,          // {lat, lon, t0, zoom}
@@ -80,8 +85,21 @@ function _locPickUnproject(V, x, y) {   // a canvas point -> {lat, lon}, or null
 // as a spectrum, whole hours alternately lighter and darker so that neighbours part; laid over
 // land more strongly than over the sea, and fainter under the Eclipse map. A dark line where the
 // offset changes, a fainter one between two zones of the same offset on land; the lines only at
-// rest.
+// rest. The parts the legend switches (_locPick.zoneParts):
+//  - the date line: where the offsets of two neighbours part by more than 12 h, a black line two
+//    pixels wide (at rest);
+//  - the same date (off at first): at the moment _tzDateInstant gives, the zones on another date
+//    than the zone under the Location's pin go under a dark veil, a layer of its own over the
+//    disc (_locPickDrawVeil) so that following the time costs little;
+//  - an offset off the whole hour (+5:30, +5:45, -3:30 ...): diagonal hatching, its pitch steady
+//    on the screen;
+//  - the offsets' values: a label per patch of one offset (land and sea together) large enough on
+//    the screen, near its middle but on the patch, clear of the other labels, the pin and the
+//    legends (at rest; _locPickZoneLabels).
 const LOC_PICK_ZONE_ALPHA = { land: 0.66, sea: 0.3, ecl: 0.55 };
+const LOC_PICK_ZONE_VEIL = 0.55;          // the other date: this much of the way to the dark
+const LOC_PICK_ZONE_HATCH_PX = 6;         // the hatching's pitch on the screen [CSS px]
+const LOC_PICK_ZONE_LABEL_AREA = 1600;    // the least patch a label goes on [CSS px²]
 const _locPickZoneRGBs = new Map();
 function _locPickZoneRGB(h) {
   let c = _locPickZoneRGBs.get(h);
@@ -93,14 +111,202 @@ function _locPickZoneRGB(h) {
   _locPickZoneRGBs.set(h, c);
   return c;
 }
+// An offset as its label: +1, −3:30, +5:45, 0
+function _locPickOffsetText(h) {
+  if (h === 0) return '0';
+  const a = Math.abs(h), hh = Math.floor(a + 1e-9), mm = Math.round((a - hh) * 60);
+  return (h < 0 ? '−' : '+') + hh + (mm ? ':' + String(mm).padStart(2, '0') : '');
+}
+// The offsets' labels from the disc's buffer (ids: the zone or band per pixel, -1 off the disc;
+// hs: its offset): the patches of one offset (4-connected), largest first. One large enough on
+// the screen is labelled at its pixel nearest its centroid that has the patch round it a little
+// way in all four directions (else just the nearest); a smaller one (an island's waters, Line
+// Islands +14) at its centroid, the label laid over it (small: true). In CSS px.
+function _locPickZoneLabels(ids, hs, sw, sh, q, x0, y0) {
+  const comp = new Int32Array(sw * sh).fill(-1), stack = new Int32Array(sw * sh), order = new Int32Array(sw * sh);
+  const minArea = LOC_PICK_ZONE_LABEL_AREA * q * q, inset = Math.max(2, Math.round(8 * q)), out = [];
+  let nc = 0;
+  for (let n0 = 0; n0 < ids.length; n0++) {
+    if (ids[n0] < 0 || comp[n0] >= 0) continue;
+    const zh = hs[n0];
+    let top = 0, len = 0, sx = 0, sy = 0;
+    stack[top++] = n0; comp[n0] = nc;
+    while (top) {
+      const p = stack[--top], i = p % sw, j = (p - i) / sw;
+      order[len++] = p; sx += i; sy += j;
+      for (const m of [i > 0 ? p - 1 : -1, i + 1 < sw ? p + 1 : -1, j > 0 ? p - sw : -1, j + 1 < sh ? p + sw : -1]) {
+        if (m < 0 || comp[m] >= 0 || ids[m] < 0 || hs[m] !== zh) continue;
+        comp[m] = nc; stack[top++] = m;
+      }
+    }
+    if (len < minArea) {
+      out.push({ x: x0 + (sx / len + 0.5) / q, y: y0 + (sy / len + 0.5) / q, text: _locPickOffsetText(zh), area: len, small: true });
+    } else {
+      const cx = sx / len, cy = sy / len;
+      const inside = (i, j) => i >= 0 && j >= 0 && i < sw && j < sh && comp[j * sw + i] === nc;
+      let best = -1, bestD = Infinity, any = -1, anyD = Infinity;
+      for (let k = 0; k < len; k++) {
+        const p = order[k], i = p % sw, j = (p - i) / sw, d = (i - cx) * (i - cx) + (j - cy) * (j - cy);
+        if (d < anyD) { anyD = d; any = p; }
+        if (d < bestD && inside(i - inset, j) && inside(i + inset, j) && inside(i, j - inset) && inside(i, j + inset)) { bestD = d; best = p; }
+      }
+      const p = best >= 0 ? best : any, i = p % sw, j = (p - i) / sw;
+      out.push({ x: x0 + (i + 0.5) / q, y: y0 + (j + 0.5) / q, text: _locPickOffsetText(zh), area: len });
+    }
+    nc++;
+  }
+  return out.sort((a, b) => (a.small ? 1 : 0) - (b.small ? 1 : 0) || b.area - a.area);
+}
+// The labels on the canvas: each clear of those placed, the pin and the legends (with a gap); the
+// large patches' first. A small patch gets a label only for a value no label in the view has yet
+// (one for an island group, as +14 on the Line Islands; none for the slivers the grid's cells
+// leave at a boundary, which share the value of the patch next to them) and not by the limb,
+// where the bands narrow into slivers; laid over the patch, or just above, below or beside it.
+const LOC_PICK_ZONE_LABEL_LIMB = 0.85;   // a small patch's label within this share of the radius
+function _locPickDrawZoneLabels(ctx, V, w, h) {
+  const gap = 4, taken = [];
+  const free = (b) => taken.every(t => b.x1 + gap <= t.x0 || t.x1 + gap <= b.x0 || b.y1 + gap <= t.y0 || t.y1 + gap <= b.y0);
+  const pin = _locPickProject(V, _locPickVec(lonHemisphere * LONG, hemisphere * LAT));
+  if (pin.z > 0) taken.push({ x0: pin.x - 8, y0: pin.y - 8, x1: pin.x + 8, y1: pin.y + 8 });
+  const cv = document.getElementById('locPickCanvas').getBoundingClientRect();
+  for (const id of ['locPickZoneLegend', 'locPickCredit', 'locPickCreditTop', 'btnLocPickZones', 'btnLocPickZoneSearch',
+    'locPickZoneSearchPanel', 'locPickZoneMatch']) {
+    const el = document.getElementById(id);
+    if (!el || !el.offsetParent) continue;
+    const r = el.getBoundingClientRect();
+    taken.push({ x0: r.left - cv.left, y0: r.top - cv.top, x1: r.right - cv.left, y1: r.bottom - cv.top });
+  }
+  if (_locPick.ecl && typeof _eclMapGet === 'function') {   // the Eclipse map's legend
+    const M = _eclMapGet(_eclipseActiveEvent.id);
+    if (M) { const L = _eclMapLegendLayout(ctx, M, _eclipseActiveEvent, h); taken.push({ x0: L.x0, y0: L.y0, x1: L.x0 + L.W, y1: L.y0 + L.H }); }
+  }
+  ctx.font = "10px 'Share Tech Mono', monospace";
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const placed = new Set();   // the values labelled
+  for (const l of _locPick.zoneLabels) {
+    if (l.small && (placed.has(l.text) || Math.hypot(l.x - V.cx, l.y - V.cy) > LOC_PICK_ZONE_LABEL_LIMB * V.R)) continue;
+    const tw = ctx.measureText(l.text).width + 6;
+    let b = null, x = l.x, y = l.y;
+    for (const [dx, dy] of l.small ? [[0, 0], [0, -12], [0, 12], [-tw / 2 - 6, 0], [tw / 2 + 6, 0]] : [[0, 0]]) {
+      const c = { x0: l.x + dx - tw / 2, y0: l.y + dy - 7, x1: l.x + dx + tw / 2, y1: l.y + dy + 7 };
+      if (free(c)) { b = c; x = l.x + dx; y = l.y + dy; break; }
+    }
+    if (!b) continue;
+    taken.push(b);
+    placed.add(l.text);
+    ctx.fillStyle = 'rgba(7,9,13,0.72)';
+    ctx.fillRect(b.x0, b.y0, tw, 14);
+    ctx.fillStyle = '#e8eef4';
+    ctx.fillText(l.text, x, y + 0.5);
+  }
+}
+// The same date's state: the moment (_tzDateInstant), the day under the Location's pin, and a
+// signature of the day of every offset in use (the zones' and the nautical ones) relative to it,
+// which changes only when one of them passes midnight. Without the part or the moment, nulls and ''.
+function _locPickDays(G) {
+  const offs = _tzModeOffsets(G);
+  const dateMs = _locPick.zoneParts.sameDate ? _tzDateInstant() : null;
+  if (dateMs === null) return { dateMs: null, pinDay: null, sig: '' };
+  const pinLon = lonHemisphere * LONG, s = _tzIndexAt(G, hemisphere * LAT, pinLon);
+  const ph = s && offs.off[s] === offs.off[s] ? offs.off[s] : _tzNautical(pinLon);
+  const pinDay = _tzDayAt(dateMs, ph);
+  return { dateMs, pinDay, sig: _locPickOffsetList(offs).values.map(h => _tzDayAt(dateMs, h) - pinDay).join(',') };
+}
+// The offsets in use (the zones' and the nautical ones), sorted, with each one's index; once per
+// table of offsets
+function _locPickOffsetList(offs) {
+  if (!offs.list) {
+    const set = new Set();
+    for (let s = 1; s < offs.off.length; s++) if (offs.off[s] === offs.off[s]) set.add(offs.off[s]);
+    for (let n = -12; n <= 12; n++) set.add(n);
+    const values = [...set].sort((a, b) => a - b);
+    offs.list = { values, index: new Map(values.map((h, i) => [h, i])) };
+  }
+  return offs.list;
+}
+// The same date's veil over the cached disc: the pixels whose offset is on another day than the
+// pin's darkened, from the disc's offset indices (_locPick.veilSrc). Redone only when the disc or
+// the days change (a zone passing midnight), a few ms, so an animation running meanwhile does
+// not stall as it would for the disc.
+function _locPickDrawVeil(ctx, V) {
+  const S = _locPick.veilSrc, G = _tzGrid.data;
+  const D = _locPickDays(G);
+  _locPick.daySig = D.sig;
+  if (!S || D.dateMs === null) return;
+  const VC = _locPick.veil || (_locPick.veil = { cv: document.createElement('canvas'), gen: -1, sig: null });
+  if (VC.gen !== S.gen || VC.sig !== D.sig) {
+    const other = S.list.map(h => _tzDayAt(D.dateMs, h) !== D.pinDay);
+    VC.cv.width = S.sw; VC.cv.height = S.sh;
+    const img = new ImageData(S.sw, S.sh), px = img.data, a = Math.round(LOC_PICK_ZONE_VEIL * 255);
+    for (let n = 0; n < S.oi.length; n++) {
+      const k = S.oi[n];
+      if (k === 255 || !other[k]) continue;
+      const o = n * 4; px[o] = 6; px[o + 1] = 8; px[o + 2] = 12; px[o + 3] = a;
+    }
+    VC.cv.getContext('2d').putImageData(img, 0, 0);
+    VC.gen = S.gen; VC.sig = D.sig;
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(VC.cv, S.x0, S.y0, S.sw / S.q, S.sh / S.q);
+  ctx.restore();
+}
+// The search's match (render-tzsearch.js) over the disc as the veil is: the pixels outside it
+// dimmed. A match of zones keeps their pixels; one of an offset all of that offset at the moment,
+// the nautical bands at sea too. Redone when the disc, the match or (for an offset) the offsets
+// change.
+const LOC_PICK_ZONE_DIM = 0.62;   // outside the match: this much of the way to the dark
+function _locPickDrawMatch(ctx, V) {
+  const S = _locPick.veilSrc, M = typeof _tzs !== 'undefined' ? _tzs.match : null;
+  if (!S || !M) return;
+  const MC = _locPick.matchVeil || (_locPick.matchVeil = { cv: document.createElement('canvas'), gen: -1, m: null, list: null });
+  if (MC.gen !== S.gen || MC.m !== M || MC.list !== S.list) {
+    const keep = M.kind === 'offset' ? S.list.map(h => h === M.value) : null;
+    MC.cv.width = S.sw; MC.cv.height = S.sh;
+    const img = new ImageData(S.sw, S.sh), px = img.data, a = Math.round(LOC_PICK_ZONE_DIM * 255);
+    for (let n = 0; n < S.oi.length; n++) {
+      const k = S.oi[n];
+      if (k === 255) continue;
+      if (keep ? keep[k] : M.zones.has(S.zi[n])) continue;
+      const o = n * 4; px[o] = 6; px[o + 1] = 8; px[o + 2] = 12; px[o + 3] = a;
+    }
+    MC.cv.getContext('2d').putImageData(img, 0, 0);
+    MC.gen = S.gen; MC.m = M; MC.list = S.list;
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(MC.cv, S.x0, S.y0, S.sw / S.q, S.sh / S.q);
+  ctx.restore();
+}
+// The animations and sliders change the moment without asking the globe to redraw: while the same
+// date shows, a look five times a second whether a zone has passed midnight (or the moment has
+// come or gone), and a redraw then.
+setInterval(() => {
+  if (!_locPick.open || !_locPick.zones || !_locPick.zoneParts.sameDate || typeof _tzGrid === 'undefined' || !_tzGrid.data) return;
+  if (_locPickDays(_tzGrid.data).sig !== _locPick.daySig) _locPickRequest();
+}, 200);
+// The bottom of the window's head (it wraps in a narrow window) on the canvas [CSS px]: the Eclipse
+// map's legend goes under it (render-eclipse-map.js)
+function _locPickHeadBottom() {
+  const head = document.querySelector('.loc-pick-head'), cv = document.getElementById('locPickCanvas');
+  return head.getBoundingClientRect().bottom - cv.getBoundingClientRect().top;
+}
 function _locPickDrawEarth(w, h, res, V) {
   const lt = document.body.classList.contains('light');
   const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;   // tz-lookup.js
-  const offs = G ? _tzModeOffsets(G) : null;
+  const offs = G ? _tzModeOffsets(G) : null, P = _locPick.zoneParts;
+  // the same date's veil is not in the disc but laid over it (_locPickDrawVeil): the disc keeps
+  // per pixel the index of its offset, the veil is redone from it alone when a zone passes midnight
+  const list = G ? _locPickOffsetList(offs) : null;
   const key = [w, h, res, _locPick.lon0, _locPick.lat0, _locPick.zoom, lt, !!_nsGlobeTex, _locPick.moving,
-    offs ? offs.key : '', !!_locPick.ecl].join('|');
+    offs ? offs.sig : '', !!_locPick.ecl, G ? [P.dateLine, P.hatch, P.labels].join(',') : ''].join('|');
   const C = _locPick.cache;
   if (C.key === key) return C.cv;
+  _locPick.zoneLabels = [];
+  _locPick.veilSrc = null;
+  C.gen = (C.gen || 0) + 1;
   const cv = C.cv || (C.cv = document.createElement('canvas'));
   cv.width = Math.round(w * res); cv.height = Math.round(h * res);
   const ctx = cv.getContext('2d');
@@ -118,7 +324,10 @@ function _locPickDrawEarth(w, h, res, V) {
     const texPerPx = TW / (2 * Math.PI) / (q * V.R);   // texture cells per buffer pixel at the centre
     // the time zones: per pixel the zone (land) or the nautical band (sea), and its offset
     const ids = G ? new Int32Array(sw * sh).fill(-1) : null, hs = G ? new Float32Array(sw * sh) : null;
+    const oi = G ? new Uint8Array(sw * sh).fill(255) : null;   // the offset's index in list, 255 off the disc
+    const zi = G ? new Uint16Array(sw * sh) : null;            // the zone's index, 0 at sea (the search's match)
     const zoneA = LOC_PICK_ZONE_ALPHA, eclA = _locPick.ecl ? zoneA.ecl : 1;
+    const pitch = Math.max(3, Math.round(LOC_PICK_ZONE_HATCH_PX * q)), stripe = Math.max(1, Math.round(pitch / 3));
     for (let j = 0; j < sh; j++) {
       const v = -((y0 + (j + 0.5) / q) - V.cy) / V.R;
       for (let i = 0; i < sw; i++) {
@@ -146,8 +355,11 @@ function _locPickDrawEarth(w, h, res, V) {
           if (zh !== zh) { s = 0; zh = _tzNautical(lon); }   // at sea, or a zone the browser does not know
           ids[j * sw + i] = s || 100000 + Math.round(zh * 4);
           hs[j * sw + i] = zh;
+          oi[j * sw + i] = list.index.get(zh);
+          zi[j * sw + i] = s;
           const c = _locPickZoneRGB(zh), al = (zoneA.sea + (zoneA.land - zoneA.sea) * a) * eclA;
           r += (c[0] - r) * al; g += (c[1] - g) * al; b += (c[2] - b) * al;
+          if (P.hatch && Math.abs(zh - Math.round(zh)) > 1e-6 && (i + j) % pitch < stripe) { r *= 0.62; g *= 0.62; b *= 0.62; }
         }
         px[o] = r * k;
         px[o + 1] = g * k;
@@ -158,18 +370,32 @@ function _locPickDrawEarth(w, h, res, V) {
     // the lines: towards the right and the lower neighbour; not while dragged or pinched, as the
     // buffer is coarse then and smoothed up, which blurs thin lines far more than the fill
     if (G && !_locPick.moving) {
+      const dark = new Uint8Array(sw * sh);   // the date line, set on both its sides: 2 px wide
       for (let j = 0; j < sh; j++) for (let i = 0; i < sw; i++) {
         const n = j * sw + i, id = ids[n];
         if (id < 0) continue;
         let f = 1;
         for (const m of [i + 1 < sw ? n + 1 : -1, j + 1 < sh ? n + sw : -1]) {
           if (m < 0 || ids[m] < 0 || ids[m] === id) continue;
+          if (P.dateLine && Math.abs(hs[m] - hs[n]) > 12) { dark[n] = dark[m] = 1; continue; }
           if (hs[m] !== hs[n]) f = Math.min(f, 0.45);
           else if (id < 100000 && ids[m] < 100000) f = Math.min(f, 0.8);
         }
         if (f < 1) { const o = n * 4; px[o] *= f; px[o + 1] *= f; px[o + 2] *= f; }
       }
+      const thick = Math.max(1, Math.round(q));   // 2 CSS px in all: a pixel on each side
+      for (let n = 0; n < dark.length; n++) {
+        if (!dark[n]) continue;
+        const i = n % sw, j = (n - i) / sw;
+        for (let dj = 0; dj < thick; dj++) for (let di = 0; di < thick; di++) {
+          const ii = i + di - (thick >> 1), jj = j + dj - (thick >> 1);
+          if (ii < 0 || jj < 0 || ii >= sw || jj >= sh || ids[jj * sw + ii] < 0) continue;
+          const o = (jj * sw + ii) * 4; px[o] = px[o + 1] = px[o + 2] = 0;
+        }
+      }
+      if (P.labels) _locPick.zoneLabels = _locPickZoneLabels(ids, hs, sw, sh, q, x0, y0);
     }
+    if (G) _locPick.veilSrc = { gen: C.gen, oi, zi, list: list.values, sw, sh, x0, y0, q };
     const off = document.createElement('canvas'); off.width = sw; off.height = sh;
     off.getContext('2d').putImageData(img, 0, 0);
     ctx.save();
@@ -255,10 +481,15 @@ function _locPickDraw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Loading the Earth…', w / 2, h / 2);
   }
+  if (_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data) { _locPickDrawVeil(ctx, V); _locPickDrawMatch(ctx, V); }
   ctx.save();
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   _locPickGraticule(ctx, V);
   ctx.restore();
+  if (_locPick.zones) {
+    if (_locPick.zoneParts.labels && _locPick.zoneLabels.length) _locPickDrawZoneLabels(ctx, V, w, h);
+    _locPickZoneLegendSync();
+  }
   if (_locPick.ecl && typeof _eclMapDraw === 'function') _eclMapDraw(ctx, V, w, h);
   _locPickDrawPin(ctx, V, hemisphere * LAT, lonHemisphere * LONG, '#e84040');   // the Location
   const W = _locPick.wave;
@@ -377,6 +608,7 @@ function _locPickSetOpen(on, ecl) {
   } else {
     _locPick.drag = null; _locPick.hover = null;
     _locPickZoneHint(null);
+    if (typeof _tzs !== 'undefined' && _tzs.open) _tzsSetOpen(false);   // render-tzsearch.js
     if (_locPick.wave) _locPick.wave = null;
     _locPickRestoreFields();
   }
@@ -479,11 +711,33 @@ function _locPickPoint(e) {
 })();
 document.getElementById('btnLocSelect').addEventListener('click', () => _locPickSetOpen(!_locPick.open));
 document.getElementById('btnLocPickClose').addEventListener('click', () => _locPickSetOpen(false));
+// The time zones' legend: a row per part, a click switches it (the colours' row only explains).
+// The same date needs a moment (_tzDateInstant): in Solargraph there is none, its row is off and
+// disabled there (the part's own setting is kept for Eclipse and Night Sky).
+function _locPickZoneLegendSync() {
+  for (const b of document.querySelectorAll('#locPickZoneLegend button[data-part]')) {
+    const part = b.dataset.part;
+    const none = part === 'sameDate' && _tzDateInstant() === null;
+    b.setAttribute('aria-pressed', String(_locPick.zoneParts[part] && !none));
+    if (b.disabled !== none) {
+      b.disabled = none;
+      b.title = none ? 'Not in Solargraph: its time zones are the standard time' : 'Show or hide';
+    }
+  }
+}
+for (const b of document.querySelectorAll('#locPickZoneLegend button[data-part]')) {
+  b.addEventListener('click', () => {
+    _locPick.zoneParts[b.dataset.part] = !_locPick.zoneParts[b.dataset.part];
+    _locPickZoneLegendSync();
+    _locPickRequest();
+  });
+}
 document.getElementById('btnLocPickZones').addEventListener('click', (e) => {
   _locPick.zones = !_locPick.zones;
   e.currentTarget.setAttribute('aria-pressed', String(_locPick.zones));
   e.currentTarget.title = _locPick.zones ? 'Hide the time zones' : 'Show the time zones';
   document.getElementById('locPickWin').classList.toggle('zones', _locPick.zones);   // their source (.loc-pick-credit) shows
+  if (!_locPick.zones && typeof _tzs !== 'undefined' && _tzs.open) _tzsSetOpen(false);   // the search's button goes with them
   if (_locPick.zones) _tzLoad().then((g) => {   // the first time: the grid comes in
     // the credit (both its places) names the data's release, read from the grid so it follows a
     // regeneration
