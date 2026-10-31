@@ -293,7 +293,7 @@ function _locPickShowHemi(latSigned, lonSigned) {
 // With the time zones on, the head's hint gives the zone and offset of the point under the pin
 // (at sea the nautical zone); off the Earth, or with them off, the hint again.
 function _locPickZoneHint(p) {
-  const span = document.querySelector('.loc-pick-head span');
+  const span = document.getElementById('locPickHint');
   if (span.dataset.hint === undefined) span.dataset.hint = span.textContent;
   const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;
   if (!G || !p) { span.textContent = span.dataset.hint; return; }
@@ -483,7 +483,20 @@ document.getElementById('btnLocPickZones').addEventListener('click', (e) => {
   _locPick.zones = !_locPick.zones;
   e.currentTarget.setAttribute('aria-pressed', String(_locPick.zones));
   e.currentTarget.title = _locPick.zones ? 'Hide the time zones' : 'Show the time zones';
-  if (_locPick.zones) _tzLoad().then(() => _locPickRequest());   // the first time: the grid comes in
+  document.getElementById('locPickWin').classList.toggle('zones', _locPick.zones);   // their source (.loc-pick-credit) shows
+  if (_locPick.zones) _tzLoad().then((g) => {   // the first time: the grid comes in
+    // the credit (both its places) names the data's release, read from the grid so it follows a
+    // regeneration
+    for (const ver of document.querySelectorAll('.loc-pick-credit-ver')) {
+      if (!g || !g.release || ver.firstChild) continue;
+      const a = document.createElement('a');
+      a.href = 'https://github.com/evansiroky/timezone-boundary-builder/releases/tag/' + encodeURIComponent(g.release);
+      a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.textContent = 'timezone-boundary-builder ' + g.release;
+      ver.append(' · ', a);
+    }
+    _locPickRequest();
+  });
   _locPickZoneHint(_locPick.hover);
   _locPickRequest();
 });
