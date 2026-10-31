@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug443">
+  <link rel="stylesheet" href="css/style.css?perfdebug453">
 </head>
 <body>
 
@@ -274,6 +274,8 @@
     <div id="locPickWin" role="dialog" aria-label="Select the Location on the globe">
       <canvas id="locPickCanvas"></canvas>
       <div class="loc-pick-head"><b id="locPickTitle">SELECT LOCATION</b><span id="locPickHint">drag to turn · wheel to zoom · click to set</span>
+        <!-- the time zones search's pick (js/render-tzsearch.js): its name and an × that lets go -->
+        <div id="locPickZoneMatch" hidden><span id="locPickZoneMatchText"></span><button id="locPickZoneMatchClear" title="Show all the time zones again" aria-label="Clear">×</button></div>
         <div class="loc-pick-credit" id="locPickCreditTop">Time zones: <a href="https://www.openstreetmap.org/copyright" target="_blank"
         rel="noopener noreferrer">© OpenStreetMap contributors</a>, ODbL<span class="loc-pick-credit-ver"></span></div></div>
       <button id="btnLocPickClose" title="Close the globe" aria-label="Close">×</button>
@@ -282,6 +284,26 @@
            copy under the head, #locPickCreditTop, instead) -->
       <div class="loc-pick-credit" id="locPickCredit">Time zones: <a href="https://www.openstreetmap.org/copyright" target="_blank"
         rel="noopener noreferrer">© OpenStreetMap contributors</a>, ODbL<span class="loc-pick-credit-ver"></span></div>
+      <!-- the time zones' legend, bottom left while they show: a click on a row switches its part -->
+      <div id="locPickZoneLegend">
+        <div class="lpz-row"><i class="lpz-sw lpz-spectrum"></i>UTC offset</div>
+        <button class="lpz-row" data-part="dateLine" aria-pressed="true" title="Show or hide"><i class="lpz-sw lpz-dateline"></i>Date line</button>
+        <button class="lpz-row" data-part="sameDate" aria-pressed="false" title="Show or hide"><i class="lpz-sw lpz-samedate"></i>Same date as the Location</button>
+        <button class="lpz-row" data-part="hatch" aria-pressed="true" title="Show or hide"><i class="lpz-sw lpz-hatch"></i>Offset off the whole hour</button>
+        <button class="lpz-row" data-part="labels" aria-pressed="true" title="Show or hide"><i class="lpz-sw lpz-label">+1</i>Offset values</button>
+      </div>
+      <!-- the time zones search (js/render-tzsearch.js): left of the time zones' button while they show -->
+      <button id="btnLocPickZoneSearch" title="Find a time zone: an offset, a region, a zone, city or country" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">
+          <circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="14.8" y1="14.8" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <div id="locPickZoneSearchPanel" role="dialog" aria-label="Find a time zone">
+        <input type="text" id="locPickZoneSearchInput" placeholder="+1, 5:30, Europe, Prague, Oslo, Czechia..." autocomplete="off" spellcheck="false" aria-controls="locPickZoneSearchList">
+        <ul id="locPickZoneSearchList" role="listbox"></ul>
+        <div id="locPickZoneSearchNote"></div>
+      </div>
       <button id="btnLocPickZones" title="Show the time zones" aria-pressed="false">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
           <defs><clipPath id="locPickZonesClip"><circle cx="12" cy="12" r="9"/></clipPath></defs>
@@ -1283,34 +1305,35 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.30
 </div>
 
-<script src="js/core.js?perfdebug443"></script>
-<script src="js/render-2d.js?perfdebug443"></script>
-<script src="js/controls.js?perfdebug443"></script>
-<script src="js/render-sungraph.js?perfdebug443"></script>
-<script src="js/render-3d.js?perfdebug443"></script>
-<script src="js/render-skydome.js?perfdebug443"></script>
-<script src="js/render-moon.js?perfdebug443"></script>
-<script src="js/render-planets.js?perfdebug443"></script>
-<script src="js/render-milkyway.js?perfdebug443"></script>
-<script src="js/render-deepsky.js?perfdebug443"></script>
-<script src="js/render-skyglow.js?perfdebug443"></script>
-<script src="js/render-nightsky.js?perfdebug443"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug443"></script>
-<script src="js/render-nightsky-3d.js?perfdebug443"></script>
-<script src="js/render-nightsky-globe.js?perfdebug443"></script>
-<script src="js/render-search.js?perfdebug443"></script>
-<script src="js/render-locpick.js?perfdebug443"></script>
-<script src="js/tz-lookup.js?perfdebug443"></script>
-<script src="js/render-eclipse-map.js?perfdebug443"></script>
-<script src="js/render-export.js?perfdebug443"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug443"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug443"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug443"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug443"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug443"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug443"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug443"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug443"></script>
-<script src="js/render-eclipse.js?perfdebug443"></script>
+<script src="js/core.js?perfdebug453"></script>
+<script src="js/render-2d.js?perfdebug453"></script>
+<script src="js/controls.js?perfdebug453"></script>
+<script src="js/render-sungraph.js?perfdebug453"></script>
+<script src="js/render-3d.js?perfdebug453"></script>
+<script src="js/render-skydome.js?perfdebug453"></script>
+<script src="js/render-moon.js?perfdebug453"></script>
+<script src="js/render-planets.js?perfdebug453"></script>
+<script src="js/render-milkyway.js?perfdebug453"></script>
+<script src="js/render-deepsky.js?perfdebug453"></script>
+<script src="js/render-skyglow.js?perfdebug453"></script>
+<script src="js/render-nightsky.js?perfdebug453"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug453"></script>
+<script src="js/render-nightsky-3d.js?perfdebug453"></script>
+<script src="js/render-nightsky-globe.js?perfdebug453"></script>
+<script src="js/render-search.js?perfdebug453"></script>
+<script src="js/render-locpick.js?perfdebug453"></script>
+<script src="js/tz-lookup.js?perfdebug453"></script>
+<script src="js/render-tzsearch.js?perfdebug453"></script>
+<script src="js/render-eclipse-map.js?perfdebug453"></script>
+<script src="js/render-export.js?perfdebug453"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug453"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug453"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug453"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug453"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug453"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug453"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug453"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug453"></script>
+<script src="js/render-eclipse.js?perfdebug453"></script>
 </body>
 </html>
