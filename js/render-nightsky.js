@@ -920,19 +920,20 @@ document.getElementById('btnNightSkyYearInc').addEventListener('click', () => _n
 
 // SET NOW - resets to the real current moment, i.e. re-runs the exact same computation the
 // nightSkyYear/Month/Day/HourUT module-level init already does on page load (that init IS "now" at
-// the time this file first ran) - so this button just reproduces the default state on demand. Also
-// resets the Time zone field to the system's own current offset (_nightSkySystemTzHours, same
-// reasoning as the module-load init above) - a real "now" isn't just today's date, the whole point
-// is landing back on the browser's own actual current date/time/zone together.
+// the time this file first ran) - so this button just reproduces the default state on demand. The
+// Time zone follows the Location, not the system: its zone's offset now, summer time included
+// (_tzApplyForLocation, tz-lookup.js, as SET HERE and a click on the globe; at sea the nautical
+// one), so a place picked in Asia keeps its own time. Set once the time zones' grid is in; without
+// it the field stays as it is.
 function _nightSkySetNow() {
   const now = new Date();
   nightSkyYear = now.getUTCFullYear();
   nightSkyMonth = now.getUTCMonth() + 1;
   nightSkyDay = now.getUTCDate();
   nightSkyHourUT = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
-  applyTimeZone(_nightSkySystemTzHours(now));
   _nightSkyReanchorAnim();
   _nightSkySyncControls();
+  _tzApplyForLocation(hemisphere * LAT, lonHemisphere * LONG).then(() => _nightSkySyncControls());
 }
 document.getElementById('btnNightSkySetToday').addEventListener('click', _nightSkySetNow);
 
