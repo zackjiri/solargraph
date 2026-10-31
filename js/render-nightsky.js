@@ -3754,6 +3754,7 @@ function _nightSkyClearReadout() {
 })();
 
 function drawNightSky() {
+  _nightSkyAtmHintSync();
   if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
@@ -3827,6 +3828,24 @@ document.getElementById('btnNightSkyAtmosphere').addEventListener('click', () =>
   btn.classList.toggle('on', nightSkyAtmosphereOn);
   btn.setAttribute('aria-checked', String(nightSkyAtmosphereOn));
   if (nightSkyActive) drawNightSky();
+});
+// The yellow bar above the time strip while Atmosphere is off where it works (_nightSkyMagControlsOn:
+// Planetarium, flat Sky Map), at any hour, as the Moon's light counts too; a click on its text is a
+// click on the switch, its × hides it for the browser's session (sessionStorage: the tab's, also
+// over reloads, until the tab or the browser is closed). Checked on every drawing of Night Sky.
+var NIGHTSKY_ATM_HINT_KEY = 'solargraphyAtmHintClosed';   // var: drawNightSky may run before this line
+var _nightSkyAtmHintClosed = false;
+try { _nightSkyAtmHintClosed = sessionStorage.getItem(NIGHTSKY_ATM_HINT_KEY) === '1'; } catch (e) { /* storage blocked */ }
+function _nightSkyAtmHintSync() {
+  const el = document.getElementById('nightSkyAtmHint');
+  const show = !_nightSkyAtmHintClosed && !nightSkyAtmosphereOn && _nightSkyMagControlsOn();
+  if (el.hidden === show) el.hidden = !show;
+}
+document.getElementById('nightSkyAtmHintOn').addEventListener('click', () => document.getElementById('btnNightSkyAtmosphere').click());
+document.getElementById('nightSkyAtmHintClose').addEventListener('click', () => {
+  _nightSkyAtmHintClosed = true;
+  try { sessionStorage.setItem(NIGHTSKY_ATM_HINT_KEY, '1'); } catch (e) { /* storage blocked: hidden till a reload */ }
+  _nightSkyAtmHintSync();
 });
 document.querySelectorAll('#nightSkyStarScale .ns-btn').forEach(btn => btn.addEventListener('click', () => {
   nightSkyStarScale = parseInt(btn.dataset.scale, 10);
