@@ -11,6 +11,7 @@ by Evan Siroky, which builds them from [OpenStreetMap](https://www.openstreetmap
 | File | Content | Made from |
 |---|---|---|
 | `tz-grid.js` | A 1° grid of the Earth, split 2 x 2 down to 1/16° (about 7 km) where a boundary between zones passes; per cell the IANA zone, or none at sea | timezone-boundary-builder release **2026e**, `timezones-1970.geojson.zip` (the "1970" variant without oceans), [releases](https://github.com/evansiroky/timezone-boundary-builder/releases) |
+| `tzdata/zone.tab`, `tzdata/iso3166.tab`, `tzdata/backward`, `tzdata/version` | **Vendored, unmodified** files of the IANA tz database **2026e**: each zone's place and country, the countries' names, the old names and links. Read by the time zones search (`js/render-tzsearch.js`) | [tzdata2026e.tar.gz](https://data.iana.org/time-zones/releases/tzdata2026e.tar.gz), copied by `tools/tz-grid.js` (`--tzdata`) |
 
 The "1970" variant merges zones that have kept the same rules since 1970, under one of their
 names: Thailand, for one, comes out as `Asia/Jakarta`, the Netherlands as `Europe/Brussels`. The
@@ -25,14 +26,18 @@ from this folder.
 
 ## Regenerating
 
-From the unpacked `timezones-1970.geojson.zip` of a release (a `combined-1970.json` of ~150 MB):
+From the unpacked `timezones-1970.geojson.zip` of a release (a `combined-1970.json` of ~150 MB)
+and the unpacked IANA tzdata of the same version (`tzdata<tag>.tar.gz`):
 
 ```
-osascript -l JavaScript tools/tz-grid.js combined-1970.json data/timezones/tz-grid.js --release=<tag>
+osascript -l JavaScript tools/tz-grid.js combined-1970.json data/timezones/tz-grid.js --release=<tag> --tzdata=<tzdata folder>
 ```
 
-About 4 minutes and 1.3 GB of memory on the whole Earth. Then update the release in the table
-above and in the README.
+About 4 minutes and 1.3 GB of memory on the whole Earth. `--tzdata` copies the search's three
+files into `tzdata/` with their version and checks each place of `zone.tab` against the new
+grid; without it, or with a tzdata version other than the release, the run warns that the
+search's files no longer match the grid. Then update the versions in the table above and in the
+README.
 
 ## License
 
@@ -46,4 +51,4 @@ above and in the README.
 - timezone-boundary-builder's code is under the MIT license; none of it is used here, only its
   released data.
 - The zone names and rules are those of the [IANA tz database](https://www.iana.org/time-zones),
-  which is in the **public domain**.
+  which is in the **public domain**, as are the files in `tzdata/`.
