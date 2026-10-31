@@ -281,12 +281,20 @@ function _locPickDrawMatch(ctx, V) {
   ctx.restore();
 }
 // The animations and sliders change the moment without asking the globe to redraw: while the same
-// date shows, a look five times a second whether a zone has passed midnight (or the moment has
-// come or gone), and a redraw then.
-setInterval(() => {
-  if (!_locPick.open || !_locPick.zones || !_locPick.zoneParts.sameDate || typeof _tzGrid === 'undefined' || !_tzGrid.data) return;
-  if (_locPickDays(_tzGrid.data).sig !== _locPick.daySig) _locPickRequest();
-}, 200);
+// date shows, a look on every frame of the browser whether a zone has passed midnight (or the
+// moment has come or gone), and the globe redrawn in that same frame. On the frames, not a timer:
+// under a heavy animation (the Planetarium drawn per pixel) the browser holds timers back more and
+// more, frames it does not. The look itself is ~0.01 ms; the loop stops when the part is off.
+let _locPickWatchRaf = 0;
+function _locPickWatchOn() {
+  return _locPick.open && _locPick.zones && _locPick.zoneParts.sameDate && typeof _tzGrid !== 'undefined' && !!_tzGrid.data;
+}
+function _locPickWatch() {
+  _locPickWatchRaf = 0;
+  if (!_locPickWatchOn()) return;
+  if (_locPickDays(_tzGrid.data).sig !== _locPick.daySig) _locPickDraw();   // starts the next look itself
+  if (!_locPickWatchRaf) _locPickWatchRaf = requestAnimationFrame(_locPickWatch);
+}
 // The bottom of the window's head (it wraps in a narrow window) on the canvas [CSS px]: the Eclipse
 // map's legend goes under it (render-eclipse-map.js)
 function _locPickHeadBottom() {
@@ -508,6 +516,7 @@ function _locPickDraw() {
     else { _locPick.wave = null; _locPickSettled(); }
   }
   if (!_nsGlobeTex) _locPickRequest();   // until the land data is in
+  if (!_locPickWatchRaf && _locPickWatchOn()) _locPickWatchRaf = requestAnimationFrame(_locPickWatch);   // the same date follows the time
 }
 function _locPickRequest() {
   if (!_locPick.raf) _locPick.raf = requestAnimationFrame(_locPickDraw);
