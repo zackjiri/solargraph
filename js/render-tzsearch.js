@@ -12,8 +12,9 @@
 //  - a city whose zone the grid's 1970 variant merged into another (Oslo in Europe/Berlin): its
 //    place in zone.tab, looked up in the grid;
 //  - an old name or link of the tz database (Kiev, Calcutta), through the zone it names;
-//  - a country by the tz database's name (iso3166.tab) or the browser's in English and Czech
-//    (Intl.DisplayNames: Czechia, Česko), its zones those of zone.tab.
+//  - a country by the tz database's name (iso3166.tab) or the browser's in English, Czech and the
+//    browser's own languages (Intl.DisplayNames: Czechia, Česko, Chequia), its zones those of
+//    zone.tab.
 // Ranked as in Night Sky: an exact match first, then a name starting with the text, then a later
 // word starting with it, then the text anywhere. Picking one turns the globe to it (a city or zone
 // to its place, a group to the middle of its zones) and keeps its zones bright, the rest dimmed
@@ -132,16 +133,17 @@ function _tzsBuild(G, zoneTab, isoTab, backward) {
     entries.push({ keys: _tzsNameKeys(link), label: link.replace(/_/g, ' '), sub: '→ ' + G.zones[s - 1], zone: s,
       kind: 'zones', zones: new Set([s]), at, order: 4 });
   }
-  // countries: the tz database's name and the browser's, English and Czech
+  // countries: the tz database's name and the browser's, in English, Czech and the languages the
+  // viewer's browser asks for (navigator.languages, as a rule the system's)
   const byCountry = new Map();
   for (const p of places.values()) { if (!p.s) continue; if (!byCountry.has(p.country)) byCountry.set(p.country, []); byCountry.get(p.country).push(p); }
-  const dn = (lang) => { try { return new Intl.DisplayNames([lang], { type: 'region' }); } catch (e) { return null; } };
-  const en = dn('en'), cs = dn('cs');
+  const langs = [...new Set(['en', 'cs', ...(navigator.languages || [navigator.language]).filter(Boolean)])];
+  const names = langs.map((lang) => { try { return new Intl.DisplayNames([lang], { type: 'region' }); } catch (e) { return null; } }).filter(Boolean);
   for (const [code, ps] of byCountry) {
     const zones = new Set(ps.map(p => p.s));
     const name = countryName.get(code) || code;
     const keys = [name, code];
-    for (const d of [en, cs]) { try { const n = d && d.of(code); if (n && keys.indexOf(n) < 0) keys.push(n); } catch (e) { /* unknown code */ } }
+    for (const d of names) { try { const n = d.of(code); if (n && keys.indexOf(n) < 0) keys.push(n); } catch (e) { /* unknown code */ } }
     entries.push({ keys, label: name, sub: zones.size === 1 ? G.zones[[...zones][0] - 1] : zones.size + ' zones', kind: 'zones', zones,
       at: ps.length === 1 ? [ps[0].lat, ps[0].lon] : middle(ps.map(p => _locPickVec(p.lon, p.lat))), order: 5 });
   }
