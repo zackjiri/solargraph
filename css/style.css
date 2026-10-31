@@ -1732,6 +1732,8 @@
   #nightSkyAtmHintOn { flex: 1; padding: 4px 10px; text-align: left; }
   #nightSkyAtmHintClose { flex: none; width: 26px; padding: 0; font-size: 14px; line-height: 1; }
   #nightSkyAtmHint button:hover { background: #ffd84a; }
+  /* its call to action as a link: the light theme's dark blue, readable on the yellow */
+  #nightSkyAtmHint .ns-atm-link { color: #0a4e8c; text-decoration: underline; text-underline-offset: 2px; }
   #nightSkyTimeWrap.collapsed #nightSkyTimeBox {
     max-height: 0; opacity: 0;
     padding-top: 0; padding-bottom: 0;
