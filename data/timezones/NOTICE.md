@@ -39,7 +39,10 @@ above and in the README.
 - The time zone boundaries are © **OpenStreetMap contributors**, made available under the
   [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
   `tz-grid.js` is a database derived from them and is made available under the same license.
-  The app names the source in the info line wherever it sets a Time zone from these data.
+  The app names the source in the info line wherever it sets a Time zone from these data, and
+  on the globe, while its time zones show, as "Time zones: © OpenStreetMap contributors, ODbL ·
+  timezone-boundary-builder <release>", linking to the OpenStreetMap copyright page and the
+  release.
 - timezone-boundary-builder's code is under the MIT license; none of it is used here, only its
   released data.
 - The zone names and rules are those of the [IANA tz database](https://www.iana.org/time-zones),
