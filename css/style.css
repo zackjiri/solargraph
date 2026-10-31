@@ -3382,12 +3382,12 @@
   #locPickCanvas.off-earth { cursor: default; }
   #locPickCanvas.dragging { cursor: grabbing; }
   .loc-pick-head {
-    position: absolute; left: 12px; top: 10px;
+    position: absolute; left: 12px; right: 44px; top: 10px;   /* wraps before the close button */
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; color: var(--accent2);
     pointer-events: none;
   }
   .loc-pick-head b { font-weight: normal; }
-  .loc-pick-head span { margin-left: 12px; letter-spacing: 0.04em; color: var(--dim); font-size: 10px; }
+  #locPickHint { margin-left: 12px; letter-spacing: 0.04em; color: var(--dim); font-size: 10px; }
   /* Eclipse map (js/render-eclipse-map.js): the round globe button in Eclipse Visualization's
      corner, the same as the export's */
   #btnEclipseMap {
@@ -3426,6 +3426,26 @@
     box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
   }
   body.light #btnLocPickZones[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
+  /* the time zones' source and data release while they show: left of the button; in a narrow
+     window (where at the bottom it would meet the Eclipse map's legend) the copy in the head
+     instead, under its text however that wraps */
+  #locPickWin { container-type: inline-size; }
+  .loc-pick-credit {
+    display: none;
+    padding: 2px 6px;
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.03em; color: var(--dim);
+    background: rgba(7,9,13,0.62); border-radius: var(--radius-sm);
+  }
+  .loc-pick-credit a { color: var(--accent2); text-decoration: none; }
+  .loc-pick-credit a:hover { text-decoration: underline; }
+  body.light .loc-pick-credit { background: rgba(220,228,236,0.85); }
+  #locPickCredit { position: absolute; right: 60px; bottom: 23px; z-index: 2; white-space: nowrap; }
+  #locPickWin.zones #locPickCredit { display: block; }
+  #locPickCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
+  @container (max-width: 780px) {   /* the credit ~450 px + the button, the legend ~240 px */
+    #locPickWin.zones #locPickCredit { display: none; }
+    #locPickWin.zones #locPickCreditTop { display: block; }
+  }
   #btnLocPickClose {
     position: absolute; right: 8px; top: 6px;
     width: 26px; height: 26px; padding: 0;
