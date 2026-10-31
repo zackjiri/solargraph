@@ -1716,6 +1716,22 @@
     transition: max-height 0.28s ease, opacity 0.2s ease, padding 0.28s ease;
   }
   body.light #nightSkyTimeBox { background: rgba(245,247,249,0.82); }
+  /* Atmosphere off (render-nightsky.js, _nightSkyAtmHintSync): a yellow bar above the time box, as
+     wide; its text a button that turns Atmosphere on, an × on the right that hides the bar */
+  #nightSkyAtmHint {
+    display: flex; align-items: stretch;
+    width: 400px; box-sizing: border-box;
+    background: #f5c518; color: #14181d; border-radius: var(--radius-sm);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25); overflow: hidden;
+  }
+  #nightSkyAtmHint[hidden] { display: none; }
+  #nightSkyAtmHint button {
+    background: none; border: none; color: inherit; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em;
+  }
+  #nightSkyAtmHintOn { flex: 1; padding: 4px 10px; text-align: left; }
+  #nightSkyAtmHintClose { flex: none; width: 26px; padding: 0; font-size: 14px; line-height: 1; }
+  #nightSkyAtmHint button:hover { background: #ffd84a; }
   #nightSkyTimeWrap.collapsed #nightSkyTimeBox {
     max-height: 0; opacity: 0;
     padding-top: 0; padding-bottom: 0;
