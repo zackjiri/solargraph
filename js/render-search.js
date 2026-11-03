@@ -148,6 +148,7 @@ function _nsSearchSetOpen(on) {
   btn.setAttribute('aria-pressed', String(on));
   if (on) {
     if (typeof _nsExportSetOpen === 'function' && _nsExport.open) _nsExportSetOpen(false);   // render-export.js
+    if (typeof _nsEqSetOpen === 'function' && _nsEq.open) _nsEqSetOpen(false);   // render-nightsky-equipment.js
     if (_nsSearch.mark || _nsSearch.info) { _nsSearch.mark = _nsSearch.info = null; if (nightSkyActive) drawNightSky(); }   // a new search
     _nsSearchLoadData();
     const inp = document.getElementById('nightSkySearchInput');

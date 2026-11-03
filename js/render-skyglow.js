@@ -24,11 +24,12 @@
 // its luminance is kept and laid on in the Moon's own tint by altitude (_moonRealTint, render-moon.js,
 // as its disc), a neutral silvery white high up turning yellow to orange towards the horizon.
 const GLOW_GRID_PX = 24;
-// Brightness (mag/arcsec²) -> colour: night blue (#000c22, the sky's fill without Atmosphere) at 21.5
-// and darker, light day blue at 9 and brighter.
+// Brightness (mag/arcsec²) -> colour: the ideal moonless night of a dark site (NIGHTSKY_NIGHT_B, 21.9)
+// #00040e and darker, night blue (#000c22, the sky's fill without Atmosphere) at 21.5, light day blue
+// at 9 and brighter.
 // Brighter than 9 is daylight with the Sun up (_glowDayNL): the sky at sunset level 9, noon ~5.
 const GLOW_RAMP = [
-  [21.5, [0, 12, 34]], [19.5, [6, 30, 78]], [17.5, [16, 48, 110]],
+  [21.9, [0, 4, 14]], [21.5, [0, 12, 34]], [19.5, [6, 30, 78]], [17.5, [16, 48, 110]],
   [15, [38, 82, 150]], [12, [70, 120, 190]], [9, [100, 150, 212]],
   [7.5, [106, 162, 230]], [5.5, [110, 170, 238]],
 ];
@@ -115,7 +116,7 @@ function _glowTotalityHorizon(c, e, v, el) {
 // _nightSkyAtmLimit's, unchanged.
 function _glowDayNL(s) {
   const T = s.ecl ? s.ecl.T : 0;
-  return s.sun.el > 0 ? s.twiNL * (1 + s.sun.el / 2 * (1 - T)) : s.twiNL;
+  return s.sun.el > 0 ? s.skyNL * (1 + s.sun.el / 2 * (1 - T)) : s.skyNL;   // the sky's own (not the stars') brightness
 }
 // Around sunset and sunrise the sky is pale, a washed-out grey-blue rather than the day's deep blue:
 // the colour is pulled towards a slightly bluish grey of its own brightness, fully with the Sun from
@@ -287,7 +288,7 @@ function _glowDraw(ctx, w, h, dirAt, clip, viewKey, moonAt, sunAt) {
   const tkey = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
   _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, 'ns', GLOW_BUF_PX, sunAt);
 }
-// Fills the sky region with the colour field. s: {twiLM, twiNL, sun: {v, el}, moon} (as
+// Fills the sky region with the colour field. s: {twiLM, twiNL, skyNL, sun: {v, el}, moon} (as
 // _nightSkyAtmState); tkey identifies the moment and place for the table. dirAt(px, py, out) writes
 // the horizon-frame direction of a canvas point (any point, pushed onto the sky when off it) and may
 // return an opacity 0..1 for it (a rim fade; none = opaque). clip() clips to the sky region.
@@ -455,6 +456,7 @@ function _glowDrawPlanetarium(ctx, w, h, layout) {
 function _glowSkyDomeState(sunAz, sunEl) {
   const twiLM = _nightSkyTwilightLM(sunEl);
   return { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))),
+    skyNL: _nsNLFromB(_nightSkyTwilightB(sunEl)),
     sun: { v: _skyDomeUnitVec(sunAz, sunEl), el: sunEl }, moon: null };
 }
 function _glowDrawSkyDomePlanet(ctx, layout, sunAz, sunEl, W, H) {

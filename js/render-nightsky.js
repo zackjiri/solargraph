@@ -487,7 +487,11 @@ function exitNightSkyVisualization() {
   document.getElementById('btnNightSkySearch').style.display = 'none';
   document.getElementById('btnNightSkyMapRotate').style.display = 'none';
   document.getElementById('btnNightSkyExport').style.display = 'none';
+  document.getElementById('btnNightSkyEquipment').style.display = 'none';
+  document.getElementById('nightSkyEquipmentChips').style.display = 'none';
+  document.getElementById('nightSkyEquipmentMount').style.display = 'none';
   if (typeof _nsSearchSetOpen === 'function') { _nsSearchSetOpen(false); _nsSearch.mark = null; }
+  if (typeof _nsEqSetOpen === 'function') _nsEqSetOpen(false);
   if (typeof _nsExportSetOpen === 'function') _nsExportSetOpen(false);
   document.getElementById('nightSkyMap3DToggleRow').style.display = 'none';
   if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) document.getElementById('skyMap3DZoomCtl').style.display = 'none';
@@ -602,7 +606,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // of Date.now()), stores its frame definition for _nightSkyDrawCatalogFrame, and centers the
 // Planetarium camera on the frame's own target Az/El - the only "center camera on Az/El" logic
 // anywhere in this file (the existing camera is otherwise only ever moved by the drag handler).
-// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, below the slider's own 12x) that frames the photo's
+// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, below the slider's own 20x) that frames the photo's
 // own boundary with a comfortable reserve, rather than leaving zoom at whatever it was before this
 // tile was picked - zoom in as far as the cap allows, as long as the frame's own boundary still fits
 // in view with margin to spare. The equidistant fisheye's screen radius from the view direction is
@@ -613,7 +617,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // search needed - and layout.scale itself cancels out of the formula entirely, so this doesn't
 // even need to know the canvas's current on-screen size.
 const NIGHTSKY_FRAME_ZOOM_MARGIN = 0.85;   // corners land 85% of the way to the visible edge - reserve, not flush against it
-const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // auto-framing stops at 8x; the slider itself reaches 12x
+const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // auto-framing stops at 8x; the slider itself reaches 20x
 function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const D2R = Math.PI / 180;
   const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
@@ -1817,7 +1821,8 @@ function _nightSkySliderLimit() {
 // nothing but the Sun and the Moon; Venus and Jupiter come out just after sunset, the brightest
 // stars in civil twilight, the constellation figures by its end, nearly every star at the end of
 // nautical twilight (the first patches of the Milky Way with it) and everything at -18°. Linear
-// between the points [Sun altitude°, limiting mag]; the stricter of it and "Mag ≤" applies.
+// between the points [Sun altitude°, limiting mag]; it holds in the bright twilight, the measured
+// sky takes over from ~11.5° (_nightSkyTwilightLM); the stricter of that and "Mag ≤" applies.
 let nightSkyAtmosphereOn = false;
 const NIGHTSKY_ATM_CURVE = [[0, -5], [-1, -2], [-3, 0.5], [-6, 2.5], [-9, 4], [-12, 5], [-15, 5.7], [-18, 6.5]];
 const NIGHTSKY_ATM_FADE = 0.5;   // mag: an object this much fainter than the sky's limit fades in
@@ -1944,8 +1949,8 @@ function _nightSkySolarEclipse() {
   _nsEclCache = { key, e };
   return e;
 }
-// The curve itself, for any Sun altitude h (°); also the Sky Dome's sky colour (render-skyglow.js).
-function _nightSkyTwilightLM(h) {
+// The table itself, for any Sun altitude h (°).
+function _nightSkyTwilightTableLM(h) {
   const C = NIGHTSKY_ATM_CURVE;
   if (h >= C[0][0]) return C[0][1];
   for (let i = 1; i < C.length; i++) {
@@ -1954,7 +1959,19 @@ function _nightSkyTwilightLM(h) {
       return C[i - 1][1] + t * (C[i][1] - C[i - 1][1]);
     }
   }
-  return Infinity;   // astronomical night
+  return C[C.length - 1][1];
+}
+// The stars' limit in the twilight for the Sun's altitude h (°); also the Sky Dome's (render-skyglow.js).
+// Schaefer's relation (_nsLMFromB) holds for a night sky; in a bright twilight it holds the stars back
+// too long (2.5 at −6° in the table, −0.7 from the measured sky), so the larger of the table and the
+// measured sky (_nightSkyTwilightB, without artificial light) counts: the table up to ~11.5°, the
+// measured sky from there, a dark night (6.5) at ~17°. Artificial light, when a Location has any,
+// caps it at what its night sky allows. Infinity: nothing limits (a dark night).
+function _nightSkyTwilightLM(h) {
+  let lm = Math.max(_nightSkyTwilightTableLM(h), _nsLMFromB(_nightSkyTwilightB(h, false)));
+  const art = _nightSkyArtificialNL();
+  if (art > 0) lm = Math.min(lm, _nsLMFromB(_nsBFromNL(_nsNLFromB(NIGHTSKY_NIGHT_B) + art)));
+  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : lm;
 }
 // The sky's limit (the Milky Way's levels, the readout beside the slider).
 function _nightSkySkyLimit() {
@@ -1995,6 +2012,43 @@ const _nsBFromNL = (nl) => (20.7233 - Math.log(nl / 34.08)) / 0.92104;
 const _nsLMFromB = (b) => 7.93 - 5 * Math.log10(Math.pow(10, 4.316 - b / 5) + 1);
 const _nsBFromLM = (lm) => 5 * (4.316 - Math.log10(Math.pow(10, (7.93 - lm) / 5) - 1));
 const _nsAirmass = (cosZ) => 1 / Math.sqrt(1 - 0.96 * (1 - cosZ * cosZ));
+
+// The twilight sky's brightness at the zenith (V, mag/arcsec²) from the Sun's true altitude h (°), as
+// measured, summed as light (nL) from three parts:
+//  1. sunlight scattered in the twilight, by the Sun's depression d = -h (_nightSkyTwilightScatterB):
+//     - at sunset 8.66, the level the daylit sky is held at (render-skyglow.js scales it up by day);
+//     - to 3° slowly (9.50), then to 5° at the ING's measured 1.17 mag per degree: La Palma, INT WFC
+//       2010-2011, log10 B = A − 0.103·T for 10 to 35 min after sunset, 0.258 mag/arcsec² per minute
+//       (www.ing.iac.es/astronomy/observing/conditions/skybr/twilight.html);
+//     - 5° to 14°: Patat, Ugolnikov & Postylyakov 2006 (A&A 455, 385; ESO Paranal), Table 1, V band,
+//       b = 11.84 + 1.518·(d − 5) − 0.057·(d − 5)², with Paranal's own night sky taken out (21.6,
+//       assumed: the paper gives no V value, its effect is only near 12° to 14°);
+//     - past 14° on at 1.0 mag per degree;
+//     - Paranal is at 2,600 m; a lowland site's twilight is about 30 % brighter (Patat), −0.28 mag,
+//       coming in from 3° to 5°;
+//  2. the natural night sky of a dark site, NIGHTSKY_NIGHT_B;
+//  3. artificial light (light pollution) at the Location, _nightSkyArtificialNL: 0 for now, a later
+//     map layer supplies it. artificial = false leaves it out (the stars' limit, _nightSkyTwilightLM).
+// With the Sun up the value stays at sunset's (the daylight sky is render-skyglow.js's).
+const NIGHTSKY_NIGHT_B = 21.9, NIGHTSKY_PARANAL_NIGHT_B = 21.6, NIGHTSKY_LOWLAND_DB = -0.28;
+function _nightSkyArtificialNL() {
+  return 0;
+}
+function _nightSkyTwilightScatterB(d) {
+  const patat = (x) => 11.84 + 1.518 * (x - 5) - 0.057 * (x - 5) * (x - 5);
+  const noNight = (x) => _nsBFromNL(_nsNLFromB(patat(x)) - _nsNLFromB(NIGHTSKY_PARANAL_NIGHT_B));
+  let b;
+  if (d <= 0) b = 8.66;
+  else if (d <= 3) b = 8.66 + (9.50 - 8.66) * d / 3;
+  else if (d <= 5) b = 9.50 + (11.84 - 9.50) * (d - 3) / 2;
+  else if (d <= 14) b = noNight(d);
+  else b = noNight(14) + (d - 14);
+  return b + NIGHTSKY_LOWLAND_DB * Math.max(0, Math.min(1, (d - 3) / 2));
+}
+function _nightSkyTwilightB(h, artificial = true) {
+  const nl = _nsNLFromB(_nightSkyTwilightScatterB(-h)) + _nsNLFromB(NIGHTSKY_NIGHT_B) + (artificial ? _nightSkyArtificialNL() : 0);
+  return _nsBFromNL(nl);
+}
 // A lunar eclipse dims the moonlight: the share of full light the Moon's disc still gets, averaged
 // over the disc (NIGHTSKY_ECL_SAMPLES points spread evenly by area). The Earth's shadow from
 // _moonShadow (render-moon.js, Danjon's radii as in NASA's predictions), seen from here. A point
@@ -2040,9 +2094,13 @@ function _nightSkyAtmState() {
   if (_nsAtmCache.key === key) return _nsAtmCache.s;
   const twiLM = _nightSkyAtmLimit();
   const sun = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const ecl = _nightSkySolarEclipse();
+  // twiNL: the sky as the stars see it (from their limit); skyNL: the sky's own brightness, for its
+  // colour (_nightSkyTwilightB; a solar eclipse dims it by the zenith's factor, as the limit)
   const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))), moon: null,
+    skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el)) * (ecl ? ecl.sky : 1),
     sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el },   // the Sun for the sky's colour (render-skyglow.js)
-    ecl: _nightSkySolarEclipse() };                             // a solar eclipse going on, or null
+    ecl };                                                      // a solar eclipse going on, or null
   const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   if (m.el > 0) {
     const alpha = Math.abs(_moonPhase(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)).i);
@@ -2568,11 +2626,12 @@ _nightSkyUpdatePlanetCamera();
 // (#skyMap3DZoom, render-skydome.js's setSkyDomePlanet3DZoom), shown only while this sub-mode is
 // selected. One shared setter for both the slider's own 'input' event and the canvas wheel handler
 // below, so the two stay in lockstep exactly like Sky Dome's own zoom does.
-// Range 0.5x-12x: at 12x the Sun and the Moon, drawn at their true angular size, are big enough for
-// the phase and a lunar eclipse's shadow to read. The slider runs in log2(zoom) (-1..log2 12), so
-// each octave takes the same travel -
-// linear steps would be either coarse at the low end or tediously fine at the top.
-const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 12;
+// Range 0.5x-20x: at 12x the Sun and the Moon, drawn at their true angular size, are big enough for
+// the phase and a lunar eclipse's shadow to read; 20x (5.4° across the shorter side) is as narrow as
+// the catalogue's stars to mag 6 still fill, and frames an eyepiece's field (Equipment,
+// render-nightsky-equipment.js). The slider runs in log2(zoom) (-1..log2 20), so each octave takes
+// the same travel - linear steps would be either coarse at the low end or tediously fine at the top.
+const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 20;
 function setNightSkyPlanetZoom(z) {
   _nightSkyPlanet3D.zoom = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
   _nightSkyUpdatePlanetCamera();
@@ -2608,8 +2667,12 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   // the flat Sky Map's rotate button sits in the picker's place, right of the search
   document.getElementById('btnNightSkyMapRotate').style.display = skyMap ? 'flex' : 'none';
   // the export button (render-export.js) takes the corner in Sky Map and Sun Graph, the flat Sky
-  // Map's search and rotate move one place left
-  search.style.right = skyMap ? '104.5px' : '';
+  // Map's search and rotate move one place left; in the Planetarium the Equipment button
+  // (render-nightsky-equipment.js) takes it, the picker and the search move one place left
+  search.style.right = skyMap || shown ? '104.5px' : '';
+  document.getElementById('btnNightSkyPicker').style.right = shown ? '58.5px' : '';
+  document.getElementById('btnNightSkyEquipment').style.display = shown ? 'flex' : 'none';
+  if (typeof _nsEqSetOpen === 'function' && !shown) _nsEqSetOpen(false);
   if (typeof _nsExportSyncUI === 'function') _nsExportSyncUI();
   if (typeof _nsSearchSetOpen === 'function') {
     if (!searchShown) _nsSearchSetOpen(false);
@@ -2650,6 +2713,7 @@ function _nightSkyUpdatePresentationLock() {
   search.disabled = presenting;
   search.title = presenting ? 'Search unavailable while a Catalog photo is shown' : 'Find an object and lock the view on it';
   if (presenting && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
+  if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();   // Equipment: disabled the same way
 }
 
 // Fisheye (equidistant) projection - screen radius proportional to the angle theta from the view
@@ -3508,8 +3572,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   // touch-action: none covers the other browsers
   cv.addEventListener('gesturestart', (e) => e.preventDefault());
 
-  // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: ~37 ticks from
-  // 0.5x to 12x. The exponent is snapped to whole eighths so repeated ticks don't drift.
+  // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: ~43 ticks from
+  // 0.5x to 20x. The exponent is snapped to whole eighths so repeated ticks don't drift.
   cv.addEventListener('wheel', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
     e.preventDefault();
@@ -3780,6 +3844,7 @@ function drawNightSky() {
     }
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
+    if (typeof _nsEqDraw === 'function') _nsEqDraw(ctx, w, h);   // Equipment's eyepiece view (render-nightsky-equipment.js)
     // Here rather than inside the Planetarium draw, which returns early while the star data is
     // still loading - the locked point's readout doesn't depend on it.
     if (_nightSkyPicker.lock && !_nightSkyCursorOnSky) _nightSkyPickerShowLockReadout();
