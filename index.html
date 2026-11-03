@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug462">
+  <link rel="stylesheet" href="css/style.css?perfdebug494">
 </head>
 <body>
 
@@ -432,6 +432,18 @@
         </svg>
       </button>
       <div id="nightSkyPickerBox"></div>
+      <!-- Planetarium Equipment (js/render-nightsky-equipment.js) - round button in the corner, the
+           Planetarium only (the picker and the search move one place left). Opens
+           #nightSkyEquipmentPanel above the buttons: a telescope and an eyepiece, their figures, and
+           the eyepiece view on the sky. Disabled while a Catalog photo is presented. -->
+      <button id="btnNightSkyEquipment" title="Equipment: a telescope with an eyepiece or a camera on the sky" aria-pressed="false">
+        <!-- an eyepiece from the side: the eye lens's wide barrel on top, the tube below -->
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <rect x="6" y="2.5" width="12" height="6.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M8 9 L9 13.5 H15 L16 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+          <rect x="9.5" y="13.5" width="5" height="8" rx="0.6" fill="none" stroke="currentColor" stroke-width="1.8"/>
+        </svg>
+      </button>
       <!-- Planetarium object search - round button left of the picker (magnifier), shown only in
            Planetarium. Opens #nightSkySearchPanel over the canvas: a text box and the matches below
            it, five rows visible, filtered on every keystroke; a pick locks the view on the object
@@ -461,6 +473,62 @@
         <ul id="nightSkySearchList" role="listbox"></ul>
         <div id="nightSkySearchNote"></div>
       </div>
+      <div id="nightSkyEquipmentPanel" role="dialog" aria-label="Equipment" tabindex="-1">
+        <div class="ns-eq-row ns-eq-mode">
+          <button type="button" class="ns-eq-opt active" data-eq-mode="visual" aria-pressed="true">Visual</button>
+          <button type="button" class="ns-eq-opt" data-eq-mode="imaging" aria-pressed="false">Imaging</button>
+        </div>
+        <div class="ns-eq-row ns-eq-setups">
+          <select id="nightSkyEquipmentSetup" aria-label="Saved setups"></select>
+          <button type="button" class="ns-eq-btn" data-eq-act="save">Save</button>
+          <button type="button" class="ns-eq-btn" data-eq-act="saveas">Save as</button>
+          <button type="button" class="ns-eq-btn" data-eq-act="delete">Delete</button>
+        </div>
+        <div class="ns-eq-label">Telescope</div>
+        <label class="ns-eq-field">Focal length<input data-eq="telescopeFocal" inputmode="decimal" autocomplete="off"><span>mm</span></label>
+        <label class="ns-eq-field">Aperture<input data-eq="aperture" inputmode="decimal" autocomplete="off"><span>mm</span></label>
+        <div data-eq-group="visual">
+          <div class="ns-eq-label">Eyepiece</div>
+          <label class="ns-eq-field">Focal length<input data-eq="eyepieceFocal" inputmode="decimal" autocomplete="off"><span>mm</span></label>
+          <label class="ns-eq-field">Field of view<input data-eq="eyepieceFov" inputmode="decimal" autocomplete="off"><span>°</span></label>
+        </div>
+        <div data-eq-group="imaging" hidden>
+          <div class="ns-eq-label">Sensor</div>
+          <label class="ns-eq-field">Resolution width<input data-eq="sensorW" inputmode="numeric" autocomplete="off"><span>px</span></label>
+          <label class="ns-eq-field">Resolution height<input data-eq="sensorH" inputmode="numeric" autocomplete="off"><span>px</span></label>
+          <label class="ns-eq-field" title="Full frame 1, APS-C about 1.5 to 1.6">Crop factor<input data-eq="crop" inputmode="decimal" autocomplete="off"><span>×</span></label>
+        </div>
+        <div class="ns-eq-label">Accessory</div>
+        <label class="ns-eq-field" title="Above 1 a Barlow, below 1 a reducer, 1 none">Barlow / reducer<input data-eq="accessory" inputmode="decimal" autocomplete="off"><span>×</span></label>
+        <div id="nightSkyEquipmentOut"></div>
+        <div class="ns-eq-row ns-eq-acts">
+          <button type="button" class="ns-eq-btn ns-eq-main" data-eq-act="apply">Apply</button>
+          <button type="button" class="ns-eq-btn" data-eq-act="add">Add to comparison</button>
+          <button type="button" class="ns-eq-btn" data-eq-act="off">Turn off</button>
+        </div>
+        <div id="nightSkyEquipmentNote"></div>
+      </div>
+      <!-- Equipment's setups shown (render-nightsky-equipment.js, _nsEqChips): one chip each at the
+           bottom centre of the canvas, the first lowest; a click on its text opens the panel with
+           that setup, its x removes it from the view. -->
+      <div id="nightSkyEquipmentChips"></div>
+      <!-- Equipment's camera mount (render-nightsky-equipment-mount.js), top centre while a camera's
+           frame is shown: EQ lock (equatorial mount, the frame's angle as PA from north) and two
+           arrows from the button's bottom corners, a quarter circle each toward the middle, that
+           turn the frame 5° the way they point; between their tips the step, under it the angle. -->
+      <div id="nightSkyEquipmentMount">
+        <button type="button" id="btnNightSkyEquipmentEQ" aria-pressed="false" title="Equatorial mount: the frame's angle is its position angle from north">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3.5 5.5V4a2.5 2.5 0 0 1 5 0v1.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+            <rect x="2" y="5.5" width="8" height="5.5" rx="1" fill="currentColor"/>
+          </svg>
+          <span>EQ lock</span>
+        </button>
+        <button type="button" id="btnNightSkyEquipmentRotL" class="ns-eq-rot" title="Turn the frame 5° anticlockwise" aria-label="Turn the frame 5° anticlockwise"><svg viewBox="0 0 37 37" width="19" height="19" aria-hidden="true"><path d="M2.5 1.5 A28 28 0 0 0 28 29.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/><path d="M26 23 L36 29.5 L26 36 Z" fill="currentColor"/></svg></button>
+        <button type="button" id="btnNightSkyEquipmentRotR" class="ns-eq-rot" title="Turn the frame 5° clockwise" aria-label="Turn the frame 5° clockwise"><svg viewBox="0 0 37 37" width="19" height="19" aria-hidden="true"><path d="M2.5 1.5 A28 28 0 0 0 28 29.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/><path d="M26 23 L36 29.5 L26 36 Z" fill="currentColor"/></svg></button>
+        <span id="nightSkyEquipmentMountStep">±5°</span>
+        <span id="nightSkyEquipmentMountAngle">0°</span>
+      </div>
       <!-- Image export (js/render-export.js) - round button at the right of the round buttons, Sky
            Map and Sun Graph only. Opens #nightSkyExportPanel above them: a resolution, a format and
            DOWNLOAD. -->
@@ -480,7 +548,7 @@
         <div id="nightSkyExportNote"></div>
       </div>
       <div id="nightSkyPlanetZoomCtl" title="Zoom the Planetarium view">
-        <input type="range" id="nightSkyPlanetZoom" min="-1" max="3.585" step="0.005" value="0" title="Zoom the Planetarium view (0.5x-12x; the Sun and the Moon are drawn at their true size)">
+        <input type="range" id="nightSkyPlanetZoom" min="-1" max="4.322" step="0.005" value="0" title="Zoom the Planetarium view (0.5x-20x; the Sun and the Moon are drawn at their true size)">
         <span id="nightSkyPlanetZoomVal">1.0×</span>
       </div>
       <!-- Night Sky's own time-of-day control - collapsible corner box (same collapse idiom as
@@ -1311,38 +1379,40 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraph Explorer ver. 6.10.30
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.01
 </div>
 
-<script src="js/core.js?perfdebug462"></script>
-<script src="js/render-2d.js?perfdebug462"></script>
-<script src="js/controls.js?perfdebug462"></script>
-<script src="js/render-sungraph.js?perfdebug462"></script>
-<script src="js/render-3d.js?perfdebug462"></script>
-<script src="js/render-skydome.js?perfdebug462"></script>
-<script src="js/render-moon.js?perfdebug462"></script>
-<script src="js/render-planets.js?perfdebug462"></script>
-<script src="js/render-milkyway.js?perfdebug462"></script>
-<script src="js/render-deepsky.js?perfdebug462"></script>
-<script src="js/render-skyglow.js?perfdebug462"></script>
-<script src="js/render-nightsky.js?perfdebug462"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug462"></script>
-<script src="js/render-nightsky-3d.js?perfdebug462"></script>
-<script src="js/render-nightsky-globe.js?perfdebug462"></script>
-<script src="js/render-search.js?perfdebug462"></script>
-<script src="js/render-locpick.js?perfdebug462"></script>
-<script src="js/tz-lookup.js?perfdebug462"></script>
-<script src="js/render-tzsearch.js?perfdebug462"></script>
-<script src="js/render-eclipse-map.js?perfdebug462"></script>
-<script src="js/render-export.js?perfdebug462"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug462"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug462"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug462"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug462"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug462"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug462"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug462"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug462"></script>
-<script src="js/render-eclipse.js?perfdebug462"></script>
+<script src="js/core.js?perfdebug494"></script>
+<script src="js/render-2d.js?perfdebug494"></script>
+<script src="js/controls.js?perfdebug494"></script>
+<script src="js/render-sungraph.js?perfdebug494"></script>
+<script src="js/render-3d.js?perfdebug494"></script>
+<script src="js/render-skydome.js?perfdebug494"></script>
+<script src="js/render-moon.js?perfdebug494"></script>
+<script src="js/render-planets.js?perfdebug494"></script>
+<script src="js/render-milkyway.js?perfdebug494"></script>
+<script src="js/render-deepsky.js?perfdebug494"></script>
+<script src="js/render-skyglow.js?perfdebug494"></script>
+<script src="js/render-nightsky.js?perfdebug494"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug494"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug494"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug494"></script>
+<script src="js/render-nightsky-3d.js?perfdebug494"></script>
+<script src="js/render-nightsky-globe.js?perfdebug494"></script>
+<script src="js/render-search.js?perfdebug494"></script>
+<script src="js/render-locpick.js?perfdebug494"></script>
+<script src="js/tz-lookup.js?perfdebug494"></script>
+<script src="js/render-tzsearch.js?perfdebug494"></script>
+<script src="js/render-eclipse-map.js?perfdebug494"></script>
+<script src="js/render-export.js?perfdebug494"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug494"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug494"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug494"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug494"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug494"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug494"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug494"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug494"></script>
+<script src="js/render-eclipse.js?perfdebug494"></script>
 </body>
 </html>
