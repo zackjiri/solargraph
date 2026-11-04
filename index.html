@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug494">
+  <link rel="stylesheet" href="css/style.css?perfdebug521">
 </head>
 <body>
 
@@ -277,7 +277,9 @@
         <!-- the time zones search's pick (js/render-tzsearch.js): its name and an × that lets go -->
         <div id="locPickZoneMatch" hidden><span id="locPickZoneMatchText"></span><button id="locPickZoneMatchClear" title="Show all the time zones again" aria-label="Clear">×</button></div>
         <div class="loc-pick-credit" id="locPickCreditTop">Time zones: <a href="https://www.openstreetmap.org/copyright" target="_blank"
-        rel="noopener noreferrer">© OpenStreetMap contributors</a>, ODbL<span class="loc-pick-credit-ver"></span></div></div>
+        rel="noopener noreferrer">© OpenStreetMap contributors</a>, ODbL<span class="loc-pick-credit-ver"></span></div>
+        <div class="loc-pick-credit" id="locPickLpCreditTop">Light pollution: <a href="https://eogdata.mines.edu/products/vnl/" target="_blank"
+        rel="noopener noreferrer">VIIRS VNL 2025, EOG</a>, CC BY 4.0</div></div>
       <button id="btnLocPickClose" title="Close the globe" aria-label="Close">×</button>
       <!-- Time zones over the globe (js/render-locpick.js, data from js/tz-lookup.js); the data's
            source next to the button while they show, as the ODbL asks (in a narrow window the
@@ -304,6 +306,27 @@
         <ul id="locPickZoneSearchList" role="listbox"></ul>
         <div id="locPickZoneSearchNote"></div>
       </div>
+      <!-- Light pollution over the globe in SELECT (js/render-locpick.js, data from js/lp-lookup.js):
+           the zenith brightness's Bortle class in the colours of Display's Bortle scale; it and the
+           time zones switch each other off. Its legend bottom left, the data's source left of the buttons. -->
+      <div id="locPickLpLegend">
+        <div class="lpl-title">Bortle scale</div>
+        <!-- a class pointed at (mouse) or picked (click, tap; again to let go) shows alone, the rest dimmed -->
+        <div class="lpl-scale"><button data-cls="1" aria-pressed="false" title="Show only class 1">1</button><button data-cls="2" aria-pressed="false" title="Show only class 2">2</button><button data-cls="3" aria-pressed="false" title="Show only class 3">3</button><button data-cls="4" aria-pressed="false" title="Show only class 4">4</button><button data-cls="5" aria-pressed="false" title="Show only class 5">5</button><button data-cls="6" aria-pressed="false" title="Show only class 6">6</button><button data-cls="7" aria-pressed="false" title="Show only class 7">7</button><button data-cls="8" aria-pressed="false" title="Show only class 8">8</button><button data-cls="9" aria-pressed="false" title="Show only class 9">9</button></div>
+        <div class="lpl-ends"><span>dark</span><span>bright</span></div>
+      </div>
+      <!-- the light pollution data's source while it shows: left of the buttons, as the time zones'
+           (in a narrow window the copy under the head, #locPickLpCreditTop, instead) -->
+      <div class="loc-pick-credit" id="locPickLpCredit">Light pollution: <a href="https://eogdata.mines.edu/products/vnl/" target="_blank"
+        rel="noopener noreferrer">VIIRS VNL 2025, EOG</a>, CC BY 4.0</div>
+      <button id="btnLocPickLightPollution" title="Show the light pollution" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <circle cx="9" cy="10" r="2.4" fill="#3aa845"/>
+          <circle cx="14.5" cy="13.5" r="2.6" fill="#e8d23a"/>
+          <circle cx="11" cy="16" r="2" fill="#d93030"/>
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </button>
       <button id="btnLocPickZones" title="Show the time zones" aria-pressed="false">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
           <defs><clipPath id="locPickZonesClip"><circle cx="12" cy="12" r="9"/></clipPath></defs>
@@ -1032,9 +1055,23 @@
           <button class="ns-btn" data-scale="2" title="Large">&#9733;</button>
         </div>
       </div>
-      <div class="chk-row nightsky-mag-row" id="nightSkyAtmRow" title="Atmosphere: the limiting magnitude of the sky follows the Sun - nothing but the Sun and the Moon by day, the brightest stars from civil twilight, everything after astronomical twilight (Sun below -18°)">
+      <div class="chk-row nightsky-mag-row" id="nightSkyAtmRow" title="Atmosphere: the sky as the eye sees it - its brightness and the faintest stars follow the Sun (measured twilight), the Moon and the light pollution set by the Bortle scale below; nothing but the Sun and the Moon by day, the brightest stars in civil twilight, all once the sky is fully dark">
         <span class="nightsky-sun-label">Atmosphere</span>
         <button class="nightsky-sun-switch" id="btnNightSkyAtmosphere" role="switch" aria-checked="false"></button>
+      </div>
+      <!-- Sky quality by Bortle's scale (render-nightsky.js, _nightSkyBortle): the site's light
+           pollution for Atmosphere, set by hand until the light pollution map gives it; under the
+           class a bar of the scale's 9 colours with the class lit, under it the class's night sky
+           brightness (mag/arcsec²) and where it comes from (manual / map). -->
+      <div class="chk-row nightsky-mag-row" id="nightSkyBortleRow">
+        <span class="nightsky-sun-label">Bortle scale</span>
+        <div id="nightSkyBortleScale" aria-hidden="true"><span data-cls="1"></span><span data-cls="2"></span><span data-cls="3"></span><span data-cls="4"></span><span data-cls="5"></span><span data-cls="6"></span><span data-cls="7"></span><span data-cls="8"></span><span data-cls="9"></span></div>
+        <span id="nightSkyBortleInfo"></span>
+        <div class="ns-toggle" id="nightSkyBortleCtl">
+          <button class="ns-btn" id="btnNightSkyBortleDown" aria-label="Darker sky (lower class)">&lsaquo;</button>
+          <span id="nightSkyBortleValue">3</span>
+          <button class="ns-btn" id="btnNightSkyBortleUp" aria-label="Brighter sky (higher class)">&rsaquo;</button>
+        </div>
       </div>
       <label class="chk-row ns-globe-keep" title="Show the Milky Way, five brightness levels from the vendored data (data/celestial/mw.json)"><input type="checkbox" id="chkNightSkyMilkyWay" checked> Milky Way</label>
       <label class="chk-row ns-globe-keep" title="Show deep sky objects: the 110 Messier objects and 22 more showpieces of the whole sky (data/celestial/messier.json, dsos.bright.json); galaxies red, clusters yellow, nebulae green"><input type="checkbox" id="chkNightSkyDeepSky"> Deep sky</label>
@@ -1379,40 +1416,41 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.01
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.04
 </div>
 
-<script src="js/core.js?perfdebug494"></script>
-<script src="js/render-2d.js?perfdebug494"></script>
-<script src="js/controls.js?perfdebug494"></script>
-<script src="js/render-sungraph.js?perfdebug494"></script>
-<script src="js/render-3d.js?perfdebug494"></script>
-<script src="js/render-skydome.js?perfdebug494"></script>
-<script src="js/render-moon.js?perfdebug494"></script>
-<script src="js/render-planets.js?perfdebug494"></script>
-<script src="js/render-milkyway.js?perfdebug494"></script>
-<script src="js/render-deepsky.js?perfdebug494"></script>
-<script src="js/render-skyglow.js?perfdebug494"></script>
-<script src="js/render-nightsky.js?perfdebug494"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug494"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug494"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug494"></script>
-<script src="js/render-nightsky-3d.js?perfdebug494"></script>
-<script src="js/render-nightsky-globe.js?perfdebug494"></script>
-<script src="js/render-search.js?perfdebug494"></script>
-<script src="js/render-locpick.js?perfdebug494"></script>
-<script src="js/tz-lookup.js?perfdebug494"></script>
-<script src="js/render-tzsearch.js?perfdebug494"></script>
-<script src="js/render-eclipse-map.js?perfdebug494"></script>
-<script src="js/render-export.js?perfdebug494"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug494"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug494"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug494"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug494"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug494"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug494"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug494"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug494"></script>
-<script src="js/render-eclipse.js?perfdebug494"></script>
+<script src="js/core.js?perfdebug521"></script>
+<script src="js/render-2d.js?perfdebug521"></script>
+<script src="js/controls.js?perfdebug521"></script>
+<script src="js/render-sungraph.js?perfdebug521"></script>
+<script src="js/render-3d.js?perfdebug521"></script>
+<script src="js/render-skydome.js?perfdebug521"></script>
+<script src="js/render-moon.js?perfdebug521"></script>
+<script src="js/render-planets.js?perfdebug521"></script>
+<script src="js/render-milkyway.js?perfdebug521"></script>
+<script src="js/render-deepsky.js?perfdebug521"></script>
+<script src="js/render-skyglow.js?perfdebug521"></script>
+<script src="js/render-nightsky.js?perfdebug521"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug521"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug521"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug521"></script>
+<script src="js/render-nightsky-3d.js?perfdebug521"></script>
+<script src="js/render-nightsky-globe.js?perfdebug521"></script>
+<script src="js/render-search.js?perfdebug521"></script>
+<script src="js/render-locpick.js?perfdebug521"></script>
+<script src="js/tz-lookup.js?perfdebug521"></script>
+<script src="js/lp-lookup.js?perfdebug521"></script>
+<script src="js/render-tzsearch.js?perfdebug521"></script>
+<script src="js/render-eclipse-map.js?perfdebug521"></script>
+<script src="js/render-export.js?perfdebug521"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug521"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug521"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug521"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug521"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug521"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug521"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug521"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug521"></script>
+<script src="js/render-eclipse.js?perfdebug521"></script>
 </body>
 </html>
