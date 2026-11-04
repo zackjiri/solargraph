@@ -1965,13 +1965,22 @@ function _nightSkyTwilightTableLM(h) {
 // Schaefer's relation (_nsLMFromB) holds for a night sky; in a bright twilight it holds the stars back
 // too long (2.5 at −6° in the table, −0.7 from the measured sky), so the larger of the table and the
 // measured sky (_nightSkyTwilightB, without artificial light) counts: the table up to ~11.5°, the
-// measured sky from there, a dark night (6.5) at ~17°. Artificial light, when a Location has any,
-// caps it at what its night sky allows. Infinity: nothing limits (a dark night).
+// measured sky from there, a dark night (6.5) at ~17° (_nightSkyTwilightNaturalLM). The site's
+// artificial light (zenith) is then added to that sky as light. Infinity: nothing limits.
+function _nightSkyTwilightNaturalLM(h) {
+  return Math.max(_nightSkyTwilightTableLM(h), _nsLMFromB(_nightSkyTwilightB(h, false)));
+}
 function _nightSkyTwilightLM(h) {
-  let lm = Math.max(_nightSkyTwilightTableLM(h), _nsLMFromB(_nightSkyTwilightB(h, false)));
+  let lm = _nightSkyTwilightNaturalLM(h);
   const art = _nightSkyArtificialNL();
-  if (art > 0) lm = Math.min(lm, _nsLMFromB(_nsBFromNL(_nsNLFromB(NIGHTSKY_NIGHT_B) + art)));
+  if (art > 0) lm = _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(lm)) + art));   // the natural sky uncapped (a night of 22.0)
   return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : lm;
+}
+// Artificial light by altitude el (°): brighter toward the horizon, as over a town, 1 at the zenith,
+// 3 at the horizon. The direction to the town (azimuth) waits for the light pollution map.
+function _nightSkyArtDir(el) {
+  const x = 1 - Math.max(0, Math.min(90, el)) / 90;
+  return 1 + 2 * x * x * x;
 }
 // The sky's limit (the Milky Way's levels, the readout beside the slider).
 function _nightSkySkyLimit() {
@@ -2026,13 +2035,49 @@ const _nsAirmass = (cosZ) => 1 / Math.sqrt(1 - 0.96 * (1 - cosZ * cosZ));
 //     - past 14° on at 1.0 mag per degree;
 //     - Paranal is at 2,600 m; a lowland site's twilight is about 30 % brighter (Patat), −0.28 mag,
 //       coming in from 3° to 5°;
-//  2. the natural night sky of a dark site, NIGHTSKY_NIGHT_B;
-//  3. artificial light (light pollution) at the Location, _nightSkyArtificialNL: 0 for now, a later
-//     map layer supplies it. artificial = false leaves it out (the stars' limit, _nightSkyTwilightLM).
+//  2. the natural night sky of an untouched site, NIGHTSKY_NIGHT_B;
+//  3. artificial light (light pollution) at the Location, _nightSkyArtificialNL: from the sky quality
+//     of the site (_nightSkySiteSQM: the light pollution map once there is one, else the Bortle class
+//     set in Display). artificial = false leaves it out.
 // With the Sun up the value stays at sunset's (the daylight sky is render-skyglow.js's).
-const NIGHTSKY_NIGHT_B = 21.9, NIGHTSKY_PARANAL_NIGHT_B = 21.6, NIGHTSKY_LOWLAND_DB = -0.28;
+const NIGHTSKY_NIGHT_B = 22.0, NIGHTSKY_PARANAL_NIGHT_B = 21.6, NIGHTSKY_LOWLAND_DB = -0.28;
+// Sky quality by Bortle's scale (Bortle 2001) with the SQM ranges of the classes as
+// lightpollutionmap.info gives them (class 1 21.99 to 21.89 ... class 9 below 17.80): the night
+// sky's zenith brightness of each class (mag/arcsec², the middle of its range; class 9 17.5), and the
+// brightness from which a measured sky (the map's) belongs to class 1..8, darker first; below the
+// last, class 9.
+const NIGHTSKY_BORTLE_SQM = [21.94, 21.79, 21.47, 20.87, 20.0, 19.22, 18.66, 18.09, 17.5];
+const NIGHTSKY_BORTLE_EDGE = [21.89, 21.69, 21.25, 20.49, 19.50, 18.94, 18.38, 17.80];
+const NIGHTSKY_BORTLE_NAMES = ['Excellent dark-sky site', 'Typical truly dark site', 'Rural sky', 'Rural/suburban transition',
+  'Suburban sky', 'Bright suburban sky', 'Suburban/urban transition', 'City sky', 'Inner-city sky'];
+function _nightSkyBortleToSQM(c) {
+  return NIGHTSKY_BORTLE_SQM[Math.max(1, Math.min(9, Math.round(c))) - 1];
+}
+function _nightSkySQMToBortle(sqm) {
+  const i = NIGHTSKY_BORTLE_EDGE.findIndex(e => sqm >= e);
+  return i < 0 ? 9 : i + 1;
+}
+// The site's sky quality: the light pollution map's (_nightSkyMapSQM, null until there is one) unless
+// the class was set by hand at this Location (overrideAt, the Location's key then); else the class
+// set by hand (manual, 3 by default; Display, Atmosphere).
+const _nightSkyBortle = { manual: 3, overrideAt: null };
+// The light pollution map (lp-lookup.js) at the Location; null off its area or while its tile comes in
+function _nightSkyMapSQM() {
+  return typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
+}
+function _nightSkyLocKey() {
+  return [LAT, hemisphere, LONG, lonHemisphere].join('|');
+}
+function _nightSkySiteSQM() {
+  const map = _nightSkyMapSQM();
+  if (typeof map === 'number' && Number.isFinite(map) && _nightSkyBortle.overrideAt !== _nightSkyLocKey())
+    return { sqm: map, cls: _nightSkySQMToBortle(map), source: 'map' };
+  const cls = _nightSkyBortle.manual;
+  return { sqm: _nightSkyBortleToSQM(cls), cls, source: 'manual' };
+}
+// The site's artificial light at the zenith (nL): its night sky less the untouched one
 function _nightSkyArtificialNL() {
-  return 0;
+  return Math.max(0, _nsNLFromB(Math.min(_nightSkySiteSQM().sqm, NIGHTSKY_NIGHT_B)) - _nsNLFromB(NIGHTSKY_NIGHT_B));
 }
 function _nightSkyTwilightScatterB(d) {
   const patat = (x) => 11.84 + 1.518 * (x - 5) - 0.057 * (x - 5) * (x - 5);
@@ -2090,15 +2135,20 @@ function _nightSkyMoonEclipseLight(m) {
 let _nsAtmCache = { key: null, s: null };
 function _nightSkyAtmState() {
   if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return null;
-  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkySiteSQM().sqm].join('|');
   if (_nsAtmCache.key === key) return _nsAtmCache.s;
   const twiLM = _nightSkyAtmLimit();
   const sun = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const ecl = _nightSkySolarEclipse();
-  // twiNL: the sky as the stars see it (from their limit); skyNL: the sky's own brightness, for its
-  // colour (_nightSkyTwilightB; a solar eclipse dims it by the zenith's factor, as the limit)
-  const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))), moon: null,
-    skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el)) * (ecl ? ecl.sky : 1),
+  // twiNL: the natural sky as the stars see it (from their limit without artificial light); skyNL:
+  // the natural sky's own brightness, for its colour (_nightSkyTwilightB; a solar eclipse dims both
+  // by the zenith's factor), of which nightNL is the night sky's own light (airglow,
+  // NIGHTSKY_NIGHT_B), brighter only toward the horizon, not toward the Sun (render-skyglow.js);
+  // artNL: the site's artificial light at the zenith, added per direction (_nightSkyArtDir) to both
+  const natLM = _nightSkyTwilightNaturalLM(sun.el), eclF = ecl ? ecl.sky : 1;
+  const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(natLM)) * eclF, moon: null,
+    skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el, false)) * eclF, nightNL: _nsNLFromB(NIGHTSKY_NIGHT_B) * eclF,
+    artNL: _nightSkyArtificialNL(),
     sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el },   // the Sun for the sky's colour (render-skyglow.js)
     ecl };                                                      // a solar eclipse going on, or null
   const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
@@ -2129,9 +2179,11 @@ function _nightSkyMoonNLAt(v, s, rhoMin) {
 function _nightSkyAtmLimitAt(v) {
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
-  if (!s.moon && !s.ecl) return s.twiLM;
-  // a solar eclipse: the twilight sky as bright as this direction's air is lit (_nightSkyEclSkyAt)
-  const lm = _nsLMFromB(_nsBFromNL(s.twiNL * _nightSkyEclRatioAt(s.ecl, v) + _nightSkyMoonNLAt(v, s)));
+  if (!s.moon && !s.ecl && !s.artNL) return s.twiLM;
+  // a solar eclipse: the twilight sky as bright as this direction's air is lit (_nightSkyEclSkyAt);
+  // the site's artificial light brighter toward the horizon
+  const el = Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI;
+  const lm = _nsLMFromB(_nsBFromNL(s.twiNL * _nightSkyEclRatioAt(s.ecl, v) + s.artNL * _nightSkyArtDir(el) + _nightSkyMoonNLAt(v, s)));
   return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : s.ecl ? lm : Math.min(lm, s.twiLM);
 }
 // Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
@@ -3820,6 +3872,7 @@ function _nightSkyClearReadout() {
 
 function drawNightSky() {
   _nightSkyAtmHintSync();
+  _nightSkyBortleSyncIfChanged();   // a new Location or its map tile come in: the Bortle scale row follows
   if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
@@ -3888,11 +3941,48 @@ document.getElementById('nightSkyMagLimit').addEventListener('input', () => {
   _nightSkyUpdateMagReadout();
   if (nightSkyActive) drawNightSky();
 });
+// Bortle scale (Display, under Atmosphere): ‹ › step the class 1..9; set by hand it is remembered
+// (localStorage solargraphyBortle) and, with a map, overrides it at this Location only
+// (_nightSkyBortle.overrideAt). Grey while Atmosphere is off, where the class changes nothing.
+const NIGHTSKY_BORTLE_KEY = 'solargraphyBortle';
+try { const v = parseInt(localStorage.getItem(NIGHTSKY_BORTLE_KEY), 10); if (v >= 1 && v <= 9) _nightSkyBortle.manual = v; } catch (e) { /* blocked: the default */ }
+function _nightSkyBortleSet(c) {
+  c = Math.max(1, Math.min(9, Math.round(c)));
+  _nightSkyBortle.manual = c;
+  _nightSkyBortle.overrideAt = _nightSkyLocKey();   // also while the map's tile is still coming in
+  try { localStorage.setItem(NIGHTSKY_BORTLE_KEY, String(c)); } catch (e) { /* blocked: this page only */ }
+  _nsAtmCache.key = null;
+  _nightSkyBortleSyncUI();
+  if (nightSkyActive) drawNightSky();
+}
+// The row is rewritten only when what it shows changes (drawNightSky calls this every frame)
+let _nightSkyBortleShown = '';
+function _nightSkyBortleSyncIfChanged() {
+  const q = _nightSkySiteSQM();
+  if ([q.sqm, q.cls, q.source, nightSkyAtmosphereOn].join('|') !== _nightSkyBortleShown) _nightSkyBortleSyncUI();
+}
+function _nightSkyBortleSyncUI() {
+  const q = _nightSkySiteSQM(), on = nightSkyAtmosphereOn;
+  _nightSkyBortleShown = [q.sqm, q.cls, q.source, on].join('|');
+  document.getElementById('nightSkyBortleValue').textContent = String(q.cls);
+  document.getElementById('nightSkyBortleInfo').textContent = q.sqm.toFixed(2) + ' · ' + q.source;
+  for (const seg of document.querySelectorAll('#nightSkyBortleScale span')) seg.classList.toggle('on', Number(seg.dataset.cls) === q.cls);
+  const row = document.getElementById('nightSkyBortleRow');
+  row.classList.toggle('disabled', !on);
+  row.title = `Bortle scale, class ${q.cls}: ${NIGHTSKY_BORTLE_NAMES[q.cls - 1]}, night sky ${q.sqm.toFixed(2)} mag/arcsec² (${q.source}). `
+    + 'Light pollution for Atmosphere: the sky\'s brightness and colour, the stars and the Milky Way.';
+  document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
+  document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
+}
+document.getElementById('btnNightSkyBortleDown').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls - 1));
+document.getElementById('btnNightSkyBortleUp').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls + 1));
+_nightSkyBortleSyncUI();
 document.getElementById('btnNightSkyAtmosphere').addEventListener('click', () => {
   nightSkyAtmosphereOn = !nightSkyAtmosphereOn;
   const btn = document.getElementById('btnNightSkyAtmosphere');
   btn.classList.toggle('on', nightSkyAtmosphereOn);
   btn.setAttribute('aria-checked', String(nightSkyAtmosphereOn));
+  _nightSkyBortleSyncUI();
   if (nightSkyActive) drawNightSky();
 });
 // The yellow bar above the time strip while Atmosphere is off where it works (_nightSkyMagControlsOn:

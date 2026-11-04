@@ -17,7 +17,8 @@
 // limb a little darker, a graticule (30°, 10° and 5° as the zoom grows) and the Location's pin.
 // The same window shows the Eclipse map (render-eclipse-map.js, opened from Eclipse
 // Visualization): the event's path and lines over the Earth, picking the same way.
-// In both, the round button in the corner (#btnLocPickZones) lays the time zones over the Earth.
+// In both, a round button (#btnLocPickZones; in SELECT left of the light pollution's, on the
+// Eclipse map in the corner) lays the time zones over the Earth.
 const LOC_PICK_ZOOM_MIN = 1, LOC_PICK_ZOOM_MAX = 20;
 const LOC_PICK_MAX_PX = 1600000;       // buffer pixels at most at rest (beyond: smoothed up)
 const LOC_PICK_MAX_PX_MOVING = 220000; // while dragged or pinched
@@ -27,6 +28,8 @@ const _locPick = {
   open: false, lon0: 0, lat0: 0, zoom: 1,
   ecl: null,           // the event id while the window shows its Eclipse map
   zones: false,        // the time zones over the Earth (#btnLocPickZones), kept while the page is open
+  lp: false,           // the light pollution over the Earth (#btnLocPickLightPollution), only in SELECT
+  lpHi: { hover: null, pin: null },   // the class shown alone: pointed at in the legend, or picked there
   // their parts, each switched in the legend (#locPickZoneLegend); the same date off at first, as
   // it watches the time (_locPickDays)
   zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true },
@@ -169,13 +172,15 @@ function _locPickDrawZoneLabels(ctx, V, w, h) {
   const pin = _locPickProject(V, _locPickVec(lonHemisphere * LONG, hemisphere * LAT));
   if (pin.z > 0) taken.push({ x0: pin.x - 8, y0: pin.y - 8, x1: pin.x + 8, y1: pin.y + 8 });
   const cv = document.getElementById('locPickCanvas').getBoundingClientRect();
-  for (const id of ['locPickZoneLegend', 'locPickCredit', 'locPickCreditTop', 'btnLocPickZones', 'btnLocPickZoneSearch',
+  for (const id of ['locPickZoneLegend', 'locPickCredit', 'locPickCreditTop', 'btnLocPickZones', 'btnLocPickLightPollution', 'btnLocPickZoneSearch',
     'locPickZoneSearchPanel', 'locPickZoneMatch']) {
     const el = document.getElementById(id);
     if (!el || !el.offsetParent) continue;
     const r = el.getBoundingClientRect();
     taken.push({ x0: r.left - cv.left, y0: r.top - cv.top, x1: r.right - cv.left, y1: r.bottom - cv.top });
   }
+  const SB = _locPickScaleBar(V, w, h);   // the scale bar with its labels
+  if (SB) taken.push({ x0: SB.x0 - 4, y0: SB.y0 - 14, x1: SB.x0 + SB.px + 30, y1: SB.y1 + 2 });
   if (_locPick.ecl && typeof _eclMapGet === 'function') {   // the Eclipse map's legend
     const M = _eclMapGet(_eclipseActiveEvent.id);
     if (M) { const L = _eclMapLegendLayout(ctx, M, _eclipseActiveEvent, h); taken.push({ x0: L.x0, y0: L.y0, x1: L.x0 + L.W, y1: L.y0 + L.H }); }
@@ -301,6 +306,56 @@ function _locPickHeadBottom() {
   const head = document.querySelector('.loc-pick-head'), cv = document.getElementById('locPickCanvas');
   return head.getBoundingClientRect().bottom - cv.getBoundingClientRect().top;
 }
+// The light pollution (#btnLocPickLightPollution, off at first, only in SELECT; it and the time
+// zones switch each other off): the zenith brightness (lp-lookup.js) as its Bortle class in the
+// colours of Display's Bortle scale, laid over land and sea at 0.55 where there are data. The
+// coarse grid (0.1°) while a buffer pixel spans 0.1° or more, closer in the tiles (1/40°) that
+// have come in (the others asked for, the coarse grid meanwhile).
+const LOC_PICK_LP_ALPHA = 0.55;
+const LOC_PICK_LP_RGB = [[0, 0, 0], [110, 110, 110], [28, 47, 122], [47, 111, 214], [58, 168, 69],
+  [232, 210, 58], [240, 138, 36], [217, 48, 48], [255, 255, 255]];
+function _locPickLpColor(sqm) {
+  return LOC_PICK_LP_RGB[_nightSkySQMToBortle(sqm) - 1];
+}
+// The class shown alone (the one pointed at, else the one picked), null for all
+function _locPickLpHiClass() {
+  return _locPick.lpHi.hover ?? _locPick.lpHi.pin;
+}
+// The other classes (and the Earth off the data) dimmed as the time zones search's (62 % toward
+// dark), a layer over the disc from the class it keeps per pixel (_locPick.lpSrc): a new class
+// redraws only this layer (a few ms), not the disc
+function _locPickDrawLpHi(ctx, V) {
+  const S = _locPick.lpSrc, c = _locPickLpHiClass();
+  if (!S || !c) return;
+  const H = _locPick.lpHiVeil || (_locPick.lpHiVeil = { cv: document.createElement('canvas'), gen: -1, c: 0 });
+  if (H.gen !== S.gen || H.c !== c) {
+    H.cv.width = S.sw; H.cv.height = S.sh;
+    const img = new ImageData(S.sw, S.sh), px = img.data, a = Math.round(LOC_PICK_ZONE_DIM * 255);
+    for (let n = 0; n < S.cls.length; n++) {
+      const k = S.cls[n];
+      if (k === 255 || k === c) continue;
+      const o = n * 4; px[o] = 6; px[o + 1] = 8; px[o + 2] = 12; px[o + 3] = a;
+    }
+    H.cv.getContext('2d').putImageData(img, 0, 0);
+    H.gen = S.gen; H.c = c;
+  }
+  ctx.save();
+  ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(H.cv, S.x0, S.y0, S.sw / S.q, S.sh / S.q);
+  ctx.restore();
+}
+function _locPickLpOn() {
+  return _locPick.lp && !_locPick.ecl && typeof _lp !== 'undefined' && !!_lp.coarse;
+}
+// The disc's buffer: its corner and size on the screen and q buffer pixels per CSS pixel
+// (LOC_PICK_MAX_PX at rest, LOC_PICK_MAX_PX_MOVING while moving)
+function _locPickBuffer(w, h, res, V) {
+  const x0 = Math.max(0, V.cx - V.R), y0 = Math.max(0, V.cy - V.R);
+  const bw = Math.min(w, V.cx + V.R) - x0, bh = Math.min(h, V.cy + V.R) - y0;
+  const q = bw > 0 && bh > 0 ? Math.min(res, Math.sqrt((_locPick.moving ? LOC_PICK_MAX_PX_MOVING : LOC_PICK_MAX_PX) / (bw * bh))) : res;
+  return { x0, y0, bw, bh, q };
+}
 function _locPickDrawEarth(w, h, res, V) {
   const lt = document.body.classList.contains('light');
   const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;   // tz-lookup.js
@@ -308,8 +363,13 @@ function _locPickDrawEarth(w, h, res, V) {
   // the same date's veil is not in the disc but laid over it (_locPickDrawVeil): the disc keeps
   // per pixel the index of its offset, the veil is redone from it alone when a zone passes midnight
   const list = G ? _locPickOffsetList(offs) : null;
+  const { x0, y0, bw, bh, q } = _locPickBuffer(w, h, res, V);
+  // the light pollution: the tiles only where a buffer pixel spans less than the coarse grid's cell,
+  // the disc's key with their count only then
+  const lpOn = _locPickLpOn(), lpFine = lpOn && 180 / (Math.PI * V.R * q) < _lp.coarse.step;
   const key = [w, h, res, _locPick.lon0, _locPick.lat0, _locPick.zoom, lt, !!_nsGlobeTex, _locPick.moving,
-    offs ? offs.sig : '', !!_locPick.ecl, G ? [P.dateLine, P.hatch, P.labels].join(',') : ''].join('|');
+    offs ? offs.sig : '', !!_locPick.ecl, G ? [P.dateLine, P.hatch, P.labels].join(',') : '',
+    lpOn ? 'lp' + (lpFine ? Object.keys(_lp.tiles).length : '') : ''].join('|');
   const C = _locPick.cache;
   if (C.key === key) return C.cv;
   _locPick.zoneLabels = [];
@@ -320,10 +380,7 @@ function _locPickDrawEarth(w, h, res, V) {
   const ctx = cv.getContext('2d');
   ctx.setTransform(res, 0, 0, res, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const x0 = Math.max(0, V.cx - V.R), y0 = Math.max(0, V.cy - V.R);
-  const bw = Math.min(w, V.cx + V.R) - x0, bh = Math.min(h, V.cy + V.R) - y0;
   if (_nsGlobeTex && bw > 0 && bh > 0) {
-    const q = Math.min(res, Math.sqrt((_locPick.moving ? LOC_PICK_MAX_PX_MOVING : LOC_PICK_MAX_PX) / (bw * bh)));
     const sw = Math.max(1, Math.ceil(bw * q)), sh = Math.max(1, Math.ceil(bh * q));
     const img = new ImageData(sw, sh), px = img.data;
     const { w: TW, h: TH, data: T } = _nsGlobeTex;
@@ -336,6 +393,13 @@ function _locPickDrawEarth(w, h, res, V) {
     const zi = G ? new Uint16Array(sw * sh) : null;            // the zone's index, 0 at sea (the search's match)
     const zoneA = LOC_PICK_ZONE_ALPHA, eclA = _locPick.ecl ? zoneA.ecl : 1;
     const pitch = Math.max(3, Math.round(LOC_PICK_ZONE_HATCH_PX * q)), stripe = Math.max(1, Math.round(pitch / 3));
+    // the light pollution: the coarse grid, or the tiles in a close view (by their 10° cell)
+    const LP = lpOn ? _lp.coarse : null, lpTiles = new Map(), lpWant = new Set();
+    const lpCls = LP ? new Uint8Array(sw * sh).fill(255) : null;   // per pixel its class, 0 no data, 255 off the disc
+    // a 10° cell's number, its buckets shifted to 0 and up so that west and south survive the round trip
+    const lpCell = (la, lo) => (la + 9) * 100 + lo + 18;
+    if (lpFine) for (const k in _lp.tiles) { const t = _lp.tiles[k]; lpTiles.set(lpCell(Math.round(t.lat0 / 10), Math.round(t.lon0 / 10)), t); }
+    const lpA = LOC_PICK_LP_ALPHA;
     for (let j = 0; j < sh; j++) {
       const v = -((y0 + (j + 0.5) / q) - V.cy) / V.R;
       for (let i = 0; i < sw; i++) {
@@ -368,6 +432,19 @@ function _locPickDrawEarth(w, h, res, V) {
           const c = _locPickZoneRGB(zh), al = (zoneA.sea + (zoneA.land - zoneA.sea) * a) * eclA;
           r += (c[0] - r) * al; g += (c[1] - g) * al; b += (c[2] - b) * al;
           if (P.hatch && Math.abs(zh - Math.round(zh)) > 1e-6 && (i + j) % pitch < stripe) { r *= 0.62; g *= 0.62; b *= 0.62; }
+        }
+        if (LP) {
+          let grid = LP;
+          if (lpFine) {
+            const tk = lpCell(Math.floor(lat / 10), Math.floor(lon / 10)), t = lpTiles.get(tk);
+            if (t) grid = t; else lpWant.add(tk);
+          }
+          const sqm = _lpValueAt(grid, lat, lon);
+          lpCls[j * sw + i] = 0;
+          if (sqm !== null) {
+            const cl = _nightSkySQMToBortle(sqm), c = LOC_PICK_LP_RGB[cl - 1]; lpCls[j * sw + i] = cl;
+            r += (c[0] - r) * lpA; g += (c[1] - g) * lpA; b += (c[2] - b) * lpA;
+          }
         }
         px[o] = r * k;
         px[o + 1] = g * k;
@@ -404,6 +481,13 @@ function _locPickDrawEarth(w, h, res, V) {
       if (P.labels) _locPick.zoneLabels = _locPickZoneLabels(ids, hs, sw, sh, q, x0, y0);
     }
     if (G) _locPick.veilSrc = { gen: C.gen, oi, zi, list: list.values, sw, sh, x0, y0, q };
+    _locPick.lpSrc = LP ? { gen: C.gen, cls: lpCls, sw, sh, x0, y0, q } : null;
+    // the tiles of the view not yet in: asked for once each (_lpLoad), a redraw as each comes in
+    for (const tk of lpWant) {
+      const la = Math.floor(tk / 100) - 9, lo = tk % 100 - 18, key = _lpTileKey(la * 10, lo * 10);
+      if (_lp.index && _lp.index.tiles.indexOf(key) >= 0 && !_lp.failed[_lpTileFile(key)])
+        _lpLoadTile(key).then((t) => { if (t) _locPickRequest(); });
+    }
     const off = document.createElement('canvas'); off.width = sw; off.height = sh;
     off.getContext('2d').putImageData(img, 0, 0);
     ctx.save();
@@ -490,6 +574,7 @@ function _locPickDraw() {
     ctx.fillText('Loading the Earth…', w / 2, h / 2);
   }
   if (_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data) { _locPickDrawVeil(ctx, V); _locPickDrawMatch(ctx, V); }
+  if (_locPickLpOn()) _locPickDrawLpHi(ctx, V);
   ctx.save();
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   _locPickGraticule(ctx, V);
@@ -499,6 +584,8 @@ function _locPickDraw() {
     _locPickZoneLegendSync();
   }
   if (_locPick.ecl && typeof _eclMapDraw === 'function') _eclMapDraw(ctx, V, w, h);
+  const SB = _locPickScaleBar(V, w, h);
+  if (SB) _locPickDrawScale(ctx, SB);
   _locPickDrawPin(ctx, V, hemisphere * LAT, lonHemisphere * LONG, '#e84040');   // the Location
   const W = _locPick.wave;
   if (W) {   // the pressure wave: rings growing along the surface, fading as they go
@@ -518,6 +605,41 @@ function _locPickDraw() {
   if (!_nsGlobeTex) _locPickRequest();   // until the land data is in
   if (!_locPickWatchRaf && _locPickWatchOn()) _locPickWatchRaf = requestAnimationFrame(_locPickWatch);   // the same date follows the time
 }
+// The scale bar (SELECT only; the Eclipse map has its legend there): bottom left, above the legend
+// that shows (time zones' or light pollution's); the longest round length (1, 2 or 5 × 10^k km) that
+// fits in LOC_PICK_SCALE_MAX_PX, true at the view's centre (the globe is an orthographic view:
+// away from the centre distances shrink toward the limb); 4 segments (5 for a 5), black and white.
+const LOC_PICK_SCALE_MAX_PX = 120, LOC_PICK_EARTH_KM = 6371;
+function _locPickScaleBar(V, w, h) {
+  if (_locPick.ecl) return null;
+  const pxKm = V.R / LOC_PICK_EARTH_KM, maxKm = LOC_PICK_SCALE_MAX_PX / pxKm;
+  const p = Math.pow(10, Math.floor(Math.log10(maxKm))), m = [5, 2, 1].find(f => f * p <= maxKm);
+  const km = Number((m * p).toPrecision(3));
+  let y1 = h - 12;
+  const cv = document.getElementById('locPickCanvas').getBoundingClientRect();
+  for (const id of ['locPickZoneLegend', 'locPickLpLegend']) {
+    const el = document.getElementById(id);
+    if (el && el.offsetParent) y1 = Math.min(y1, el.getBoundingClientRect().top - cv.top - 8);
+  }
+  return { km, px: km * pxKm, segs: m === 5 ? 5 : 4, x0: 12, y0: y1 - 5, y1,
+    label: km >= 1 ? km + ' km' : Math.round(km * 1000) + ' m' };
+}
+// in both themes light text on a dark halo: the globe is dark in both
+function _locPickDrawScale(ctx, L) {
+  const seg = L.px / L.segs;
+  for (let i = 0; i < L.segs; i++) {
+    ctx.fillStyle = i % 2 ? '#f2f2f2' : '#111111';
+    ctx.fillRect(L.x0 + i * seg, L.y0, seg, L.y1 - L.y0);
+  }
+  ctx.strokeStyle = 'rgba(230,236,242,0.75)'; ctx.lineWidth = 1;
+  ctx.strokeRect(L.x0 + 0.5, L.y0 + 0.5, L.px - 1, L.y1 - L.y0 - 1);
+  ctx.font = "10px 'Share Tech Mono', monospace"; ctx.textBaseline = 'bottom';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 3;
+  ctx.fillStyle = '#d6dde5';
+  ctx.textAlign = 'left'; ctx.fillText('0', L.x0, L.y0 - 2);
+  ctx.textAlign = 'center'; ctx.fillText(L.label, L.x0 + L.px, L.y0 - 2);
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+}
 function _locPickRequest() {
   if (!_locPick.raf) _locPick.raf = requestAnimationFrame(_locPickDraw);
 }
@@ -535,6 +657,14 @@ function _locPickShowHemi(latSigned, lonSigned) {
 function _locPickZoneHint(p) {
   const span = document.getElementById('locPickHint');
   if (span.dataset.hint === undefined) span.dataset.hint = span.textContent;
+  if (_locPickLpOn()) {   // the light pollution's class and brightness under the pin (the tile's, else the coarse grid's)
+    if (!p) { span.textContent = span.dataset.hint; return; }
+    const t = _lp.tiles[_lpTileKey(p.lat, p.lon)];   // a tile already in, never asked for here
+    const sqm = (t ? _lpValueAt(t, p.lat, p.lon) : null) ?? _lpValueAt(_lp.coarse, p.lat, p.lon);
+    span.textContent = sqm === null ? 'no light pollution data here'
+      : `Bortle ${_nightSkySQMToBortle(sqm)} · SQM ${sqm.toFixed(2)}`;
+    return;
+  }
   const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;
   if (!G || !p) { span.textContent = span.dataset.hint; return; }
   const s = _tzIndexAt(G, p.lat, p.lon), h = s ? _tzModeOffsets(G).off[s] : NaN;
@@ -741,10 +871,38 @@ for (const b of document.querySelectorAll('#locPickZoneLegend button[data-part]'
     _locPickRequest();
   });
 }
+// The light pollution on or off: the time zones off as it comes on; the coarse grid the first time
+function _locPickSetLp(on) {
+  _locPick.lp = on;
+  const btn = document.getElementById('btnLocPickLightPollution');
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Hide the light pollution' : 'Show the light pollution';
+  document.getElementById('locPickWin').classList.toggle('lp', on);
+  if (on && _locPick.zones) document.getElementById('btnLocPickZones').click();
+  if (on) _lpLoadCoarse().then(() => { _locPickZoneHint(_locPick.hover); _locPickRequest(); });
+  if (!on) { _locPick.lpHi.hover = _locPick.lpHi.pin = null; for (const b of document.querySelectorAll('#locPickLpLegend [data-cls]')) b.setAttribute('aria-pressed', 'false'); }
+  _locPickZoneHint(_locPick.hover);
+  _locPickRequest();
+}
+document.getElementById('btnLocPickLightPollution').addEventListener('click', () => _locPickSetLp(!_locPick.lp));
+// The legend's classes: the mouse over one shows it alone while there; a click or tap picks it
+// (again lets go), the pick shown whenever the mouse is not over another
+function _locPickLpHiSync() {
+  for (const b of document.querySelectorAll('#locPickLpLegend [data-cls]'))
+    b.setAttribute('aria-pressed', String(Number(b.dataset.cls) === _locPick.lpHi.pin));
+  _locPickRequest();
+}
+for (const b of document.querySelectorAll('#locPickLpLegend [data-cls]')) {
+  const c = Number(b.dataset.cls);
+  b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { _locPick.lpHi.hover = c; _locPickRequest(); } });
+  b.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { _locPick.lpHi.hover = null; _locPickRequest(); } });
+  b.addEventListener('click', () => { _locPick.lpHi.pin = _locPick.lpHi.pin === c ? null : c; _locPickLpHiSync(); });
+}
 document.getElementById('btnLocPickZones').addEventListener('click', (e) => {
   _locPick.zones = !_locPick.zones;
   e.currentTarget.setAttribute('aria-pressed', String(_locPick.zones));
   e.currentTarget.title = _locPick.zones ? 'Hide the time zones' : 'Show the time zones';
+  if (_locPick.zones && _locPick.lp) _locPickSetLp(false);
   document.getElementById('locPickWin').classList.toggle('zones', _locPick.zones);   // their source (.loc-pick-credit) shows
   if (!_locPick.zones && typeof _tzs !== 'undefined' && _tzs.open) _tzsSetOpen(false);   // the search's button goes with them
   if (_locPick.zones) _tzLoad().then((g) => {   // the first time: the grid comes in

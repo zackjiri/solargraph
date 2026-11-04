@@ -24,13 +24,15 @@
 // its luminance is kept and laid on in the Moon's own tint by altitude (_moonRealTint, render-moon.js,
 // as its disc), a neutral silvery white high up turning yellow to orange towards the horizon.
 const GLOW_GRID_PX = 24;
-// Brightness (mag/arcsec²) -> colour: the ideal moonless night of a dark site (NIGHTSKY_NIGHT_B, 21.9)
-// #00040e and darker, night blue (#000c22, the sky's fill without Atmosphere) at 21.5, light day blue
-// at 9 and brighter.
+// Brightness (mag/arcsec²) -> colour: the night of Bortle class 1 (21.94, render-nightsky.js
+// NIGHTSKY_BORTLE_SQM) #000106 and darker, class 2 (21.79) #00020a, class 3 (21.47, the default)
+// #00040e, night blue (#000c22, the sky's fill without Atmosphere) at 21.0, within class 4; the nautical twilight's stops
+// (19.5, 17.5, 15) are darker than the plain brightness scale, as the eye sees the sky darken in it;
+// from 12 (civil twilight) on light blue, day blue at 9 and brighter.
 // Brighter than 9 is daylight with the Sun up (_glowDayNL): the sky at sunset level 9, noon ~5.
 const GLOW_RAMP = [
-  [21.9, [0, 4, 14]], [21.5, [0, 12, 34]], [19.5, [6, 30, 78]], [17.5, [16, 48, 110]],
-  [15, [38, 82, 150]], [12, [70, 120, 190]], [9, [100, 150, 212]],
+  [21.94, [0, 1, 6]], [21.79, [0, 2, 10]], [21.47, [0, 4, 14]], [21.0, [0, 12, 34]],
+  [19.5, [3, 18, 58]], [17.5, [10, 38, 98]], [15, [28, 74, 142]], [12, [70, 120, 190]], [9, [100, 150, 212]],
   [7.5, [106, 162, 230]], [5.5, [110, 170, 238]],
 ];
 // The twilight glow, warm colours round the Sun from before sunset to nautical twilight: a band low
@@ -76,10 +78,23 @@ function _glowDirFactor(psi, el) {
 function _glowColorAt(v, s, gZen, rhoMin) {
   const el = Math.asin(Math.max(0, Math.min(1, v[2]))) * 180 / Math.PI;
   const psi = Math.acos(Math.max(-1, Math.min(1, v[0] * s.sun.v[0] + v[1] * s.sun.v[1] + v[2] * s.sun.v[2]))) * 180 / Math.PI;
-  const nl = _glowDayNL(s) * _glowDirFactor(psi, el) / gZen * _nightSkyEclRatioAt(s.ecl, v) + _nightSkyMoonNLAt(v, s, rhoMin);
-  const c = _glowDayHaze(_glowPale(_glowRamp(_nsBFromNL(nl)), s.ecl && s.ecl.T > 0 ? s.sun.el - 90 * s.ecl.T : s.sun.el), s, el);
+  const art = (s.artNL || 0) * _nightSkyArtDir(el);   // the site's artificial light (Bortle class, map)
+  const night = (s.nightNL || 0) * _glowNightDir(el) * _nightSkyEclRatioAt(s.ecl, v);
+  const nl = _glowDayNL(s) * _glowDirFactor(psi, el) / gZen * _nightSkyEclRatioAt(s.ecl, v) + night + art + _nightSkyMoonNLAt(v, s, rhoMin);
+  const base = _glowLightPollution(_glowRamp(_nsBFromNL(nl)), art / nl);
+  const c = _glowDayHaze(_glowPale(base, s.ecl && s.ecl.T > 0 ? s.sun.el - 90 * s.ecl.T : s.sun.el), s, el);
   const t = _glowTwilight(c, v, s, psi, el);
   return s.ecl && s.ecl.T > 0 ? _glowTotalityHorizon(t, s.ecl, v, el) : t;
+}
+// Light pollution's tint: with share p of the light in a direction artificial, the colour is pulled
+// toward a warm grey of its own luminance (sodium and LED lamps mixed, R : G : B = 1 : 0.82 : 0.66) by
+// 0.9·p² (class 3 hardly at all, class 5 by ~0.7, class 9 by ~0.9: warm over the palette's deep blue).
+const GLOW_LP_TINT = [1, 0.82, 0.66], GLOW_LP_MAX = 0.9;
+function _glowLightPollution(c, p) {
+  if (!(p > 0)) return c;
+  const lum = 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2], k = lum / (0.3 * 1 + 0.59 * 0.82 + 0.11 * 0.66);
+  const a = GLOW_LP_MAX * Math.min(1, p) * Math.min(1, p);
+  return c.map((x, i) => x + a * (k * GLOW_LP_TINT[i] - x));
 }
 // By day the sky is a deep blue overhead and turns pale, whitish, towards the horizon, where the
 // line of sight runs through many times more air and the light is scattered over and over: the
@@ -114,9 +129,16 @@ function _glowTotalityHorizon(c, e, v, el) {
 // lit from beyond it, not by the Sun's altitude, and with the Sun high the boost alone (×14 at 26°)
 // would keep totality's sky a daytime blue. Colour only: the limiting magnitude (stars, planets) is
 // _nightSkyAtmLimit's, unchanged.
+// The sunlit part of the sky's own (not the stars') brightness: the night sky's light (nightNL) taken
+// out, it has its own direction factor (_glowNightDir)
 function _glowDayNL(s) {
-  const T = s.ecl ? s.ecl.T : 0;
-  return s.sun.el > 0 ? s.skyNL * (1 + s.sun.el / 2 * (1 - T)) : s.skyNL;   // the sky's own (not the stars') brightness
+  const T = s.ecl ? s.ecl.T : 0, lit = Math.max(0, s.skyNL - (s.nightNL || 0));
+  return s.sun.el > 0 ? lit * (1 + s.sun.el / 2 * (1 - T)) : lit;
+}
+// The night sky's own light (airglow) by altitude el: brighter toward the horizon only, the twilight
+// direction factor's horizon part (GLOW_HOR_A), 1 at the zenith, the same in every azimuth
+function _glowNightDir(el) {
+  return 1 + GLOW_HOR_A * Math.pow(1 - el / 90, 3);
 }
 // Around sunset and sunrise the sky is pale, a washed-out grey-blue rather than the day's deep blue:
 // the colour is pulled towards a slightly bluish grey of its own brightness, fully with the Sun from
@@ -285,7 +307,7 @@ function _glowOntoSky(out) {   // below the horizon: onto it, for a clean edge u
 function _glowDraw(ctx, w, h, dirAt, clip, viewKey, moonAt, sunAt) {
   const s = _nightSkyAtmState();
   if (!s) return;
-  const tkey = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  const tkey = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkySiteSQM().sqm].join('|');
   _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, 'ns', GLOW_BUF_PX, sunAt);
 }
 // Fills the sky region with the colour field. s: {twiLM, twiNL, skyNL, sun: {v, el}, moon} (as
@@ -454,9 +476,10 @@ function _glowDrawPlanetarium(ctx, w, h, layout) {
 // in both themes (the dome is a picture of the real sky, not a chart), faded towards the fisheye's
 // rim like everything else on the dome, coarser while the view is dragged.
 function _glowSkyDomeState(sunAz, sunEl) {
-  const twiLM = _nightSkyTwilightLM(sunEl);
+  const nat = _nightSkyTwilightNaturalLM(sunEl);   // without the site's artificial light
+  const twiLM = nat > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : nat;
   return { twiLM, twiNL: _nsNLFromB(_nsBFromLM(Math.min(twiLM, NIGHTSKY_MAG_LIMIT_OFF))),
-    skyNL: _nsNLFromB(_nightSkyTwilightB(sunEl)),
+    skyNL: _nsNLFromB(_nightSkyTwilightB(sunEl, false)), nightNL: _nsNLFromB(NIGHTSKY_NIGHT_B),   // natural sky: Bortle class is Night Sky's (Atmosphere)
     sun: { v: _skyDomeUnitVec(sunAz, sunEl), el: sunEl }, moon: null };
 }
 function _glowDrawSkyDomePlanet(ctx, layout, sunAz, sunEl, W, H) {
