@@ -823,6 +823,37 @@
   }
   .nightsky-mag-atm { opacity: 0.6; margin-left: 3px; }   /* the sky's limit now, Atmosphere on */
   #nightSkyStarScale .ns-btn { line-height: 1; padding: 2px 5px; }
+  /* Bortle class: the class between two arrows, its sky brightness and source left of them; grey
+     (and unusable) while Atmosphere is off */
+  #nightSkyBortleCtl { align-items: center; }
+  #nightSkyBortleCtl .ns-btn { padding: 2px 6px; font-size: 12px; line-height: 1; }
+  #nightSkyBortleValue { min-width: 14px; text-align: center; font-size: 11px; font-weight: bold; color: var(--text); }
+  /* the sidebar is narrow: label and arrows on the first line, the sky brightness and its source
+     under them, right-aligned */
+  #nightSkyBortleRow { flex-wrap: wrap; row-gap: 2px; }
+  #nightSkyBortleRow .nightsky-sun-label { white-space: nowrap; flex: 0 0 auto; }
+  #nightSkyBortleCtl { flex: 0 0 auto; margin-left: auto; }
+  #nightSkyBortleInfo {
+    order: 4; flex: 0 0 100%; text-align: right; white-space: nowrap;
+    font-family: var(--mono); font-size: 10px; color: var(--dim);
+  }
+  /* the scale's colours, class 1 to 9, from the label's left to the arrows' right; only the class
+     set is lit */
+  #nightSkyBortleScale { order: 3; flex: 0 0 100%; display: flex; gap: 1px; height: 5px; margin-top: 2px; }
+  #nightSkyBortleScale span { flex: 1 1 0; border-radius: 1px; opacity: 0.2; }
+  #nightSkyBortleScale span.on { opacity: 1; box-shadow: 0 0 0 1px var(--text); }
+  #nightSkyBortleScale span:nth-child(1) { background: #000000; }
+  #nightSkyBortleScale span:nth-child(2) { background: #6e6e6e; }
+  #nightSkyBortleScale span:nth-child(3) { background: #1c2f7a; }
+  #nightSkyBortleScale span:nth-child(4) { background: #2f6fd6; }
+  #nightSkyBortleScale span:nth-child(5) { background: #3aa845; }
+  #nightSkyBortleScale span:nth-child(6) { background: #e8d23a; }
+  #nightSkyBortleScale span:nth-child(7) { background: #f08a24; }
+  #nightSkyBortleScale span:nth-child(8) { background: #d93030; }
+  #nightSkyBortleScale span:nth-child(9) { background: #ffffff; }
+  /* Atmosphere and Bortle class are rows of their own, not under Stars: no indent */
+  #nightSkyAtmRow, #nightSkyBortleRow { padding-left: 0; }
+  #nightSkyBortleRow.disabled { opacity: 0.4; }
   #nightSkyStarScale .ns-btn[data-scale="0"] { font-size: 8px; }
   #nightSkyStarScale .ns-btn[data-scale="1"] { font-size: 11px; }
   #nightSkyStarScale .ns-btn[data-scale="2"] { font-size: 14px; }
@@ -3585,10 +3616,10 @@
   }
   #btnEclipseMap:hover { border-color: var(--accent2); }
   body.light #btnEclipseMap { background: rgba(220,228,236,0.82); }
-  /* Time zones over the globe (js/render-locpick.js): the round button in the globe window's
-     corner, in SELECT and on the Eclipse map; active: filled, with a soft glow */
+  /* Time zones over the globe (js/render-locpick.js): the round button bottom right, in SELECT left
+     of the light pollution's, on the Eclipse map in the corner; active: filled, with a soft glow */
   #btnLocPickZones {
-    position: absolute; right: 12.5px; bottom: 12.5px;
+    position: absolute; right: 58.5px; bottom: 12.5px;
     z-index: 2; display: flex;
     width: 38px; height: 38px; padding: 0;
     align-items: center; justify-content: center;
@@ -3719,8 +3750,69 @@
     width: auto; height: auto; padding: 0 3px; line-height: 12px; font-size: 9px;
     background: rgba(7,9,13,0.9); color: #e8eef4; border: 1px solid rgba(160,200,240,0.3);
   }
+  /* Light pollution over the globe (js/render-locpick.js): its round button in the corner, the
+     time zones' left of it (with them on, their search one place further left), only in SELECT; its legend
+     bottom left in the time zones' legend's place (the two never show together), the data's source
+     left of the buttons as theirs (in a narrow window under the head) */
+  #btnLocPickLightPollution {
+    position: absolute; right: 12.5px; bottom: 12.5px;
+    z-index: 2; display: flex;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: var(--accent2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  #btnLocPickLightPollution:hover { border-color: var(--accent2); }
+  #btnLocPickLightPollution[aria-pressed="true"] {
+    background: var(--accent2); color: #fff; border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
+  }
+  body.light #btnLocPickLightPollution[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
+  #locPickWin.ecl #btnLocPickLightPollution { display: none; }
+  #locPickWin.ecl #btnLocPickZones { right: 12.5px; }   /* the corner, where the light pollution's button is hidden */
+  #locPickWin.zones:not(.ecl) #btnLocPickZoneSearch { right: 104.5px; }
+  #locPickWin.zones:not(.ecl) #locPickCredit { right: 152px; }
+  #locPickLpLegend {
+    position: absolute; left: 12px; bottom: 12px; z-index: 2; display: none;
+    width: 216px; max-width: calc(100% - 140px); box-sizing: border-box;
+    padding: 6px 8px 6px;
+    background: rgba(7,9,13,0.72); border: 1px solid rgba(160,200,240,0.25);
+    font-family: var(--mono); font-size: 10px; color: #d6dde5;
+  }
+  #locPickWin.lp:not(.ecl) #locPickLpLegend { display: block; }
+  body.light #locPickLpLegend { background: rgba(220,228,236,0.9); border-color: rgba(0,0,0,0.2); color: #1a2430; }
+  .lpl-title { margin-bottom: 4px; }
+  .lpl-scale { display: flex; gap: 1px; }
+  .lpl-scale button {
+    flex: 1 1 0; height: 13px; line-height: 13px; text-align: center;
+    font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 2px #000;
+  }
+  .lpl-scale button:nth-child(1) { background: #000000; box-shadow: inset 0 0 0 1px rgba(160,200,240,0.35); }
+  .lpl-scale button:nth-child(2) { background: #6e6e6e; }
+  .lpl-scale button:nth-child(3) { background: #1c2f7a; }
+  .lpl-scale button:nth-child(4) { background: #2f6fd6; }
+  .lpl-scale button:nth-child(5) { background: #3aa845; }
+  .lpl-scale button:nth-child(6) { background: #e8d23a; }
+  .lpl-scale button:nth-child(7) { background: #f08a24; }
+  .lpl-scale button:nth-child(8) { background: #d93030; }
+  .lpl-scale button:nth-child(9) { background: #ffffff; color: #000; text-shadow: none; }
+  .lpl-scale button { position: relative; padding: 0; border: none; font-family: inherit; cursor: pointer; }
+  .lpl-scale button:hover, .lpl-scale button[aria-pressed="true"] { outline: 2px solid var(--accent2); outline-offset: 1px; z-index: 1; }
+  .lpl-ends { display: flex; justify-content: space-between; margin-top: 2px; color: var(--dim); font-size: 9px; }
+  #locPickLpCredit { position: absolute; right: 106px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of both buttons */
+  #locPickWin.lp:not(.ecl) #locPickLpCredit { display: block; }
+  #locPickLpCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
+  @container (max-width: 640px) {   /* the credit ~290 px + the two buttons, the legend ~216 px */
+    #locPickWin.lp:not(.ecl) #locPickLpCredit { display: none; }
+    #locPickWin.lp:not(.ecl) #locPickLpCreditTop { display: block; }
+  }
   #locPickCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
-  @container (max-width: 820px) {   /* the credit ~450 px + the two buttons, the legend ~210 px */
+  @container (max-width: 866px) {   /* the credit ~450 px + the three buttons, the legend ~210 px */
     #locPickWin.zones #locPickCredit { display: none; }
     #locPickWin.zones #locPickCreditTop { display: block; }
   }
