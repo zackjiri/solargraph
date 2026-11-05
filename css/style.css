@@ -826,7 +826,13 @@
   /* Bortle class: the class between two arrows, its sky brightness and source left of them; grey
      (and unusable) while Atmosphere is off */
   #nightSkyBortleCtl { align-items: center; }
-  #nightSkyBortleCtl .ns-btn { padding: 2px 6px; font-size: 12px; line-height: 1; }
+  #nightSkyBortleCtl .ns-btn { padding: 2px 5px; font-size: 12px; line-height: 1; }
+  /* the arrows stand out in a light sky blue (the Atmosphere label's family), white on hover; in the
+     light theme the Atmosphere label's blue */
+  #nightSkyBortleCtl .ns-btn { color: #b5e0ff; font-weight: bold; }
+  #nightSkyBortleCtl .ns-btn:not(:disabled):hover { color: #fff; background: rgba(124,200,255,0.18); }
+  body.light #nightSkyBortleCtl .ns-btn { color: #1f78c1; }
+  body.light #nightSkyBortleCtl .ns-btn:not(:disabled):hover { color: #0a4f8a; background: rgba(31,120,193,0.14); }
   #nightSkyBortleValue { min-width: 14px; text-align: center; font-size: 11px; font-weight: bold; color: var(--text); }
   /* the sidebar is narrow: label and arrows on the first line, the sky brightness and its source
      under them, right-aligned */
@@ -852,8 +858,18 @@
   #nightSkyBortleScale span:nth-child(8) { background: #d93030; }
   #nightSkyBortleScale span:nth-child(9) { background: #ffffff; }
   /* Atmosphere and Bortle class are rows of their own, not under Stars: no indent */
-  #nightSkyAtmRow, #nightSkyBortleRow { padding-left: 0; }
-  #nightSkyBortleRow.disabled { opacity: 0.4; }
+  /* Atmosphere and the Bortle scale as one block on a darker blue (the section's 8 px gap taken
+     back between them); the Bortle row's class, bar, brightness and arrows grey while it or
+     Atmosphere is off, its checkbox and label grey only with Atmosphere off */
+  #nightSkyAtmRow, #nightSkyBortleRow { padding: 5px 6px; background: rgba(18,52,104,0.55); }
+  #nightSkyAtmRow { border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+  #nightSkyBortleRow { margin-top: -8px; padding-top: 3px; padding-bottom: 6px; border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+  body.light #nightSkyAtmRow, body.light #nightSkyBortleRow { background: rgba(31,120,193,0.16); }
+  .ns-bortle-on { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  #chkNightSkyBortle { margin: 0; }   /* the label and the arrows on one line in the narrow sidebar */
+  #nightSkyBortleRow.disabled #nightSkyBortleScale, #nightSkyBortleRow.disabled #nightSkyBortleInfo,
+  #nightSkyBortleRow.disabled #nightSkyBortleCtl { opacity: 0.4; }
+  #nightSkyBortleRow.no-atm .ns-bortle-on { opacity: 0.4; cursor: default; }
   #nightSkyStarScale .ns-btn[data-scale="0"] { font-size: 8px; }
   #nightSkyStarScale .ns-btn[data-scale="1"] { font-size: 11px; }
   #nightSkyStarScale .ns-btn[data-scale="2"] { font-size: 14px; }
@@ -3932,15 +3948,16 @@
   #nsGlobeFrameToggle { width: 100%; }
   #nsGlobeFrameToggle .ns-btn { flex: 1; font-size: 9px; padding: 2px 0; text-align: center; }
   /* Globe view (render-nightsky-globe.js): Display keeps the Sky Map's rows (not Custom date), the
-     Sun's and the Moon's path switches and Globe's own Subsolar point. */
+     Sun's and the Moon's path switches and Globe's own Earth (Snow & ice, Light pollution) and Subsolar point. */
   #nightSkyDisplaySection.ns-globe .chk-row:not(.ns-globe-keep),
   #nightSkyDisplaySection.ns-globe .nightsky-sun-subrow:not(.ns-globe-only):not(#nightSkySunSubrow):not(#nightSkyMoonSubrow) { display: none !important; }
   .ns-globe-only { display: none; }
   #nightSkyDisplaySection.ns-globe .ns-globe-only { display: flex; }
-  /* Globe always shows the Sun and the Moon: their checkboxes are shown ticked, disabled and greyed
+  /* Globe always shows the Earth, the Sun and the Moon: their checkboxes are shown ticked, disabled and greyed
      (_nsGlobeSyncUI keeps the other views' state aside), their sub-options always shown. */
   #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkySun),
-  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkyMoon) { opacity: 0.45; pointer-events: none; }
+  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkyMoon),
+  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNsGlobeEarth) { opacity: 0.45; pointer-events: none; }
   #nightSkyDisplaySection.ns-globe #nightSkySunSubrow,
   #nightSkyDisplaySection.ns-globe #nightSkyMoonSubrow,
   #nightSkyDisplaySection.ns-globe #nsGlobeSubsolarSubrow { display: flex !important; }
