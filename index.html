@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug521">
+  <link rel="stylesheet" href="css/style.css?perfdebug526">
 </head>
 <body>
 
@@ -1060,11 +1060,12 @@
         <button class="nightsky-sun-switch" id="btnNightSkyAtmosphere" role="switch" aria-checked="false"></button>
       </div>
       <!-- Sky quality by Bortle's scale (render-nightsky.js, _nightSkyBortle): the site's light
-           pollution for Atmosphere, set by hand until the light pollution map gives it; under the
+           pollution for Atmosphere (off until its checkbox is ticked), from the light pollution map
+           or set by hand; under the
            class a bar of the scale's 9 colours with the class lit, under it the class's night sky
            brightness (mag/arcsec²) and where it comes from (manual / map). -->
       <div class="chk-row nightsky-mag-row" id="nightSkyBortleRow">
-        <span class="nightsky-sun-label">Bortle scale</span>
+        <label class="ns-bortle-on"><input type="checkbox" id="chkNightSkyBortle"><span class="nightsky-sun-label">Bortle scale</span></label>
         <div id="nightSkyBortleScale" aria-hidden="true"><span data-cls="1"></span><span data-cls="2"></span><span data-cls="3"></span><span data-cls="4"></span><span data-cls="5"></span><span data-cls="6"></span><span data-cls="7"></span><span data-cls="8"></span><span data-cls="9"></span></div>
         <span id="nightSkyBortleInfo"></span>
         <div class="ns-toggle" id="nightSkyBortleCtl">
@@ -1085,6 +1086,19 @@
            want cluttering the view every time. -->
       <label class="chk-row ns-globe-keep" title="Overlay an equatorial (right ascension / declination) coordinate grid"><input type="checkbox" id="chkNightSkyEquatorial"> Equatorial grid</label>
       <label class="chk-row ns-globe-keep" title="Overlay the ecliptic - the Sun's own path against the stars over the year"><input type="checkbox" id="chkNightSkyEcliptic"> Ecliptic</label>
+      <!-- Orbit only (.ns-globe-only): the Earth's own layers (render-nightsky-globe.js). The Earth is
+           always shown there: its checkbox is ticked, disabled and greyed, like Sun and Moon. -->
+      <label class="chk-row ns-globe-keep ns-globe-only" id="nsGlobeEarthRow" title="The Earth's surface layers"><input type="checkbox" id="chkNsGlobeEarth" checked disabled> Earth</label>
+      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeSnowSubrow">
+        <span class="nightsky-sun-label">Snow &amp; ice</span>
+        <button class="nightsky-sun-switch on" id="btnNsGlobeSnow" role="switch" aria-checked="true"
+          title="Seasonal snow on the land and sea ice on the polar seas for the selected date"></button>
+      </div>
+      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeLightsSubrow">
+        <span class="nightsky-sun-label">Light pollution</span>
+        <button class="nightsky-sun-switch on" id="btnNsGlobeLights" role="switch" aria-checked="true"
+          title="The cities' lights on the night side, from the light pollution map (VIIRS VNL 2025, EOG, CC BY 4.0)"></button>
+      </div>
       <label class="chk-row ns-sg-keep ns-sg-sun ns-globe-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
       <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
         <span class="nightsky-sun-label">Sun's path</span>
@@ -1419,38 +1433,38 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.04
 </div>
 
-<script src="js/core.js?perfdebug521"></script>
-<script src="js/render-2d.js?perfdebug521"></script>
-<script src="js/controls.js?perfdebug521"></script>
-<script src="js/render-sungraph.js?perfdebug521"></script>
-<script src="js/render-3d.js?perfdebug521"></script>
-<script src="js/render-skydome.js?perfdebug521"></script>
-<script src="js/render-moon.js?perfdebug521"></script>
-<script src="js/render-planets.js?perfdebug521"></script>
-<script src="js/render-milkyway.js?perfdebug521"></script>
-<script src="js/render-deepsky.js?perfdebug521"></script>
-<script src="js/render-skyglow.js?perfdebug521"></script>
-<script src="js/render-nightsky.js?perfdebug521"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug521"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug521"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug521"></script>
-<script src="js/render-nightsky-3d.js?perfdebug521"></script>
-<script src="js/render-nightsky-globe.js?perfdebug521"></script>
-<script src="js/render-search.js?perfdebug521"></script>
-<script src="js/render-locpick.js?perfdebug521"></script>
-<script src="js/tz-lookup.js?perfdebug521"></script>
-<script src="js/lp-lookup.js?perfdebug521"></script>
-<script src="js/render-tzsearch.js?perfdebug521"></script>
-<script src="js/render-eclipse-map.js?perfdebug521"></script>
-<script src="js/render-export.js?perfdebug521"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug521"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug521"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug521"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug521"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug521"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug521"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug521"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug521"></script>
-<script src="js/render-eclipse.js?perfdebug521"></script>
+<script src="js/core.js?perfdebug526"></script>
+<script src="js/render-2d.js?perfdebug526"></script>
+<script src="js/controls.js?perfdebug526"></script>
+<script src="js/render-sungraph.js?perfdebug526"></script>
+<script src="js/render-3d.js?perfdebug526"></script>
+<script src="js/render-skydome.js?perfdebug526"></script>
+<script src="js/render-moon.js?perfdebug526"></script>
+<script src="js/render-planets.js?perfdebug526"></script>
+<script src="js/render-milkyway.js?perfdebug526"></script>
+<script src="js/render-deepsky.js?perfdebug526"></script>
+<script src="js/render-skyglow.js?perfdebug526"></script>
+<script src="js/render-nightsky.js?perfdebug526"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug526"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug526"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug526"></script>
+<script src="js/render-nightsky-3d.js?perfdebug526"></script>
+<script src="js/render-nightsky-globe.js?perfdebug526"></script>
+<script src="js/render-search.js?perfdebug526"></script>
+<script src="js/render-locpick.js?perfdebug526"></script>
+<script src="js/tz-lookup.js?perfdebug526"></script>
+<script src="js/lp-lookup.js?perfdebug526"></script>
+<script src="js/render-tzsearch.js?perfdebug526"></script>
+<script src="js/render-eclipse-map.js?perfdebug526"></script>
+<script src="js/render-export.js?perfdebug526"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug526"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug526"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug526"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug526"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug526"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug526"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug526"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug526"></script>
+<script src="js/render-eclipse.js?perfdebug526"></script>
 </body>
 </html>
