@@ -110,6 +110,35 @@ function _skyStarAzEl(raDeg, decDeg, year, month, day, hourUT) {
   const q = _skyJ2000ToDate(raDeg, decDeg, _moonJDE(year, month, day, hourUT));
   return _skyOfDateAzEl(q.ra, q.dec, year, month, day, hourUT);
 }
+// The same for many stars at once (the deep catalogue on the whole sky): J2000 unit vector ->
+// horizon frame [sin az cos el, cos az cos el, sin el] as one 3x3 matrix per moment and Location,
+// the precession to the date (_skyPrecessionMatrix) then the equator of date to the horizon, whose
+// columns are _skyRaDecToAzElTrue of the three axes (the same clamped latitude and sidereal time as
+// _skyOfDateAzEl); refraction is added per star (_skyHorizonAzEl). Agrees with _skyStarAzEl to well
+// under 0.001°.
+let _skyHorCache = { key: null, m: null };
+function _skyJ2000HorizonMatrix() {
+  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere].join('|');
+  if (_skyHorCache.key === key) return _skyHorCache.m;
+  const lat = hemisphere * (LAT === 0 ? 0.1 : LAT === 90 ? 89.9 : LAT);
+  const lst = _skySiderealTimeHours(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, lonHemisphere * LONG);
+  const col = (ra, dec) => { const p = _skyRaDecToAzElTrue(ra, dec, lst, lat), a = p.az * Math.PI / 180, e = p.el * Math.PI / 180;
+    return [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)]; };
+  const H = [col(0, 0), col(90, 0), col(0, 90)];   // images of the date's x, y, z axes
+  const P = _skyPrecessionMatrix(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT));
+  const m = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[i][j] = H[0][i] * P[0][j] + H[1][i] * P[1][j] + H[2][i] * P[2][j];
+  _skyHorCache = { key, m };
+  return m;
+}
+// Apparent {az, el} [°] of the J2000 unit vector (x, y, z) through matrix m (_skyJ2000HorizonMatrix)
+function _skyHorizonAzEl(m, x, y, z) {
+  const u0 = m[0][0] * x + m[0][1] * y + m[0][2] * z, u1 = m[1][0] * x + m[1][1] * y + m[1][2] * z, u2 = m[2][0] * x + m[2][1] * y + m[2][2] * z;
+  const elTrue = Math.asin(Math.max(-1, Math.min(1, u2))) * 180 / Math.PI;
+  let az = Math.atan2(u0, u1) * 180 / Math.PI;
+  if (az < 0) az += 360;
+  return { az, el: elTrue + _skyRefractionDeg(elTrue) };
+}
 // J2000 -> mean equinox of date as one 3x3 rotation (Meeus ch. 21, the same precession as
 // _moonPrecessFromJ2000 - its three columns ARE that formula applied to the x/y/z axes), cached per
 // ~1.4 min of JDE: precession moves the sky ~50"/year, so reusing one matrix per redraw is exact to
@@ -1830,10 +1859,9 @@ function _nightSkyAtmLimit() {
   if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return Infinity;
   const lm = _nightSkyTwilightLM(_nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el);
   const e = _nightSkySolarEclipse();
-  if (!e || lm === Infinity) return lm;
+  if (!e) return lm;
   // a solar eclipse dims the daylit sky by the zenith's factor (_nightSkySolarEclipse's sky)
-  const lme = _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(Math.min(lm, NIGHTSKY_MAG_LIMIT_OFF))) * e.sky));
-  return lme > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : lme;
+  return _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(lm)) * e.sky));
 }
 // A solar eclipse from Night Sky's own positions (the topocentric, refracted Sun and Moon of the
 // drawing): null without an overlap, else {O, U, d, rs, rm, total, annular, w, T, sky, grid, sun, moon}.
@@ -1966,7 +1994,7 @@ function _nightSkyTwilightTableLM(h) {
 // too long (2.5 at −6° in the table, −0.7 from the measured sky), so the larger of the table and the
 // measured sky (_nightSkyTwilightB, without artificial light) counts: the table up to ~11.5°, the
 // measured sky from there, a dark night (6.5) at ~17° (_nightSkyTwilightNaturalLM). The site's
-// artificial light (zenith) is then added to that sky as light. Infinity: nothing limits.
+// artificial light (zenith) is then added to that sky as light; a dark night keeps its own limit.
 function _nightSkyTwilightNaturalLM(h) {
   return Math.max(_nightSkyTwilightTableLM(h), _nsLMFromB(_nightSkyTwilightB(h, false)));
 }
@@ -1974,7 +2002,7 @@ function _nightSkyTwilightLM(h) {
   let lm = _nightSkyTwilightNaturalLM(h);
   const art = _nightSkyArtificialNL();
   if (art > 0) lm = _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(lm)) + art));   // the natural sky uncapped (a night of 22.0)
-  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : lm;
+  return lm;   // a dark night too: its class's (Schaefer: class 1 6.60, 2 6.53, 3 6.37, 4 6.04)
 }
 // Artificial light by altitude el (°): brighter toward the horizon, as over a town, 1 at the zenith,
 // 3 at the horizon. The direction to the town (azimuth) waits for the light pollution map.
@@ -2060,8 +2088,11 @@ function _nightSkySQMToBortle(sqm) {
 // The site's sky quality: the light pollution map's (_nightSkyMapSQM, null until there is one) unless
 // the class was set by hand at this Location (overrideAt, the Location's key then); else the class
 // set by hand (manual, 3 by default; Display, Atmosphere). on: the Bortle scale's checkbox; off
-// (the default) the sky has no artificial light, whatever the map or the class says.
+// (the default) the sky is that of class NIGHTSKY_BORTLE_OFF_CLS (2, a truly dark site) whatever the
+// map or the class says, the same sky, colour and Milky Way as the scale on at that class
+// (_nightSkySkySQM); only the Mag ≤ slider differs, 6 instead of 6+ (_nightSkyBortleEnable).
 const _nightSkyBortle = { manual: 3, overrideAt: null, on: false };
+const NIGHTSKY_BORTLE_OFF_CLS = 2;
 // The light pollution map (lp-lookup.js) at the Location; null off its area or while its tile comes in
 function _nightSkyMapSQM() {
   return typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
@@ -2080,10 +2111,15 @@ function _nightSkySiteSQM() {
   const cls = _nightSkyBortle.manual;
   return { sqm: _nightSkyBortleToSQM(cls), cls, source: 'manual' };
 }
-// The site's artificial light at the zenith (nL): its night sky less the untouched one
+// The sky Atmosphere shows: the site's with the Bortle scale on, else class NIGHTSKY_BORTLE_OFF_CLS's
+function _nightSkySkySQM() {
+  if (_nightSkyBortle.on) return _nightSkySiteSQM();
+  const cls = NIGHTSKY_BORTLE_OFF_CLS;
+  return { sqm: _nightSkyBortleToSQM(cls), cls, source: 'default' };
+}
+// The sky's artificial light at the zenith (nL): its night sky less the untouched one
 function _nightSkyArtificialNL() {
-  if (!_nightSkyBortle.on) return 0;
-  return Math.max(0, _nsNLFromB(Math.min(_nightSkySiteSQM().sqm, NIGHTSKY_NIGHT_B)) - _nsNLFromB(NIGHTSKY_NIGHT_B));
+  return Math.max(0, _nsNLFromB(Math.min(_nightSkySkySQM().sqm, NIGHTSKY_NIGHT_B)) - _nsNLFromB(NIGHTSKY_NIGHT_B));
 }
 function _nightSkyTwilightScatterB(d) {
   const patat = (x) => 11.84 + 1.518 * (x - 5) - 0.057 * (x - 5) * (x - 5);
@@ -2175,7 +2211,7 @@ function _nightSkyAtmState() {
   return s;
 }
 // Limiting magnitude of the sky in direction v (horizon frame unit vector, above the horizon):
-// twilight and moonlight together; Infinity when nothing limits (a dark night, Atmosphere off).
+// twilight, moonlight and the sky's class together; Infinity with Atmosphere off.
 // The sky brightness the Moon adds in direction v (nL, 0 with the Moon down); s = _nightSkyAtmState().
 // rhoMin: the angle from the Moon is taken as at least this (°); the sky's colour grid passes its
 // glow core's radius, the core itself is drawn as a gradient (render-skyglow.js).
@@ -2188,10 +2224,26 @@ function _nightSkyMoonNLAt(v, s, rhoMin) {
   const f = (Math.pow(10, 5.36) * (1.06 + c * c) + Math.pow(10, 6.15 - rho / 40)) * (1 + _NS_RHOC2 / (rho * rho));
   return f * s.moon.c * (1 - Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nsAirmass(Math.max(0, v[2]))));
 }
+// Without the Moon, an eclipse or twilight the limit depends on the altitude alone (the artificial
+// light's brightening toward the horizon): taken from a table by 0.5° of altitude made once per sky
+// state (s.elLim), linearly between, instead of per star (about ten times faster; within 0.001 mag).
+function _nightSkyAtmLimitByEl(s, el) {
+  if (!s.elLim) {
+    const t = new Float64Array(182);
+    for (let i = 0; i < 182; i++) {
+      const e = Math.min(90, i * 0.5);
+      t[i] = Math.min(_nsLMFromB(_nsBFromNL(s.twiNL + s.artNL * _nightSkyArtDir(e))), s.twiLM);
+    }
+    s.elLim = t;
+  }
+  const x = Math.max(0, Math.min(90, el)) * 2, i = Math.min(179, Math.floor(x)), f = x - i;
+  return s.elLim[i] + f * (s.elLim[i + 1] - s.elLim[i]);
+}
 function _nightSkyAtmLimitAt(v) {
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
   if (!s.moon && !s.ecl && !s.artNL && !s.twiEx) return s.twiLM;
+  if (!s.moon && !s.ecl && !s.twiEx) return _nightSkyAtmLimitByEl(s, Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI);
   // the twilight brighter toward the Sun and the horizon, as the sky's colour (_glowDirFactor,
   // render-skyglow.js), the same at the zenith; a solar eclipse: the twilight sky as bright as this
   // direction's air is lit (_nightSkyEclSkyAt); the site's artificial light brighter toward the horizon
@@ -2202,7 +2254,7 @@ function _nightSkyAtmLimitAt(v) {
     twi += s.twiEx * (_glowDirFactor(psi, Math.max(0, el), s.sun.el) / s.twiZen - 1);
   }
   const lm = _nsLMFromB(_nsBFromNL(twi + s.artNL * _nightSkyArtDir(el) + _nightSkyMoonNLAt(v, s)));
-  return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : s.ecl ? lm : Math.min(lm, s.twiLM);
+  return s.ecl ? lm : Math.min(lm, s.twiLM);
 }
 // Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
 // k·(X − 1) mag, X the airmass after Kasten & Young (1989), X = 1/(cos Z + 0.50572·(96.07995 − Z)^−1.6364),
@@ -2223,16 +2275,24 @@ function _nightSkyExtinctionMag(el) {
 // atmosphere 1 down to the sky's limit there and falling to 0 over the next NIGHTSKY_ATM_FADE, so
 // stars come out gradually as the Sun sinks or the Moon sets rather than popping in.
 // mag is the magnitude as seen, extinction included. With Atmosphere on even a dark night has a
-// limit, a moonless sky's 6.5 (NIGHTSKY_MAG_LIMIT_OFF), so a star dimmed near the horizon past it
-// goes too. A deep sky object (baseMag = its catalogue magnitude) is a chart mark rather than a
-// naked-eye object, so on a dark night its floor is its own magnitude plus NIGHTSKY_ATM_FADE: it
-// stays until extinction dims it by 0.5 mag (~17° up) and is gone at 1 mag (~10°); twilight and
-// moonlight still apply to it as to the stars.
+// limit, its sky class's (_nightSkyTwilightLM), so a star dimmed near the horizon past it goes too;
+// at 6+ the stars and deep sky objects shown are just what the eye sees there. Deep sky objects
+// (baseMag, their catalogue magnitude; unused) follow the same limit as the stars: by their
+// magnitude for the whole object, so the rule is generous for a nebula.
 function _nightSkyVisFactor(mag, az, el, baseMag) {
-  if (mag > _nightSkySliderLimit()) return 0;
-  if (!_nightSkyAtmState()) return 1;
-  const floor = baseMag === undefined ? NIGHTSKY_MAG_LIMIT_OFF : Math.max(NIGHTSKY_MAG_LIMIT_OFF, baseMag + NIGHTSKY_ATM_FADE);
-  const L = Math.min(floor, _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el)));
+  return _nightSkyVisWith(_nightSkyVisPrep(), mag, az, el);
+}
+// The same for a whole pass of stars: the slider and the sky's state read once (_nightSkyVisPrep;
+// each read alone costs more than the rest), and on a night with the limit by altitude alone
+// (_nightSkyAtmLimitByEl) no direction vector either.
+function _nightSkyVisPrep() {
+  const s = _nightSkyAtmState();
+  return { slider: _nightSkySliderLimit(), s, byEl: !!s && !s.moon && !s.ecl && !s.twiEx && !!s.artNL };
+}
+function _nightSkyVisWith(q, mag, az, el) {
+  if (mag > q.slider) return 0;
+  if (!q.s) return 1;
+  const L = q.byEl ? _nightSkyAtmLimitByEl(q.s, el) : _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el));
   if (!(mag > L)) return 1;
   return Math.max(0, 1 - (mag - L) / NIGHTSKY_ATM_FADE);
 }
@@ -2275,21 +2335,23 @@ function _nightSkyStarAlpha(mag) {
 
 function _nightSkyDrawStars(ctx, layout) {
   ctx.fillStyle = _nightSkyStarColor();
-  const limit = _nightSkyMagLimit();
-  for (const s of _skyStars) {
-    if (s.mag > limit) continue;
-    const p = _skyStarAzEl(s.raDeg, s.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    if (p.el < 0) continue;
-    const em = s.mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
-    const vis = _nightSkyVisFactor(em, p.az, p.el);
-    if (!vis) continue;
+  const limit = _nightSkyMagLimit(), vq = _nightSkyVisPrep();
+  const star = (mag, p) => {
+    if (p.el < 0) return;
+    const em = mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
+    const vis = _nightSkyVisWith(vq, em, p.az, p.el);
+    if (!vis) return;
     const pt = _skyDomePoint(layout.cx, layout.cy, layout.R, p.az, p.el);
     const r = _nightSkyStarSize(em);
-    ctx.globalAlpha = _nightSkyStarAlpha(em) * vis;
+    ctx.globalAlpha = _nightSkyStarAlpha(em) * _nightSkyDeepDim(mag) * vis;
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, r, 0, 2 * Math.PI);
     ctx.fill();
-  }
+  };
+  const Y = nightSkyYear, Mo = nightSkyMonth, D = nightSkyDay, H = nightSkyHourUT;
+  for (const s of _skyStars) if (!(s.mag > limit)) star(s.mag, _skyStarAzEl(s.raDeg, s.decDeg, Y, Mo, D, H));
+  const deep = _nightSkyDeepForSky(), m = deep.length ? _skyJ2000HorizonMatrix() : null;   // past 6 at 6+ (Planetarium's note)
+  for (const r of deep) star(r[1], _skyHorizonAzEl(m, r.v[0], r.v[1], r.v[2]));
   ctx.globalAlpha = 1;
 }
 
@@ -3187,24 +3249,52 @@ function _nightSkyDrawPlanetHorizon(ctx, layout) {
   ctx.restore();
 }
 
+// Stars past the base catalogue's 6.0 on the whole sky (Planetarium, flat Sky Map): with Atmosphere
+// on and the limit (the slider's, the sky's + NIGHTSKY_ATM_FADE) past 6, the rows of
+// data/celestial/stars.6-8.json ([HIP, mag, B-V, RA, Dec]; _nsEqDeep, render-nightsky-equipment.js,
+// fetched here on first need) down to it, so at 6+ under a dark class the sky shows what the eye
+// does (class 1: ~6.6, about 4,500 stars more); none at a slider of 6 or less or with Atmosphere
+// off. Drawn as the others, fainter by _nightSkyDeepDim. Kept per limit (_nsDeepSky).
+// Each kept row carries its J2000 unit vector (r.v) for _skyJ2000HorizonMatrix.
+let _nsDeepSky = { limit: null, data: null, rows: [] };
+function _nightSkyDeepForSky() {
+  if (!_nightSkyAtmState() || typeof _nsEqDeep === 'undefined') return [];
+  const limit = _nightSkyMagLimit();
+  if (!(limit > 6)) return [];
+  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
+  const D = _nsEqDeep.data;
+  if (!D) return [];
+  if (_nsDeepSky.limit !== limit || _nsDeepSky.data !== D) {
+    const rows = D.filter(r => r[1] <= limit);
+    for (const r of rows) if (!r.v) r.v = _skyDomeUnitVecRaDec({ ra: r[3], dec: r[4] });
+    _nsDeepSky = { limit, data: D, rows };
+  }
+  return _nsDeepSky.rows;
+}
+// The base style's sizes and opacities end at mag 6; fainter stars are drawn fainter still
+function _nightSkyDeepDim(mag) {
+  return mag > 6 ? Math.max(0.4, 1 - 0.3 * (mag - 6)) : 1;
+}
 function _nightSkyDrawPlanetStars(ctx, layout) {
   ctx.fillStyle = _nightSkyStarColor();
-  const limit = _nightSkyMagLimit();
-  for (const s of _skyStars) {
-    if (s.mag > limit) continue;
-    const p = _skyStarAzEl(s.raDeg, s.decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    if (p.el < 0) continue;
+  const limit = _nightSkyMagLimit(), vq = _nightSkyVisPrep();
+  const star = (mag, p) => {
+    if (p.el < 0) return;
     const proj = _nightSkyPlanetProject(layout, p.az, p.el);
-    if (!proj.visible) continue;
-    const em = s.mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
-    const vis = _nightSkyVisFactor(em, p.az, p.el);
-    if (!vis) continue;
+    if (!proj.visible) return;
+    const em = mag + _nightSkyExtinctionMag(p.el);   // dimmed near the horizon (Atmosphere)
+    const vis = _nightSkyVisWith(vq, em, p.az, p.el);
+    if (!vis) return;
     const r = _nightSkyStarSize(em);
-    ctx.globalAlpha = _nightSkyStarAlpha(em) * vis * proj.alpha;
+    ctx.globalAlpha = _nightSkyStarAlpha(em) * _nightSkyDeepDim(mag) * vis * proj.alpha;
     ctx.beginPath();
     ctx.arc(proj.x, proj.y, r, 0, 2 * Math.PI);
     ctx.fill();
-  }
+  };
+  const Y = nightSkyYear, Mo = nightSkyMonth, D = nightSkyDay, H = nightSkyHourUT;
+  for (const s of _skyStars) if (!(s.mag > limit)) star(s.mag, _skyStarAzEl(s.raDeg, s.decDeg, Y, Mo, D, H));
+  const deep = _nightSkyDeepForSky(), m = deep.length ? _skyJ2000HorizonMatrix() : null;
+  for (const r of deep) star(r[1], _skyHorizonAzEl(m, r.v[0], r.v[1], r.v[2]));
   ctx.globalAlpha = 1;
 }
 
@@ -3942,7 +4032,7 @@ function _nightSkyUpdateMagReadout() {
   const slider = v >= NIGHTSKY_MAG_LIMIT_OFF ? '6+' : v.toFixed(1);
   const atm = _nightSkyAtmLimitAt([0, 0, 1]);   // at the zenith, twilight and moonlight
   const el = document.getElementById('nightSkyMagLimitVal');
-  if (atm < Math.min(v, NIGHTSKY_MAG_LIMIT_OFF)) {
+  if (Number.isFinite(atm) && (v >= NIGHTSKY_MAG_LIMIT_OFF || atm < v)) {   // at 6+ always: what the eye sees
     el.innerHTML = slider + '<span class="nightsky-mag-atm">· ' + atm.toFixed(1) + '</span>';
     el.title = 'Slider limit · limiting magnitude of the sky at the zenith now (twilight and moonlight)';
   } else {
@@ -3967,10 +4057,20 @@ document.getElementById('nightSkyMagLimit').addEventListener('input', () => {
 const NIGHTSKY_BORTLE_KEY = 'solargraphyBortle', NIGHTSKY_BORTLE_ON_KEY = 'solargraphyBortleOn';
 try { const v = parseInt(localStorage.getItem(NIGHTSKY_BORTLE_KEY), 10); if (v >= 1 && v <= 9) _nightSkyBortle.manual = v; } catch (e) { /* blocked: the default */ }
 try { _nightSkyBortle.on = localStorage.getItem(NIGHTSKY_BORTLE_ON_KEY) === '1'; } catch (e) { /* blocked: off */ }
+// The Mag ≤ slider follows the checkbox and Atmosphere: with both on 6+ (the scale's limit rules,
+// the slider can still lower it), else 6 (NIGHTSKY_MAG_DEFAULT; 6+ can still be chosen by hand); set
+// on loading and whenever either is switched.
+const NIGHTSKY_MAG_DEFAULT = 6;
+function _nightSkyMagSliderReset() {
+  document.getElementById('nightSkyMagLimit').value = String(nightSkyAtmosphereOn && _nightSkyBortle.on ? NIGHTSKY_MAG_LIMIT_OFF : NIGHTSKY_MAG_DEFAULT);
+  try { _nightSkyUpdateMagReadout(); } catch (e) { /* before Night Sky is set up: the readout follows on its first drawing */ }
+}
+_nightSkyMagSliderReset();
 function _nightSkyBortleEnable(on) {
   _nightSkyBortle.on = !!on;
   try { localStorage.setItem(NIGHTSKY_BORTLE_ON_KEY, on ? '1' : '0'); } catch (e) { /* blocked: this page only */ }
   _nsAtmCache.key = null;
+  _nightSkyMagSliderReset();
   _nightSkyBortleSyncUI();
   if (nightSkyActive) drawNightSky();
 }
@@ -3986,11 +4086,11 @@ function _nightSkyBortleSet(c) {
 // The row is rewritten only when what it shows changes (drawNightSky calls this every frame)
 let _nightSkyBortleShown = '';
 function _nightSkyBortleSyncIfChanged() {
-  const q = _nightSkySiteSQM();
+  const q = _nightSkySkySQM();
   if ([q.sqm, q.cls, q.source, nightSkyAtmosphereOn, _nightSkyBortle.on].join('|') !== _nightSkyBortleShown) _nightSkyBortleSyncUI();
 }
 function _nightSkyBortleSyncUI() {
-  const q = _nightSkySiteSQM(), atm = nightSkyAtmosphereOn, on = atm && _nightSkyBortle.on;
+  const q = _nightSkySkySQM(), atm = nightSkyAtmosphereOn, on = atm && _nightSkyBortle.on;
   _nightSkyBortleShown = [q.sqm, q.cls, q.source, atm, _nightSkyBortle.on].join('|');
   const chk = document.getElementById('chkNightSkyBortle');
   chk.checked = _nightSkyBortle.on; chk.disabled = !atm;
@@ -4002,7 +4102,7 @@ function _nightSkyBortleSyncUI() {
   row.classList.toggle('no-atm', !atm);
   row.title = `Bortle scale, class ${q.cls}: ${NIGHTSKY_BORTLE_NAMES[q.cls - 1]}, night sky ${q.sqm.toFixed(2)} mag/arcsec² (${q.source}). `
     + 'Light pollution for Atmosphere: the sky\'s brightness and colour, the stars and the Milky Way. '
-    + (_nightSkyBortle.on ? 'Untick for a sky without artificial light.' : 'Off: a sky without artificial light; tick to add it.');
+    + (_nightSkyBortle.on ? 'Untick for a truly dark sky (class 2) with stars to mag 6.' : 'Off: a truly dark sky (class 2), stars to mag 6; tick for this place\'s light pollution.');
   document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
   document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
 }
@@ -4015,6 +4115,8 @@ document.getElementById('btnNightSkyAtmosphere').addEventListener('click', () =>
   const btn = document.getElementById('btnNightSkyAtmosphere');
   btn.classList.toggle('on', nightSkyAtmosphereOn);
   btn.setAttribute('aria-checked', String(nightSkyAtmosphereOn));
+  _nsAtmCache.key = null;
+  _nightSkyMagSliderReset();
   _nightSkyBortleSyncUI();
   if (nightSkyActive) drawNightSky();
 });

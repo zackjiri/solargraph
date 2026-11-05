@@ -164,12 +164,12 @@ function _mwShown() {
 // reference, small 0.7x, large 1.35x. Where the star controls do not apply (Globe, Sky Map 3D) it
 // stays at medium.
 const MW_SCALE_GAIN = [0.7, 1, 1.35];
-// With Atmosphere on, a darker site than the default Bortle class 3 shows the band brighter
-// (render-nightsky.js _nightSkySiteSQM): class 1 ×1.5, class 2 ×1.25.
+// With Atmosphere on, a darker sky than Bortle class 3 shows the band brighter (render-nightsky.js
+// _nightSkySkySQM: the site's with the scale on, class 2 with it off): class 1 ×1.5, class 2 ×1.25.
 const NIGHTSKY_MW_BORTLE_GAIN = [1.5, 1.25, 1, 1, 1, 1, 1, 1, 1];
 function _mwGain() {
   const g = _nightSkyMagControlsOn() ? MW_SCALE_GAIN[nightSkyStarScale] : 1;
-  return _nightSkyAtmOn() && _nightSkyBortle.on ? g * NIGHTSKY_MW_BORTLE_GAIN[_nightSkySiteSQM().cls - 1] : g;
+  return _nightSkyAtmOn() ? g * NIGHTSKY_MW_BORTLE_GAIN[_nightSkySkySQM().cls - 1] : g;
 }
 
 // Colours a buffer of MW_BUF_PX canvas px per pixel and draws it over the canvas (w x h, CSS px).

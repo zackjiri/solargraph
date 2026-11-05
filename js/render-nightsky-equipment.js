@@ -14,8 +14,8 @@
 //  - f-ratio = effective focal length / aperture; highest useful magnification = 2 × aperture (mm);
 //    limiting magnitude ≈ 7.5 + 5 log10(aperture in cm).
 // Warned: an exit pupil over 7 mm (wider than the eye's), a magnification over the useful highest.
-// The stars stay those of the catalogue (to mag 6), so the limiting magnitude only tells how much
-// more the eyepiece will show.
+// Inside the field the stars go on to the instrument's limit, as far as the catalogues reach (mag 8;
+// _nsEqFieldStars below), so beyond 8 the limiting magnitude only tells how much more it will show.
 
 const NS_EQ_DEFAULT = { name: '', mode: 'visual', telescopeFocal: 420, aperture: 72, eyepieceFocal: 25, eyepieceFov: 65, accessory: 1 };
 const NS_EQ_FIELDS = ['telescopeFocal', 'aperture', 'eyepieceFocal', 'eyepieceFov', 'accessory'];
@@ -182,14 +182,121 @@ function _nsEqShapePath(c, sh) {
   if (sh.r !== undefined) c.arc(sh.cx, sh.cy, sh.r, 0, Math.PI * 2);
   else { sh.pts.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.closePath(); }
 }
+// The shapes of the setups shown on the canvas: eyepieces' circles {cx, cy, r}, frames' outlines {pts}
+function _nsEqShapes(L) {
+  return _nsEq.shown.map(e => _nsEqIsImaging(e.setup)
+    ? { pts: _nsEqFramePath(e.setup, L), color: e.color }
+    : { cx: L.cx, cy: L.cy, r: _nsEqRadiusPx(_nsEqCompute(e.setup).tfov, L), color: e.color });
+}
+function _nsEqInShape(sh, x, y) {
+  if (sh.r !== undefined) return Math.hypot(x - sh.cx, y - sh.cy) <= sh.r;
+  let inside = false;
+  for (let i = 0, j = sh.pts.length - 1; i < sh.pts.length; j = i++) {
+    const a = sh.pts[i], b = sh.pts[j];
+    if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+// ── Fainter stars in the field ──────────────────────────────────────────────────────────────────
+// What the telescope shows beyond the eye, inside the shapes of the setups shown (their union, the
+// mask's hole): the stars down to the instrument's limit from the base catalogue (those the eye
+// misses there) and from data/celestial/stars.6-8.json (36,367 stars of mag 6.01 to 8.0, sorted by
+// Dec; tools/stars-deep.py), fetched the first time a setup is shown (_nsEqDeepLoad), redrawn on
+// arrival. The instrument's limit in a direction is the eye's there (Atmosphere: twilight, Moon,
+// light pollution, at most the dark night's NIGHTSKY_MAG_LIMIT_OFF) plus the aperture's gain over
+// the eye, the panel's limiting magnitude 7.5 + 5·log10(D / 10 mm) less the eye's 6.5 (72 mm: +5.3),
+// the largest aperture shown counting; with Atmosphere off there is no limit. The Mag ≤ slider is the
+// naked eye's and does not apply in the field. A star the sky drew already at opacity a_eye (a base
+// one, or a deep one where the sky shows them at 6+, _nightSkyDeepForSky) gets only the rest,
+// (a − a_eye) / (1 − a_eye) laid over it, so it ends at a. Stars fainter than 6 are drawn fainter
+// still (_nightSkyDeepDim), as the base catalogue's sizes end at 6.
+// Found by the view's centre in J2000 (the base catalogue's frame; precession undone) and a band of
+// Dec half the widest shape plus 1° wide (the frame's turn, the projection), then each star's own
+// place on the canvas against the shapes.
+const _nsEqDeep = { state: 'idle', data: null, p: null };   // state: idle | loading | ready | failed
+const NS_EQ_DEEP_FILE = 'data/celestial/stars.6-8.json';
+function _nsEqDeepLoad() {
+  if (_nsEqDeep.p) return _nsEqDeep.p;
+  _nsEqDeep.state = 'loading';
+  return (_nsEqDeep.p = fetch(NS_EQ_DEEP_FILE).then(r => r.json()).then((j) => {
+    _nsEqDeep.data = j.stars; _nsEqDeep.state = 'ready';
+    if (nightSkyActive) drawNightSky();
+  }).catch(() => { _nsEqDeep.state = 'failed'; }));
+}
+function _nsEqApertureGain(s) {
+  return 7.5 + 5 * Math.log10(s.aperture / 10) - NIGHTSKY_MAG_LIMIT_OFF;
+}
+// The view's centre in J2000 RA (-180..180, the catalogues') and Dec [°]
+function _nsEqCentreJ2000() {
+  const C = _nightSkyPlanet3D, eq = _skyAzElToRaDec(C.camAz * 180 / Math.PI, C.camEl * 180 / Math.PI, _nightSkyLstNow(), _nightSkyLatSigned());
+  const m = _skyPrecessionMatrix(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)), v = _skyDomeUnitVecRaDec(eq);
+  const x = m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2], y = m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2], z = m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2];
+  return { ra: Math.atan2(y, x) * 180 / Math.PI, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
+}
+// The stars to lay over the field: [{x, y, r, alpha, mag}], alpha the share still to add
+function _nsEqFieldStars(L, w, h, shapes) {
+  if (!_nsEq.shown.length || !_skyDataLoaded) return [];
+  shapes = shapes || _nsEqShapes(L);
+  const atm = !!_nightSkyAtmState(), gain = Math.max(..._nsEq.shown.map(e => _nsEqApertureGain(e.setup)));
+  const half = Math.max(..._nsEq.shown.map(e => _nsEqSpanDeg(e.setup))) / 2 + 1, c = _nsEqCentreJ2000();
+  const polar = Math.abs(c.dec) + half >= 89, dRa = polar ? 180 : half / Math.cos((Math.abs(c.dec) + half) * Math.PI / 180);
+  const near = (ra, dec) => Math.abs(dec - c.dec) <= half && (polar || Math.abs(((ra - c.ra) % 360 + 540) % 360 - 180) <= dRa);
+  const out = [], skyLimit = _nightSkyDeepForSky().length ? _nightSkyMagLimit() : 6;   // what the sky pass drew
+  const add = (mag, ra, dec, base) => {
+    const p = _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    if (p.el < 0) return;
+    const pr = _nightSkyPlanetProject(L, p.az, p.el);
+    if (!pr.visible || !shapes.some(sh => _nsEqInShape(sh, pr.x, pr.y))) return;
+    const em = mag + _nightSkyExtinctionMag(p.el);
+    let a = 1;
+    if (atm) {
+      const lim = Math.min(NIGHTSKY_MAG_LIMIT_OFF, _nightSkyAtmLimitAt(_skyDomeUnitVec(p.az, p.el))) + gain;
+      a = em <= lim ? 1 : Math.max(0, 1 - (em - lim) / NIGHTSKY_ATM_FADE);
+    }
+    if (a <= 0) return;
+    const look = _nightSkyStarAlpha(em) * _nightSkyDeepDim(mag) * pr.alpha;
+    const total = look * a, eye = base || mag <= skyLimit ? look * _nightSkyVisFactor(em, p.az, p.el) : 0;
+    if (total <= eye + 1e-3) return;
+    out.push({ x: pr.x, y: pr.y, r: _nightSkyStarSize(em), alpha: eye >= 1 ? 0 : (total - eye) / (1 - eye), mag });
+  };
+  for (const s of _skyStars) if (near(s.raDeg, s.decDeg)) add(s.mag, s.raDeg, s.decDeg, true);
+  const D = _nsEqDeep.data;
+  if (D) {
+    let lo = 0, hi = D.length;   // the first star at or above the band's south edge
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (D[mid][4] < c.dec - half) lo = mid + 1; else hi = mid; }
+    for (let i = lo; i < D.length && D[i][4] <= c.dec + half; i++) if (near(D[i][3], D[i][4])) add(D[i][1], D[i][3], D[i][4], false);
+  }
+  return out;
+}
+function _nsEqDrawFieldStars(ctx, L, w, h, shapes) {
+  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
+  const stars = _nsEqFieldStars(L, w, h, shapes);
+  if (!stars.length) return;
+  ctx.save();
+  ctx.beginPath();
+  for (const sh of shapes) {
+    if (sh.r !== undefined) { ctx.moveTo(sh.cx + sh.r, sh.cy); ctx.arc(sh.cx, sh.cy, sh.r, 0, Math.PI * 2); }
+    else { sh.pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); }
+  }
+  ctx.clip();
+  ctx.fillStyle = _nightSkyStarColor();
+  for (const s of stars) {
+    if (!(s.alpha > 0)) continue;
+    ctx.globalAlpha = s.alpha;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  ctx.restore();
+}
 function _nsEqDraw(ctx, w, h) {
   _nsEqChips();   // they follow the canvas's size
   if (typeof _nsEqMountSync === 'function') _nsEqMountSync();   // hidden while the data loads
   if (!_nsEq.shown.length || _nightSkyActiveFrame || !_skyDataLoaded) return;   // not over "loading data…"
   const L = _nightSkyPlanetLayout(w, h);
-  const shapes = _nsEq.shown.map(e => _nsEqIsImaging(e.setup)
-    ? { pts: _nsEqFramePath(e.setup, L), color: e.color }
-    : { cx: L.cx, cy: L.cy, r: _nsEqRadiusPx(_nsEqCompute(e.setup).tfov, L), color: e.color });
+  const shapes = _nsEqShapes(L);
+  _nsEqDrawFieldStars(ctx, L, w, h, shapes);   // the telescope's stars, under the mask's edge
   if (shapes.every(sh => sh.r !== undefined)) {
     // eyepieces only: all centred, their union is the largest circle, cut straight on the sky canvas
     const rMax = Math.max(...shapes.map(sh => sh.r));
@@ -313,6 +420,13 @@ function _nsEqReadPanel() {
 }
 const _nsEqFmt = (v, d) => v.toFixed(d);
 // Fields marked, figures, buttons: on every keystroke and every change of the setups shown
+// The stars in the field end where the catalogues do (mag 8, NS_EQ_CATALOGUE_MAG); a setup reaching
+// further (its limiting magnitude 7.5 + 5·log10(D / 10 mm), a camera's by the same aperture) is told so
+const NS_EQ_CATALOGUE_MAG = 8;
+function _nsEqCatalogueNote(s, note) {
+  const lim = _nsEqApertureGain(s) + NIGHTSKY_MAG_LIMIT_OFF;
+  if (lim > NS_EQ_CATALOGUE_MAG) note(`stars to mag ${NS_EQ_CATALOGUE_MAG} shown (the catalogue's end); this setup reaches about ${_nsEqFmt(lim, 1)}${_nsEqIsImaging(s) ? ' by eye, a camera fainter' : ''}`);
+}
 function _nsEqRefreshPanel() {
   const p = _nsEqPanelEl(), s = _nsEqReadPanel(), ok = _nsEqValid(s);
   for (const k of _nsEqFields(s)) {
@@ -336,6 +450,7 @@ function _nsEqRefreshPanel() {
     if (c.fovW < 1) row('', `${am(c.fovW)} × ${am(c.fovH)}`);
     row('Scale', _nsEqFmt(c.scale, 2) + '″/px');
     row('Focal ratio', 'f/' + _nsEqFmt(c.fRatio, 1));
+    _nsEqCatalogueNote(s, note);
   } else if (ok) {
     const c = _nsEqCompute(s);
     row('Magnification', _nsEqFmt(c.mag, 1) + '×', c.magWarn);
@@ -346,6 +461,7 @@ function _nsEqRefreshPanel() {
     row('Focal ratio', 'f/' + _nsEqFmt(c.fRatio, 1));
     row('Highest useful', _nsEqFmt(c.maxMag, 0) + '×');
     row('Limiting mag', _nsEqFmt(c.limMag, 1));
+    _nsEqCatalogueNote(s, note);
   } else row(_nsEqIsImaging(s) ? 'Enter positive numbers, whole pixels' : 'Enter positive numbers', '');
   const full = _nsEq.shown.length >= NS_EQ_MAX, dup = ok && _nsEq.shown.some(e => _nsEqSame(e.setup, s));
   const apply = p.querySelector('[data-eq-act=apply]'), add = p.querySelector('[data-eq-act=add]');
