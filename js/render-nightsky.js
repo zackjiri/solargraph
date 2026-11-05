@@ -2088,11 +2088,11 @@ function _nightSkySQMToBortle(sqm) {
 // The site's sky quality: the light pollution map's (_nightSkyMapSQM, null until there is one) unless
 // the class was set by hand at this Location (overrideAt, the Location's key then); else the class
 // set by hand (manual, 3 by default; Display, Atmosphere). on: the Bortle scale's checkbox; off
-// (the default) the sky is that of class NIGHTSKY_BORTLE_OFF_CLS (2, a truly dark site) whatever the
+// (the default) the sky is that of class NIGHTSKY_BORTLE_OFF_CLS (3, a rural sky) whatever the
 // map or the class says, the same sky, colour and Milky Way as the scale on at that class
 // (_nightSkySkySQM); only the Mag ≤ slider differs, 6 instead of 6+ (_nightSkyBortleEnable).
 const _nightSkyBortle = { manual: 3, overrideAt: null, on: false };
-const NIGHTSKY_BORTLE_OFF_CLS = 2;
+const NIGHTSKY_BORTLE_OFF_CLS = 3;
 // The light pollution map (lp-lookup.js) at the Location; null off its area or while its tile comes in
 function _nightSkyMapSQM() {
   return typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
@@ -4102,7 +4102,7 @@ function _nightSkyBortleSyncUI() {
   row.classList.toggle('no-atm', !atm);
   row.title = `Bortle scale, class ${q.cls}: ${NIGHTSKY_BORTLE_NAMES[q.cls - 1]}, night sky ${q.sqm.toFixed(2)} mag/arcsec² (${q.source}). `
     + 'Light pollution for Atmosphere: the sky\'s brightness and colour, the stars and the Milky Way. '
-    + (_nightSkyBortle.on ? 'Untick for a truly dark sky (class 2) with stars to mag 6.' : 'Off: a truly dark sky (class 2), stars to mag 6; tick for this place\'s light pollution.');
+    + (_nightSkyBortle.on ? 'Untick for a rural sky (class 3) with stars to mag 6.' : 'Off: a rural sky (class 3), stars to mag 6; tick for this place\'s light pollution.');
   document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
   document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
 }
