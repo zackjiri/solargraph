@@ -1,8 +1,9 @@
 # Celestial data - provenance & license
 
-The files in this folder are **vendored, unmodified copies** from the
+The files in this folder are **vendored copies** of data from the
 [D3-Celestial](https://github.com/ofrohn/d3-celestial) project by Olaf Frohn, except
-`starnames.json` (see below), used here only as a
+`starnames.json` (see below) and `stars.6-8.json`, derived from D3-Celestial's `stars.8.json`
+(see Modifications), used here only as a
 data source for the Night Sky mode (star positions, constellation lines, the Milky Way and deep sky objects). No code from that project
 is used - only the GeoJSON data files below, read by this project's own renderer
 (`js/render-nightsky.js`, `js/render-milkyway.js`, `js/render-deepsky.js`, `js/render-search.js`).
@@ -11,7 +12,8 @@ is used - only the GeoJSON data files below, read by this project's own renderer
 
 | File | Content | Fetched from |
 |---|---|---|
-| `stars.6.json` | Stars down to 6th magnitude (naked-eye limit) | [data/stars.6.json](https://github.com/ofrohn/d3-celestial/blob/master/data/stars.6.json) |
+| `stars.6.json` | Stars down to 6th magnitude (naked-eye limit), 5,044 stars | [data/stars.6.json](https://github.com/ofrohn/d3-celestial/blob/master/data/stars.6.json) |
+| `stars.6-8.json` | The stars fainter than `stars.6.json` down to magnitude 8.0, 36,367 stars, for the equipment's field of view | derived from [data/stars.8.json](https://github.com/ofrohn/d3-celestial/blob/master/data/stars.8.json), fetched 2026-11-05 (see Modifications) |
 | `constellations.lines.json` | IAU constellation stick-figure lines | [data/constellations.lines.json](https://github.com/ofrohn/d3-celestial/blob/master/data/constellations.lines.json) |
 | `constellations.json` | Constellation names (Latin, English, Czech and other languages) and label positions, read by the Planetarium search (`js/render-search.js`) | [data/constellations.json](https://github.com/ofrohn/d3-celestial/blob/master/data/constellations.json), fetched 2026-10-29 |
 | `mw.json` | The Milky Way as five nested brightness outlines (`ol1` faintest to `ol5` brightest) | [data/mw.json](https://github.com/ofrohn/d3-celestial/blob/master/data/mw.json) |
@@ -34,7 +36,7 @@ and disclaimer, which this folder does.
 
 D3-Celestial converted these from public astronomical catalogs, not its own original research:
 
-- **Stars** (`stars.6.json`): XHIP - Extended Hipparcos Compilation, Anderson E., Francis C.
+- **Stars** (`stars.6.json`, `stars.6-8.json`): XHIP - Extended Hipparcos Compilation, Anderson E., Francis C.
   (2012), [VizieR V/137D](http://cdsarc.u-strasbg.fr/viz-bin/Cat?V/137D)
 - **Constellation lines** (`constellations.lines.json`) and **names** (`constellations.json`): [IAU Constellation page](https://www.iau.org/public/themes/constellations/),
   name positions and some line modifications by Olaf Frohn
@@ -57,7 +59,18 @@ separately. Mira is left out: as a variable it is missing from `stars.6.json`.
 
 ## Modifications
 
-**None.** The D3-Celestial JSON files are byte-identical to the upstream copies linked above.
+The data of the D3-Celestial JSON files is unchanged. `stars.6.json` is stored re-indented (one
+key per line); minified it is byte-identical to the upstream file (656,721 bytes). The others are
+the upstream files as fetched.
+
+`stars.6-8.json` is made by this project's `tools/stars-deep.py` from D3-Celestial's
+`data/stars.8.json` (41,411 stars, magnitude −1.44 to 8.00; its readme says 8.5, the file ends at
+8.0). The 5,044 stars of `stars.6.json` are in it with the same values; the tool checks that and
+keeps only the other 36,367 (magnitude 6.01 to 8.00), so the two files together are the whole
+`stars.8.json` without overlap. Layout changed, values not: `{"fields": ["id", "mag", "bv", "ra",
+"dec"], "stars": [[HIP, mag, B-V, RA, Dec], ...]}`, one star per line, sorted by Dec; B-V turned
+from a string into a number (empty, 50 stars, into `null`). RA and Dec as upstream (degrees, J2000,
+RA −180..180).
 
 If any of these files is ever locally modified (e.g. filtered, trimmed, or corrected), that fact **must**
 be recorded both here and as a note in this same section - describe what changed and why, so the
