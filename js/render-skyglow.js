@@ -59,7 +59,30 @@ const GLOW_MOON_STOPS = [0.25, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 11, 12, 13, 14
 function _glowShown() {
   return _nightSkyAtmOn() && !document.body.classList.contains('light');   // render-nightsky.js
 }
-function _glowRamp(b) {
+// The bright twilight's end of the ramp: with the Sun below the horizon the sky brighter than 9 (the
+// glow over the Sun in the first degrees of dusk, 10° up 6.9 at −3°) does not stay the day's blue but
+// goes on getting lighter towards a pale, slightly warm white, so the measured glow (_glowDirFactor)
+// shows in the colour too. Mixed in by GLOW_RAMP_TWI_W(h): none with the Sun at +1° and higher (the
+// day's colours stay), fully from −1°; the sky is fainter than 9 everywhere from about −5°.
+const GLOW_RAMP_TWI = [[9, [100, 150, 212]], [8, [138, 166, 210]], [7, [182, 187, 200]], [6, [214, 204, 192]], [5, [234, 218, 196]]];
+function _glowRampTwiW(h) { return h === undefined ? 0 : Math.max(0, Math.min(1, (1 - h) / 2)); }
+function _glowRampAt(R, b) {
+  if (b >= R[0][0]) return R[0][1];
+  for (let i = 1; i < R.length; i++) {
+    if (b >= R[i][0]) {
+      const t = (R[i - 1][0] - b) / (R[i - 1][0] - R[i][0]);
+      return R[i - 1][1].map((c, k) => c + t * (R[i][1][k] - c));
+    }
+  }
+  return R[R.length - 1][1];
+}
+// h: the Sun's altitude (°), for the twilight's bright end; left out, the plain ramp
+function _glowRamp(b, h) {
+  const w = b < GLOW_RAMP_TWI[0][0] ? _glowRampTwiW(h) : 0;
+  if (w > 0) {
+    const d = _glowRampAt(GLOW_RAMP, b), t = _glowRampAt(GLOW_RAMP_TWI, b);
+    return d.map((c, k) => c + w * (t[k] - c));
+  }
   const R = GLOW_RAMP;
   if (b >= R[0][0]) return R[0][1];
   for (let i = 1; i < R.length; i++) {
@@ -70,9 +93,37 @@ function _glowRamp(b) {
   }
   return R[R.length - 1][1];
 }
-// Direction factor (unnormalised): psi the angle from the Sun (°), el the altitude (°).
-function _glowDirFactor(psi, el) {
-  return (1 + GLOW_SUN_A * Math.exp(-psi / GLOW_SUN_DEG)) * (1 + GLOW_HOR_A * Math.pow(1 - el / 90, 3));
+// Direction factor (unnormalised): psi the angle from the Sun (°), el the altitude (°), h the Sun's
+// altitude (°): (1 + A·e^(−psi/D))·(1 + Hz·(1 − el/90)³). By day A, D, Hz are GLOW_SUN_A,
+// GLOW_SUN_DEG, GLOW_HOR_A. In twilight they are fitted to the measured sky of Koomen et al. (1952,
+// JOSA 42, 353, Table II: Maryland, 30 m, the brightness by the Sun's altitude, the altitude in the sky
+// and the azimuth from the Sun): D 26°, Hz 2.0 and A by the Sun's depression (GLOW_TWI_A), so the
+// glow over the Sun grows against the zenith to about −9° (3.1 mag 10° above the Sun, measured 3.3),
+// the sky opposite it stays near the zenith's (0.6 mag, measured 0.8); rms 0.26 mag over the table.
+// From sunset to −3° the day's values turn into the twilight's; below −12° A holds (the twilight's
+// share of the sky fades out there by itself).
+const GLOW_TWI_D = 26, GLOW_TWI_HOR = 2.0;
+const GLOW_TWI_A = [[-3, 7.5], [-6, 13], [-9, 18.5], [-12, 12.5]];
+let _glowDirP = { h: NaN, A: GLOW_SUN_A, D: GLOW_SUN_DEG, Hz: GLOW_HOR_A };
+function _glowDirParams(h) {
+  if (_glowDirP.h === h) return _glowDirP;
+  const T = GLOW_TWI_A;
+  let A, D = GLOW_TWI_D, Hz = GLOW_TWI_HOR;
+  if (!(h < 0)) { A = GLOW_SUN_A; D = GLOW_SUN_DEG; Hz = GLOW_HOR_A; }
+  else if (h > T[0][0]) {
+    const t = h / T[0][0];
+    A = GLOW_SUN_A + t * (T[0][1] - GLOW_SUN_A); D = GLOW_SUN_DEG + t * (GLOW_TWI_D - GLOW_SUN_DEG); Hz = GLOW_HOR_A + t * (GLOW_TWI_HOR - GLOW_HOR_A);
+  } else {
+    A = T[T.length - 1][1];
+    for (let i = 1; i < T.length; i++) {
+      if (h >= T[i][0]) { A = T[i - 1][1] + (h - T[i - 1][0]) / (T[i][0] - T[i - 1][0]) * (T[i][1] - T[i - 1][1]); break; }
+    }
+  }
+  return (_glowDirP = { h, A, D, Hz });
+}
+function _glowDirFactor(psi, el, h) {
+  const p = _glowDirParams(h);
+  return (1 + p.A * Math.exp(-psi / p.D)) * (1 + p.Hz * Math.pow(1 - el / 90, 3));
 }
 // RGB of direction v (horizon frame, unit, z >= 0).
 function _glowColorAt(v, s, gZen, rhoMin) {
@@ -80,9 +131,10 @@ function _glowColorAt(v, s, gZen, rhoMin) {
   const psi = Math.acos(Math.max(-1, Math.min(1, v[0] * s.sun.v[0] + v[1] * s.sun.v[1] + v[2] * s.sun.v[2]))) * 180 / Math.PI;
   const art = (s.artNL || 0) * _nightSkyArtDir(el);   // the site's artificial light (Bortle class, map)
   const night = (s.nightNL || 0) * _glowNightDir(el) * _nightSkyEclRatioAt(s.ecl, v);
-  const nl = _glowDayNL(s) * _glowDirFactor(psi, el) / gZen * _nightSkyEclRatioAt(s.ecl, v) + night + art + _nightSkyMoonNLAt(v, s, rhoMin);
-  const base = _glowLightPollution(_glowRamp(_nsBFromNL(nl)), art / nl);
-  const c = _glowDayHaze(_glowPale(base, s.ecl && s.ecl.T > 0 ? s.sun.el - 90 * s.ecl.T : s.sun.el), s, el);
+  const nl = _glowDayNL(s) * _glowDirFactor(psi, el, s.sun.el) / gZen * _nightSkyEclRatioAt(s.ecl, v) + night + art + _nightSkyMoonNLAt(v, s, rhoMin);
+  const hEff = s.ecl && s.ecl.T > 0 ? s.sun.el - 90 * s.ecl.T : s.sun.el;   // a total eclipse darkens as a sinking Sun
+  const base = _glowLightPollution(_glowRamp(_nsBFromNL(nl), hEff), art / nl);
+  const c = _glowDayHaze(_glowPale(base, hEff), s, el);
   const t = _glowTwilight(c, v, s, psi, el);
   return s.ecl && s.ecl.T > 0 ? _glowTotalityHorizon(t, s.ecl, v, el) : t;
 }
@@ -244,7 +296,7 @@ function _glowSlot(name) {
   return _glowSlots[name] || (_glowSlots[name] = { lut: { key: null, d: null }, buf: { canvas: null, ctx: null, img: null, key: null } });
 }
 function _glowZenFactor(s) {
-  return _glowDirFactor(Math.acos(Math.max(-1, Math.min(1, s.sun.v[2]))) * 180 / Math.PI, 90);
+  return _glowDirFactor(Math.acos(Math.max(-1, Math.min(1, s.sun.v[2]))) * 180 / Math.PI, 90, s.sun.el);
 }
 function _glowBuildLut(s, key, slot) {
   const T = slot.lut;

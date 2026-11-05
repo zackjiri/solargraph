@@ -2150,11 +2150,17 @@ function _nightSkyAtmState() {
   // the natural sky's own brightness, for its colour (_nightSkyTwilightB; a solar eclipse dims both
   // by the zenith's factor), of which nightNL is the night sky's own light (airglow,
   // NIGHTSKY_NIGHT_B), brighter only toward the horizon, not toward the Sun (render-skyglow.js);
-  // artNL: the site's artificial light at the zenith, added per direction (_nightSkyArtDir) to both
+  // artNL: the site's artificial light at the zenith, added per direction (_nightSkyArtDir) to both;
+  // twiEx: the twilight's share of twiNL (above the night sky's own light), spread over the sky by
+  // the colour's direction factor relative to the zenith's, twiZen (_nightSkyAtmLimitAt; 0 in a
+  // solar eclipse, whose own directions take over)
   const natLM = _nightSkyTwilightNaturalLM(sun.el), eclF = ecl ? ecl.sky : 1;
-  const s = { twiLM, twiNL: _nsNLFromB(_nsBFromLM(natLM)) * eclF, moon: null,
-    skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el, false)) * eclF, nightNL: _nsNLFromB(NIGHTSKY_NIGHT_B) * eclF,
+  const twiNL = _nsNLFromB(_nsBFromLM(natLM)) * eclF, nightNL = _nsNLFromB(NIGHTSKY_NIGHT_B) * eclF;
+  const twiEx = ecl ? 0 : Math.max(0, twiNL - nightNL);
+  const s = { twiLM, twiNL, moon: null,
+    skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el, false)) * eclF, nightNL,
     artNL: _nightSkyArtificialNL(),
+    twiEx: twiEx > 0.01 * nightNL ? twiEx : 0, twiZen: _glowDirFactor(90 - sun.el, 90, sun.el),
     sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el },   // the Sun for the sky's colour (render-skyglow.js)
     ecl };                                                      // a solar eclipse going on, or null
   const m = _moonAzEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
@@ -2185,11 +2191,17 @@ function _nightSkyMoonNLAt(v, s, rhoMin) {
 function _nightSkyAtmLimitAt(v) {
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
-  if (!s.moon && !s.ecl && !s.artNL) return s.twiLM;
-  // a solar eclipse: the twilight sky as bright as this direction's air is lit (_nightSkyEclSkyAt);
-  // the site's artificial light brighter toward the horizon
+  if (!s.moon && !s.ecl && !s.artNL && !s.twiEx) return s.twiLM;
+  // the twilight brighter toward the Sun and the horizon, as the sky's colour (_glowDirFactor,
+  // render-skyglow.js), the same at the zenith; a solar eclipse: the twilight sky as bright as this
+  // direction's air is lit (_nightSkyEclSkyAt); the site's artificial light brighter toward the horizon
   const el = Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI;
-  const lm = _nsLMFromB(_nsBFromNL(s.twiNL * _nightSkyEclRatioAt(s.ecl, v) + s.artNL * _nightSkyArtDir(el) + _nightSkyMoonNLAt(v, s)));
+  let twi = s.twiNL * _nightSkyEclRatioAt(s.ecl, v);
+  if (s.twiEx) {
+    const psi = Math.acos(Math.max(-1, Math.min(1, v[0] * s.sun.v[0] + v[1] * s.sun.v[1] + v[2] * s.sun.v[2]))) * 180 / Math.PI;
+    twi += s.twiEx * (_glowDirFactor(psi, Math.max(0, el), s.sun.el) / s.twiZen - 1);
+  }
+  const lm = _nsLMFromB(_nsBFromNL(twi + s.artNL * _nightSkyArtDir(el) + _nightSkyMoonNLAt(v, s)));
   return lm > NIGHTSKY_MAG_LIMIT_OFF - 0.05 ? Infinity : s.ecl ? lm : Math.min(lm, s.twiLM);
 }
 // Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
