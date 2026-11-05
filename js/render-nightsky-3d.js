@@ -32,7 +32,7 @@ function _nightSkyUpdateMap3DControls() {
     c.parentElement.style.opacity = off3D ? '0.35' : '';
     c.parentElement.style.pointerEvents = off3D ? 'none' : '';
   }
-  for (const id of ['nightSkyMagRow', 'nightSkyStarScaleRow', 'nightSkyAtmRow']) {   // Mag ≤ and star size: flat Sky Map only
+  for (const id of ['nightSkyMagRow', 'nightSkyStarScaleRow', 'nightSkyAtmRow', 'nightSkyBortleRow']) {   // Mag ≤, star size, Atmosphere, Bortle scale: flat Sky Map only
     const row = document.getElementById(id);
     row.style.opacity = off3D ? '0.35' : '';
     row.style.pointerEvents = off3D ? 'none' : '';

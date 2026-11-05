@@ -2059,11 +2059,16 @@ function _nightSkySQMToBortle(sqm) {
 }
 // The site's sky quality: the light pollution map's (_nightSkyMapSQM, null until there is one) unless
 // the class was set by hand at this Location (overrideAt, the Location's key then); else the class
-// set by hand (manual, 3 by default; Display, Atmosphere).
-const _nightSkyBortle = { manual: 3, overrideAt: null };
+// set by hand (manual, 3 by default; Display, Atmosphere). on: the Bortle scale's checkbox; off
+// (the default) the sky has no artificial light, whatever the map or the class says.
+const _nightSkyBortle = { manual: 3, overrideAt: null, on: false };
 // The light pollution map (lp-lookup.js) at the Location; null off its area or while its tile comes in
 function _nightSkyMapSQM() {
   return typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
+}
+// What of the site's sky quality the drawing depends on: its brightness, or 'off'
+function _nightSkyBortleKey() {
+  return _nightSkyBortle.on ? _nightSkySiteSQM().sqm : 'off';
 }
 function _nightSkyLocKey() {
   return [LAT, hemisphere, LONG, lonHemisphere].join('|');
@@ -2077,6 +2082,7 @@ function _nightSkySiteSQM() {
 }
 // The site's artificial light at the zenith (nL): its night sky less the untouched one
 function _nightSkyArtificialNL() {
+  if (!_nightSkyBortle.on) return 0;
   return Math.max(0, _nsNLFromB(Math.min(_nightSkySiteSQM().sqm, NIGHTSKY_NIGHT_B)) - _nsNLFromB(NIGHTSKY_NIGHT_B));
 }
 function _nightSkyTwilightScatterB(d) {
@@ -2135,7 +2141,7 @@ function _nightSkyMoonEclipseLight(m) {
 let _nsAtmCache = { key: null, s: null };
 function _nightSkyAtmState() {
   if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return null;
-  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkySiteSQM().sqm].join('|');
+  const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkyBortleKey()].join('|');
   if (_nsAtmCache.key === key) return _nsAtmCache.s;
   const twiLM = _nightSkyAtmLimit();
   const sun = _nightSkySunAzElTrue(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
@@ -3941,11 +3947,21 @@ document.getElementById('nightSkyMagLimit').addEventListener('input', () => {
   _nightSkyUpdateMagReadout();
   if (nightSkyActive) drawNightSky();
 });
-// Bortle scale (Display, under Atmosphere): ‹ › step the class 1..9; set by hand it is remembered
-// (localStorage solargraphyBortle) and, with a map, overrides it at this Location only
-// (_nightSkyBortle.overrideAt). Grey while Atmosphere is off, where the class changes nothing.
-const NIGHTSKY_BORTLE_KEY = 'solargraphyBortle';
+// Bortle scale (Display, under Atmosphere): its checkbox switches the light pollution on (off at
+// first, remembered in localStorage solargraphyBortleOn); ‹ › step the class 1..9; set by hand it is
+// remembered (localStorage solargraphyBortle) and, with a map, overrides it at this Location only
+// (_nightSkyBortle.overrideAt). The checkbox grey while Atmosphere is off, the class and its arrows
+// grey while either is off, where the class changes nothing.
+const NIGHTSKY_BORTLE_KEY = 'solargraphyBortle', NIGHTSKY_BORTLE_ON_KEY = 'solargraphyBortleOn';
 try { const v = parseInt(localStorage.getItem(NIGHTSKY_BORTLE_KEY), 10); if (v >= 1 && v <= 9) _nightSkyBortle.manual = v; } catch (e) { /* blocked: the default */ }
+try { _nightSkyBortle.on = localStorage.getItem(NIGHTSKY_BORTLE_ON_KEY) === '1'; } catch (e) { /* blocked: off */ }
+function _nightSkyBortleEnable(on) {
+  _nightSkyBortle.on = !!on;
+  try { localStorage.setItem(NIGHTSKY_BORTLE_ON_KEY, on ? '1' : '0'); } catch (e) { /* blocked: this page only */ }
+  _nsAtmCache.key = null;
+  _nightSkyBortleSyncUI();
+  if (nightSkyActive) drawNightSky();
+}
 function _nightSkyBortleSet(c) {
   c = Math.max(1, Math.min(9, Math.round(c)));
   _nightSkyBortle.manual = c;
@@ -3959,21 +3975,26 @@ function _nightSkyBortleSet(c) {
 let _nightSkyBortleShown = '';
 function _nightSkyBortleSyncIfChanged() {
   const q = _nightSkySiteSQM();
-  if ([q.sqm, q.cls, q.source, nightSkyAtmosphereOn].join('|') !== _nightSkyBortleShown) _nightSkyBortleSyncUI();
+  if ([q.sqm, q.cls, q.source, nightSkyAtmosphereOn, _nightSkyBortle.on].join('|') !== _nightSkyBortleShown) _nightSkyBortleSyncUI();
 }
 function _nightSkyBortleSyncUI() {
-  const q = _nightSkySiteSQM(), on = nightSkyAtmosphereOn;
-  _nightSkyBortleShown = [q.sqm, q.cls, q.source, on].join('|');
+  const q = _nightSkySiteSQM(), atm = nightSkyAtmosphereOn, on = atm && _nightSkyBortle.on;
+  _nightSkyBortleShown = [q.sqm, q.cls, q.source, atm, _nightSkyBortle.on].join('|');
+  const chk = document.getElementById('chkNightSkyBortle');
+  chk.checked = _nightSkyBortle.on; chk.disabled = !atm;
   document.getElementById('nightSkyBortleValue').textContent = String(q.cls);
   document.getElementById('nightSkyBortleInfo').textContent = q.sqm.toFixed(2) + ' · ' + q.source;
   for (const seg of document.querySelectorAll('#nightSkyBortleScale span')) seg.classList.toggle('on', Number(seg.dataset.cls) === q.cls);
   const row = document.getElementById('nightSkyBortleRow');
   row.classList.toggle('disabled', !on);
+  row.classList.toggle('no-atm', !atm);
   row.title = `Bortle scale, class ${q.cls}: ${NIGHTSKY_BORTLE_NAMES[q.cls - 1]}, night sky ${q.sqm.toFixed(2)} mag/arcsec² (${q.source}). `
-    + 'Light pollution for Atmosphere: the sky\'s brightness and colour, the stars and the Milky Way.';
+    + 'Light pollution for Atmosphere: the sky\'s brightness and colour, the stars and the Milky Way. '
+    + (_nightSkyBortle.on ? 'Untick for a sky without artificial light.' : 'Off: a sky without artificial light; tick to add it.');
   document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
   document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
 }
+document.getElementById('chkNightSkyBortle').addEventListener('change', (e) => _nightSkyBortleEnable(e.target.checked));
 document.getElementById('btnNightSkyBortleDown').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls - 1));
 document.getElementById('btnNightSkyBortleUp').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls + 1));
 _nightSkyBortleSyncUI();

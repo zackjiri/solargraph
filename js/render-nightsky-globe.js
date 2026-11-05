@@ -7,7 +7,8 @@
 // Sun's altitude worked out for every pixel of the globe, from full daylight through the
 // civil/nautical/astronomical twilight to night, with an orange tint (hue only) just past the
 // terminator and the Sun's glint on the oceans. The land carries seasonal snow and the polar seas
-// their sea ice (_nsGlobeSeasonTex), always.
+// their sea ice (_nsGlobeSeasonTex, Display "Snow & ice"), and the night side the cities' lights
+// from the light pollution map (Display "Light pollution", _nsGlobeLightGrid); both under Earth.
 // Behind it the sky at infinity: the stars (Display "Stars", the
 // catalog of the Sky Map, precessed to the date), the planets and the Sun in their geocentric
 // directions. The Moon at its true geocentric position and size (Meeus ch. 47,
@@ -47,7 +48,8 @@ let _nsGlobeLoading = false;
 // orbit: Display "Moon's orbit" (Globe only, under Moon).
 // roseBig: the orientation rose at twice its size (a click on it toggles, _nsGlobeDrawRose).
 // gridKept: Az/Alt grid's own state while the MOON view greys it out (_nsGlobeSyncUI), else null.
-const _nsGlobe = { camAz: 0, camEl: 0.85, dist: 5, fov: 50, active: 'dist', aimed: false, interacting: false, subsolar: false, moonFixed: false, frame: 'ecliptic', orbit: true, body: 'earth', saved: {}, roseBig: false, gridKept: null };
+// snow, lights: Display "Snow & ice" and "Light pollution" (Orbit only, under Earth).
+const _nsGlobe = { camAz: 0, camEl: 0.85, dist: 5, fov: 50, active: 'dist', aimed: false, interacting: false, subsolar: false, moonFixed: false, frame: 'ecliptic', orbit: true, body: 'earth', saved: {}, roseBig: false, gridKept: null, snow: true, lights: true };
 function _nsGlobeSunR() { return _nightSkyBodyMinR() * 1.4; }   // the Sun's disc in the background, px
 // The camera's elevation stops just short of the up axis (89.7°), where its sideways direction would
 // be undefined - near enough that a held picked point (_nsGlobePickerApplyLock) can follow the sky
@@ -244,6 +246,60 @@ function _nsGlobeSeasonTex(lam) {
   S.tex = { w: W, h: H, data: out }; S.key = key;
   return S.tex;
 }
+// The surface texture: with the season's snow and ice (Display "Snow & ice"), or the bare land and sea
+function _nsGlobeSurfaceTex(lam) {
+  return _nsGlobe.snow ? _nsGlobeSeasonTex(lam) : _nsGlobeTex;
+}
+
+// ── City lights (Display "Light pollution") ────────────────────────────────────────────────────
+// The light the cities send up, seen from orbit on the night side, from the light pollution
+// map's coarse grid (lp-lookup.js, 0.1°, 65°S to 75°N): a cell's sky brightness (mag/arcsec²)
+// gives the artificial light over the natural sky, 10^(-0.4 (SQM - 22)) - 1 (0.5 in the
+// countryside, 5 to 10 in towns, over 60 in city centres). Below NS_GLOBE_LIGHT_TH it counts as
+// dark (no glowing countryside); above it a power NS_GLOBE_LIGHT_GAMMA brings back some of the
+// sharpness the sky glow's spread took, and 1 - e^-x keeps the centres from clipping. The level
+// (0..1) per byte of the grid is a table of 256, read bilinearly in _nsGlobeDrawSurface.
+const NS_GLOBE_LIGHT_TH = 0.3, NS_GLOBE_LIGHT_SCALE = 20, NS_GLOBE_LIGHT_GAMMA = 1.3;
+// The colour by level: sodium amber where faint, orange-yellow, warm white in the centres.
+const NS_GLOBE_LIGHT_RAMP = [[0, [255, 120, 30]], [0.5, [255, 180, 80]], [1, [255, 240, 215]]];
+function _nsGlobeLightLevel(sqm) {
+  if (!Number.isFinite(sqm)) return 0;
+  const a = Math.pow(10, -0.4 * (sqm - 22)) - 1 - NS_GLOBE_LIGHT_TH;
+  return a > 0 ? 1 - Math.exp(-Math.pow(a / NS_GLOBE_LIGHT_SCALE, NS_GLOBE_LIGHT_GAMMA)) : 0;
+}
+// How much the lights show by the Sun's altitude h (degrees): none in daylight, coming up through
+// the twilight (a smoothstep), in full from -8°, where the sky over them is dark.
+function _nsGlobeLightWeight(h) {
+  const u = Math.max(0, Math.min(1, -h / 8));
+  return u * u * (3 - 2 * u);
+}
+function _nsGlobeLightColor(I) {
+  const R = NS_GLOBE_LIGHT_RAMP;
+  let k = 1;
+  while (k < R.length - 1 && I > R[k][0]) k++;
+  const [a, ca] = R[k - 1], [b, cb] = R[k], t = Math.max(0, Math.min(1, (I - a) / (b - a)));
+  return [0, 1, 2].map(c => ca[c] + (cb[c] - ca[c]) * t);
+}
+// The grid for the shader, or null while it comes in (then one redraw when it lands)
+let _nsGlobeLights = null, _nsGlobeLightsAsked = false;
+function _nsGlobeLightGrid() {
+  if (_nsGlobeLights) return _nsGlobeLights;
+  const g = typeof _lp !== 'undefined' ? _lp.coarse : null;
+  if (!g) {
+    if (!_nsGlobeLightsAsked && typeof _lpLoadCoarse === 'function') {
+      _nsGlobeLightsAsked = true;
+      _lpLoadCoarse().then((c) => { if (c && _nsGlobeActive()) drawNightSky(); });
+    }
+    return null;
+  }
+  const lut = new Float32Array(256);
+  for (let v = 0; v < 255; v++) lut[v] = _nsGlobeLightLevel(LP_Q_MIN + v * LP_Q_STEP);   // 255: no data, dark
+  const add = new Float32Array(256 * 3);   // the light added at level i/255: its colour times the level
+  for (let i = 0; i < 256; i++) { const c = _nsGlobeLightColor(i / 255); for (let k = 0; k < 3; k++) add[i * 3 + k] = c[k] * i / 255; }
+  _nsGlobeLights = { top: g.lat0 + g.ny * g.step, lon0: g.lon0, step: g.step, nx: g.nx, ny: g.ny, v: g.v, lut, add };
+  return _nsGlobeLights;
+}
+
 function _nsGlobeLoad() {
   if (_nsGlobeLand || _nsGlobeLoading) return;
   _nsGlobeLoading = true;
@@ -414,7 +470,7 @@ function _nightSkyDrawGlobe(ctx, w, h) {
       // The season for the snow: the Sun's ecliptic longitude from its direction of date.
       const eps = 23.44 * Math.PI / 180;
       const lam = Math.atan2(sunDir[1] * Math.cos(eps) + sunDir[2] * Math.sin(eps), sunDir[0]) * 180 / Math.PI;
-      _nsGlobeDrawSurface(ctx, L, EL, cam, rs, theta, sunDir, w, h, moon, _nsGlobeSeasonTex((lam + 360) % 360));
+      _nsGlobeDrawSurface(ctx, L, EL, cam, rs, theta, sunDir, w, h, moon, _nsGlobeSurfaceTex((lam + 360) % 360));
     }
   }
 
@@ -1124,7 +1180,8 @@ function _nsGlobeDrawMoon(ctx, L, cam, moon, sun, w, h) {
 // altitude there, sin h = p·s.
 // One smooth light curve over day and twilight (ell, logistic around -2°, no kink at the horizon,
 // the daylight climbing gently with the Sun); just past the terminator the hue turns orange (a
-// tint, never adding light); the oceans show the Sun's glint
+// tint, never adding light); with Display "Light pollution" the cities' lights come up on the night
+// side through the twilight (_nsGlobeLightWeight); the oceans show the Sun's glint
 // (specular reflection towards the camera). With the Moon shown, its shadow from the real geometry
 // (a solar eclipse): a point is in the Moon's umbra or penumbra when the Moon lies sunward of it
 // (t > 0 along the Sun's direction) and the point is within ru = Rm - t (Rs - Rm) / Ds or
@@ -1146,6 +1203,7 @@ function _nsGlobeDrawSurface(ctx, L, EL, cam, rs, theta, sun, w, h, moon, tex) {
   const sw = Math.max(1, Math.ceil(bw * q)), sh0 = Math.max(1, Math.ceil(bh * q));
   const buf = new ImageData(sw, sh0), px = buf.data;
   const TW = tex.w, TH = tex.h, T = tex.data;
+  const LG = _nsGlobe.lights ? _nsGlobeLightGrid() : null;
   const F = cam.F, P = cam.pos, R = cam.right, U = cam.up, Fw = cam.fwd;
   const cc = _sd3Dot(P, P) - 1;
   const D2R = Math.PI / 180;
@@ -1192,6 +1250,21 @@ function _nsGlobeDrawSurface(ctx, L, EL, cam, rs, theta, sun, w, h, moon, tex) {
         // horizon): shifts the hue towards orange without adding light.
         const warm = Math.exp(-((hDeg + 3) / 2) * ((hDeg + 3) / 2)) * 0.4;
         r *= 1 + 0.35 * warm; g *= 1 + 0.05 * warm; bl *= 1 - 0.45 * warm;
+        // City lights on the night side, added on top (_nsGlobeLightGrid), bilinear between the
+        // grid's cell centres, west and east wrapping round.
+        if (LG && hDeg < 0) {
+          const wl = _nsGlobeLightWeight(hDeg), fy = (LG.top - lat) / LG.step - 0.5;
+          if (wl > 0 && fy > -1 && fy < LG.ny) {
+            const fx = (lon - 180 - LG.lon0) / LG.step - 0.5, nx = LG.nx, V = LG.v, LU = LG.lut;
+            const ya = Math.floor(fy), xa = Math.floor(fx), ty = fy - ya, tx = fx - xa;
+            const r0 = Math.max(0, ya) * nx, r1 = Math.min(LG.ny - 1, ya + 1) * nx;
+            const c0 = (xa % nx + nx) % nx, c1 = (c0 + 1) % nx;
+            const top = LU[V[r0 + c0]] + (LU[V[r0 + c1]] - LU[V[r0 + c0]]) * tx;
+            const bot = LU[V[r1 + c0]] + (LU[V[r1 + c1]] - LU[V[r1 + c0]]) * tx;
+            const I = (top + (bot - top) * ty) * wl;
+            if (I > 0.002) { const a = Math.round(I * 255) * 3; r += LG.add[a]; g += LG.add[a + 1]; bl += LG.add[a + 2]; }
+          }
+        }
         if (sh > 0 && T[ti] === NS_GLOBE_OCEAN[0] && T[ti + 1] === NS_GLOBE_OCEAN[1]) {   // ocean glint
           const rd = 2 * sh;   // reflect the Sun about the surface normal, compare with the view
           const rx = rd * hx - sun[0], ry = rd * hy - sun[1], rz = rd * hz - sun[2];
@@ -1332,6 +1405,13 @@ document.getElementById('btnNsGlobeSubsolar').addEventListener('click', () => {
   b.classList.toggle('on', _nsGlobe.subsolar); b.setAttribute('aria-checked', String(_nsGlobe.subsolar));
   if (_nsGlobeActive()) drawNightSky();
 });
+// Earth's Snow & ice and Light pollution (Orbit only): switches like Subsolar point.
+[['btnNsGlobeSnow', 'snow'], ['btnNsGlobeLights', 'lights']].forEach(([id, k]) => document.getElementById(id).addEventListener('click', () => {
+  _nsGlobe[k] = !_nsGlobe[k];
+  const b = document.getElementById(id);
+  b.classList.toggle('on', _nsGlobe[k]); b.setAttribute('aria-checked', String(_nsGlobe[k]));
+  if (_nsGlobeActive()) drawNightSky();
+}));
 document.getElementById('btnNsGlobeMoonOrbit').addEventListener('click', () => {
   _nsGlobe.orbit = !_nsGlobe.orbit;
   const b = document.getElementById('btnNsGlobeMoonOrbit');

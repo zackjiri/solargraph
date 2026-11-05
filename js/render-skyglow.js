@@ -307,7 +307,7 @@ function _glowOntoSky(out) {   // below the horizon: onto it, for a clean edge u
 function _glowDraw(ctx, w, h, dirAt, clip, viewKey, moonAt, sunAt) {
   const s = _nightSkyAtmState();
   if (!s) return;
-  const tkey = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkySiteSQM().sqm].join('|');
+  const tkey = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkyBortleKey()].join('|');
   _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, 'ns', GLOW_BUF_PX, sunAt);
 }
 // Fills the sky region with the colour field. s: {twiLM, twiNL, skyNL, sun: {v, el}, moon} (as
