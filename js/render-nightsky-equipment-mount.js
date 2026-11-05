@@ -12,10 +12,12 @@
 const NS_EQ_MOUNT_STEP = 5;
 const _nsEqMount = { eqLock: false, angle: 0 };
 function _nsEqMountRotate(stepDeg) {
+  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;   // star trails: the frame stays
   _nsEqMount.angle = ((_nsEqMount.angle + stepDeg) % 360 + 360) % 360;
   _nsEqChanged();
 }
 function _nsEqMountSetLock(on) {
+  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;
   _nsEqMount.eqLock = !!on;
   _nsEqMount.angle = 0;
   _nsEqChanged();

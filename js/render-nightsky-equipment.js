@@ -138,17 +138,22 @@ function _nsEqFitZoom() {
 // After any change of the setups shown: the button, the chips (when their parts exist) and the sky
 function _nsEqChanged() {
   _nsEq.ver++;
+  if (typeof _nsTrSync === 'function') _nsTrSync();   // star trails: a changed frame clears its exposure
   if (typeof _nsEqMountSync === 'function') _nsEqMountSync();   // render-nightsky-equipment-mount.js
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();
   if (typeof _nsEqChips === 'function') _nsEqChips();
   if (nightSkyActive) drawNightSky();
 }
+// During a star-trail exposure the setups stay as they are (render-nightsky-trails.js)
+function _nsEqLocked() { return typeof _nsTrExposing === 'function' && _nsTrExposing(); }
 function _nsEqApply(setup) {
+  if (_nsEqLocked()) return;
   _nsEq.shown = [{ setup: Object.assign({}, setup), color: NS_EQ_COLORS[0] }];
   _nsEqFitZoom();
   _nsEqChanged();
 }
 function _nsEqAdd(setup) {
+  if (_nsEqLocked()) return false;
   if (_nsEq.shown.length >= NS_EQ_MAX || _nsEq.shown.some(e => _nsEqSame(e.setup, setup))) return false;
   const color = NS_EQ_COLORS.find(c => !_nsEq.shown.some(e => e.color === c));
   _nsEq.shown.push({ setup: Object.assign({}, setup), color });
@@ -157,10 +162,12 @@ function _nsEqAdd(setup) {
   return true;
 }
 function _nsEqRemove(i) {
+  if (_nsEqLocked()) return;
   _nsEq.shown.splice(i, 1);
   _nsEqChanged();
 }
 function _nsEqOff() {
+  if (_nsEqLocked()) return;
   _nsEq.shown = [];
   _nsEqMaskCanvas = null;   // the spare canvas goes with the view
   _nsEqChanged();
@@ -293,10 +300,12 @@ function _nsEqDrawFieldStars(ctx, L, w, h, shapes) {
 function _nsEqDraw(ctx, w, h) {
   _nsEqChips();   // they follow the canvas's size
   if (typeof _nsEqMountSync === 'function') _nsEqMountSync();   // hidden while the data loads
-  if (!_nsEq.shown.length || _nightSkyActiveFrame || !_skyDataLoaded) return;   // not over "loading data…"
+  if (!_nsEq.shown.length || _nightSkyActiveFrame || !_skyDataLoaded) { if (typeof _nsTrPlace === 'function') _nsTrPlace(null); return; }   // not over "loading data…"
   const L = _nightSkyPlanetLayout(w, h);
+  if (typeof _nsTrPlace === 'function') _nsTrPlace(L);   // star trails' button at the frame's corner
   const shapes = _nsEqShapes(L);
   _nsEqDrawFieldStars(ctx, L, w, h, shapes);   // the telescope's stars, under the mask's edge
+  if (typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, L);   // star trails (render-nightsky-trails.js)
   if (shapes.every(sh => sh.r !== undefined)) {
     // eyepieces only: all centred, their union is the largest circle, cut straight on the sky canvas
     const rMax = Math.max(...shapes.map(sh => sh.r));

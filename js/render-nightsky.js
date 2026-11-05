@@ -437,6 +437,7 @@ document.getElementById('btnNightSkyTopDec').addEventListener('click', () => { _
 document.getElementById('btnNightSkyTopInc').addEventListener('click', () => { _nightSkyStepTop(1);  _nightSkyCommitTop(); });
 
 function enterNightSkyCatalog() {
+  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;   // star trails: the view stays
   nightSkyTopView = 'catalog';
   exitNightSkyVisualization();
   document.getElementById('nightSkyCatalogPanel').style.display = 'flex';
@@ -697,6 +698,7 @@ function _nightSkyVideoRate(win) {
 // Every time move from the strip and the animation goes through here: the video window first,
 // then the RA/Dec picker's own horizon stop. stopped = the window's end (or the horizon) was hit.
 function _nightSkyClampTimeJD(jdFrom, jdTo) {
+  if (typeof _nsTr !== 'undefined' && _nsTr.state === 'exposing' && jdTo < _nsTr.startJD) jdTo = _nsTr.startJD;   // star trails: not before the exposure's start
   const win = _nightSkyVideoWindow();
   if (win) {
     const jd = Math.max(win.startJD, Math.min(win.endJD, jdTo));
@@ -910,6 +912,7 @@ function _nightSkySyncControls() {
   _nightSkyBuildTwilightBand();
   _nightSkyBuildTimeScale();
   _nightSkyTrackSky();   // equatorial video: the camera follows the sky to the new instant
+  if (typeof _nsTrSync === 'function') _nsTrSync();   // star trails: the strip's lines, the exposure's length
   if (nightSkyActive) drawNightSky();
 }
 function _nightSkyCommitDate() {
@@ -2601,6 +2604,8 @@ function _nightSkyStepSubmode(dir) {
   _nightSkySubmodeIndex = ((_nightSkySubmodeIndex + dir) % NIGHTSKY_SUBMODE_N + NIGHTSKY_SUBMODE_N) % NIGHTSKY_SUBMODE_N;
 }
 function _nightSkyCommitSubmode() {
+  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) { _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode); return; }   // star trails: the Planetarium stays
+  if (typeof _nsTrSync === 'function') setTimeout(_nsTrSync, 0);   // its button only in the Planetarium
   const prev = nightSkySubmode;
   nightSkySubmode = NIGHTSKY_SUBMODE_VALUES[_nightSkySubmodeIndex];
   // Sun Graph swaps the sky canvas for the chart (render-nightsky-sungraph.js).
@@ -2829,7 +2834,10 @@ function _nightSkyUpdatePlanetControlsVisibility() {
 function _nightSkyUpdatePresentationLock() {
   const presenting = nightSkyActive && nightSkyTopView === 'visualization'
     && nightSkySubmode === 'planetarium' && !!_nightSkyActiveFrame;
-  document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting);
+  // a star-trail exposure (render-nightsky-trails.js) locks the date, the place, the picker and the
+  // search the same way; the time strip and Play stay, limited to its start on
+  const exposing = typeof _nsTrExposing === 'function' && _nsTrExposing();
+  document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting || exposing);
   const win = presenting ? _nightSkyVideoWindow() : null;
   document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting && !win);
   // Play needs the video's duration for its speed; until the metadata is in, only the strip moves
@@ -2837,14 +2845,15 @@ function _nightSkyUpdatePresentationLock() {
   _nightSkyUpdateSpeedBoxLabel();
   // The picker would fight the photo's own centring and time lock - unavailable while presenting.
   const picker = document.getElementById('btnNightSkyPicker');
-  picker.disabled = presenting;
+  picker.disabled = presenting || exposing;
   picker.title = presenting ? 'Picker unavailable while a Catalog photo is shown'
-    : 'Pick a point by RA/Dec and lock the view on it';
-  if (presenting) _nightSkyPickerSetActive(false);
+    : exposing ? 'Picker unavailable during a star-trail exposure' : 'Pick a point by RA/Dec and lock the view on it';
+  if (presenting || exposing) _nightSkyPickerSetActive(false);
   const search = document.getElementById('btnNightSkySearch');
-  search.disabled = presenting;
-  search.title = presenting ? 'Search unavailable while a Catalog photo is shown' : 'Find an object and lock the view on it';
-  if (presenting && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
+  search.disabled = presenting || exposing;
+  search.title = presenting ? 'Search unavailable while a Catalog photo is shown'
+    : exposing ? 'Search unavailable during a star-trail exposure' : 'Find an object and lock the view on it';
+  if ((presenting || exposing) && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();   // Equipment: disabled the same way
 }
 
@@ -3688,6 +3697,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     const dx = x - lastX, dy = y - lastY;
     lastX = x; lastY = y;
     if (_nightSkyPicker.lock) return;   // the view is held on the picked point
+    if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;   // star trails: the camera stays pointed
     // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.
     const z = _nightSkyPlanet3D.zoom;
     _nightSkyPlanet3D.camAz -= dx * 0.005 / z;
