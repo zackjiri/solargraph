@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug539">
+  <link rel="stylesheet" href="css/style.css?perfdebug547">
 </head>
 <body>
 
@@ -552,6 +552,19 @@
         <span id="nightSkyEquipmentMountStep">±5°</span>
         <span id="nightSkyEquipmentMountAngle">0°</span>
       </div>
+      <!-- Star trails (render-nightsky-trails.js): at the camera frame's bottom-right corner while a
+           single camera frame is shown with EQ lock off; the first click starts the exposure (a red
+           ring while it runs), the next stops it. -->
+      <!-- Star trails: the camera frame's outline pulsing while the exposure runs (CSS animation) -->
+      <svg id="nightSkyTrailPulse" aria-hidden="true" style="display:none"><polygon points=""/></svg>
+      <button type="button" id="btnNightSkyTrails" aria-pressed="false" title="Star trails: start the exposure" style="display:none">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <!-- after the user's sketch: the pole as a dot, round it arcs of the trails in three rings, every arc
+               the same 90° (the sky turns every star by the same angle) at different places; the outer
+               ring three arcs, two of them close together -->
+          <path d="M8.43 10.70A3.8 3.8 0 0 1 13.30 8.43"/><path d="M15.57 13.30A3.8 3.8 0 0 1 10.70 15.57"/><path d="M9.61 5.42A7 7 0 0 1 18.58 9.61"/><path d="M13.22 18.89A7 7 0 0 1 5.11 13.22"/><path d="M5.44 19.81A10.2 10.2 0 0 1 4.19 5.44"/><path d="M6.90 3.17A10.2 10.2 0 0 1 20.83 6.90"/><path d="M22.16 12.89A10.2 10.2 0 0 1 11.11 22.16"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
       <!-- Image export (js/render-export.js) - round button at the right of the round buttons, Sky
            Map and Sun Graph only. Opens #nightSkyExportPanel above them: a resolution, a format and
            DOWNLOAD. -->
@@ -599,6 +612,8 @@
                with the box's own left/right padding, same box model as every other slider-header. -->
           <div class="slider-header">
             <span class="slider-val" style="color:var(--accent)" id="lblNightSkyHour">—</span>
+            <!-- Star trails: the exposure's length, mm:ss (h:mm:ss from an hour), right above the strip -->
+            <span id="nightSkyTrailCounter" title="Star trails: exposure time" style="display:none">00:00</span>
           </div>
           <div id="nightSkyTimeSliderRow">
             <button id="btnNightSkyPlay" title="Animate time forward, resuming from the current position">
@@ -617,6 +632,9 @@
                 <!-- Discrete day/civil/nautical/astronomical-twilight/night band, hard-edged, exact
                      Sun Graph palette (_nightSkyBuildTwilightBand(), render-nightsky.js). -->
                 <div id="nightSkyTwilightBand"></div>
+                <!-- Star trails: the exposure from its start (green line) to now, filled red, render-nightsky-trails.js -->
+                <div id="nightSkyTrailFill" style="display:none"></div>
+                <div id="nightSkyTrailStart" class="ns-trail-mark" style="display:none"></div>
                 <!-- Fixed centre marker - the belt scrolls under this. Flanking arrows are a pure
                      drag-affordance hint (decorative, pointer-events:none). -->
                 <div id="nightSkyTimeMarker">
@@ -1430,41 +1448,42 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.04
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
 </div>
 
-<script src="js/core.js?perfdebug539"></script>
-<script src="js/render-2d.js?perfdebug539"></script>
-<script src="js/controls.js?perfdebug539"></script>
-<script src="js/render-sungraph.js?perfdebug539"></script>
-<script src="js/render-3d.js?perfdebug539"></script>
-<script src="js/render-skydome.js?perfdebug539"></script>
-<script src="js/render-moon.js?perfdebug539"></script>
-<script src="js/render-planets.js?perfdebug539"></script>
-<script src="js/render-milkyway.js?perfdebug539"></script>
-<script src="js/render-deepsky.js?perfdebug539"></script>
-<script src="js/render-skyglow.js?perfdebug539"></script>
-<script src="js/render-nightsky.js?perfdebug539"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug539"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug539"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug539"></script>
-<script src="js/render-nightsky-3d.js?perfdebug539"></script>
-<script src="js/render-nightsky-globe.js?perfdebug539"></script>
-<script src="js/render-search.js?perfdebug539"></script>
-<script src="js/render-locpick.js?perfdebug539"></script>
-<script src="js/tz-lookup.js?perfdebug539"></script>
-<script src="js/lp-lookup.js?perfdebug539"></script>
-<script src="js/render-tzsearch.js?perfdebug539"></script>
-<script src="js/render-eclipse-map.js?perfdebug539"></script>
-<script src="js/render-export.js?perfdebug539"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug539"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug539"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug539"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug539"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug539"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug539"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug539"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug539"></script>
-<script src="js/render-eclipse.js?perfdebug539"></script>
+<script src="js/core.js?perfdebug547"></script>
+<script src="js/render-2d.js?perfdebug547"></script>
+<script src="js/controls.js?perfdebug547"></script>
+<script src="js/render-sungraph.js?perfdebug547"></script>
+<script src="js/render-3d.js?perfdebug547"></script>
+<script src="js/render-skydome.js?perfdebug547"></script>
+<script src="js/render-moon.js?perfdebug547"></script>
+<script src="js/render-planets.js?perfdebug547"></script>
+<script src="js/render-milkyway.js?perfdebug547"></script>
+<script src="js/render-deepsky.js?perfdebug547"></script>
+<script src="js/render-skyglow.js?perfdebug547"></script>
+<script src="js/render-nightsky.js?perfdebug547"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug547"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug547"></script>
+<script src="js/render-nightsky-trails.js?perfdebug547"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug547"></script>
+<script src="js/render-nightsky-3d.js?perfdebug547"></script>
+<script src="js/render-nightsky-globe.js?perfdebug547"></script>
+<script src="js/render-search.js?perfdebug547"></script>
+<script src="js/render-locpick.js?perfdebug547"></script>
+<script src="js/tz-lookup.js?perfdebug547"></script>
+<script src="js/lp-lookup.js?perfdebug547"></script>
+<script src="js/render-tzsearch.js?perfdebug547"></script>
+<script src="js/render-eclipse-map.js?perfdebug547"></script>
+<script src="js/render-export.js?perfdebug547"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug547"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug547"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug547"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug547"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug547"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug547"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug547"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug547"></script>
+<script src="js/render-eclipse.js?perfdebug547"></script>
 </body>
 </html>
