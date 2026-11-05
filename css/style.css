@@ -2529,6 +2529,68 @@
   /* The camera mount (render-nightsky-equipment-mount.js): top centre, EQ lock as in Eclipse
      (#btnEclipseEQLock), the two arrows hang from its bottom corners, a quarter circle each with the
      tip toward the middle (the right one mirrored); the step between the tips, the angle under it. */
+  /* Star trails (render-nightsky-trails.js): the button at the camera frame's bottom-right corner,
+     a red ring while the exposure runs, and the frame's outline pulsing (#nightSkyTrailPulse); on
+     the time strip the start (green line, pinned with an arrow at its edge when outside its window)
+     and the exposure filled red to now; its length above the strip, at the right.
+     While exposing (body.ns-trail-exposing) the sub-views, Catalog, modes, the mount and the
+     Equipment panel's Apply, Add, Turn off and the chips' x are locked (the date and place go
+     through .calibration-locked). */
+  #btnNightSkyTrails {
+    position: absolute; z-index: 11;
+    width: 28px; height: 28px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #e8eef6; background: rgba(15,18,24,0.82);
+    border: 1px solid rgba(255,255,255,0.35); border-radius: 50%;
+    cursor: pointer;
+  }
+  #btnNightSkyTrails:hover { border-color: #fff; }
+  #btnNightSkyTrails.exposing { border: 2px solid #e04848; box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
+  .ns-trail-mark {
+    position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px;
+    border: 1px solid rgba(0,0,0,0.55); pointer-events: none; z-index: 1;
+  }
+  #nightSkyTrailStart { background: #3ccf6a; }
+  #nightSkyTrailFill {
+    position: absolute; top: 0; bottom: 0; pointer-events: none;
+    background: rgba(224,72,72,0.38);
+  }
+  #nightSkyTrailPulse {
+    position: absolute; left: 0; top: 0; z-index: 10; pointer-events: none; overflow: visible;
+  }
+  #nightSkyTrailPulse polygon {
+    fill: none; stroke-width: 3; stroke-linejoin: round;
+    animation: nsTrailPulse 1.4s ease-in-out infinite;
+  }
+  @keyframes nsTrailPulse { 0%, 100% { stroke-opacity: 0.05; } 50% { stroke-opacity: 0.95; } }
+  .ns-trail-mark.pinned::before {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    font-size: 9px; line-height: 1; color: inherit;
+  }
+  #nightSkyTrailStart.pinned { color: #3ccf6a; }
+  .ns-trail-mark.pinned.left::before { content: '◀'; left: 3px; }
+  .ns-trail-mark.pinned.right::before { content: '▶'; right: 3px; }
+  #nightSkyTrailCounter {
+    font-family: var(--mono); font-size: 12px; color: #e8eef6;
+    text-align: right; margin-left: auto;
+  }
+  #nightSkyTrailCounter.exposing { color: #e04848; }
+  body.ns-trail-exposing #nightSkySubmodeRow,
+  body.ns-trail-exposing #nightSkyTopRow,
+  body.ns-trail-exposing #modeWheelTrack,
+  body.ns-trail-exposing #btnModeDec,
+  body.ns-trail-exposing #btnModeInc,
+  body.ns-trail-exposing #btnModeAnalyzer,
+  body.ns-trail-exposing #btnModeEclipse,
+  body.ns-trail-exposing #btnModeNightSky,
+  body.ns-trail-exposing #btnNightSkyEquipmentEQ,
+  body.ns-trail-exposing #nightSkyEquipmentMount .ns-eq-rot,
+  body.ns-trail-exposing #nightSkyEquipmentChips button,
+  body.ns-trail-exposing #nightSkyEquipmentPanel [data-eq-act=apply],
+  body.ns-trail-exposing #nightSkyEquipmentPanel [data-eq-act=add],
+  body.ns-trail-exposing #nightSkyEquipmentPanel [data-eq-act=off] {
+    pointer-events: none; opacity: 0.35;
+  }
   #nightSkyEquipmentMount {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
     z-index: 11; display: none;
