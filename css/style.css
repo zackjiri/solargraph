@@ -3693,6 +3693,40 @@
     overflow: hidden;
   }
   #locPickWin.open { display: block; }
+  /* the towns' glow for the Location: top left under the header (top set by JS), folded by its arrow */
+  #locGlowWrap { position: absolute; left: 12px; top: 40px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; }
+  #locPickWin.ecl #locGlowWrap, #locPickWin:not(.lp) #locGlowWrap { display: none; }   /* with the light pollution only */
+  #locGlowBox {
+    padding: 6px 8px; box-sizing: border-box;
+    background: rgba(7,9,13,0.72); border: 1px solid rgba(160,200,240,0.25);
+    font-family: var(--mono); font-size: 10px; color: #d6dde5;
+  }
+  body.light #locGlowBox { background: rgba(220,228,236,0.9); border-color: rgba(0,0,0,0.2); color: #1a2430; }
+  #locGlowBox .lg-title { margin-bottom: 4px; }
+  #locGlowCanvas { display: block; width: 300px; height: 150px; }
+  #locGlowNote { margin-top: 4px; color: var(--dim); }
+  #locGlowBox .lg-ctl { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 5px; }
+  #locGlowBox .ns-btn { font-size: 9px; padding: 1px 5px; }
+  #locGlowBox .ns-btn.on { background: var(--accent2); color: #000; }
+  #locGlowBox .lg-leg { width: 300px; margin-top: 6px; }
+  #locGlowBox .lg-name { margin-bottom: 2px; }
+  #locGlowBox .lg-ramp { display: flex; height: 7px; }
+  #locGlowBox .lg-ramp span { flex: 1 1 0; }
+  #locGlowBox .lg-ends { display: flex; justify-content: space-between; color: var(--dim); font-size: 9px; margin-top: 1px; }
+  #locGlowBox .lg-rampwrap { position: relative; }
+  /* the sky's glow at the altitude: blue (pristine) to red (city), the range of directions above it */
+  #locGlowBox .lg-sky { height: 7px; background: linear-gradient(to right, rgb(47, 111, 214), rgb(58, 168, 69), rgb(232, 210, 58), rgb(217, 48, 48)); }
+  #locGlowRange { position: absolute; top: -4px; height: 2px; background: var(--text); display: none; }
+  #locGlowLegSky .lg-rampwrap { margin-top: 6px; }
+  #locGlowBox .lg-ticks { position: relative; height: 11px; font-size: 9px; color: var(--dim); margin-top: 1px; }
+  #locGlowBox .lg-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  #locGlowWrap.collapsed #locGlowBox { display: none; }
+  #locGlowToggle {
+    margin-top: 4px; background: var(--panel); border: none; border-radius: var(--radius-sm);
+    color: var(--dim); cursor: pointer; font-family: var(--mono); font-size: 12.5px; line-height: 1; padding: 2.5px 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  }
+  #locGlowToggle:hover { color: var(--text); }
   /* the height above the ground: a vertical slider on the right edge, the whole Earth at the top */
   #locPickAlt {
     position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 2;
@@ -3934,6 +3968,9 @@
   .lpl-scale button:nth-child(9) { background: #ffffff; color: #000; text-shadow: none; }
   .lpl-scale button { position: relative; padding: 0; border: none; font-family: inherit; cursor: pointer; }
   .lpl-scale button:hover, .lpl-scale button[aria-pressed="true"] { outline: 2px solid var(--accent2); outline-offset: 1px; z-index: 1; }
+  /* the class of the Location's sky (the pin): a bold white frame with a dark edge, above a pointed or picked one */
+  .lpl-scale button.here { outline: 2.5px solid #fff; outline-offset: 1px; box-shadow: 0 0 0 4px rgba(0,0,0,0.75); z-index: 2; }
+  body.light .lpl-scale button.here { outline-color: #000; box-shadow: 0 0 0 4px rgba(255,255,255,0.85); }
   .lpl-ends { display: flex; justify-content: space-between; margin-top: 2px; color: var(--dim); font-size: 9px; }
   #locPickLpCredit { position: absolute; right: 106px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of both buttons */
   #locPickWin.lp:not(.ecl) #locPickLpCredit { display: block; }
