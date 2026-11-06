@@ -908,6 +908,14 @@
   #btnNightSkyAtmosphere.on { background: #7cc8ff; }
   body.light #nightSkyAtmRow .nightsky-sun-label { color: #1f78c1; }
   body.light #btnNightSkyAtmosphere.on { background: #3d9be3; }
+  /* Glow toward towns: a line of its own under the Bortle scale's bar and brightness, only with the
+     scale on; on in Atmosphere's blue, greyed with a class set by hand */
+  .ns-town-glow { order: 5; flex: 0 0 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 3px; }
+  #nightSkyBortleRow.disabled .ns-town-glow { display: none; }
+  #btnNightSkyTownGlow.on { background: #7cc8ff; }
+  body.light #btnNightSkyTownGlow.on { background: #3d9be3; }
+  #btnNightSkyTownGlow:disabled { opacity: 0.35; cursor: default; }
+  .ns-town-glow:has(#btnNightSkyTownGlow:disabled) .nightsky-sun-label { opacity: 0.45; }
 
   /* Custom date's month/day wheel pickers - sub-controls of the "Custom date" checkbox above
      (Display section), same show/hide-by-parent-state pattern as the CHMI sub-rows just below.
@@ -3685,6 +3693,29 @@
     overflow: hidden;
   }
   #locPickWin.open { display: block; }
+  /* the height above the ground: a vertical slider on the right edge, the whole Earth at the top */
+  #locPickAlt {
+    position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 2;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 8px 4px; background: rgba(7,9,13,0.55); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  }
+  body.light #locPickAlt { background: rgba(220,228,236,0.82); }
+  /* the slider: a 4 px track and a 14 px round thumb (its travel known, for the scale's ticks), the
+     ticks of round heights 6 px long either side, their km on the right */
+  #locPickAlt .lp-alt-scale { position: relative; height: 170px; width: 18px; margin-right: 38px; }
+  #locPickAltRange {
+    position: absolute; left: 0; top: 0; writing-mode: vertical-lr; height: 170px; width: 18px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+  }
+  #locPickAltRange::-webkit-slider-runnable-track { width: 4px; height: 100%; background: var(--border); border-radius: 2px; }
+  #locPickAltRange::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-left: -5px; border-radius: 50%; background: var(--accent2); border: none; }
+  #locPickAltRange::-moz-range-track { width: 4px; height: 100%; background: var(--border); border-radius: 2px; }
+  #locPickAltRange::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent2); border: none; }
+  #locPickAlt .lp-alt-tick { position: absolute; width: 6px; height: 1px; background: var(--dim); pointer-events: none; }
+  #locPickAlt .lp-alt-tick.l { left: -1px; }
+  #locPickAlt .lp-alt-tick.r { left: 13px; }
+  #locPickAlt .lp-alt-num { position: absolute; left: 22px; transform: translateY(-50%); font-family: var(--mono); font-size: 9px; color: var(--dim); white-space: nowrap; pointer-events: none; }
+  #locPickAltLabel { font-family: var(--mono); font-size: 10px; color: var(--text); white-space: nowrap; min-width: 52px; text-align: center; }
   #locPickCanvas {
     position: absolute; inset: 0; width: 100%; height: 100%;
     touch-action: none;
