@@ -96,14 +96,15 @@ function _lpDirTAt(d, h, daz) {
 // ── The site's table D(az, h) ───────────────────────────────────────────────────────────────────
 // The towns within LP_DIR_RMAX_KM, from the emitted light's tiles (lp-src-<lat>-<lon>.js from
 // tools/lp-grid.py, listed in the light pollution index under src), summed into 30 rings (the
-// distance nodes of T, the nearest on a log scale; under 0.5 km as 0.5 km; a cell nearer than
-// LP_DIR_SUB_KM spread over its area as LP_DIR_SUB² points) × 36 sectors of 10°
-// centred on 0°, 10°, ... (so a town due south is symmetric about 180°), by distance and azimuth
-// along the great circle. D(az, h) = Σ W(ring, sector) · T(ring, h, az − sector) over the zenith's
+// distance nodes of T on a log scale; under 0.5 km as 0.5 km) × 72 sectors of 5° centred on 0°, 5°,
+// ... (the table's own directions; a town due south is symmetric about 180°), by distance and
+// azimuth along the great circle, each source split linearly between its two nearest rings and its
+// two nearest sectors (snapped to 10° sectors' middles the glow had a 10° comb along the horizon);
+// a cell nearer than LP_DIR_SUB_KM spread over its area as LP_DIR_SUB² points. D(az, h) = Σ W(ring, sector) · T(ring, h, az − sector) over the zenith's
 // value, for az every 5° (72) and h every 2° (46); the offsets are whole multiples of 5°, so T is
 // read without interpolation. A site waits for all its tiles (or their failure) before it gets a
 // table; no light within reach: no table (null), and the sky keeps the even factor.
-const LP_DIR_NAZ = 72, LP_DIR_NSEC = 36, LP_DIR_SUB_KM = 12, LP_DIR_SUB = 5;   // cells nearer than 12 km as 5 × 5 points
+const LP_DIR_NAZ = 72, LP_DIR_NSEC = 72, LP_DIR_SUB_KM = 12, LP_DIR_SUB = 5;   // sectors of 5° (as the table's directions); cells nearer than 12 km as 5 × 5 points
 Object.assign(_lpDir, { src: {}, site: null, ver: 0, off: false });   // off: a test switch, no table
 function _lpDirSrcFile(key) { return 'lp-src-' + key.slice(0, 3) + '-' + key.slice(3) + '.js'; }
 function _lpDirLoadTile(key) {
@@ -200,8 +201,13 @@ function _lpDirBins(lat, lon) {
           const dd = R * Math.acos(Math.min(1, s1 * s3 + c1 * c3 * cd2));
           if (dd > LP_DIR_RMAX_KM) continue;
           const az = (Math.atan2(Math.sin(dl2 * rad) * c3, c1 * s3 - s1 * c3 * cd2) / rad + 360) % 360;
-          const ring = Math.max(0, Math.min(ND - 1, Math.round((Math.log(Math.max(dd, LP_DIR_D_KM[0])) - lnD0) / lnStep)));
-          bins[ring * LP_DIR_NSEC + Math.round(az / 10) % LP_DIR_NSEC] += w / (n * n);
+          // split linearly between the two nearest rings (log distance) and the two nearest sectors
+          // (azimuth), so a source is not snapped to a ring's or a sector's middle (that left a comb
+          // of 10° along the horizon when the sectors were 10°)
+          const x = Math.max(0, Math.min(ND - 1, (Math.log(Math.max(dd, LP_DIR_D_KM[0])) - lnD0) / lnStep)), r0 = Math.min(ND - 2, Math.floor(x)), fr = x - r0;
+          const y = az / (360 / LP_DIR_NSEC), sa = Math.floor(y) % LP_DIR_NSEC, sb = (sa + 1) % LP_DIR_NSEC, fs = y - Math.floor(y), q = w / (n * n);
+          bins[r0 * LP_DIR_NSEC + sa] += q * (1 - fr) * (1 - fs); bins[r0 * LP_DIR_NSEC + sb] += q * (1 - fr) * fs;
+          bins[(r0 + 1) * LP_DIR_NSEC + sa] += q * fr * (1 - fs); bins[(r0 + 1) * LP_DIR_NSEC + sb] += q * fr * fs;
         }
       }
     }
@@ -216,7 +222,7 @@ function _lpDirBuild(bins) {
       const w = bins[ring * LP_DIR_NSEC + sec];
       if (!w) continue;
       for (let ia = 0; ia < LP_DIR_NAZ; ia++) {
-        let j = Math.abs(ia - 2 * sec) % LP_DIR_NAZ; if (j > 36) j = LP_DIR_NAZ - j;   // the offset, in steps of 5°
+        let j = Math.abs(ia - sec) % LP_DIR_NAZ; if (j > 36) j = LP_DIR_NAZ - j;   // the offset, in steps of 5° (sectors as directions)
         const o = ring * LP_DIR_NH * LP_DIR_NDAZ + j, a = ia * LP_DIR_NH;
         for (let ih = 0; ih < LP_DIR_NH; ih++) acc[a + ih] += w * T[o + ih * LP_DIR_NDAZ];
       }

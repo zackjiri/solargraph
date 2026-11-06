@@ -288,9 +288,12 @@ function _glowTwilight(c, v, s, psi, el) {
 // capped as above) stays on the coarse screen grid and is added per pixel; the core is the
 // gradient drawn after.
 const GLOW_BUF_PX = 3, GLOW_LUT_NE = 96, GLOW_LUT_NA = 61, GLOW_LUT_DAZ = 3;
-// 0..360° from the Sun (a solar eclipse, the glow toward the towns): 121 columns of 3°, or of 6° (61)
-// at night (the Sun below GLOW_LUT_COARSE_EL, no eclipse)
-const GLOW_LUT_COARSE_EL = -12;
+// All round (a solar eclipse, the glow toward the towns): by absolute azimuth from north, not from
+// the Sun, so the towns' glow stays put as the Sun moves (from the Sun the grid slid over it and its
+// sampling moved with the time); 121 columns of 3°, or at night (the Sun below GLOW_LUT_COARSE_EL,
+// no eclipse) 73 of GLOW_LUT_NIGHT_DAZ, the directional table's own 5° (lp-dir.js), the same cost as
+// the half table
+const GLOW_LUT_COARSE_EL = -12, GLOW_LUT_NIGHT_DAZ = 5;
 // Each view keeps its own table and buffer ('ns' Night Sky, 'sd' Sky Dome), so switching between
 // them never forces a rebuild.
 const _glowSlots = {};
@@ -308,15 +311,15 @@ function _glowBuildLut(s, key, slot) {
   // symmetric about the Sun's vertical, but the Moon's shadow in a solar eclipse is not, nor the glow
   // toward the towns (lp-dir.js, the class from the map): then all round
   const dirArt = s.artMap && s.artNL > 0 && typeof _lpDirSite === 'function' && _lpDirSite();
-  // all round in steps of 6° once the Sun is below GLOW_LUT_COARSE_EL (the towns' glow is smooth and
-  // the twilight's detail by the Sun gone; the same cost as the half table), else of 3°
-  const full = !!(s.ecl || dirArt), daz = full && !s.ecl && s.sun.el < GLOW_LUT_COARSE_EL ? 2 * GLOW_LUT_DAZ : GLOW_LUT_DAZ;
+  // all round by absolute azimuth, in steps of 5° once the Sun is below GLOW_LUT_COARSE_EL (on the
+  // towns' table's directions; the twilight's detail by the Sun gone), else of 3°
+  const full = !!(s.ecl || dirArt), daz = full && !s.ecl && s.sun.el < GLOW_LUT_COARSE_EL ? GLOW_LUT_NIGHT_DAZ : GLOW_LUT_DAZ;
   const NA = full ? Math.round(360 / daz) + 1 : GLOW_LUT_NA;
   const d = T.d && T.d.length === GLOW_LUT_NE * NA * 3 ? T.d : new Float32Array(GLOW_LUT_NE * NA * 3);
   for (let ie = 0; ie < GLOW_LUT_NE; ie++) {
     const se = ie / (GLOW_LUT_NE - 1), ce = Math.sqrt(1 - se * se);
     for (let ia = 0; ia < NA; ia++) {
-      const az = sunAz + ia * daz * Math.PI / 180;
+      const az = (full ? 0 : sunAz) + ia * daz * Math.PI / 180;   // all round: from north; the half table: from the Sun
       const col = _glowColorAt([ce * Math.sin(az), ce * Math.cos(az), se], s0, gZen);
       const o = (ie * NA + ia) * 3;
       d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2];
@@ -400,8 +403,8 @@ function _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, slotName,
         const hl = Math.hypot(out[0], out[1]) || 1;
         const cd = Math.max(-1, Math.min(1, (out[0] * shx + out[1] * shy) / (hl * shl)));
         let fa;
-        if (full) {   // the azimuth from the Sun's, 0..360° eastwards
-          const da = Math.atan2(out[0] * shy - out[1] * shx, out[0] * shx + out[1] * shy);
+        if (full) {   // the absolute azimuth, 0..360° eastwards from north
+          const da = Math.atan2(out[0], out[1]);
           fa = (da < 0 ? da + 2 * Math.PI : da) * aScale;
         } else fa = Math.acos(cd) * aScale;
         const fe = Math.min(1, out[2]) * eMax;
