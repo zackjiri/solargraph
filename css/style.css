@@ -2326,6 +2326,19 @@
   }
   body.light #nightSkyPickerBox { background: rgba(245,247,249,0.9); }
   #nightSkyPickerBox .picker-epoch { color: var(--dim); font-size: 10px; }
+  #nightSkyPickerBox .picker-name { font-weight: bold; color: #ff7070; }   /* a snapped object (render-search.js) */
+  body.light #nightSkyPickerBox .picker-name { color: #c42020; }
+  #nightSkyPickerBox .picker-type { color: var(--dim); font-size: 10px; }
+  /* Orbit SUN view: a planet's distances, styled as the picker's box, its border in the planet's colour. */
+  #nsSolarInfoBox {
+    position: absolute; z-index: 13; display: none; pointer-events: none;
+    padding: 4px 7px; background: rgba(15,19,24,0.82);
+    border: 1px solid #ff5050; border-radius: var(--radius-sm);
+    font-family: var(--mono); font-size: 11px; line-height: 1.45; color: var(--text); white-space: nowrap;
+  }
+  body.light #nsSolarInfoBox { background: rgba(245,247,249,0.9); }
+  #nsSolarInfoBox .ns-solar-name { font-weight: bold; }
+  #nsSolarInfoBox .ns-solar-dim { color: var(--dim); font-size: 10px; }
 
   /* Planetarium object search (js/render-search.js) - round button left of the picker, same panel
      treatment, in the app's blue; open: filled blue. The panel sits above the two buttons: a text
@@ -4015,9 +4028,10 @@
   #nightSkyDisplaySection.ns-globe .nightsky-sun-subrow:not(.ns-globe-only):not(#nightSkySunSubrow):not(#nightSkyMoonSubrow) { display: none !important; }
   .ns-globe-only { display: none; }
   #nightSkyDisplaySection.ns-globe .ns-globe-only { display: flex; }
-  /* Globe always shows the Earth, the Sun and the Moon: their checkboxes are shown ticked, disabled and greyed
-     (_nsGlobeSyncUI keeps the other views' state aside), their sub-options always shown. */
-  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkySun),
+  /* Globe always shows the Earth, the Sun and the Moon: the Earth and Moon checkboxes are shown ticked,
+     disabled and greyed, the Sun's row is hidden (_nsGlobeSyncUI keeps the other views' state aside and
+     moves Moon's path, Sun's path and Subsolar point under Earth), their sub-options always shown. */
+  #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkySun) { display: none !important; }   /* its rows sit under Earth */
   #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNightSkyMoon),
   #nightSkyDisplaySection.ns-globe .chk-row:has(#chkNsGlobeEarth) { opacity: 0.45; pointer-events: none; }
   #nightSkyDisplaySection.ns-globe #nightSkySunSubrow,
@@ -4025,7 +4039,8 @@
   #nightSkyDisplaySection.ns-globe #nsGlobeSubsolarSubrow { display: flex !important; }
   #nightSkyStatusWrap.ns-sungraph { left: auto; right: 12.5px; top: 52px; align-items: flex-end; }
   /* Sun Graph TIMES | LENGTH switch (render-sungraph.js sgViewMode), centred over the plot by JS.
-     body.sg-length: the length view keeps only the band rows of the legend (and Night Sky's Moon,
+     body.sg-length: the length view keeps only the band rows of the legend, the Analyzer's sunlight
+     on the paper and through the pinhole (with their lengths), and Night Sky's Moon,
      Moonless night and Galactic center), and Night Sky's Display only Labels, Custom date, Moon
      with Moonless night, and Galactic center (the Sun's bands are always there). */
   /* Globe's EARTH | MOON (#nsGlobeBodySwitch) is the same panel in the same place, centred over
@@ -4054,11 +4069,20 @@
     background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  #btnSgView.on::after, #btnNsGlobeBody.on::after { left: 15px; }
-  body.sg-length #sgLegendWrap .sg-leg-sep,
+  #btnSgView.on::after { left: 15px; }
+  /* EARTH | MOON | SUN: three labels, the body shown bright, the others dim, a bar between them */
+  #nsGlobeBodySwitch button.sg-view-lbl { background: none; border: none; padding: 0; font: inherit; letter-spacing: inherit; }
+  #nsGlobeBodySwitch .nsg-sep { color: var(--dim); cursor: default; }   /* a bar of its own, not part of a label */
+  #btnNightSkyPicker.ns-solar-hide { display: none !important; }   /* no RA/Dec picker in Orbit's SUN view */
+  #nsGlobeBodySwitch .sg-view-lbl:not(.dim) { color: #e8a020; }
+  #nightSkyDisplaySection.ns-globe-sun #nsGlobeSnowSubrow,
+  #nightSkyDisplaySection.ns-globe-sun #nsGlobeLightsSubrow,
+  #nightSkyDisplaySection.ns-globe-sun #nsGlobeMoonOrbitSubrow,
+  #nightSkyDisplaySection.ns-globe-offearth #nightSkySunSubrow,
+  #nightSkyDisplaySection.ns-globe-offearth #nsGlobeSubsolarSubrow,
+  #nightSkyDisplaySection.ns-globe-offearth #nightSkyMoonSubrow { opacity: 0.35; pointer-events: none; }   /* the EARTH view's paths */
+  body.sg-length #sgLegendWrap .sg-leg-sep:not(:has(+ .sg-leg-item[data-band="green"])),
   body.sg-length #sgLegendWrap .sg-leg-item[data-band="transit"],
-  body.sg-length #sgLegendWrap .sg-leg-item[data-band="green"],
-  body.sg-length #sgLegendWrap .sg-leg-item[data-band="red"],
   body.sg-length #sgLegendWrap .sg-leg-item[data-band="chmi"],
   body.sg-length #nightSkyDisplaySection.ns-sungraph .ns-sg-sun,
   body.sg-length #nightSkyDisplaySection.ns-sungraph .nightsky-sun-subrow:not(#nightSkyMoonlessSubrow) { display: none !important; }
