@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug547">
+  <link rel="stylesheet" href="css/style.css?perfdebug565">
 </head>
 <body>
 
@@ -455,6 +455,10 @@
         </svg>
       </button>
       <div id="nightSkyPickerBox"></div>
+      <!-- Orbit SUN view: the planet under the mouse (or found by search) - its distance from the Sun
+           and from the Earth and its elongation, placed beside the planet clear of the cursor
+           (render-nightsky-solar.js _nsSolarPlaceInfo). -->
+      <div id="nsSolarInfoBox"></div>
       <!-- Planetarium Equipment (js/render-nightsky-equipment.js) - round button in the corner, the
            Planetarium only (the picker and the search move one place left). Opens
            #nightSkyEquipmentPanel above the buttons: a telescope and an eyepiece, their figures, and
@@ -869,10 +873,14 @@
       </div>
       <!-- Globe: what the camera orbits - the same pill in the same place as TIMES | LENGTH
            (render-nightsky-globe.js, _nsGlobeSetBody). -->
-      <div id="nsGlobeBodySwitch" title="Orbit the Earth or the Moon">
-        <span class="sg-view-lbl" data-v="earth">EARTH</span>
-        <button id="btnNsGlobeBody" role="switch" aria-checked="false"></button>
-        <span class="sg-view-lbl dim" data-v="moon">MOON</span>
+      <div id="nsGlobeBodySwitch" title="Orbit the Earth, the Moon or the Sun (the solar system)">
+        <button type="button" class="sg-view-lbl" data-v="earth">EARTH</button>
+        <span class="nsg-sep" aria-hidden="true">|</span>
+        <button type="button" class="sg-view-lbl dim" data-v="moon">MOON</button>
+        <span class="nsg-sep" aria-hidden="true">|</span>
+        <button type="button" class="sg-view-lbl dim" data-v="sun">SUN</button>
+        <!-- kept for the code that cycles through the bodies; the labels are the switch -->
+        <button id="btnNsGlobeBody" data-pos="earth" aria-label="Orbit: earth" title="Earth, Moon, Sun in turn" hidden></button>
       </div>
       <div id="sgLegendWrap">
         <button id="sgLegendToggle" title="Hide / show the legend">▼</button>
@@ -897,8 +905,8 @@
           <div class="sg-leg-item ns-sg-gc" data-band="gc5" title="Astronomical night, with or without the Moon, with the centre of the Milky Way at least 5° up; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.58)"></span>Galactic center ≥ 5°<span class="sg-leg-val" id="sgLegendGc5"></span></div>
           <div class="sg-leg-item ns-sg-gc" data-band="gc10" title="Astronomical night, with or without the Moon, with the centre of the Milky Way at least 10° up; the value is the season, first to last night"><span class="sg-leg-sw" style="background:rgba(236,204,148,0.88)"></span>Galactic center ≥ 10°<span class="sg-leg-val" id="sgLegendGc10"></span></div>
           <div class="sg-leg-sep"></div>
-          <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper</div>
-          <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole</div>
+          <div class="sg-leg-item sg-leg-toggle" data-band="green"><span class="sg-leg-sw" style="background:rgb(80,220,120)"></span>Sunlight hitting the paper<span class="sg-leg-val" data-val="green"></span></div>
+          <div class="sg-leg-item sg-leg-toggle" data-band="red"><span class="sg-leg-sw" style="background:rgb(224,64,64)"></span>Sunlight hitting a pinhole<span class="sg-leg-val" data-val="red"></span></div>
           <div class="sg-leg-sep"></div>
           <div class="sg-leg-item sg-leg-toggle unavailable" data-band="chmi" title="Show sunshine or air temperature data from the nearest Czech Hydrometeorological Institute (CHMI) weather station"><span class="sg-leg-sw" style="background:linear-gradient(90deg,#110F08,#4F4117,#A5831D,#E8A020,#FFD24D)"></span>CHMI data - sunshine / temp.</div>
         </div>
@@ -1117,18 +1125,6 @@
         <button class="nightsky-sun-switch on" id="btnNsGlobeLights" role="switch" aria-checked="true"
           title="The cities' lights on the night side, from the light pollution map (VIIRS VNL 2025, EOG, CC BY 4.0)"></button>
       </div>
-      <label class="chk-row ns-sg-keep ns-sg-sun ns-globe-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
-      <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
-        <span class="nightsky-sun-label">Sun's path</span>
-        <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
-          title="Overlay the Sun's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
-      </div>
-      <!-- Globe view only (.ns-globe-only), while Sun is on (render-nightsky-globe.js). -->
-      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeSubsolarSubrow">
-        <span class="nightsky-sun-label">Subsolar point</span>
-        <button class="nightsky-sun-switch" id="btnNsGlobeSubsolar" role="switch" aria-checked="false"
-          title="Mark the point on the Earth where the Sun stands at the zenith"></button>
-      </div>
       <label class="chk-row ns-sg-keep ns-globe-keep" title="Overlay the Moon's real position and phase for the selected date/time"><input type="checkbox" id="chkNightSkyMoon" checked> Moon</label>
       <!-- Globe view only (.ns-globe-only): the Moon's orbit line (render-nightsky-globe.js). -->
       <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeMoonOrbitSubrow">
@@ -1165,6 +1161,18 @@
         <span class="nightsky-sun-label">Moonless night</span>
         <button class="nightsky-sun-switch" id="btnNightSkyMoonless" role="switch" aria-checked="false"
           title="Mark when the Sun is more than 18° below the horizon and the Moon is down - the darkest sky"></button>
+      </div>
+      <label class="chk-row ns-sg-keep ns-sg-sun ns-globe-keep" title="Overlay the Sun's own real position for the selected date/time"><input type="checkbox" id="chkNightSkySun" checked> Sun</label>
+      <div class="nightsky-sun-subrow" id="nightSkySunSubrow">
+        <span class="nightsky-sun-label">Sun's path</span>
+        <button class="nightsky-sun-switch" id="btnNightSkySunPath" role="switch" aria-checked="false"
+          title="Overlay the Sun's path from rise to set - the pass it is on now, or the next one while it is below the horizon"></button>
+      </div>
+      <!-- Globe view only (.ns-globe-only), while Sun is on (render-nightsky-globe.js). -->
+      <div class="nightsky-sun-subrow ns-globe-only" id="nsGlobeSubsolarSubrow">
+        <span class="nightsky-sun-label">Subsolar point</span>
+        <button class="nightsky-sun-switch" id="btnNsGlobeSubsolar" role="switch" aria-checked="false"
+          title="Mark the point on the Earth where the Sun stands at the zenith"></button>
       </div>
       <!-- Sun Graph only, its own item: astronomical night (with Moon and Moonless night on, Moonless
            night) with the galactic centre up. -->
@@ -1451,39 +1459,40 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
 </div>
 
-<script src="js/core.js?perfdebug547"></script>
-<script src="js/render-2d.js?perfdebug547"></script>
-<script src="js/controls.js?perfdebug547"></script>
-<script src="js/render-sungraph.js?perfdebug547"></script>
-<script src="js/render-3d.js?perfdebug547"></script>
-<script src="js/render-skydome.js?perfdebug547"></script>
-<script src="js/render-moon.js?perfdebug547"></script>
-<script src="js/render-planets.js?perfdebug547"></script>
-<script src="js/render-milkyway.js?perfdebug547"></script>
-<script src="js/render-deepsky.js?perfdebug547"></script>
-<script src="js/render-skyglow.js?perfdebug547"></script>
-<script src="js/render-nightsky.js?perfdebug547"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug547"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug547"></script>
-<script src="js/render-nightsky-trails.js?perfdebug547"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug547"></script>
-<script src="js/render-nightsky-3d.js?perfdebug547"></script>
-<script src="js/render-nightsky-globe.js?perfdebug547"></script>
-<script src="js/render-search.js?perfdebug547"></script>
-<script src="js/render-locpick.js?perfdebug547"></script>
-<script src="js/tz-lookup.js?perfdebug547"></script>
-<script src="js/lp-lookup.js?perfdebug547"></script>
-<script src="js/render-tzsearch.js?perfdebug547"></script>
-<script src="js/render-eclipse-map.js?perfdebug547"></script>
-<script src="js/render-export.js?perfdebug547"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug547"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug547"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug547"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug547"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug547"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug547"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug547"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug547"></script>
-<script src="js/render-eclipse.js?perfdebug547"></script>
+<script src="js/core.js?perfdebug565"></script>
+<script src="js/render-2d.js?perfdebug565"></script>
+<script src="js/controls.js?perfdebug565"></script>
+<script src="js/render-sungraph.js?perfdebug565"></script>
+<script src="js/render-3d.js?perfdebug565"></script>
+<script src="js/render-skydome.js?perfdebug565"></script>
+<script src="js/render-moon.js?perfdebug565"></script>
+<script src="js/render-planets.js?perfdebug565"></script>
+<script src="js/render-milkyway.js?perfdebug565"></script>
+<script src="js/render-deepsky.js?perfdebug565"></script>
+<script src="js/render-skyglow.js?perfdebug565"></script>
+<script src="js/render-nightsky.js?perfdebug565"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug565"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug565"></script>
+<script src="js/render-nightsky-trails.js?perfdebug565"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug565"></script>
+<script src="js/render-nightsky-3d.js?perfdebug565"></script>
+<script src="js/render-nightsky-globe.js?perfdebug565"></script>
+<script src="js/render-nightsky-solar.js?perfdebug565"></script>
+<script src="js/render-search.js?perfdebug565"></script>
+<script src="js/render-locpick.js?perfdebug565"></script>
+<script src="js/tz-lookup.js?perfdebug565"></script>
+<script src="js/lp-lookup.js?perfdebug565"></script>
+<script src="js/render-tzsearch.js?perfdebug565"></script>
+<script src="js/render-eclipse-map.js?perfdebug565"></script>
+<script src="js/render-export.js?perfdebug565"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug565"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug565"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug565"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug565"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug565"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug565"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug565"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug565"></script>
+<script src="js/render-eclipse.js?perfdebug565"></script>
 </body>
 </html>
