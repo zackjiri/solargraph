@@ -553,6 +553,8 @@ function _nsEqAct(act) {
 // setups shown, of the view's controls (_nsEqSyncButton) and on every Planetarium frame
 // (_nsEqDraw), but rebuilds only when the setups changed (_nsEq.ver) or the chips come back, with
 // no layout read otherwise; a ResizeObserver on the canvas and the time box places them again.
+// Above them, the object the view is locked on (_nsEqPickLock), also in Orbit EARTH / MOON and
+// with no setup shown; its x releases the lock (the picker stays on).
 let _nsEqChipsVer = -1;
 function _nsEqChipText(s) {
   if (_nsEqIsImaging(s)) {
@@ -569,18 +571,37 @@ function _nsEqViewOn() {
     && nightSkySubmode === 'planetarium' && !_nightSkyActiveFrame
     && document.getElementById('nightSkyCanvas').style.display !== 'none';
 }
+// The object the picker or the search locked on (render-search.js), its chip above the setups':
+// Planetarium and Orbit EARTH / MOON, the view on screen (no Catalog photo); a plain point has none
+function _nsEqPickLock() {
+  const L = _nightSkyPicker.lock, cv = document.getElementById('nightSkyCanvas');
+  const sub = nightSkySubmode === 'planetarium' || (nightSkySubmode === 'globe' && _nsGlobe.body !== 'sun');
+  return L && L.label && _nightSkyPicker.active && nightSkyActive && nightSkyTopView === 'visualization' && sub
+    && !_nightSkyActiveFrame && cv.style.display !== 'none' ? L : null;
+}
+// Its text: the name and the search's type (a planet's magnitude and distance move with the time)
+function _nsEqPickText(L) {
+  const list = typeof _nsSnapList === 'function' ? _nsSnapList() : null;
+  const e = list && list.find(q => q.lock === L || q.globeLock === L);
+  return e ? `${L.label} · ${e.info.type()}` : L.label;
+}
+let _nsEqPickTextEl = null, _nsEqPickShown = null;   // the object chip's text, its lock
 function _nsEqChips() {
   const box = document.getElementById('nightSkyEquipmentChips');
-  const on = _nsEqViewOn();
-  if (!on) {
-    if (_nsEqChipsVer !== -1) { box.style.display = 'none'; _nsEqChipsVer = -1; }
+  const on = _nsEqViewOn(), pick = _nsEqPickLock();
+  if (!on && !pick) {
+    if (_nsEqChipsVer !== -1) { box.style.display = 'none'; _nsEqChipsVer = -1; _nsEqPickShown = null; }
     return;
   }
-  if (_nsEqChipsVer === _nsEq.ver) return;
-  _nsEqChipsVer = _nsEq.ver;
+  const ver = on ? _nsEq.ver : 'none';
+  if (_nsEqChipsVer === ver && _nsEqPickShown === pick) {   // the same chips: only the object's text follows the time
+    if (pick && _nsEqPickTextEl) { const t = _nsEqPickText(pick); if (_nsEqPickTextEl.textContent !== t) _nsEqPickTextEl.textContent = t; }
+    return;
+  }
+  _nsEqChipsVer = ver; _nsEqPickShown = pick;
   box.style.display = 'flex';
   box.textContent = '';
-  _nsEq.shown.forEach((e, i) => {
+  if (on) _nsEq.shown.forEach((e, i) => {
     const chip = document.createElement('div'), dot = document.createElement('span');
     const text = document.createElement('span'), x = document.createElement('button');
     chip.className = 'ns-eq-chip';
@@ -595,6 +616,21 @@ function _nsEqChips() {
     chip.append(dot, text, x);
     box.appendChild(chip);
   });
+  _nsEqPickTextEl = null;
+  if (pick) {   // last, so above the setups (the box stacks upward)
+    const chip = document.createElement('div'), mark = document.createElement('span');
+    const text = document.createElement('span'), x = document.createElement('button');
+    chip.className = 'ns-eq-chip ns-pick-chip';
+    chip.style.setProperty('--eq', '#ff5050');
+    mark.className = 'ns-pick-mark'; mark.setAttribute('aria-hidden', 'true');
+    text.className = 'ns-pick-chip-text';
+    text.textContent = _nsEqPickText(pick);
+    x.type = 'button'; x.textContent = '×'; x.title = 'Release the view from this object'; x.setAttribute('aria-label', 'Release');
+    x.addEventListener('click', () => { _nightSkyPicker.lock = null; drawNightSky(); });
+    chip.append(mark, text, x);
+    box.appendChild(chip);
+    _nsEqPickTextEl = text;
+  }
   _nsEqPlaceChips();
 }
 function _nsEqPlaceChips() {

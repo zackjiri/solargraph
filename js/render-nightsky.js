@@ -3785,6 +3785,7 @@ function _nightSkyPickerSetActive(on) {
   document.getElementById('nightSkyCanvas').style.cursor = on ? 'crosshair' : 'default';
   if (!on) document.getElementById('nightSkyPickerBox').style.display = 'none';
   if (nightSkyActive) drawNightSky();
+  else if (typeof _nsEqChips === 'function') _nsEqChips();   // no lock, no object chip
 }
 document.getElementById('btnNightSkyPicker').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -3999,7 +4000,7 @@ function _nightSkyClearReadout() {
 function drawNightSky() {
   _nightSkyAtmHintSync();
   _nightSkyBortleSyncIfChanged();   // a new Location or its map tile come in: the Bortle scale row follows
-  if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); return; }   // render-nightsky-sungraph.js
+  if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); if (typeof _nsEqChips === 'function') _nsEqChips(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
   if (!cv) return;
   const ctx = cv.getContext('2d');
@@ -4030,6 +4031,7 @@ function drawNightSky() {
   }
   if (nightSkyTopView === 'visualization') _nightSkyUpdateStatusPanel();
   _nightSkyUpdateMagReadout();   // the twilight limit moves with the time
+  if (typeof _nsEqChips === 'function') _nsEqChips();   // the locked object's chip (render-nightsky-equipment.js)
 }
 
 // Top-level mode button, a peer of Gallery/Analyzer/Eclipse rather than an Analyzer sub-view -
