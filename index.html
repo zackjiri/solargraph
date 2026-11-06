@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug574">
+  <link rel="stylesheet" href="css/style.css?perfdebug582">
 </head>
 <body>
 
@@ -275,6 +275,37 @@
       <canvas id="locPickCanvas"></canvas>
       <!-- The height above the ground (js/render-locpick.js _locPickAltSync): a vertical slider on the
            right edge, the whole Earth at the top, on a log scale; double click: the whole Earth. -->
+      <!-- The towns' glow for the Location (js/render-locpick-glow.js): top left under the header
+           while the light pollution is shown, a map of the towns within 150 km and the glow's
+           direction rose, the map's scale and the sky's at that altitude; folded by the arrow under
+           it; not in the Eclipse map. -->
+      <div id="locGlowWrap">
+        <div id="locGlowBox">
+          <div class="lg-title">Glow toward towns</div>
+          <div class="lg-ctl">
+            <div class="ns-toggle" id="locGlowAlt" title="The altitude above the horizon the map's shares and the rose are for">
+              <button class="ns-btn" data-h="2">2°</button><button class="ns-btn" data-h="4">4°</button><button class="ns-btn" data-h="10">10°</button><button class="ns-btn" data-h="30">30°</button>
+            </div>
+            <div class="ns-toggle" id="locGlowMode" title="Share: each source's part in the glow here; Light: its own light, the same anywhere">
+              <button class="ns-btn" data-m="share">Share</button><button class="ns-btn" data-m="light">Light</button>
+            </div>
+          </div>
+          <canvas id="locGlowCanvas" width="300" height="150"></canvas>
+          <div id="locGlowNote"></div>
+          <div class="lg-leg" id="locGlowLegShare">
+            <div class="lg-name"></div>
+            <div class="lg-ramp"></div>
+            <div class="lg-ends"></div>
+            <div class="lg-ticks"></div>
+          </div>
+          <div class="lg-leg" id="locGlowLegSky" title="How bright the night sky is at this altitude here, from the darkest direction to the brightest, against the Bortle classes' skies">
+            <div class="lg-name"></div>
+            <div class="lg-rampwrap"><span id="locGlowRange"></span><div class="lg-sky"></div></div>
+            <div class="lg-ticks"></div>
+          </div>
+        </div>
+        <button id="locGlowToggle" title="Hide the towns' glow">▲</button>
+      </div>
       <div id="locPickAlt" title="Height above the ground: drag to zoom, double click for the whole Earth">
         <!-- the slider with its scale: ticks at round heights on both sides, their km on the right
              (built by _locPickAltScale) -->
@@ -321,7 +352,8 @@
            time zones switch each other off. Its legend bottom left, the data's source left of the buttons. -->
       <div id="locPickLpLegend">
         <div class="lpl-title">Bortle scale</div>
-        <!-- a class pointed at (mouse) or picked (click, tap; again to let go) shows alone, the rest dimmed -->
+        <!-- a class pointed at (mouse) or picked (click, tap; again to let go) shows alone, the rest dimmed;
+             the class of the Location's sky framed boldly (.here, _locPickLegendHere) -->
         <div class="lpl-scale"><button data-cls="1" aria-pressed="false" title="Show only class 1">1</button><button data-cls="2" aria-pressed="false" title="Show only class 2">2</button><button data-cls="3" aria-pressed="false" title="Show only class 3">3</button><button data-cls="4" aria-pressed="false" title="Show only class 4">4</button><button data-cls="5" aria-pressed="false" title="Show only class 5">5</button><button data-cls="6" aria-pressed="false" title="Show only class 6">6</button><button data-cls="7" aria-pressed="false" title="Show only class 7">7</button><button data-cls="8" aria-pressed="false" title="Show only class 8">8</button><button data-cls="9" aria-pressed="false" title="Show only class 9">9</button></div>
         <div class="lpl-ends"><span>dark</span><span>bright</span></div>
       </div>
@@ -1106,7 +1138,7 @@
         <div id="nightSkyBortleScale" aria-hidden="true"><span data-cls="1"></span><span data-cls="2"></span><span data-cls="3"></span><span data-cls="4"></span><span data-cls="5"></span><span data-cls="6"></span><span data-cls="7"></span><span data-cls="8"></span><span data-cls="9"></span></div>
         <span id="nightSkyBortleInfo"></span>
         <!-- Under the scale, with the class from the map: the sky brighter toward the towns within
-             150 km (js/lp-dir.js), off by default; greyed with a class set by hand. -->
+             150 km (js/lp-dir.js), on by default and with the scale; greyed with a class set by hand. -->
         <div class="ns-town-glow" title="Brighten the sky toward the towns within 150 km, high over the near ones and low over the far ones, from the light pollution map; off: the same in every direction">
           <span class="nightsky-sun-label">Glow toward towns</span>
           <button class="nightsky-sun-switch" id="btnNightSkyTownGlow" role="switch" aria-checked="false"></button>
@@ -1476,41 +1508,42 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
 </div>
 
-<script src="js/core.js?perfdebug574"></script>
-<script src="js/render-2d.js?perfdebug574"></script>
-<script src="js/controls.js?perfdebug574"></script>
-<script src="js/render-sungraph.js?perfdebug574"></script>
-<script src="js/render-3d.js?perfdebug574"></script>
-<script src="js/render-skydome.js?perfdebug574"></script>
-<script src="js/render-moon.js?perfdebug574"></script>
-<script src="js/render-planets.js?perfdebug574"></script>
-<script src="js/render-milkyway.js?perfdebug574"></script>
-<script src="js/render-deepsky.js?perfdebug574"></script>
-<script src="js/render-skyglow.js?perfdebug574"></script>
-<script src="js/render-nightsky.js?perfdebug574"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug574"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug574"></script>
-<script src="js/render-nightsky-trails.js?perfdebug574"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug574"></script>
-<script src="js/render-nightsky-3d.js?perfdebug574"></script>
-<script src="js/render-nightsky-globe.js?perfdebug574"></script>
-<script src="js/render-nightsky-solar.js?perfdebug574"></script>
-<script src="js/render-search.js?perfdebug574"></script>
-<script src="js/render-locpick.js?perfdebug574"></script>
-<script src="js/tz-lookup.js?perfdebug574"></script>
-<script src="js/lp-lookup.js?perfdebug574"></script>
-<script src="js/lp-dir.js?perfdebug574"></script>
-<script src="js/render-tzsearch.js?perfdebug574"></script>
-<script src="js/render-eclipse-map.js?perfdebug574"></script>
-<script src="js/render-export.js?perfdebug574"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug574"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug574"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug574"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug574"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug574"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug574"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug574"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug574"></script>
-<script src="js/render-eclipse.js?perfdebug574"></script>
+<script src="js/core.js?perfdebug582"></script>
+<script src="js/render-2d.js?perfdebug582"></script>
+<script src="js/controls.js?perfdebug582"></script>
+<script src="js/render-sungraph.js?perfdebug582"></script>
+<script src="js/render-3d.js?perfdebug582"></script>
+<script src="js/render-skydome.js?perfdebug582"></script>
+<script src="js/render-moon.js?perfdebug582"></script>
+<script src="js/render-planets.js?perfdebug582"></script>
+<script src="js/render-milkyway.js?perfdebug582"></script>
+<script src="js/render-deepsky.js?perfdebug582"></script>
+<script src="js/render-skyglow.js?perfdebug582"></script>
+<script src="js/render-nightsky.js?perfdebug582"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug582"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug582"></script>
+<script src="js/render-nightsky-trails.js?perfdebug582"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug582"></script>
+<script src="js/render-nightsky-3d.js?perfdebug582"></script>
+<script src="js/render-nightsky-globe.js?perfdebug582"></script>
+<script src="js/render-nightsky-solar.js?perfdebug582"></script>
+<script src="js/render-search.js?perfdebug582"></script>
+<script src="js/render-locpick.js?perfdebug582"></script>
+<script src="js/tz-lookup.js?perfdebug582"></script>
+<script src="js/lp-lookup.js?perfdebug582"></script>
+<script src="js/lp-dir.js?perfdebug582"></script>
+<script src="js/render-locpick-glow.js?perfdebug582"></script>
+<script src="js/render-tzsearch.js?perfdebug582"></script>
+<script src="js/render-eclipse-map.js?perfdebug582"></script>
+<script src="js/render-export.js?perfdebug582"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug582"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug582"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug582"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug582"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug582"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug582"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug582"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug582"></script>
+<script src="js/render-eclipse.js?perfdebug582"></script>
 </body>
 </html>
