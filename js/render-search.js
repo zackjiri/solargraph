@@ -209,14 +209,21 @@ function _nsSearchPick(i) {
   // below the horizon (Planetarium, Sky Map): nothing to aim at or mark, but its details - when it
   // rises, or that it never does here - go to the info panel (_nsSearch.info)
   const below = !globe && e.azEl(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).el < 0;
-  if (e.kind === 'dso') {
-    const chk = document.getElementById('chkNightSkyDeepSky');
-    if (!chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); }
-  }
   if (e.faintPlanet) {   // Uranus or Neptune: Planets on and "Only naked eye" off, so its dot shows
     const chk = document.getElementById('chkNightSkyPlanets');
     if (!chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); }
-    if (!showNightSkyFaintPlanets) _nightSkySetFaintPlanets(true);
+    if (!showNightSkyFaintPlanets && !globe) _nightSkySetFaintPlanets(true);   // Orbit shows every planet anyway
+  }
+  // before Deep sky is ticked: in SUN only planets are found, nothing else changes
+  if (globe && _nsGlobe.body === 'sun') {   // the solar system (render-nightsky-solar.js): a planet is ringed and turned to
+    const p = PLANETS.find(q => q.name === e.name);
+    if (p) { _nsSearchSetOpen(false); _nsSolarFocus(p.key); drawNightSky(); return; }
+    _nsSearchNote('In the SUN view only the planets are found; switch to EARTH for the rest');
+    return;
+  }
+  if (e.kind === 'dso') {
+    const chk = document.getElementById('chkNightSkyDeepSky');
+    if (!chk.checked) { chk.checked = true; chk.dispatchEvent(new Event('change', { bubbles: true })); }
   }
   _nsSearchSetOpen(false);
   _nsSearch.picked = e;
@@ -393,4 +400,86 @@ function _nsSearchFillStatus() {
   const em = mag + _nightSkyExtinctionMag(p.el), lim = _nightSkyAtmLimitAt(_skyDomeUnitVec(p.az, p.el));
   val('Vis', !isFinite(lim) ? `yes (${_nsSearchMag(em)}, dark sky)`
     : `${em <= lim ? 'yes' : 'no'} (${_nsSearchMag(em)}, limit ${_nsSearchMag(lim)})`);
+}
+
+// ── The picker's snap ───────────────────────────────────────────────────────────────────────────
+// With the RA/Dec picker on (Planetarium, Orbit EARTH and MOON), a named object drawn within
+// NS_SNAP_PX of the cursor - the Sun, the Moon, a planet, a star with a proper name, a deep sky
+// object - is "snapped": the picker's box puts its name and type above the RA/Dec (its own), and a
+// click locks on it the way the search does (lock / globeLock, its name beside the crosshair; a
+// body that moves is followed). The nearest wins; the Sun's and the Moon's disc add their radius.
+// Only what is drawn counts: above the horizon (Planetarium), Display's Sun / Moon / Planets /
+// "Only naked eye" / Deep sky, and the magnitude limit as the stars are cut. Anything else, the
+// picker works as before.
+const NS_SNAP_PX = 12, NS_SNAP_DISC_DEG = 0.27;
+let _nsSnapCache = null;   // the search's list while the deep sky data is not in (it is then not kept there)
+function _nsSnapList() {
+  if (_nsSearchIndex) return _nsSearchIndex;
+  if (!_nsSearchStarNames) { _nsSearchLoadData(); return null; }
+  if (!_nsSnapCache || _nsSnapCache.n !== _dsoList.length) { const l = _nsSearchBuild(); if (!l) return null; _nsSnapCache = { n: _dsoList.length, l }; }
+  return _nsSnapCache.l;
+}
+// Drawn at the moment on screen (az/el for the magnitude limit; Orbit has no horizon or atmosphere)
+function _nsSnapShown(e, a, globe) {
+  if (e.kind === 'constellation' || e.info.noSky) return false;
+  const chk = (id) => document.getElementById(id).checked, body = e.info.body;
+  if (body === 'sun') return globe || chk('chkNightSkySun');
+  if (body === 'moon') return globe ? _nsGlobe.body !== 'moon' : chk('chkNightSkyMoon');   // MOON already orbits it
+  if (e.kind === 'body') { const p = PLANETS.find(q => q.name === e.name); if (!p || !chk('chkNightSkyPlanets') || !_planetShown(p)) return false; }
+  if (e.kind === 'dso' && !chk('chkNightSkyDeepSky')) return false;
+  const m = e.info.magNow ? e.info.magNow() : e.mag;
+  if (m === null || m === undefined) return true;
+  return globe ? _nightSkyMagVisible(m) : _nightSkyVisFactor(m, a.az, a.el) > 0;
+}
+// An object's screen position, its direction of date (Orbit) or az/el (Planetarium), or null
+function _nsSnapPlace(e, v) {
+  if (!v.globe) {
+    const a = e.azEl(...v.now);
+    if (a.el < 0) return null;
+    const p = _nightSkyPlanetProject(v.layout, a.az, a.el);
+    return p.visible ? { x: p.x, y: p.y, a } : null;
+  }
+  const keep = _nightSkyPicker.lock;
+  let D; _nightSkyPicker.lock = e.globeLock; try { D = _nsGlobeLockDir(v.cam); } finally { _nightSkyPicker.lock = keep; }
+  const p = _nsGlobeProjectDir(v.cam, v.L, D);
+  if (!p) return null;
+  const P = e.globeLock.moon ? _nsGlobeMoonNow() : D.map((d, i) => v.cam.pos[i] + d * 1e4);
+  if (_nsGlobeOccluded(v.cam, P)) return null;   // behind the Earth
+  return { x: p.x, y: p.y, D };
+}
+// The angle between two J2000 points, degrees
+function _nsSnapSep(ra1, dec1, ra2, dec2) {
+  const r = Math.PI / 180, c = Math.sin(dec1 * r) * Math.sin(dec2 * r) + Math.cos(dec1 * r) * Math.cos(dec2 * r) * Math.cos((ra1 - ra2) * r);
+  return Math.acos(Math.max(-1, Math.min(1, c))) / r;
+}
+// The object snapped at the picker's hit (_nightSkyPickerHit of the event ev), or null:
+// {e, x, y, ra, dec} with the object's own J2000 RA/Dec
+function _nsSnapFind(hit, ev) {
+  const list = hit && _nsSnapList();
+  if (!list) return null;
+  const globe = nightSkySubmode === 'globe', cv = document.getElementById('nightSkyCanvas');
+  const dpr = cv._res || 1, w = cv.width / dpr, h = cv.height / dpr;
+  const v = globe ? { globe, cam: _nsGlobeCamera(), L: { cx: w / 2, cy: h / 2, scale: Math.min(w, h) / 2 * 0.9 } }
+    : { globe, now: _nsSearchNow(), layout: _nightSkyPlanetLayout(w, h) };
+  // the angle NS_SNAP_PX spans at the cursor: fixed objects farther than twice that are skipped unprojected
+  const h2 = _nightSkyPickerHit({ clientX: ev.clientX + 2 * NS_SNAP_PX, clientY: ev.clientY });
+  const reach = h2 ? Math.max(1e-4, _nsSnapSep(hit.ra, hit.dec, h2.ra, h2.dec)) : 180, pxPerDeg = 2 * NS_SNAP_PX / reach;
+  let best = null, bestD = Infinity;
+  for (const e of list) {
+    if (e.kind === 'constellation' || e.info.noSky) continue;
+    if (e.kind !== 'body' && _nsSnapSep(hit.ra, hit.dec, e.lock.ra, e.lock.dec) > reach) continue;
+    const q = _nsSnapPlace(e, v);
+    if (!q) continue;
+    const d = Math.hypot(q.x - hit.px, q.y - hit.py), disc = e.info.body ? NS_SNAP_DISC_DEG * pxPerDeg : 0;
+    if (d > NS_SNAP_PX + disc || d >= bestD || !_nsSnapShown(e, q.a, globe)) continue;
+    best = { e, q }; bestD = d;
+  }
+  if (!best) return null;
+  const { e, q } = best;
+  if (e.kind !== 'body') return { e, x: q.x, y: q.y, ra: e.lock.ra, dec: e.lock.dec };
+  const jde = _moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const eq = globe ? { ra: (Math.atan2(q.D[1], q.D[0]) * 180 / Math.PI + 360) % 360, dec: Math.asin(q.D[2]) * 180 / Math.PI }
+    : _skyAzElToRaDec(q.a.az, q.a.el, _nightSkyLstNow(), _nightSkyLatSigned());   // of date
+  const j = _moonPrecessToJ2000(eq.ra, eq.dec, jde);
+  return { e, x: q.x, y: q.y, ra: j.ra, dec: j.dec };
 }

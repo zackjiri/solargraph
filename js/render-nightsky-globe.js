@@ -434,7 +434,8 @@ function _nsGlobeStroke(ctx, cam, L, vecs) {
 function _nightSkyDrawGlobe(ctx, w, h) {
   _nsGlobeLoad();
   _nsGlobeLoadMoonTex();
-  _nsGlobeSyncUI();   // keeps EARTH | MOON centred when the view is resized
+  _nsGlobeSyncUI();   // keeps EARTH | MOON | SUN centred when the view is resized
+  if (_nsGlobe.body === 'sun') { _nsSolarDraw(ctx, w, h); return; }   // the solar system (render-nightsky-solar.js)
   if (!_nsGlobe.aimed) _nsGlobeAimAtPlace();
   _nsGlobePickerApplyLock();
   const lt = document.body.classList.contains('light');
@@ -497,8 +498,8 @@ function _nightSkyDrawGlobe(ctx, w, h) {
   if (moon && _nsGlobe.orbit) _nsGlobeDrawMoonOrbit(ctx, L, cam, moon, true);
   ctx.font = "11px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   // The subsolar point (Display "Subsolar point" under Sun): where the Sun stands at the zenith - a
-  // small, plain mark.
-  if (_nsGlobe.subsolar) {
+  // small, plain mark. The EARTH view's only, like the Sun's path (greyed in MOON and SUN).
+  if (_nsGlobe.subsolar && _nsGlobe.body === 'earth') {
     const p = _nsGlobeProject(cam, L, sunDir);
     if (p.visible) {
       ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
@@ -745,7 +746,8 @@ function _nsGlobeProjectDir(cam, L, v) {
 // Stars, planets and the Sun as the background; the globe is drawn over them, so whatever it hides
 // needs no test. Stars and planets come in J2000 and are precessed to the date (one matrix).
 let _nsGlobeStarVecs = null;
-function _nsGlobeDrawSky(ctx, L, cam, sunDir) {
+// opts.bodies === false: no planets (the SUN view draws them in space, render-nightsky-solar.js)
+function _nsGlobeDrawSky(ctx, L, cam, sunDir, opts) {
   const chk = (id) => document.getElementById(id).checked;
   const jde = _moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   const m = _skyPrecessionMatrix(jde);
@@ -766,7 +768,7 @@ function _nsGlobeDrawSky(ctx, L, cam, sunDir) {
     }
   }
   if (_dsoShown()) _dsoDrawGlobe(ctx, L, cam, toDate);   // render-deepsky.js
-  if (chk('chkNightSkyPlanets')) {
+  if (chk('chkNightSkyPlanets') && !(opts && opts.bodies === false)) {
     for (const pl of _planetPositions(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT).filter(_planetShown)) {
       const p = _nsGlobeProjectDir(cam, L, toDate(_skyDomeUnitVecRaDec({ ra: pl.raDeg, dec: pl.decDeg })));
       if (!p) continue;
@@ -913,7 +915,8 @@ function _nsGlobeDrawSurfaceOverlays(ctx, L, cam, theta) {
       }
     }
   }
-  const tr = showNightSkySunPath || showNightSkyMoonPath ? _nsGlobeTracks() : null;
+  // the Sun's and the Moon's paths: the EARTH view's only (greyed in MOON and SUN)
+  const tr = _nsGlobe.body === 'earth' && (showNightSkySunPath || showNightSkyMoonPath) ? _nsGlobeTracks() : null;
   const track = (pts, fill) => {
     const vs = pts.map(([lon, lat]) => _nsGlobeVec(lon, lat, theta));
     ctx.lineWidth = 3.5; ctx.strokeStyle = NIGHTSKY_SUN_PATH_COLOR_OUTLINE; _nsGlobeStroke(ctx, cam, L, vs);
@@ -1376,11 +1379,14 @@ function _nsGlobePickerDrawMarker(ctx, L, cam) {
 }
 
 // ── Camera sliders (#nsGlobeCamCtl): distance and field of view, log scale (slider 0..1) ───────
+// The distance's range follows the body: Earth or Moon radii, au round the Sun (NS_SOLAR_DIST_*)
 const _nsGlobeCamRange = { dist: [NS_GLOBE_DIST_MIN, NS_GLOBE_DIST_MAX], fov: [NS_GLOBE_FOV_MIN, NS_GLOBE_FOV_MAX] };
-function _nsGlobeToSlider(k, v) { const [a, b] = _nsGlobeCamRange[k]; return Math.log(v / a) / Math.log(b / a); }
-function _nsGlobeFromSlider(k, t) { const [a, b] = _nsGlobeCamRange[k]; return a * Math.pow(b / a, t); }
+function _nsGlobeDistRange() { return _nsGlobe.body === 'sun' ? [NS_SOLAR_DIST_MIN, NS_SOLAR_DIST_MAX] : _nsGlobeCamRange.dist; }
+function _nsGlobeRange(k) { return k === 'dist' ? _nsGlobeDistRange() : _nsGlobeCamRange[k]; }
+function _nsGlobeToSlider(k, v) { const [a, b] = _nsGlobeRange(k); return Math.log(v / a) / Math.log(b / a); }
+function _nsGlobeFromSlider(k, t) { const [a, b] = _nsGlobeRange(k); return a * Math.pow(b / a, t); }
 function _nsGlobeSetCam(k, v) {
-  const [a, b] = _nsGlobeCamRange[k];
+  const [a, b] = _nsGlobeRange(k);
   _nsGlobe[k] = Math.max(a, Math.min(b, v));
   _nsGlobeSyncCamCtl();
   if (_nsGlobeActive()) drawNightSky();
@@ -1393,9 +1399,15 @@ function _nsGlobeSyncCamCtl() {
   document.getElementById('nsGlobeDist').value = _nsGlobeToSlider('dist', _nsGlobe.dist);
   document.getElementById('nsGlobeFov').value = _nsGlobeToSlider('fov', _nsGlobe.fov);
   const d = _nsGlobe.dist;
-  const moonView = _nsGlobe.body === 'moon';
-  document.getElementById('nsGlobeDistVal').textContent = (d < 10 ? d.toFixed(2) : d < 100 ? d.toFixed(1) : Math.round(d)) + (moonView ? ' R☾' : ' R⊕');
-  document.getElementById('nsGlobeDistVal').title = Math.round(d * (moonView ? 1737.4 : NS_GLOBE_RE_KM)).toLocaleString('en-US') + (moonView ? ' km from the Moon\'s centre' : ' km from the Earth\'s centre');
+  const moonView = _nsGlobe.body === 'moon', sunView = _nsGlobe.body === 'sun';
+  const dv = document.getElementById('nsGlobeDistVal');
+  if (sunView) {
+    dv.textContent = (d < 1 ? d.toFixed(3) : d < 10 ? d.toFixed(2) : d.toFixed(1)) + ' au';
+    dv.title = (d * NS_SOLAR_AU_KM / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' million km from the Sun';
+  } else {
+    dv.textContent = (d < 10 ? d.toFixed(2) : d < 100 ? d.toFixed(1) : Math.round(d)) + (moonView ? ' R☾' : ' R⊕');
+    dv.title = Math.round(d * (moonView ? 1737.4 : NS_GLOBE_RE_KM)).toLocaleString('en-US') + (moonView ? ' km from the Moon\'s centre' : ' km from the Earth\'s centre');
+  }
   const f = _nsGlobe.fov;
   document.getElementById('nsGlobeFovVal').textContent = (f < 10 ? f.toFixed(2) : f.toFixed(1)) + '°';
 }
@@ -1425,39 +1437,51 @@ document.querySelectorAll('#nsGlobeFrameToggle .ns-btn').forEach(btn => btn.addE
   document.querySelectorAll('#nsGlobeFrameToggle .ns-btn').forEach(b => b.classList.toggle('active', b.dataset.v === _nsGlobe.frame));
   if (_nsGlobeActive()) drawNightSky();
 }));
-// EARTH | MOON: what the camera orbits. Each body keeps its own camera (direction and distance);
-// the first visit to the Moon starts 5 Moon radii out on its near side. MOON = SUN only applies
-// from the Earth's side, so its row hides in the Moon view.
+// EARTH | MOON | SUN: what the camera orbits. Each body keeps its own camera (direction and
+// distance); the first visit to the Moon starts 5 Moon radii out on its near side, the first to the
+// Sun at the home view (_nsSolarHome, render-nightsky-solar.js). MOON = SUN only applies from the
+// Earth's side, so its row hides elsewhere. The Sun's view is always levelled on the ecliptic: going
+// there or back, each body takes its own saved frame (between the Earth and the Moon the frame
+// chosen stays, as before).
 function _nsGlobeSetBody(body) {
   if (body === _nsGlobe.body) return;
-  _nsGlobe.saved[_nsGlobe.body] = { camAz: _nsGlobe.camAz, camEl: _nsGlobe.camEl, dist: _nsGlobe.dist, frame: _nsGlobe.frame };
+  const from = _nsGlobe.body;
+  _nsGlobe.saved[from] = { camAz: _nsGlobe.camAz, camEl: _nsGlobe.camEl, dist: _nsGlobe.dist, frame: _nsGlobe.frame };
   _nsGlobe.body = body;
+  // the SUN view has no RA/Dec picker (its button hides, _nsGlobeSyncUI): one left on from EARTH or
+  // MOON goes off with its lock, so a drag turns the view; leaving SUN its hover and search ring go
+  if (body === 'sun' && _nightSkyPicker.active) _nightSkyPickerSetActive(false);
+  if (body === 'sun') _nightSkyPicker.lock = null;
+  if (from === 'sun' && typeof _nsSolar !== 'undefined') { _nsSolar.focus = null; _nsSolar.hover = null; }
   const sv = _nsGlobe.saved[body];
   if (sv) {
     const f = _nsGlobe.frame;
     Object.assign(_nsGlobe, { camAz: sv.camAz, camEl: sv.camEl, dist: sv.dist, frame: sv.frame });
-    _nsGlobeSetFrame(f);   // in the frame now chosen
-  } else { _nsGlobe.dist = 5; _nsGlobeAimAtPlace(); }
+    if (body !== 'sun' && from !== 'sun') _nsGlobeSetFrame(f);   // in the frame now chosen
+  } else if (body === 'sun') _nsSolarHome();
+  else { _nsGlobe.dist = 5; _nsGlobeAimAtPlace(); }
   // the Earth found from the Moon (render-search.js) means nothing from the Earth: the lock goes
   if (_nightSkyPicker.lock && _nightSkyPicker.lock.earth && body === 'earth') _nightSkyPicker.lock = null;
   _nsGlobePickerRetarget();
   const moon = body === 'moon';
   const b = document.getElementById('btnNsGlobeBody');
-  b.classList.toggle('on', moon); b.setAttribute('aria-checked', String(moon));
+  b.dataset.pos = body; b.setAttribute('aria-label', 'Orbit: ' + body);
   document.querySelectorAll('#nsGlobeBodySwitch .sg-view-lbl').forEach(el => el.classList.toggle('dim', el.dataset.v !== body));
-  document.querySelector('#nsGlobeCamCtl .nsg-moonfix').style.display = moon ? 'none' : '';
+  document.querySelector('#nsGlobeCamCtl .nsg-moonfix').style.display = body === 'earth' ? '' : 'none';
   document.querySelector('#nsGlobeFrameToggle .ns-btn[data-v="equator"]').title = moon
     ? 'Level on the Moon\'s equator - the Moon turns under a fixed sky, once a month'
     : 'Level on the Earth\'s equator - the Earth turns under a fixed sky';
   document.querySelector('#nsGlobeFrameToggle .ns-btn[data-v="horizon"]').title = moon
     ? 'Level on the Moon\'s own axes - the camera turns with the Moon, the Moon stays put, the sky turns'
     : 'Level on the place\'s horizon - the globe stays put, the sky turns';
-  document.querySelector('#nsGlobeCamCtl .nsg-row[data-k="dist"]').title = 'Camera distance from the ' + (moon ? 'Moon' : 'Earth')
-    + '\'s centre, in ' + (moon ? 'Moon' : 'Earth') + ' radii (log scale) - click to put the mouse wheel on it';
+  document.querySelector('#nsGlobeCamCtl .nsg-row[data-k="dist"]').title = body === 'sun'
+    ? 'Camera distance from the Sun, in au (log scale) - click to put the mouse wheel on it'
+    : 'Camera distance from the ' + (moon ? 'Moon' : 'Earth') + '\'s centre, in ' + (moon ? 'Moon' : 'Earth') + ' radii (log scale) - click to put the mouse wheel on it';
+  _nsGlobeSyncUI();
   _nsGlobeSyncCamCtl();
   if (_nsGlobeActive()) drawNightSky();
 }
-document.getElementById('btnNsGlobeBody').addEventListener('click', () => _nsGlobeSetBody(_nsGlobe.body === 'earth' ? 'moon' : 'earth'));
+document.getElementById('btnNsGlobeBody').addEventListener('click', () => _nsGlobeSetBody({ earth: 'moon', moon: 'sun', sun: 'earth' }[_nsGlobe.body]));
 document.querySelectorAll('#nsGlobeBodySwitch .sg-view-lbl').forEach(el => el.addEventListener('click', () => _nsGlobeSetBody(el.dataset.v)));
 document.getElementById('btnNsGlobeMoonFix').addEventListener('click', () => {
   _nsGlobe.moonFixed = !_nsGlobe.moonFixed;
@@ -1501,12 +1525,12 @@ document.getElementById('nsGlobeRose').addEventListener('click', () => {
   const end = () => { if (!dragging) return; dragging = false; _nsGlobe.interacting = false; cv.style.cursor = _nightSkyPicker.active ? 'crosshair' : ''; if (_nsGlobeActive()) drawNightSky(); };
   cv.addEventListener('mousedown', (e) => {
     if (!_nsGlobeActive()) return;
-    if (_nightSkyPicker.active) { _nightSkyPickerPick(e); e.preventDefault(); return; }
+    if (_nightSkyPicker.active && _nsGlobe.body !== 'sun') { _nightSkyPickerPick(e); e.preventDefault(); return; }
     start(e.clientX, e.clientY); e.preventDefault();
   });
   window.addEventListener('mousemove', (e) => move(e.clientX, e.clientY));
   window.addEventListener('mouseup', end);
-  cv.addEventListener('dblclick', () => { if (_nsGlobeActive()) { _nsGlobeAimAtPlace(); drawNightSky(); } });
+  cv.addEventListener('dblclick', () => { if (_nsGlobeActive()) { if (_nsGlobe.body === 'sun') _nsSolarHome(); else _nsGlobeAimAtPlace(); drawNightSky(); } });
   const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
   cv.addEventListener('touchstart', (e) => {
     if (!_nsGlobeActive()) return;
@@ -1530,6 +1554,19 @@ document.getElementById('nsGlobeRose').addEventListener('click', () => {
 // Subsolar point (CSS: #nightSkyDisplaySection.ns-globe); the camera panel.
 // Sun and Moon are always on in Globe: their checkboxes show ticked and disabled while it shows,
 // and get back the state the other views had (kept in _nsGlobeSyncUI.kept) when it is left.
+// In Orbit, Moon's path, Sun's path and Subsolar point (all on the Earth's surface) sit under Earth,
+// after Light pollution, and the Sun row is hidden (CSS); outside Orbit each goes back to where it
+// was, marked by an empty placeholder left in its place the first time.
+const NS_GLOBE_EARTH_ROWS = ['nightSkyMoonSubrow', 'nightSkySunSubrow', 'nsGlobeSubsolarSubrow'];
+function _nsGlobeMoveEarthRows(on) {
+  let after = document.getElementById('nsGlobeLightsSubrow');
+  for (const id of NS_GLOBE_EARTH_ROWS) {
+    const el = document.getElementById(id);
+    let home = document.querySelector(`[data-ns-home="${id}"]`);
+    if (!home) { home = document.createElement('span'); home.hidden = true; home.dataset.nsHome = id; el.before(home); }
+    if (on) { after.after(el); after = el; } else home.after(el);
+  }
+}
 function _nsGlobeSyncUI() {
   const on = _nsGlobeActive();
   const sec = document.getElementById('nightSkyDisplaySection');
@@ -1542,12 +1579,13 @@ function _nsGlobeSyncUI() {
       boxes.forEach((b, i) => { b.disabled = false; if (_nsGlobeSyncUI.kept) b.checked = _nsGlobeSyncUI.kept[i]; });
       _nightSkyUpdateSunSubrow(); _nightSkyUpdateMoonSubrow();
     }
+    _nsGlobeMoveEarthRows(on);
   }
   sec.classList.toggle('ns-globe', on);
   // Az/Alt grid belongs to an observer at the place on Earth, and the MOON view has none: there it
   // is unticked and greyed (the rose then draws no horizon or vault either), and gets back the
   // state it had when the view returns to EARTH or Globe is left (_nsGlobe.gridKept).
-  const grid = document.getElementById('chkNightSkyGrid'), gridOff = on && _nsGlobe.body === 'moon';
+  const grid = document.getElementById('chkNightSkyGrid'), gridOff = on && _nsGlobe.body !== 'earth';
   if (gridOff && _nsGlobe.gridKept === null) {
     _nsGlobe.gridKept = grid.checked;
     grid.checked = false; grid.disabled = true;
@@ -1558,6 +1596,14 @@ function _nsGlobeSyncUI() {
     _nsGlobe.gridKept = null;
   }
   document.getElementById('nsGlobeCamCtl').style.display = on ? 'flex' : 'none';
+  // the SUN view (render-nightsky-solar.js): always on the ecliptic, so no EQU | ECL | HOR; the
+  // Earth's layers and Moon's orbit greyed (.ns-globe-sun)
+  document.getElementById('nsGlobeFrameToggle').style.display = on && _nsGlobe.body === 'sun' ? 'none' : '';
+  document.getElementById('btnNightSkyPicker').classList.toggle('ns-solar-hide', on && _nsGlobe.body === 'sun');
+  sec.classList.toggle('ns-globe-sun', on && _nsGlobe.body === 'sun');
+  if (!(on && _nsGlobe.body === 'sun')) _nsSolarHideInfo();   // the SUN view's planet box
+  // Sun's path, Subsolar point and Moon's path are the EARTH view's: greyed in MOON and SUN (.ns-globe-offearth)
+  sec.classList.toggle('ns-globe-offearth', on && _nsGlobe.body !== 'earth');
   if (!on) document.getElementById('nsGlobeRose').style.display = 'none';   // shown by _nsGlobeDrawRose
   // EARTH | MOON where Sun Graph has TIMES | LENGTH: centred over the view, on the title row.
   const bs = document.getElementById('nsGlobeBodySwitch');

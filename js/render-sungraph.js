@@ -314,6 +314,14 @@ function _sgEnsureYearRuns() {
   return _sgYearRuns;
 }
 
+// One day's total sunlight in hours (Length view): hitting the paper (green) and hitting the pinhole
+// but missing the paper (red), the sums of the day's stretches in _sgEnsureYearRuns
+function _sgSunlightLengths(doy) {
+  const r = _sgEnsureYearRuns()[doy];
+  const sum = (list) => list.reduce((a, iv) => a + (iv[1] - iv[0]), 0);
+  return r ? { green: sum(r.green), red: sum(r.red) } : { green: 0, red: 0 };
+}
+
 // iv is [t0,t1] in true solar time (see _sgDayRuns) - reproject through displayHour() same as
 // the panel's other rows (sgRiseSet, sgLegendTransit) so it also follows the Time mode toggle.
 function _sgFmtRange(iv, day) {
@@ -583,7 +591,7 @@ function _sgDraw(cv, src) {
         : (d) => d >= exp.startDoy || d <= exp.endDoy)      // exposure wrapping across year-end
     : () => false;
   const timeLayers = !lengthMode;   // layers placed in time of day: not in the length view
-  const yearRuns = src.solar && timeLayers ? _sgEnsureYearRuns() : [];
+  const yearRuns = src.solar ? _sgEnsureYearRuns() : [];
   const redCol   = (hi) => _sgEmphBand === 'red'   ? _SG_RED_EMPH   : (hi ? _SG_RED_HI   : _SG_RED);
   const greenCol = (hi) => _sgEmphBand === 'green' ? _SG_GREEN_EMPH : (hi ? _SG_GREEN_HI : _SG_GREEN);
   if (src.solar && timeLayers) _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
@@ -602,6 +610,17 @@ function _sgDraw(cv, src) {
       }
     }
   });
+  // Length view: each day's total from the bottom, sunlight on the paper (green) and, stacked on it,
+  // through the pinhole but past the paper (red), so the red's top is the time the Sun entered the
+  // can; inside the day's band, brighter within the exposure, switched and emphasised by the legend
+  if (src.solar && lengthMode) {
+    for (let d = 1; d <= NDAYS; d++) {
+      if (!yearRuns[d]) continue;
+      const L = _sgSunlightLengths(d), x0 = dayToX(d), w = Math.max(1, dayToX(d + 1) - x0 + 1), hi = inExp(d);
+      if (_sgShowGreen && L.green > 0) { ctx.fillStyle = greenCol(hi); ctx.fillRect(x0, hourToY(L.green), w, hourToY(0) - hourToY(L.green)); }
+      if (_sgShowRed && L.red > 0) { ctx.fillStyle = redCol(hi); ctx.fillRect(x0, hourToY(L.green + L.red), w, hourToY(L.green) - hourToY(L.green + L.red)); }
+    }
+  }
 
   // ── CHMI measured sunshine overlay (continuous gradient, 10-min resolution) ──
   // Drawn on top of the theoretical green/red overlay - only exists for days covered by the
@@ -951,6 +970,7 @@ function _sgUpdateLegendTimes(src, d, evs, lengthMode) {
     day: span(ev.day), civil: span(ev.civ), naut: span(ev.naut), astro: span(ev.astro),
     night: (ev.astro.polarDay || ev.astro.polarNight) ? '—' : hm(ev.astro.set, ev.astro.eotSet) + ' / ' + hm(ev.astro.rise, ev.astro.eotRise),
   };
+  if (src.solar && lengthMode) { const S = _sgSunlightLengths(d); vals.green = _sgHM(S.green); vals.red = _sgHM(S.red); }   // the sunlight's lengths
   if (src.legendExtra) Object.assign(vals, src.legendExtra(d, lengthMode));   // e.g. Night Sky's Moon
   document.querySelectorAll('#sgLegend .sg-leg-val[data-val]').forEach(el => {
     el.textContent = src.showCustom && vals[el.dataset.val] !== undefined ? vals[el.dataset.val] : '';

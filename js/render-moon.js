@@ -360,9 +360,13 @@ function _nightSkyDiscAboveHorizon(el, semiDeg) {
 // Screen radius in Planetarium for a semi-diameter in degrees: the equidistant projection's own
 // radial scale, FOCAL*scale px per radian (exact at the view centre; towards the rim the tangential
 // scale grows, which a circle cannot show - negligible at the zooms where the disc is big enough to
-// matter, since the field there is narrow).
+// matter, since the field there is narrow). While Equipment shows a setup (Visual or Imaging,
+// render-nightsky-equipment.js) the discs keep their true size, without the minimum, so they
+// compare honestly with the eyepiece's or the sensor's field.
 function _nightSkyPlanetDiscRadiusPx(layout, semiDeg) {
-  return Math.max(_nightSkyBodyMinR(), _nightSkyPlanet3D.FOCAL * layout.scale * semiDeg * _MOON_D2R);
+  const truePx = _nightSkyPlanet3D.FOCAL * layout.scale * semiDeg * _MOON_D2R;
+  if (typeof _nsEq !== 'undefined' && _nsEq.shown.length && !_nightSkyActiveFrame) return truePx;
+  return Math.max(_nightSkyBodyMinR(), truePx);
 }
 const MOON_PATH_COLOR_OUTLINE = 'rgba(0,0,0,0.85)';
 const MOON_PATH_COLOR_FILL = 'rgba(190,205,235,0.9)';   // silver-blue, apart from the Sun path's green

@@ -50,9 +50,10 @@ const PLANETS = [
   { key: 'uranus',  name: 'Uranus',  radiusKm: 25362,  color: '#b8e6ea', faint: true, mag: (r, R, fv) => -7.15 + 5 * Math.log10(r * R) + 0.001 * fv },
   { key: 'neptune', name: 'Neptune', radiusKm: 24622,  color: '#93b4ff', faint: true, mag: (r, R, fv) => -6.90 + 5 * Math.log10(r * R) + 0.001 * fv },
 ];
-// Uranus and Neptune shown: Display "Only naked eye" (#btnNightSkyFaintPlanets, under Planets) off.
+// Uranus and Neptune shown: Display "Only naked eye" (#btnNightSkyFaintPlanets, under Planets) off,
+// or always in Orbit (nightSkySubmode 'globe', render-nightsky.js), where that row is not shown.
 let showNightSkyFaintPlanets = false;
-function _planetShown(p) { return !p.faint || showNightSkyFaintPlanets; }
+function _planetShown(p) { return !p.faint || showNightSkyFaintPlanets || (typeof nightSkySubmode !== 'undefined' && nightSkySubmode === 'globe'); }
 const PLANET_LIGHT_DAYS_PER_AU = 0.0057755183;
 const PLANET_OBLIQUITY_J2000 = 23.43928 * Math.PI / 180;
 

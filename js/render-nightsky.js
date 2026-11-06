@@ -3765,7 +3765,9 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
 // photo is presented (_nightSkyUpdatePresentationLock), and switched off whenever Planetarium
 // isn't showing. A small red crosshair marks the locked point. The search (render-search.js) locks
 // the same way on the object picked, with its name beside the crosshair; a body that moves on the
-// sky (the Sun, the Moon, a planet) brings its own position, at().
+// sky (the Sun, the Moon, a planet) brings its own position, at(). Near a named object (the Sun,
+// the Moon, a planet, a star with a proper name, a deep sky object; _nsSnapFind in render-search.js)
+// the box adds its name and type, and a click locks on the object itself as the search does.
 const _nightSkyPicker = { active: false, lock: null };   // lock: {ra, dec} (J2000 deg) | {at} , label? | null
 // Az/El of the locked point at a given instant: a J2000 point precessed to that date, like a star,
 // or the body's own position.
@@ -3809,8 +3811,11 @@ function _nightSkyPickerHit(e) {
 function _nightSkyPickerPick(e) {
   const hit = _nightSkyPickerHit(e);
   if (!hit || hit.el < 0) return;   // only above the horizon
-  _nightSkyPicker.lock = { ra: hit.ra, dec: hit.dec };
-  if (nightSkySubmode === 'globe') _nsGlobePickerRetarget();   // hold it where it was clicked
+  // a named object near the cursor (render-search.js): locked on itself, as the search does;
+  // otherwise the point under the cursor
+  const snap = _nsSnapFind(hit, e), globe = nightSkySubmode === 'globe';
+  _nightSkyPicker.lock = snap ? (globe ? snap.e.globeLock : snap.e.lock) : { ra: hit.ra, dec: hit.dec };
+  if (globe) _nsGlobePickerRetarget();   // hold it where it was clicked (a snapped object where it is)
   document.getElementById('nightSkyPickerBox').style.display = 'none';
   drawNightSky();
 }
@@ -3903,7 +3908,10 @@ function _nightSkyPickerDrawMarker(ctx, layout) {
     if (!_nightSkyPicker.active || (nightSkySubmode !== 'planetarium' && nightSkySubmode !== 'globe')) return;
     const hit = _nightSkyPickerHit(e);
     if (!hit || hit.el < 0) { box.style.display = 'none'; return; }
-    box.innerHTML = 'RA&nbsp; ' + _nightSkyFmtRaHMS(hit.ra) + '<br>Dec ' + _nightSkyFmtDecDMS(hit.dec)
+    // near a named object (render-search.js): its name and type above, and its own RA/Dec
+    const snap = _nsSnapFind(hit, e), esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const head = snap ? `<span class="picker-name">${esc(snap.e.name)}</span><br><span class="picker-type">${esc(snap.e.info.type())}</span><br>` : '';
+    box.innerHTML = head + 'RA&nbsp; ' + _nightSkyFmtRaHMS(snap ? snap.ra : hit.ra) + '<br>Dec ' + _nightSkyFmtDecDMS(snap ? snap.dec : hit.dec)
       + '<br><span class="picker-epoch">(J2000 epoch)</span>';
     box.style.left = (cv.offsetLeft + hit.px + 14) + 'px';
     box.style.top = (cv.offsetTop + hit.py + 14) + 'px';
