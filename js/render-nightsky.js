@@ -2007,9 +2007,16 @@ function _nightSkyTwilightLM(h) {
   if (art > 0) lm = _nsLMFromB(_nsBFromNL(_nsNLFromB(_nsBFromLM(lm)) + art));   // the natural sky uncapped (a night of 22.0)
   return lm;   // a dark night too: its class's (Schaefer: class 1 6.60, 2 6.53, 3 6.37, 4 6.04)
 }
-// Artificial light by altitude el (°): brighter toward the horizon, as over a town, 1 at the zenith,
-// 3 at the horizon. The direction to the town (azimuth) waits for the light pollution map.
-function _nightSkyArtDir(el) {
+// Artificial light in direction (az, el) (°) over the zenith's: with the sky's class from the light
+// pollution map, where the towns round the Location are (lp-dir.js _lpDirFactor: brighter toward
+// them, low over the far ones); otherwise (a class set by hand, Bortle off, no table yet) the same
+// in every direction, brighter toward the horizon as over a town, 1 at the zenith, 3 at the horizon.
+// The towns' table only with Display's "Glow toward towns" on (_nightSkyBortle.dir).
+// s: _nightSkyAtmState() (its artMap), or left out.
+function _nightSkyArtDir(az, el, s) {
+  const map = s ? s.artMap : _nightSkyBortle.dir && _nightSkySkySQM().source === 'map';
+  const f = map && typeof _lpDirFactor === 'function' ? _lpDirFactor(az, el) : null;
+  if (f !== null) return f;
   const x = 1 - Math.max(0, Math.min(90, el)) / 90;
   return 1 + 2 * x * x * x;
 }
@@ -2094,15 +2101,15 @@ function _nightSkySQMToBortle(sqm) {
 // (the default) the sky is that of class NIGHTSKY_BORTLE_OFF_CLS (3, a rural sky) whatever the
 // map or the class says, the same sky, colour and Milky Way as the scale on at that class
 // (_nightSkySkySQM); only the Mag ≤ slider differs, 6 instead of 6+ (_nightSkyBortleEnable).
-const _nightSkyBortle = { manual: 3, overrideAt: null, on: false };
+const _nightSkyBortle = { manual: 3, overrideAt: null, on: false, dir: false };   // dir: Glow toward towns
 const NIGHTSKY_BORTLE_OFF_CLS = 3;
 // The light pollution map (lp-lookup.js) at the Location; null off its area or while its tile comes in
 function _nightSkyMapSQM() {
   return typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
 }
 // What of the site's sky quality the drawing depends on: its brightness, or 'off'
-function _nightSkyBortleKey() {
-  return _nightSkyBortle.on ? _nightSkySiteSQM().sqm : 'off';
+function _nightSkyBortleKey() {   // with the directional table's version (lp-dir.js): the sky follows a new one
+  return _nightSkyBortle.on ? _nightSkySiteSQM().sqm + '|' + (_nightSkyBortle.dir ? 'dir' + (typeof _lpDir !== 'undefined' ? _lpDir.ver : 0) : 'even') : 'off';
 }
 function _nightSkyLocKey() {
   return [LAT, hemisphere, LONG, lonHemisphere].join('|');
@@ -2180,6 +2187,7 @@ function _nightSkyMoonEclipseLight(m) {
 let _nsAtmCache = { key: null, s: null };
 function _nightSkyAtmState() {
   if (!nightSkyAtmosphereOn || !_nightSkyMagControlsOn()) return null;
+  if (_nightSkyBortle.on && _nightSkyBortle.dir && typeof _lpDirSite === 'function' && _nightSkySkySQM().source === 'map') _lpDirSite();   // the site's directional table first: its version is in the key
   const key = [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT, LAT, hemisphere, LONG, lonHemisphere, _nightSkyBortleKey()].join('|');
   if (_nsAtmCache.key === key) return _nsAtmCache.s;
   const twiLM = _nightSkyAtmLimit();
@@ -2198,7 +2206,7 @@ function _nightSkyAtmState() {
   const twiEx = ecl ? 0 : Math.max(0, twiNL - nightNL);
   const s = { twiLM, twiNL, moon: null,
     skyNL: _nsNLFromB(_nightSkyTwilightB(sun.el, false)) * eclF, nightNL,
-    artNL: _nightSkyArtificialNL(),
+    artNL: _nightSkyArtificialNL(), artMap: _nightSkyBortle.dir && _nightSkySkySQM().source === 'map',   // artMap: the directional table applies
     twiEx: twiEx > 0.01 * nightNL ? twiEx : 0, twiZen: _glowDirFactor(90 - sun.el, 90, sun.el),
     sun: { v: _skyDomeUnitVec(sun.az, sun.el), el: sun.el },   // the Sun for the sky's colour (render-skyglow.js)
     ecl };                                                      // a solar eclipse going on, or null
@@ -2227,26 +2235,49 @@ function _nightSkyMoonNLAt(v, s, rhoMin) {
   const f = (Math.pow(10, 5.36) * (1.06 + c * c) + Math.pow(10, 6.15 - rho / 40)) * (1 + _NS_RHOC2 / (rho * rho));
   return f * s.moon.c * (1 - Math.pow(10, -0.4 * NIGHTSKY_EXTINCTION_K * _nsAirmass(Math.max(0, v[2]))));
 }
-// Without the Moon, an eclipse or twilight the limit depends on the altitude alone (the artificial
-// light's brightening toward the horizon): taken from a table by 0.5° of altitude made once per sky
-// state (s.elLim), linearly between, instead of per star (about ten times faster; within 0.001 mag).
-function _nightSkyAtmLimitByEl(s, el) {
-  if (!s.elLim) {
-    const t = new Float64Array(182);
-    for (let i = 0; i < 182; i++) {
-      const e = Math.min(90, i * 0.5);
-      t[i] = Math.min(_nsLMFromB(_nsBFromNL(s.twiNL + s.artNL * _nightSkyArtDir(e))), s.twiLM);
-    }
-    s.elLim = t;
+// Without the Moon, an eclipse or twilight the limit depends on the artificial light's direction
+// alone: taken from a table made once per sky state (s.dirLim) by 0.5° of altitude and, with the
+// directional table (lp-dir.js), by 5° of azimuth (72 columns; else one), bilinearly, instead of
+// per star (about ten times faster; within 0.001 mag of the direct value on the even factor).
+// The table is also kept across sky states with the same inputs (a dark night under Play changes the
+// moment every frame, not the sky): _nsDirLimCache.
+let _nsDirLimCache = { key: null, t: null, nAz: 1 };
+function _nightSkyAtmLimitByDir(s, az, el) {
+  if (!s.dirLim) {
+    const G = s.artMap && typeof _lpDirGrid === 'function' ? _lpDirGrid() : null, nAz = G ? 72 : 1;
+    const ck = [s.twiNL, s.artNL, s.twiLM, G ? _lpDir.ver : 'even'].join('|');
+    if (_nsDirLimCache.key === ck) { s.dirLim = _nsDirLimCache.t; s.dirLimAz = _nsDirLimCache.nAz; }
   }
-  const x = Math.max(0, Math.min(90, el)) * 2, i = Math.min(179, Math.floor(x)), f = x - i;
-  return s.elLim[i] + f * (s.elLim[i + 1] - s.elLim[i]);
+  if (!s.dirLim) {
+    const G = s.artMap && typeof _lpDirGrid === 'function' ? _lpDirGrid() : null, nAz = G ? 72 : 1, t = new Float64Array(nAz * 182);
+    const lm = (f) => Math.min(_nsLMFromB(_nsBFromNL(s.twiNL + s.artNL * f)), s.twiLM);
+    if (!G) for (let i = 0; i < 182; i++) t[i] = lm(_nightSkyArtDir(0, Math.min(90, i * 0.5), s));
+    else {   // the limit by the factor alone in this state: 1024 conversions on a log scale, interpolated (within 0.001 mag)
+      let lo = Infinity, hi = 0; for (let k = 0; k < G.length; k++) { if (G[k] < lo) lo = G[k]; if (G[k] > hi) hi = G[k]; }
+      lo = Math.max(1e-6, lo); hi = Math.max(hi, lo * 1.0001);
+      const N = 1024, L0 = Math.log(lo), dL = (Math.log(hi) - L0) / (N - 1), tab = new Float64Array(N);
+      for (let k = 0; k < N; k++) tab[k] = lm(Math.exp(L0 + k * dL));
+      for (let k = 0; k < G.length; k++) {
+        const x = (Math.log(Math.max(lo, G[k])) - L0) / dL, j = Math.min(N - 2, Math.floor(x)), f = x - j;
+        t[k] = tab[j] + f * (tab[j + 1] - tab[j]);
+      }
+    }
+    s.dirLim = t; s.dirLimAz = nAz;
+    _nsDirLimCache = { key: [s.twiNL, s.artNL, s.twiLM, G ? _lpDir.ver : 'even'].join('|'), t, nAz };
+  }
+  const x = Math.max(0, Math.min(90, el)) * 2, i = Math.min(180, Math.floor(x)), f = x - i, t = s.dirLim;
+  if (s.dirLimAz === 1) return t[i] + f * (t[i + 1] - t[i]);
+  const y = ((az % 360) + 360) % 360 / 5, a0 = Math.floor(y) % 72, a1 = (a0 + 1) % 72, g = y - Math.floor(y);
+  const lo = t[a0 * 182 + i] * (1 - g) + t[a1 * 182 + i] * g, hi = t[a0 * 182 + i + 1] * (1 - g) + t[a1 * 182 + i + 1] * g;
+  return lo + f * (hi - lo);
 }
+// The azimuth (°) of a horizon-frame direction (inverse of _skyDomeUnitVec)
+function _nightSkyAzOf(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
 function _nightSkyAtmLimitAt(v) {
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
   if (!s.moon && !s.ecl && !s.artNL && !s.twiEx) return s.twiLM;
-  if (!s.moon && !s.ecl && !s.twiEx) return _nightSkyAtmLimitByEl(s, Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI);
+  if (!s.moon && !s.ecl && !s.twiEx) return _nightSkyAtmLimitByDir(s, _nightSkyAzOf(v), Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI);
   // the twilight brighter toward the Sun and the horizon, as the sky's colour (_glowDirFactor,
   // render-skyglow.js), the same at the zenith; a solar eclipse: the twilight sky as bright as this
   // direction's air is lit (_nightSkyEclSkyAt); the site's artificial light brighter toward the horizon
@@ -2256,7 +2287,7 @@ function _nightSkyAtmLimitAt(v) {
     const psi = Math.acos(Math.max(-1, Math.min(1, v[0] * s.sun.v[0] + v[1] * s.sun.v[1] + v[2] * s.sun.v[2]))) * 180 / Math.PI;
     twi += s.twiEx * (_glowDirFactor(psi, Math.max(0, el), s.sun.el) / s.twiZen - 1);
   }
-  const lm = _nsLMFromB(_nsBFromNL(twi + s.artNL * _nightSkyArtDir(el) + _nightSkyMoonNLAt(v, s)));
+  const lm = _nsLMFromB(_nsBFromNL(twi + s.artNL * _nightSkyArtDir(_nightSkyAzOf(v), el, s) + _nightSkyMoonNLAt(v, s)));
   return s.ecl ? lm : Math.min(lm, s.twiLM);
 }
 // Extinction near the horizon (Atmosphere on): an object at apparent altitude el (°) dims by
@@ -2287,7 +2318,7 @@ function _nightSkyVisFactor(mag, az, el, baseMag) {
 }
 // The same for a whole pass of stars: the slider and the sky's state read once (_nightSkyVisPrep;
 // each read alone costs more than the rest), and on a night with the limit by altitude alone
-// (_nightSkyAtmLimitByEl) no direction vector either.
+// (_nightSkyAtmLimitByDir) no direction vector either.
 function _nightSkyVisPrep() {
   const s = _nightSkyAtmState();
   return { slider: _nightSkySliderLimit(), s, byEl: !!s && !s.moon && !s.ecl && !s.twiEx && !!s.artNL };
@@ -2295,7 +2326,7 @@ function _nightSkyVisPrep() {
 function _nightSkyVisWith(q, mag, az, el) {
   if (mag > q.slider) return 0;
   if (!q.s) return 1;
-  const L = q.byEl ? _nightSkyAtmLimitByEl(q.s, el) : _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el));
+  const L = q.byEl ? _nightSkyAtmLimitByDir(q.s, az, el) : _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el));
   if (!(mag > L)) return 1;
   return Math.max(0, 1 - (mag - L) / NIGHTSKY_ATM_FADE);
 }
@@ -4111,7 +4142,7 @@ function _nightSkyBortleSyncIfChanged() {
 }
 function _nightSkyBortleSyncUI() {
   const q = _nightSkySkySQM(), atm = nightSkyAtmosphereOn, on = atm && _nightSkyBortle.on;
-  _nightSkyBortleShown = [q.sqm, q.cls, q.source, atm, _nightSkyBortle.on].join('|');
+  _nightSkyBortleShown = [q.sqm, q.cls, q.source, atm, _nightSkyBortle.on, _nightSkyBortle.dir].join('|');
   const chk = document.getElementById('chkNightSkyBortle');
   chk.checked = _nightSkyBortle.on; chk.disabled = !atm;
   document.getElementById('nightSkyBortleValue').textContent = String(q.cls);
@@ -4125,7 +4156,25 @@ function _nightSkyBortleSyncUI() {
     + (_nightSkyBortle.on ? 'Untick for a rural sky (class 3) with stars to mag 6.' : 'Off: a rural sky (class 3), stars to mag 6; tick for this place\'s light pollution.');
   document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
   document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
+  const tg = document.getElementById('btnNightSkyTownGlow');   // Glow toward towns: needs the class from the map
+  tg.classList.toggle('on', _nightSkyBortle.dir); tg.setAttribute('aria-checked', String(_nightSkyBortle.dir));
+  tg.disabled = !on || q.source !== 'map';
 }
+// Glow toward towns (under the Bortle scale): the sky brighter toward the towns round the Location
+// (lp-dir.js), off by default, remembered in the browser
+const NIGHTSKY_TOWN_GLOW_KEY = 'nsTownGlow';
+function _nightSkyTownGlowStored() {
+  try { return localStorage.getItem(NIGHTSKY_TOWN_GLOW_KEY) === '1'; } catch (e) { return false; }
+}
+function _nightSkyTownGlowEnable(on) {
+  _nightSkyBortle.dir = !!on;
+  try { localStorage.setItem(NIGHTSKY_TOWN_GLOW_KEY, on ? '1' : '0'); } catch (e) { /* blocked: this page only */ }
+  _nsAtmCache.key = null;
+  _nightSkyBortleSyncUI();
+  if (nightSkyActive) drawNightSky();
+}
+_nightSkyBortle.dir = _nightSkyTownGlowStored();
+document.getElementById('btnNightSkyTownGlow').addEventListener('click', (e) => { if (!e.currentTarget.disabled) _nightSkyTownGlowEnable(!_nightSkyBortle.dir); });
 document.getElementById('chkNightSkyBortle').addEventListener('change', (e) => _nightSkyBortleEnable(e.target.checked));
 document.getElementById('btnNightSkyBortleDown').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls - 1));
 document.getElementById('btnNightSkyBortleUp').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls + 1));

@@ -228,7 +228,7 @@ function _nsTrSample(jd) {
     const vis = (mag, az, el) => {
       if (!atm) return 1;
       const em = mag + _nightSkyExtinctionMag(el);
-      const L = Math.min(NIGHTSKY_MAG_LIMIT_OFF, q.byEl ? _nightSkyAtmLimitByEl(q.s, el) : _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el))) + gain;
+      const L = Math.min(NIGHTSKY_MAG_LIMIT_OFF, q.byEl ? _nightSkyAtmLimitByDir(q.s, az, el) : _nightSkyAtmLimitAt(_skyDomeUnitVec(az, el))) + gain;
       return em <= L ? 1 : Math.max(0, 1 - (em - L) / NIGHTSKY_ATM_FADE);
     };
     for (const o of d.rows) {

@@ -129,7 +129,7 @@ function _glowDirFactor(psi, el, h) {
 function _glowColorAt(v, s, gZen, rhoMin) {
   const el = Math.asin(Math.max(0, Math.min(1, v[2]))) * 180 / Math.PI;
   const psi = Math.acos(Math.max(-1, Math.min(1, v[0] * s.sun.v[0] + v[1] * s.sun.v[1] + v[2] * s.sun.v[2]))) * 180 / Math.PI;
-  const art = (s.artNL || 0) * _nightSkyArtDir(el);   // the site's artificial light (Bortle class, map)
+  const art = (s.artNL || 0) * _nightSkyArtDir(_nightSkyAzOf(v), el, s);   // the site's artificial light (Bortle class, map; toward the towns)
   const night = (s.nightNL || 0) * _glowNightDir(el) * _nightSkyEclRatioAt(s.ecl, v);
   const nl = _glowDayNL(s) * _glowDirFactor(psi, el, s.sun.el) / gZen * _nightSkyEclRatioAt(s.ecl, v) + night + art + _nightSkyMoonNLAt(v, s, rhoMin);
   const hEff = s.ecl && s.ecl.T > 0 ? s.sun.el - 90 * s.ecl.T : s.sun.el;   // a total eclipse darkens as a sinking Sun
@@ -288,7 +288,9 @@ function _glowTwilight(c, v, s, psi, el) {
 // capped as above) stays on the coarse screen grid and is added per pixel; the core is the
 // gradient drawn after.
 const GLOW_BUF_PX = 3, GLOW_LUT_NE = 96, GLOW_LUT_NA = 61, GLOW_LUT_DAZ = 3;
-const GLOW_LUT_NA_FULL = 121;   // 0..360° from the Sun, for a solar eclipse
+// 0..360° from the Sun (a solar eclipse, the glow toward the towns): 121 columns of 3°, or of 6° (61)
+// at night (the Sun below GLOW_LUT_COARSE_EL, no eclipse)
+const GLOW_LUT_COARSE_EL = -12;
 // Each view keeps its own table and buffer ('ns' Night Sky, 'sd' Sky Dome), so switching between
 // them never forces a rebuild.
 const _glowSlots = {};
@@ -303,19 +305,24 @@ function _glowBuildLut(s, key, slot) {
   if (T.key === key) return T.d;
   const s0 = Object.assign({}, s, { moon: null }), gZen = _glowZenFactor(s);
   const sunAz = Math.atan2(s.sun.v[0], s.sun.v[1]);
-  // symmetric about the Sun's vertical, but the Moon's shadow in a solar eclipse is not: all round
-  const NA = s.ecl ? GLOW_LUT_NA_FULL : GLOW_LUT_NA;
+  // symmetric about the Sun's vertical, but the Moon's shadow in a solar eclipse is not, nor the glow
+  // toward the towns (lp-dir.js, the class from the map): then all round
+  const dirArt = s.artMap && s.artNL > 0 && typeof _lpDirSite === 'function' && _lpDirSite();
+  // all round in steps of 6° once the Sun is below GLOW_LUT_COARSE_EL (the towns' glow is smooth and
+  // the twilight's detail by the Sun gone; the same cost as the half table), else of 3°
+  const full = !!(s.ecl || dirArt), daz = full && !s.ecl && s.sun.el < GLOW_LUT_COARSE_EL ? 2 * GLOW_LUT_DAZ : GLOW_LUT_DAZ;
+  const NA = full ? Math.round(360 / daz) + 1 : GLOW_LUT_NA;
   const d = T.d && T.d.length === GLOW_LUT_NE * NA * 3 ? T.d : new Float32Array(GLOW_LUT_NE * NA * 3);
   for (let ie = 0; ie < GLOW_LUT_NE; ie++) {
     const se = ie / (GLOW_LUT_NE - 1), ce = Math.sqrt(1 - se * se);
     for (let ia = 0; ia < NA; ia++) {
-      const az = sunAz + ia * GLOW_LUT_DAZ * Math.PI / 180;
+      const az = sunAz + ia * daz * Math.PI / 180;
       const col = _glowColorAt([ce * Math.sin(az), ce * Math.cos(az), se], s0, gZen);
       const o = (ie * NA + ia) * 3;
       d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2];
     }
   }
-  T.key = key; T.d = d; T.na = NA;
+  T.key = key; T.d = d; T.na = NA; T.full = full; T.daz = daz;
   return d;
 }
 // The Moon's share d = RGB (with − without) recoloured in tint (normalised to luminance 1), d's
@@ -381,8 +388,8 @@ function _glowRender(ctx, w, h, s, tkey, dirAt, clip, viewKey, moonAt, slotName,
     }
     const lut = _glowBuildLut(s, tkey, slot), mg = _glowMoonGrid(s, w, h, dirAt);
     const shx = s.sun.v[0], shy = s.sun.v[1], shl = Math.hypot(shx, shy) || 1;
-    const NA = slot.lut.na, full = NA === GLOW_LUT_NA_FULL, d = B.img.data, out = [0, 0, 0];
-    const eMax = GLOW_LUT_NE - 1, aMax = NA - 1, aScale = 180 / Math.PI / GLOW_LUT_DAZ;
+    const NA = slot.lut.na, full = slot.lut.full, d = B.img.data, out = [0, 0, 0];
+    const eMax = GLOW_LUT_NE - 1, aMax = NA - 1, aScale = 180 / Math.PI / slot.lut.daz;
     for (let j = 0, p = 0; j < bh; j++) {
       const py = (j + 0.5) * bufPx;
       for (let i = 0; i < bw; i++, p += 4) {

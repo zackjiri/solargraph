@@ -2,7 +2,8 @@
 // SELECT opens #locPickWin over the canvas column, whatever mode is active: the Earth of the Globe
 // view (render-nightsky-globe.js: Natural Earth 1:110m land and lakes, its equirectangular
 // texture), with no external map service. An orthographic view, centred at first on the current
-// Location: drag (one finger) turns it, the wheel or two fingers zoom (1x-20x), a click or tap sets
+// Location: drag (one finger) turns it, the wheel, two fingers or the height slider on the right edge
+// zoom (1x-40x), a click or tap sets
 // the Location. Over the Earth the cursor is a pin with its tip on the point, off it the arrow.
 // Over the Earth the point under the tip shows in the Latitude / Longitude fields in grey and the
 // N|S and E|W switches follow it; off the Earth the fields return to the Location. A click sets
@@ -19,7 +20,11 @@
 // Visualization): the event's path and lines over the Earth, picking the same way.
 // In both, a round button (#btnLocPickZones; in SELECT left of the light pollution's, on the
 // Eclipse map in the corner) lays the time zones over the Earth.
-const LOC_PICK_ZOOM_MIN = 1, LOC_PICK_ZOOM_MAX = 20;
+const LOC_PICK_ZOOM_MIN = 1, LOC_PICK_ZOOM_MAX = 40;
+// The height above the ground shown for a zoom: a camera with a 50° field of view showing the ground
+// at the view's centre at the globe's scale there (the Earth's radius 0.44 × the shorter side × zoom):
+// 6371 km / (0.88 · tan 25°) / zoom, 15 500 km for the whole Earth, 390 km at the closest
+const LOC_PICK_ALT_KM = 6371 / (0.88 * Math.tan(25 * Math.PI / 180));
 const LOC_PICK_MAX_PX = 1600000;       // buffer pixels at most at rest (beyond: smoothed up)
 const LOC_PICK_MAX_PX_MOVING = 220000; // while dragged or pinched
 const LOC_PICK_WAVE_MS = 1300, LOC_PICK_WAVE_RINGS = 3, LOC_PICK_WAVE_GAP_MS = 190;
@@ -641,8 +646,52 @@ function _locPickDrawScale(ctx, L) {
   ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
 }
 function _locPickRequest() {
+  _locPickAltSync();
   if (!_locPick.raf) _locPick.raf = requestAnimationFrame(_locPickDraw);
 }
+// The height slider and its label follow the zoom (log scale: 0 the whole Earth, 1000 the closest)
+function _locPickAltText(km) {
+  const v = km >= 1000 ? Math.round(km / 100) * 100 : Math.round(km / 10) * 10;
+  return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' km';
+}
+function _locPickAltSync() {
+  const r = document.getElementById('locPickAltRange');
+  if (!r) return;
+  const v = Math.round(1000 * Math.log(_locPick.zoom / LOC_PICK_ZOOM_MIN) / Math.log(LOC_PICK_ZOOM_MAX / LOC_PICK_ZOOM_MIN));
+  if (Number(r.value) !== v) r.value = v;
+  const t = _locPickAltText(LOC_PICK_ALT_KM / _locPick.zoom), l = document.getElementById('locPickAltLabel');
+  if (l.textContent !== t) l.textContent = t;
+}
+// The scale beside it: round heights (km), a tick either side level with the thumb's centre there,
+// the number on the right; the thumb (14 px) travels the slider's height less its own size
+const LOC_PICK_ALT_TICKS = [10000, 5000, 2000, 1000, 500], LOC_PICK_ALT_THUMB = 14;
+function _locPickAltThumbY() {   // the thumb's centre from the slider's top (px) at the current value
+  const r = document.getElementById('locPickAltRange'), H = r.offsetHeight || 170;
+  return LOC_PICK_ALT_THUMB / 2 + Number(r.value) / 1000 * (H - LOC_PICK_ALT_THUMB);
+}
+function _locPickAltScale() {
+  const box = document.querySelector('#locPickAlt .lp-alt-scale'), H = 170;
+  for (const km of LOC_PICK_ALT_TICKS) {
+    const t = Math.log(LOC_PICK_ALT_KM / km / LOC_PICK_ZOOM_MIN) / Math.log(LOC_PICK_ZOOM_MAX / LOC_PICK_ZOOM_MIN);
+    const y = LOC_PICK_ALT_THUMB / 2 + t * (H - LOC_PICK_ALT_THUMB);
+    for (const side of ['l', 'r']) {
+      const k = document.createElement('span'); k.className = 'lp-alt-tick ' + side; k.style.top = (y - 0.5) + 'px'; box.appendChild(k);
+    }
+    const n = document.createElement('span'); n.className = 'lp-alt-num'; n.style.top = y + 'px';
+    n.textContent = String(km).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); box.appendChild(n);
+  }
+}
+_locPickAltScale();
+(function () {
+  const r = document.getElementById('locPickAltRange');
+  r.addEventListener('input', () => {
+    _locPick.zoom = LOC_PICK_ZOOM_MIN * Math.pow(LOC_PICK_ZOOM_MAX / LOC_PICK_ZOOM_MIN, Number(r.value) / 1000);
+    _locPick.moving = true;   // the lower resolution while it is dragged, the full one when let go
+    _locPickRequest();
+  });
+  r.addEventListener('change', () => { _locPick.moving = false; _locPickRequest(); });
+  r.addEventListener('dblclick', () => { _locPick.zoom = LOC_PICK_ZOOM_MIN; _locPick.moving = false; _locPickRequest(); });
+})();
 
 // ── The fields: grey preview of the point under the pin ─────────────────────────────────────────
 function _locPickShowHemi(latSigned, lonSigned) {
