@@ -2539,6 +2539,15 @@
     background: none; border: none; color: inherit; font-size: 13px; cursor: pointer;
   }
   #nightSkyEquipmentChips button:hover { color: var(--eq); }
+  /* The object the view is locked on (picker or search), above the setups: a small red crosshair for the dot */
+  #nightSkyEquipmentChips .ns-pick-mark {
+    position: relative; width: 9px; height: 9px; flex: 0 0 auto; border: 1.5px solid var(--eq); border-radius: 50%; box-sizing: border-box;
+  }
+  #nightSkyEquipmentChips .ns-pick-mark::before, #nightSkyEquipmentChips .ns-pick-mark::after {
+    content: ''; position: absolute; background: var(--eq); left: 50%; top: 50%; transform: translate(-50%, -50%);
+  }
+  #nightSkyEquipmentChips .ns-pick-mark::before { width: 13px; height: 1.5px; }
+  #nightSkyEquipmentChips .ns-pick-mark::after { width: 1.5px; height: 13px; }
   /* The camera mount (render-nightsky-equipment-mount.js): top centre, EQ lock as in Eclipse
      (#btnEclipseEQLock), the two arrows hang from its bottom corners, a quarter circle each with the
      tip toward the middle (the right one mirrored); the step between the tips, the angle under it. */
