@@ -118,7 +118,9 @@ function _lpDirLoadTile(key) {
 }
 // Bins (Float64Array, ring × 36 + sector) of the light round (lat, lon), or null while a tile it
 // needs is still coming in (its loading started; _lpOnLoad redraws when it is in)
-function _lpDirBins(lat, lon) {
+// The source tiles within reach of (lat, lon): their keys, or null while one of them is coming in
+// (its loading started; _lpOnLoad redraws when it is in); null too without source data at all
+function _lpDirTiles(lat, lon) {
   const idx = _lp.index && _lp.index.src;
   if (!idx) return null;
   const dLat = LP_DIR_RMAX_KM / 111.2, dLon = dLat / Math.max(0.05, Math.cos(lat * Math.PI / 180));
@@ -134,7 +136,42 @@ function _lpDirBins(lat, lon) {
     waiting = true;
     if (!_lp.loading[_lpDirSrcFile(key)]) _lpDirLoadTile(key).then((t) => { if (t && typeof _lpOnLoad === 'function') _lpOnLoad(); });
   }
-  if (waiting) return null;
+  return waiting ? null : keys;
+}
+// The cells with light within reach of (lat, lon) for the globe window's box (render-locpick-glow.js):
+// [{x, y} km east and north, light: its radiance × area, share: its light × T toward it at altitude h,
+// over the largest}],
+// [] without any, null while its tiles come in
+function _lpDirCells(lat, lon, h) {
+  const keys = _lpDirTiles(lat, lon);
+  if (!keys) return null;
+  const rad = Math.PI / 180, kx = 111.2 * Math.cos(lat * rad), out = [];
+  let max = 0;
+  for (const key of keys) {
+    const t = _lpDir.src[key];
+    if (!t) continue;
+    const top = t.lat0 + t.n * t.step;
+    for (let r = 0; r < t.n; r++) {
+      const y = (top - (r + 0.5) * t.step - lat) * 111.2;
+      if (Math.abs(y) > LP_DIR_RMAX_KM) continue;
+      for (let c = 0; c < t.n; c++) {
+        const q = t.v[r * t.n + c];
+        if (q === 0 || q === 255) continue;
+        const x = (((t.lon0 + (c + 0.5) * t.step - lon) + 540) % 360 - 180) * kx, d = Math.hypot(x, y);
+        if (d > LP_DIR_RMAX_KM) continue;
+        const light = Math.pow(10, t.top + (q - 254) * t.dex), share = light * _lpDirTAt(Math.max(d, LP_DIR_D_KM[0]), h, 0);
+        if (share > max) max = share;
+        out.push({ x, y, light, share });
+      }
+    }
+  }
+  for (const c of out) c.share /= max || 1;
+  return out;
+}
+function _lpDirBins(lat, lon) {
+  const keys = _lpDirTiles(lat, lon);
+  if (!keys) return null;
+  const dLat = LP_DIR_RMAX_KM / 111.2, dLon = dLat / Math.max(0.05, Math.cos(lat * Math.PI / 180));
   const R = 6371, rad = Math.PI / 180, f1 = lat * rad, s1 = Math.sin(f1), c1 = Math.cos(f1);
   const lnD0 = Math.log(LP_DIR_D_KM[0]), lnStep = Math.log(LP_DIR_D_KM[1] / LP_DIR_D_KM[0]), ND = LP_DIR_D_KM.length;
   const bins = new Float64Array(ND * LP_DIR_NSEC);

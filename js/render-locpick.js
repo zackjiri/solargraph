@@ -560,6 +560,8 @@ function _locPickDrawPin(ctx, V, lat, lon, col) {
 function _locPickDraw() {
   _locPick.raf = 0;
   if (!_locPick.open) return;
+  if (typeof _locGlowSync === 'function') _locGlowSync();   // the towns' glow box (render-locpick-glow.js)
+  _locPickLegendHere();
   const cv = document.getElementById('locPickCanvas');
   const w = cv.clientWidth, h = cv.clientHeight;
   if (!w || !h) return;
@@ -644,6 +646,13 @@ function _locPickDrawScale(ctx, L) {
   ctx.textAlign = 'left'; ctx.fillText('0', L.x0, L.y0 - 2);
   ctx.textAlign = 'center'; ctx.fillText(L.label, L.x0 + L.px, L.y0 - 2);
   ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+}
+// The Bortle scale's legend (bottom left) outlines the class of the Location's sky (the pin), from the
+// light pollution map; none off the map or while its tile comes in
+function _locPickLegendHere() {
+  const sqm = typeof _lpSQMAt === 'function' ? _lpSQMAt(hemisphere * LAT, lonHemisphere * LONG) : null;
+  const cls = typeof sqm === 'number' ? _nightSkySQMToBortle(sqm) : 0;
+  for (const b of document.querySelectorAll('#locPickLpLegend [data-cls]')) b.classList.toggle('here', Number(b.dataset.cls) === cls);
 }
 function _locPickRequest() {
   _locPickAltSync();

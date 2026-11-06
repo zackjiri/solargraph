@@ -4119,6 +4119,10 @@ function _nightSkyMagSliderReset() {
 _nightSkyMagSliderReset();
 function _nightSkyBortleEnable(on) {
   _nightSkyBortle.on = !!on;
+  if (on && typeof _nightSkyTownGlowEnable === 'function' && !_nightSkyBortle.dir) {   // the scale on: Glow toward towns with it
+    _nightSkyBortle.dir = true;
+    try { localStorage.setItem(NIGHTSKY_TOWN_GLOW_KEY, '1'); } catch (e) { /* blocked: this page only */ }
+  }
   try { localStorage.setItem(NIGHTSKY_BORTLE_ON_KEY, on ? '1' : '0'); } catch (e) { /* blocked: this page only */ }
   _nsAtmCache.key = null;
   _nightSkyMagSliderReset();
@@ -4161,10 +4165,10 @@ function _nightSkyBortleSyncUI() {
   tg.disabled = !on || q.source !== 'map';
 }
 // Glow toward towns (under the Bortle scale): the sky brighter toward the towns round the Location
-// (lp-dir.js), off by default, remembered in the browser
+// (lp-dir.js); on by default and switched on with the Bortle scale, remembered in the browser
 const NIGHTSKY_TOWN_GLOW_KEY = 'nsTownGlow';
 function _nightSkyTownGlowStored() {
-  try { return localStorage.getItem(NIGHTSKY_TOWN_GLOW_KEY) === '1'; } catch (e) { return false; }
+  try { return localStorage.getItem(NIGHTSKY_TOWN_GLOW_KEY) !== '0'; } catch (e) { return true; }
 }
 function _nightSkyTownGlowEnable(on) {
   _nightSkyBortle.dir = !!on;
