@@ -3764,6 +3764,13 @@
   }
   .loc-pick-head b { font-weight: normal; }
   #locPickHint { margin-left: 12px; letter-spacing: 0.04em; color: var(--dim); font-size: 10px; }
+  /* the readout: two lines, the time zone on its zone's colour and the Bortle class on its class's,
+     the text white outlined in black so it reads on any of them */
+  #locPickInfo { margin-top: 5px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  #locPickInfo .lpi {
+    padding: 1px 6px; border-radius: 2px; font-size: 10px; letter-spacing: 0.04em; color: #fff;
+    text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000, 0 0 2px #000;
+  }
   /* Eclipse map (js/render-eclipse-map.js): the round globe button in Eclipse Visualization's
      corner, the same as the export's */
   #btnEclipseMap {
