@@ -712,22 +712,39 @@ function _locPickShowHemi(latSigned, lonSigned) {
 }
 // With the time zones on, the head's hint gives the zone and offset of the point under the pin
 // (at sea the nautical zone); off the Earth, or with them off, the hint again.
+// The readout under the header, whatever layer is shown: the time zone and under it the Bortle class
+// (the texts the two layers' views showed) of the point under the mouse, else of the Location (the
+// pin), so the header keeps its height; each line on its colour (the zone's, the class's). The two
+// grids load as the window opens (_locPickInfoLoad); until then a line says it is coming.
 function _locPickZoneHint(p) {
-  const span = document.getElementById('locPickHint');
-  if (span.dataset.hint === undefined) span.dataset.hint = span.textContent;
-  if (_locPickLpOn()) {   // the light pollution's class and brightness under the pin (the tile's, else the coarse grid's)
-    if (!p) { span.textContent = span.dataset.hint; return; }
-    const t = _lp.tiles[_lpTileKey(p.lat, p.lon)];   // a tile already in, never asked for here
-    const sqm = (t ? _lpValueAt(t, p.lat, p.lon) : null) ?? _lpValueAt(_lp.coarse, p.lat, p.lon);
-    span.textContent = sqm === null ? 'no light pollution data here'
-      : `Bortle ${_nightSkySQMToBortle(sqm)} · SQM ${sqm.toFixed(2)}`;
-    return;
+  const q = p || { lat: hemisphere * LAT, lon: lonHemisphere * LONG };
+  const tz = document.getElementById('locPickInfoTz'), lp = document.getElementById('locPickInfoLp');
+  const rgb = (c) => `rgb(${c.map(Math.round).join(', ')})`;
+  const G = typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;
+  if (!G) { tz.textContent = 'time zone …'; tz.style.background = 'transparent'; }
+  else {
+    const s = _tzIndexAt(G, q.lat, q.lon), h = s ? _tzModeOffsets(G).off[s] : NaN;
+    const off = h === h ? h : _tzNautical(q.lon);
+    tz.textContent = h === h ? `${G.zones[s - 1]} · UTC${_fmtTimeZone(h)}`
+      : `${s ? G.zones[s - 1] + ' unknown to this browser, nautical' : 'sea, nautical'} · UTC${_fmtTimeZone(off)}`;
+    tz.style.background = rgb(_locPickZoneRGB(off));
   }
-  const G = _locPick.zones && typeof _tzGrid !== 'undefined' ? _tzGrid.data : null;
-  if (!G || !p) { span.textContent = span.dataset.hint; return; }
-  const s = _tzIndexAt(G, p.lat, p.lon), h = s ? _tzModeOffsets(G).off[s] : NaN;
-  span.textContent = h === h ? `${G.zones[s - 1]} · UTC${_fmtTimeZone(h)}`
-    : `${s ? G.zones[s - 1] + ' unknown to this browser, nautical' : 'sea, nautical'} · UTC${_fmtTimeZone(_tzNautical(p.lon))}`;
+  const t = _lp.tiles[_lpTileKey(q.lat, q.lon)];   // a tile already in, never asked for here
+  const sqm = (t ? _lpValueAt(t, q.lat, q.lon) : null) ?? (_lp.coarse ? _lpValueAt(_lp.coarse, q.lat, q.lon) : null);
+  if (sqm === null) { lp.textContent = _lp.coarse ? 'no light pollution data here' : 'light pollution …'; lp.style.background = 'transparent'; }
+  else {
+    const cls = _nightSkySQMToBortle(sqm);
+    lp.textContent = `Bortle ${cls} · SQM ${sqm.toFixed(2)}`;
+    lp.style.background = rgb(LOC_PICK_LP_RGB[cls - 1]);
+  }
+}
+function _locPickInfoLoad() {   // both grids, after the window's first frame (opening is not held up)
+  requestAnimationFrame(() => setTimeout(() => {
+    const done = () => { if (_locPick.open) _locPickZoneHint(_locPick.hover); };
+    if (typeof _tzLoad === 'function') _tzLoad().then(done);
+    _lpLoadCoarse().then(done);
+    done();
+  }, 0));
 }
 function _locPickPreview(p) {
   _locPickZoneHint(p);
@@ -800,6 +817,7 @@ function _locPickSetOpen(on, ecl) {
     }
     _locPick.hover = null;
     _locPickZoneHint(null);
+    _locPickInfoLoad();
     _nsGlobeLoad();
     _locPickRequest();
   } else {

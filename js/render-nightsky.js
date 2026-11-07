@@ -4160,9 +4160,12 @@ function _nightSkyBortleSyncUI() {
     + (_nightSkyBortle.on ? 'Untick for a rural sky (class 3) with stars to mag 6.' : 'Off: a rural sky (class 3), stars to mag 6; tick for this place\'s light pollution.');
   document.getElementById('btnNightSkyBortleDown').disabled = !on || q.cls <= 1;
   document.getElementById('btnNightSkyBortleUp').disabled = !on || q.cls >= 9;
-  const tg = document.getElementById('btnNightSkyTownGlow');   // Glow toward towns: needs the class from the map
-  tg.classList.toggle('on', _nightSkyBortle.dir); tg.setAttribute('aria-checked', String(_nightSkyBortle.dir));
-  tg.disabled = !on || q.source !== 'map';
+  // Glow toward towns: on only with the class from the map; with a class set by hand it shows off but
+  // stays clickable (a click brings the map's class back, _nightSkyTownGlowClick); greyed where the
+  // map has no value
+  const tg = document.getElementById('btnNightSkyTownGlow'), shown = _nightSkyBortle.dir && q.source === 'map';
+  tg.classList.toggle('on', shown); tg.setAttribute('aria-checked', String(shown));
+  tg.disabled = !on || typeof _nightSkyMapSQM() !== 'number';
 }
 // Glow toward towns (under the Bortle scale): the sky brighter toward the towns round the Location
 // (lp-dir.js); on by default and switched on with the Bortle scale, remembered in the browser
@@ -4178,7 +4181,17 @@ function _nightSkyTownGlowEnable(on) {
   if (nightSkyActive) drawNightSky();
 }
 _nightSkyBortle.dir = _nightSkyTownGlowStored();
-document.getElementById('btnNightSkyTownGlow').addEventListener('click', (e) => { if (!e.currentTarget.disabled) _nightSkyTownGlowEnable(!_nightSkyBortle.dir); });
+// A click: with the class from the map the switch toggles; with a class set by hand it returns to the
+// map's class (the hand-set one dropped) and turns the glow on
+function _nightSkyTownGlowClick() {
+  if (_nightSkySiteSQM().source !== 'map') {
+    _nightSkyBortle.overrideAt = null;
+    _nightSkyTownGlowEnable(true);
+    return;
+  }
+  _nightSkyTownGlowEnable(!_nightSkyBortle.dir);
+}
+document.getElementById('btnNightSkyTownGlow').addEventListener('click', (e) => { if (!e.currentTarget.disabled) _nightSkyTownGlowClick(); });
 document.getElementById('chkNightSkyBortle').addEventListener('change', (e) => _nightSkyBortleEnable(e.target.checked));
 document.getElementById('btnNightSkyBortleDown').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls - 1));
 document.getElementById('btnNightSkyBortleUp').addEventListener('click', () => _nightSkyBortleSet(_nightSkySiteSQM().cls + 1));
