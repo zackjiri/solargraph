@@ -33,7 +33,9 @@
             "exposure_end": "2025-12-04",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -48,7 +50,9 @@
             "exposure_end": "2025-12-01",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -63,7 +67,9 @@
             "exposure_end": "2025-12-20",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -90,7 +96,9 @@
             "exposure_end": "2025-12-23",
             "location": "Bystrice nad Pernstejnem, Czechia",
             "chmi_wsi_station": "0-203-0-11686",
-            "chmi_extra": ["T"]
+            "chmi_extra": [
+              "T"
+            ]
           }
         }
       ]
@@ -111,9 +119,11 @@
             "exposure_end": "2026-06-19",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
-        },        
+        },
         {
           "index": 2,
           "layers": [
@@ -126,7 +136,9 @@
             "exposure_end": "2026-02-17",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -141,7 +153,9 @@
             "exposure_end": "2026-05-11",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -156,7 +170,9 @@
             "exposure_end": "2026-04-14",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-20000-0-11723",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -171,7 +187,9 @@
             "exposure_end": "2026-05-05",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-20000-0-11723",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -186,7 +204,9 @@
             "exposure_end": "2026-06-13",
             "location": "Bystrice nad Pernstejnem, Czechia",
             "chmi_wsi_station": "0-203-0-11686",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
         },
         {
@@ -201,9 +221,11 @@
             "exposure_end": "2026-06-13",
             "location": "Bystrice nad Pernstejnem, Czechia",
             "chmi_wsi_station": "0-203-0-11686",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
           }
-        },                
+        },
         {
           "index": 8,
           "layers": [
@@ -216,7 +238,26 @@
             "exposure_end": "2026-04-19",
             "location": "Brno, Czechia",
             "chmi_wsi_station": "0-203-0-11721",
-            "chmi_extra": ["T"]            
+            "chmi_extra": [
+              "T"
+            ]
+          }
+        },
+        {
+          "index": 9,
+          "layers": [
+            0,
+            1,
+            2
+          ],
+          "metadata": {
+            "exposure_start": "2026-07-07",
+            "exposure_end": "2026-09-21",
+            "location": "Brno, Czechia",
+            "chmi_wsi_station": "0-20000-0-11723",
+            "chmi_extra": [
+              "T"
+            ]
           }
         }
       ]
