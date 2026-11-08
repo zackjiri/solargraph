@@ -242,13 +242,18 @@
               "T"
             ]
           }
-        },
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "label": "2026_H2_GEN-III",
+      "images": [
         {
-          "index": 9,
+          "index": 7,
           "layers": [
             0,
-            1,
-            2
+            1
           ],
           "metadata": {
             "exposure_start": "2026-07-07",
