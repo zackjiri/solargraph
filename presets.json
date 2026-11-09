@@ -168,10 +168,10 @@
     "time_zone": 1
   },
   "GEN-3_7": {
-    "yaw_deg": 127.5,
-    "pitch_deg": -1.5,
-    "roll_deg": 1.5,
-    "horizon_mm": 12.0,
+    "yaw_deg": 129.0,
+    "pitch_deg": -2.0,
+    "roll_deg": 0.2,
+    "horizon_mm": 5.5,
     "radius_mm": 32.0,
     "scan_w_mm": 178,
     "latitude": 49.2,
