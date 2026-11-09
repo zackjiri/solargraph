@@ -169,7 +169,7 @@
   },
   "GEN-3_7": {
     "yaw_deg": 129.0,
-    "pitch_deg": -2.0,
+    "pitch_deg": 1.5,
     "roll_deg": 0.2,
     "horizon_mm": 5.5,
     "radius_mm": 32.0,
