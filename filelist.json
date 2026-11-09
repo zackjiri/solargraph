@@ -253,7 +253,8 @@
           "index": 7,
           "layers": [
             0,
-            1
+            1,
+            2
           ],
           "metadata": {
             "exposure_start": "2026-07-07",
