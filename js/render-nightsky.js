@@ -438,7 +438,7 @@ document.getElementById('btnNightSkyTopDec').addEventListener('click', () => { _
 document.getElementById('btnNightSkyTopInc').addEventListener('click', () => { _nightSkyStepTop(1);  _nightSkyCommitTop(); });
 
 function enterNightSkyCatalog() {
-  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;   // star trails: the view stays
+  if (typeof _nsTrLocking === 'function' && _nsTrLocking()) return;   // star trails: the view stays
   nightSkyTopView = 'catalog';
   exitNightSkyVisualization();
   document.getElementById('nightSkyCatalogPanel').style.display = 'flex';
@@ -500,6 +500,7 @@ function exitNightSkyVisualization() {
   // (exitNightSky() calls this same function while in Visualization). Returning to Planetarium
   // later always starts from a clean slate, not a stale photo from a previous visit.
   _nightSkyActiveFrame = null;
+  if (typeof _nsTrSync === 'function') _nsTrSync();   // a star trails photo's exposure ends with it
   // Stop the animation loop, if running - it has no reason to keep advancing time (and burning a
   // rAF callback) once the canvas showing it is hidden.
   if (typeof _nightSkyAnimActive !== 'undefined' && _nightSkyAnimActive && typeof _nightSkyStopAnim === 'function') _nightSkyStopAnim();
@@ -562,7 +563,7 @@ function _nightSkyParseDecDeg(str) {
 }
 
 let _nightSkyAstroCatalog = [];   // filelist_astro.json, fetched once at module load
-let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky'
+let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky' | 'star_trails'
 async function _nightSkyLoadAstroCatalog() {
   try {
     const res = await fetch('filelist_astro.json', { cache: 'no-cache' });   // hand-edited, always revalidate
@@ -715,7 +716,7 @@ function _nightSkyClampTimeJD(jdFrom, jdTo) {
 //    the stars hold still on screen while the horizon wheels past.
 function _nightSkyFrameTime() {
   const f = _nightSkyActiveFrame, win = _nightSkyVideoWindow();
-  return win && f.videoMount === 'tripod' ? f.refTime : [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT];
+  return (win && f.videoMount === 'tripod') || f.trails ? f.refTime : [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT];
 }
 const NIGHTSKY_SIDEREAL_PER_DAY = 2 * Math.PI * 1.00273790935;   // sky rotation, rad per solar day
 let _nightSkyTrackJD = null;   // instant the equatorial tracking last rotated the camera to
@@ -746,6 +747,17 @@ function _nightSkyTrackSky() {
   _nightSkyPlanet3D.roll = Math.atan2(-_sd3Dot(up, _nightSkyPlanet3D.RIGHT), _sd3Dot(up, _nightSkyPlanet3D.UP));
   _nightSkyUpdatePlanetCamera();
 }
+// Star trails photo (category "star_trails"): the exposure from date_utc/time_utc to
+// date_utc_end/time_utc_end, as Julian Dates; null without a valid end after the start.
+function _nightSkyTrailsWindow(entry) {
+  if (!entry || entry.category !== 'star_trails' || !entry.date_utc_end || !entry.time_utc_end) return null;
+  const jd = (d, t) => {
+    const [y, mo, da] = String(d).split('-').map(Number), [h, m, s] = String(t).split(':').map(Number);
+    return [y, mo, da, h, m].every(Number.isFinite) ? _skyToJulianDateUT(y, mo, da, h + m / 60 + (s || 0) / 3600) : NaN;
+  };
+  const a = jd(entry.date_utc, entry.time_utc || '00:00:00'), b = jd(entry.date_utc_end, entry.time_utc_end);
+  return Number.isFinite(a) && Number.isFinite(b) && b > a ? { startJD: a, endJD: b } : null;
+}
 function _nightSkyApplyCatalogTile(entry) {
   const [y, mo, d] = (entry.date_utc || '1970-01-01').split('-').map(Number);
   const [hh, mm, ss] = (entry.time_utc || '00:00:00').split(':').map(Number);
@@ -774,6 +786,10 @@ function _nightSkyApplyCatalogTile(entry) {
     // how the video was shot: 'tripod' (fixed to the landscape) or 'equatorial' (tracking the stars)
     videoMount: entry.video_mount === 'equatorial' ? 'equatorial' : 'tripod',
     refTime: [nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT],   // the photo's own instant
+    id: entry.id,
+    // star trails photo: the frame stays in the landscape at the start (refTime), the exposure runs
+    // in it to the end (render-nightsky-trails.js, _nsTrStartCatalog below)
+    trails: _nightSkyTrailsWindow(entry),
   };
   _nightSkyLoadVideoDuration(_nightSkyActiveFrame);
   _nightSkyPlanet3D.roll = 0;
@@ -790,6 +806,7 @@ function _nightSkyApplyCatalogTile(entry) {
   setNightSkyPlanetZoom(_nightSkyFitZoomForFrame(entry.fov_w_deg, entry.fov_h_deg));
   _nightSkyUpdatePlanetCamera();
 
+  if (_nightSkyActiveFrame.trails && typeof _nsTrStartCatalog === 'function') _nsTrStartCatalog(_nightSkyActiveFrame.trails);
   _nightSkySyncControls();
 }
 
@@ -2634,7 +2651,7 @@ function _nightSkyStepSubmode(dir) {
   _nightSkySubmodeIndex = ((_nightSkySubmodeIndex + dir) % NIGHTSKY_SUBMODE_N + NIGHTSKY_SUBMODE_N) % NIGHTSKY_SUBMODE_N;
 }
 function _nightSkyCommitSubmode() {
-  if (typeof _nsTrExposing === 'function' && _nsTrExposing()) { _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode); return; }   // star trails: the Planetarium stays
+  if (typeof _nsTrLocking === 'function' && _nsTrLocking()) { _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf(nightSkySubmode); return; }   // star trails: the Planetarium stays
   if (typeof _nsTrSync === 'function') setTimeout(_nsTrSync, 0);   // its button only in the Planetarium
   const prev = nightSkySubmode;
   nightSkySubmode = NIGHTSKY_SUBMODE_VALUES[_nightSkySubmodeIndex];
@@ -2647,7 +2664,7 @@ function _nightSkyCommitSubmode() {
   // AWAY from Planetarium to Sky Map, while staying in Visualization, is still "leaving" the
   // photo's presentation (user's own "kamkoliv" - anywhere), so it clears here too, not just on a
   // full Visualization exit.
-  if (nightSkySubmode !== 'planetarium') _nightSkyActiveFrame = null;
+  if (nightSkySubmode !== 'planetarium') { _nightSkyActiveFrame = null; if (typeof _nsTrSync === 'function') _nsTrSync(); }
   _nightSkySubmodeWheel.render();
   _nightSkyUpdatePlanetControlsVisibility();
   _nightSkyUpdatePresentationLock();
@@ -2869,7 +2886,7 @@ function _nightSkyUpdatePresentationLock() {
   const exposing = typeof _nsTrExposing === 'function' && _nsTrExposing();
   document.getElementById('calibrationSection').classList.toggle('calibration-locked', presenting || exposing);
   const win = presenting ? _nightSkyVideoWindow() : null;
-  document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting && !win);
+  document.getElementById('nightSkyTimeWrap').classList.toggle('nightsky-time-locked', presenting && !win && !_nightSkyActiveFrame.trails);
   // Play needs the video's duration for its speed; until the metadata is in, only the strip moves
   document.getElementById('btnNightSkyPlay').classList.toggle('nightsky-play-waiting', !!win && !win.duration);
   _nightSkyUpdateSpeedBoxLabel();
@@ -3450,6 +3467,7 @@ function _nightSkyDrawFrameSegment(ctx, layout, ra0, dec0, ra1, dec1, color) {
 function _nightSkyDrawCatalogFrame(ctx, layout) {
   if (!_nightSkyActiveFrame) return;
   const f = _nightSkyActiveFrame;
+  if (f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);   // star trails photo, under the brackets
   const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
   ctx.save();
   ctx.lineWidth = 2;
@@ -3727,7 +3745,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     const dx = x - lastX, dy = y - lastY;
     lastX = x; lastY = y;
     if (_nightSkyPicker.lock) return;   // the view is held on the picked point
-    if (typeof _nsTrExposing === 'function' && _nsTrExposing()) return;   // star trails: the camera stays pointed
+    if (typeof _nsTrLocking === 'function' && _nsTrLocking()) return;   // star trails: the camera stays pointed
     // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.
     const z = _nightSkyPlanet3D.zoom;
     _nightSkyPlanet3D.camAz -= dx * 0.005 / z;

@@ -13,14 +13,25 @@
 // before: no line, fill, length, ring, pulse or trails. A change of the frame ends it too (_nsTrSync).
 // The line and the fill follow the strip's window (NIGHTSKY_STRIP_HOURS_SPAN round the time on
 // screen); outside it the line stays at its edge with an arrow.
+// A star trails photo from the Catalog (category "star_trails", _nightSkyApplyCatalogTile) runs the
+// same exposure in the photo's own frame instead (_nsTrStartCatalog): from the photo's start, the
+// time on screen at its end, the frame fixed in the landscape at the start (_nsTrCatalogGeometry),
+// no aperture gain, no button or pulse. It does not lock the mode, the Catalog, the sub-view or the
+// view (_nsTrLocking); leaving the photo ends it (its frame signature goes, _nsTrSync).
 const _nsTr = { state: 'idle', startJD: null, sig: null };   // state: idle | exposing
 const NS_TR_BTN_GAP = 6;   // the button's distance from the frame's corner [CSS px]
 
 function _nsTrExposing() { return _nsTr.state === 'exposing'; }
+// The exposure belongs to a Catalog star trails photo
+function _nsTrCatalog() { return _nsTrExposing() && typeof _nsTr.sig === 'string' && _nsTr.sig.startsWith('catalog:'); }
+// An exposure that locks the mode, the Catalog, the sub-view and the view (the Equipment camera's)
+function _nsTrLocking() { return _nsTrExposing() && !_nsTrCatalog(); }
 function _nsTrNowJD() { return _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT); }
 // The one camera frame the exposure belongs to, as a signature of its setup and mount; null when
 // there is no single camera frame
 function _nsTrFrameSig() {
+  const f = typeof _nightSkyActiveFrame !== 'undefined' ? _nightSkyActiveFrame : null;
+  if (f && f.trails) return 'catalog:' + f.id;
   if (_nsEq.shown.length !== 1 || !_nsEqIsImaging(_nsEq.shown[0].setup)) return null;
   const s = _nsEq.shown[0].setup;
   return JSON.stringify([NS_EQ_IMG_FIELDS.map(k => s[k]), _nsEqMount.eqLock, _nsEqMount.angle]);
@@ -40,6 +51,14 @@ function _nsTrStart() {
   _nsTrData = null;   // the trails start again (_nsTrAdvance)
   _nsTrChanged();
 }
+// A Catalog star trails photo: the exposure from win.startJD, the time on screen set to win.endJD
+function _nsTrStartCatalog(win) {
+  const r = _skyFromJulianDateUT(win.endJD);
+  nightSkyYear = r.year; nightSkyMonth = r.month; nightSkyDay = r.day; nightSkyHourUT = r.hourUT;
+  _nsTr.state = 'exposing'; _nsTr.startJD = win.startJD; _nsTr.sig = _nsTrFrameSig();
+  _nsTrData = null;
+  _nsTrChanged();
+}
 function _nsTrReset() {
   _nsTr.state = 'idle'; _nsTr.startJD = _nsTr.sig = null;
   _nsTrData = null;
@@ -51,7 +70,7 @@ function _nsTrToggle() {
 }
 // After a start or an end: the locks, then the strip, the counter and the button
 function _nsTrChanged() {
-  document.body.classList.toggle('ns-trail-exposing', _nsTrExposing());
+  document.body.classList.toggle('ns-trail-exposing', _nsTrLocking());
   if (typeof _nightSkyUpdatePresentationLock === 'function') _nightSkyUpdatePresentationLock();
   if (typeof _nsEqRefreshPanel === 'function' && _nsEq.open) _nsEqRefreshPanel();
   _nsTrSync();
@@ -171,9 +190,28 @@ function _nsTrAtTime(jd, fn) {
 }
 // The frame at the start, in the horizon frame: centre F, axes up/right, half sizes as tangents,
 // its outline (unit vectors) and the cosine of the circle round it
+// The Catalog photo's frame in the horizon frame at the start: its centre and corners from RA/Dec at
+// the photo's instant (refTime, the start), the axes from the corners (so the frame's own
+// orientation and handedness carry over), half sizes from its field of view
+function _nsTrCatalogBasis() {
+  const f = _nightSkyActiveFrame, t = f.refTime, D2R = Math.PI / 180;
+  const vec = (ra, dec) => { const p = _skyStarAzEl(ra, dec, ...t); return _skyDomeUnitVec(p.az, p.el); };
+  const F = vec(f.raDeg, f.decDeg);
+  const [tl, tr, br, bl] = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg).corners.map(c => vec(c.raDeg, c.decDeg));
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const ortho = (v, ...against) => { let w = v.slice(); for (const a of against) { const k = dot(w, a); w = w.map((x, i) => x - k * a[i]); } const n = Math.hypot(...w) || 1; return w.map(x => x / n); };
+  const right = ortho([tr[0] + br[0] - tl[0] - bl[0], tr[1] + br[1] - tl[1] - bl[1], tr[2] + br[2] - tl[2] - bl[2]], F);
+  const up = ortho([tl[0] + tr[0] - bl[0] - br[0], tl[1] + tr[1] - bl[1] - br[1], tl[2] + tr[2] - bl[2] - br[2]], F, right);
+  return { F, up, right, hw: Math.tan(f.fovWDeg / 2 * D2R), hh: Math.tan(f.fovHDeg / 2 * D2R) };
+}
 function _nsTrGeometry() {
-  const s = _nsEq.shown[0].setup, c = _nsEqComputeImaging(s), D2R = Math.PI / 180;
-  const hw = Math.tan(c.fovW / 2 * D2R), hh = Math.tan(c.fovH / 2 * D2R), { F, up, right } = _nsEqFrameBasis();
+  const D2R = Math.PI / 180;
+  let F, up, right, hw, hh;
+  if (_nsTrCatalog()) ({ F, up, right, hw, hh } = _nsTrCatalogBasis());
+  else {
+    const c = _nsEqComputeImaging(_nsEq.shown[0].setup);
+    hw = Math.tan(c.fovW / 2 * D2R); hh = Math.tan(c.fovH / 2 * D2R); ({ F, up, right } = _nsEqFrameBasis());
+  }
   const outline = [], corners = [[-hw, hh], [hw, hh], [hw, -hh], [-hw, -hh]], segs = 16;
   for (let i = 0; i < 4; i++) {
     const [x0, y0] = corners[i], [x1, y1] = corners[(i + 1) % 4];
@@ -223,7 +261,7 @@ function _nsTrSample(jd) {
   d.jds.push(jd);
   _nsTrAtTime(jd, () => {
     const m = _skyJ2000HorizonMatrix(), q = _nightSkyVisPrep(), atm = !!q.s;
-    const gain = _nsEqApertureGain(_nsEq.shown[0].setup);
+    const gain = _nsTrCatalog() ? 0 : _nsEqApertureGain(_nsEq.shown[0].setup);   // a Catalog photo: the eye's limit
     const inside = (u) => u[0] * g.F[0] + u[1] * g.F[1] + u[2] * g.F[2] >= g.cosR;
     const vis = (mag, az, el) => {
       if (!atm) return 1;
