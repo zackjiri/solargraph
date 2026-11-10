@@ -1750,8 +1750,7 @@ function setSkyMap3DZoom(z) {
   if (rng && parseFloat(rng.value) !== _skyMap3D.zoom) rng.value = _skyMap3D.zoom;
   const val = document.getElementById('skyMap3DZoomVal');
   if (val) val.textContent = _skyMap3D.zoom.toFixed(1) + '×';
-  // The same camera serves Night Sky's Sky Map 3D (render-nightsky-3d.js).
-  if (typeof nightSkyActive !== 'undefined' && nightSkyActive) drawNightSky(); else drawSkyDome();
+  drawSkyDome();
 }
 function setSkyDomePlanet3DZoom(z) {
   // Any zoom change is "touching the scene" - cancel a pending HD idle-wait/countdown regardless
@@ -1774,8 +1773,7 @@ function setSkyDomePlanet3DZoom(z) {
 // updateSkyMap3DControlsVisibility - the two are never visible at the same time).
 document.getElementById('skyMap3DZoom').addEventListener('input', (e) => {
   const z = parseFloat(e.target.value);
-  if (typeof nightSkyActive !== 'undefined' && nightSkyActive) setSkyMap3DZoom(z);   // Night Sky's Sky Map 3D
-  else if (skyDomeProjection === 'planet3d') setSkyDomePlanet3DZoom(z);
+  if (skyDomeProjection === 'planet3d') setSkyDomePlanet3DZoom(z);
   else setSkyMap3DZoom(z);
 });
 

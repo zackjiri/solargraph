@@ -1,6 +1,6 @@
 // ─── Night Sky: Globe (fourth Visualization sub-mode) ───────────────────────────────────────────
 // The Earth seen from space at the selected instant, in the same kind of orbiting 3D view as the
-// Sky Map 3D: land from Natural Earth 1:110m (data/earth/land-110m.json, TopoJSON decoded here),
+// Analyzer's Sky Map 3D: land from Natural Earth 1:110m (data/earth/land-110m.json, TopoJSON decoded here),
 // with its 24 largest lakes as water (data/earth/ne_110m_lakes.geojson; the Caspian Sea is a hole
 // in the land itself),
 // a graticule, the place from Location, and the real day and night - the

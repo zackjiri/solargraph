@@ -780,7 +780,7 @@ function _locPickViewKey() {
     v(() => currentMode), v(() => _modeWheelIndex), v(() => theaterMode3D), v(() => sunGraphActive),
     v(() => skyDomeActive), v(() => skyDomeProjection), v(() => skyMap3DOn),
     v(() => eclipseActive), v(() => eclipseSubView), v(() => _eclipseActiveEvent && _eclipseActiveEvent.id),
-    v(() => nightSkyActive), v(() => nightSkyTopView), v(() => nightSkySubmode), v(() => nightSkyMap3DOn),
+    v(() => nightSkyActive), v(() => nightSkyTopView), v(() => nightSkySubmode),
     v(() => galleryState.genId), v(() => galleryState.imageIndex), v(() => galleryState.layer),
   ].join('|');
 }

@@ -114,7 +114,7 @@ function _nsExportFileName(r, f) {
   const L = _nightSkyLocalDate();
   const p2 = (n) => String(n).padStart(2, '0');
   const t = Math.floor(L.hour * 60);
-  const view = nightSkySubmode === 'sungraph' ? 'sungraph' : nightSkyMap3DOn ? 'skymap3d' : 'skymap';
+  const view = nightSkySubmode === 'sungraph' ? 'sungraph' : 'skymap';
   return 'solargraphy-' + view + '-' + L.year + '-' + p2(L.month) + '-' + p2(L.day) + '-'
     + p2(Math.floor(t / 60)) + p2(t % 60) + '-' + r.w + 'x' + r.h + '.' + f.ext;
 }

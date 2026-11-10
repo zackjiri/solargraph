@@ -389,6 +389,7 @@ function exitNightSky() {
   document.getElementById('headerFormula').style.display = '';
   document.getElementById('btnTimeMode').style.visibility = '';
   nightSkyActive = false;
+  if (typeof _appFsSync === 'function') _appFsSync();   // fullscreen button (render-fullscreen.js)
 
   document.getElementById('can3dPanel').classList.add('visible');
   document.getElementById('displaySection').style.display = '';
@@ -523,8 +524,6 @@ function exitNightSkyVisualization() {
   if (typeof _nsSearchSetOpen === 'function') { _nsSearchSetOpen(false); _nsSearch.mark = null; }
   if (typeof _nsEqSetOpen === 'function') _nsEqSetOpen(false);
   if (typeof _nsExportSetOpen === 'function') _nsExportSetOpen(false);
-  document.getElementById('nightSkyMap3DToggleRow').style.display = 'none';
-  if (!(typeof skyDomeActive !== 'undefined' && skyDomeActive)) document.getElementById('skyMap3DZoomCtl').style.display = 'none';
   _nightSkyPickerSetActive(false);
   _nightSkyUpdatePresentationLock();
   // Own readout contributions (Az/Alt/Dir from the cursor listener, Day/Time from
@@ -1833,11 +1832,11 @@ function _nightSkyDrawHorizon(ctx, layout) {
   ctx.restore();
 }
 
-// Display "Mag ≤" and star size apply to Planetarium and the flat Sky Map only; Sky Map 3D and Globe
-// keep every object and the original star sizes.
+// Display "Mag ≤" and star size apply to Planetarium and the flat Sky Map only; Globe keeps every
+// object and the original star sizes.
 function _nightSkyMagControlsOn() {
   return nightSkyActive && nightSkyTopView === 'visualization'
-    && (nightSkySubmode === 'planetarium' || (nightSkySubmode === 'skymap' && !nightSkyMap3DOn));
+    && (nightSkySubmode === 'planetarium' || nightSkySubmode === 'skymap');
 }
 // Display "Mag ≤" (#nightSkyMagLimit): stars, planets and deep sky objects fainter than the limit
 // are not drawn. 0..6 in steps of 0.5; its last step, 6+, is no limit (the star catalogue ends at
@@ -2828,7 +2827,7 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   document.getElementById('btnNightSkyPicker').style.display = pickerShown ? 'flex' : 'none';
   // the search (render-search.js): Planetarium, Globe and the flat Sky Map (there left of the
   // rotate button, which takes the picker's place); its Sky Map mark goes when the Sky Map is left
-  const skyMap = vis && nightSkySubmode === 'skymap' && !nightSkyMap3DOn;
+  const skyMap = vis && nightSkySubmode === 'skymap';
   const searchShown = pickerShown || skyMap;
   const search = document.getElementById('btnNightSkySearch');
   search.style.display = searchShown ? 'flex' : 'none';
@@ -2848,8 +2847,8 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   }
   if (!pickerShown || _nightSkyPickerSubmode !== nightSkySubmode) _nightSkyPickerSetActive(false);
   _nightSkyPickerSubmode = pickerShown ? nightSkySubmode : null;
-  if (typeof _nightSkyUpdateMap3DControls === 'function') _nightSkyUpdateMap3DControls();   // Sky Map's 3D switch (render-nightsky-3d.js)
   if (typeof _nsGlobeSyncUI === 'function') _nsGlobeSyncUI();   // Globe's controls (render-nightsky-globe.js)
+  if (typeof _appFsSync === 'function') _appFsSync();   // fullscreen button (render-fullscreen.js)
 }
 
 // Locks the time-shift controls (drag-the-belt strip + animate Play) and the whole Calibration
@@ -3769,7 +3768,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   };
   cv.addEventListener('pointerup', up);
   cv.addEventListener('pointercancel', up);
-  // Safari's own pinch (page zoom) would fight the views' pinch (here, Sky Map 3D, Globe); the CSS
+  // Safari's own pinch (page zoom) would fight the views' pinch (here, Globe); the CSS
   // touch-action: none covers the other browsers
   cv.addEventListener('gesturestart', (e) => e.preventDefault());
 
@@ -4010,7 +4009,6 @@ function _nightSkyClearReadout() {
     const layout = nightSkySubmode === 'planetarium' ? _nightSkyPlanetLayout(w, h) : _nightSkyLayout(w, h);
     const hit = nightSkySubmode === 'globe' ? null   // a globe point is a place on Earth, not a sky direction
       : nightSkySubmode === 'planetarium' ? _nightSkyPlanetPixelToAzEl(layout, px, py)
-      : (nightSkyMap3DOn && _nightSky3DLayout) ? _skyMap3DPixelToAzEl(_nightSky3DLayout, px, py)   // Sky Map 3D
       : _nightSkyPixelToAzEl(layout, px, py);
     // With a picker lock, the readout falls back to the locked point whenever the cursor is off
     // the sky vault (outside the sphere or over the ground) - see _nightSkyPickerShowLockReadout.
@@ -4048,11 +4046,9 @@ function drawNightSky() {
     // in one direction" concept to center on) - hide the thumbnail rather than leave it stuck
     // showing a stale position from the last Planetarium draw.
     document.getElementById('nightSkyFrameThumb').style.display = 'none';
-    if (nightSkyMap3DOn) _nightSkyDrawSkyMap3D(ctx, w, h);   // render-nightsky-3d.js
-    else {   // turned by the rotate button: every _skyDomePoint of the map at once
-      _skyDomePointRotDeg = nightSkyMapRot;
-      try { _nightSkyDrawSkyMap(ctx, w, h); } finally { _skyDomePointRotDeg = 0; }
-    }
+    // turned by the rotate button: every _skyDomePoint of the map at once
+    _skyDomePointRotDeg = nightSkyMapRot;
+    try { _nightSkyDrawSkyMap(ctx, w, h); } finally { _skyDomePointRotDeg = 0; }
   } else if (nightSkySubmode === 'planetarium') {
     _nightSkyDrawPlanetarium(ctx, w, h);
     if (typeof _nsEqDraw === 'function') _nsEqDraw(ctx, w, h);   // Equipment's eyepiece view (render-nightsky-equipment.js)

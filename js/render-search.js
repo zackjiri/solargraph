@@ -314,8 +314,8 @@ let _nsSearchDayCache = { key: null, d: null };
 function _nsSearchTarget() {
   if (!nightSkyActive || nightSkyTopView !== 'visualization') return null;
   const I = _nsSearch.info;
-  if (I && I.sub === nightSkySubmode && !nightSkyMap3DOn && I.lock === _nightSkyPicker.lock && I.mark === _nsSearch.mark) return I.e;
-  if (nightSkySubmode === 'skymap') return nightSkyMap3DOn ? null : _nsSearch.mark;
+  if (I && I.sub === nightSkySubmode && I.lock === _nightSkyPicker.lock && I.mark === _nsSearch.mark) return I.e;
+  if (nightSkySubmode === 'skymap') return _nsSearch.mark;
   const e = _nsSearch.picked, L = _nightSkyPicker.lock;
   if (!e || !L || (nightSkySubmode !== 'planetarium' && nightSkySubmode !== 'globe')) return null;
   return L === e.lock || L === e.globeLock ? e : null;

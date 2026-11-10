@@ -161,7 +161,7 @@ function _mwShown() {
   return true;
 }
 // Display star size (render-nightsky.js) sets the band's strength with the stars': medium is the
-// reference, small 0.7x, large 1.35x. Where the star controls do not apply (Globe, Sky Map 3D) it
+// reference, small 0.7x, large 1.35x. Where the star controls do not apply (Globe) it
 // stays at medium.
 const MW_SCALE_GAIN = [0.7, 1, 1.35];
 // With Atmosphere on, a darker sky than Bortle class 3 shows the band brighter (render-nightsky.js
