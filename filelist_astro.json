@@ -17,6 +17,25 @@
     "full": "img/eclipse/A2011-01-04_PSE07.jpg"
   },
   {
+    "id": "A2011-08-25_STR03",
+    "object_name": "Star trails over Zubštejn castle",
+    "category": "star_trails",
+    "date_utc": "2011-08-25",
+    "time_utc": "21:40:59",
+    "date_utc_end": "2011-08-25",
+    "time_utc_end": "22:41:59",    
+    "timezone": 2,
+    "lat": 49.52203913, "lat_hemisphere": "N",
+    "lon": 16.32612424, "lon_hemisphere": "E",
+    "ra": "2h37m25s",
+    "dec": "39°12'43\"",
+    "fov_w_deg": 63.5,
+    "fov_h_deg": 45.0,
+    "rotation_deg": -50,
+    "thumbnail": "img/astro/A2011-08-25_STR03_T.jpg",
+    "full": "img/astro/A2011-08-25_STR03.jpg"
+  },  
+  {
     "id": "A2012-06-06_VTR02",
     "object_name": "Transit of Venus",
     "category": "solar_system",
