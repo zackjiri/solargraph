@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug587">
+  <link rel="stylesheet" href="css/style.css?perfdebug591">
 </head>
 <body>
 
@@ -123,6 +123,12 @@
       <span class="readout-label">Obsc</span>
       <span class="readout-value" id="valEclObsc" style="color:#e8c860;font-size:12px;min-width:42px">—</span>
     </div>
+    <!-- Fullscreen (js/render-fullscreen.js): right end of the readout, in every view with a canvas;
+         on, only this strip stays above the canvas. -->
+    <button id="btnFullscreen" title="Fullscreen" aria-label="Fullscreen">
+      <svg class="fs-in" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+        <svg class="fs-out" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"/></svg>
+    </button>
   </div>
 </div>
 
@@ -807,8 +813,6 @@
         <span id="skyMap3DToggleLabel">3D</span>
         <button id="btnSkyMap3DToggle" role="switch" aria-checked="false"></button>
       </div>
-      <!-- Night Sky's Sky Map "3D" switch (render-nightsky-3d.js) - same pill as #skyMap3DToggleRow,
-           shown only in Night Sky's Sky Map; the zoom slider below is shared. -->
  <!-- Globe camera (render-nightsky-globe.js): distance from the Earth and field of view; the
            mouse wheel / two fingers drive the row used last (highlighted). -->
       <div id="nsGlobeCamCtl">
@@ -846,10 +850,6 @@
           <div><i style="background:#8cb478"></i>the horizon of the place (with Az/Alt grid), the dot in the middle is you</div>
           <div class="nsg-rose-hint">click to enlarge / shrink</div>
         </div>
-      </div>
-      <div id="nightSkyMap3DToggleRow" title="Show the Sky Map as an orbiting 3D sphere with the Sun and the Moon">
-        <span class="nightsky-3d-label">3D</span>
-        <button id="btnNightSkyMap3D" role="switch" aria-checked="false"></button>
       </div>
       <!-- Sky Map 3D zoom – vertical slider, shown only while Sky Map's "3D" toggle is on (mirrors
            #theaterZoomCtl in the 3D Model theater). -->
@@ -1109,7 +1109,7 @@
       <div class="sidebar-title"><span>Display</span><button class="section-toggle" title="Collapse / expand">▼</button></div>
       <label class="chk-row ns-globe-keep" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
       <!-- Limiting magnitude and star size (render-nightsky.js: _nightSkyMagLimit, nightSkyStarScale),
-           Planetarium and the flat Sky Map only: hidden in Globe, greyed in Sky Map 3D. -->
+           Planetarium and the Sky Map only: hidden in Globe. -->
       <div class="chk-row nightsky-mag-row" id="nightSkyMagRow" title="Limiting magnitude: stars, planets and deep sky objects fainter than this are hidden; 6+ shows everything (deep sky objects go down to 11.5)">
         <span class="nightsky-sun-label">Mag &le;</span>
         <!-- The value rides inside the thumb, a pill wide enough for "6+ · −5.0", so the row never
@@ -1512,42 +1512,42 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
 </div>
 
-<script src="js/core.js?perfdebug587"></script>
-<script src="js/render-2d.js?perfdebug587"></script>
-<script src="js/controls.js?perfdebug587"></script>
-<script src="js/render-sungraph.js?perfdebug587"></script>
-<script src="js/render-3d.js?perfdebug587"></script>
-<script src="js/render-skydome.js?perfdebug587"></script>
-<script src="js/render-moon.js?perfdebug587"></script>
-<script src="js/render-planets.js?perfdebug587"></script>
-<script src="js/render-milkyway.js?perfdebug587"></script>
-<script src="js/render-deepsky.js?perfdebug587"></script>
-<script src="js/render-skyglow.js?perfdebug587"></script>
-<script src="js/render-nightsky.js?perfdebug587"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug587"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug587"></script>
-<script src="js/render-nightsky-trails.js?perfdebug587"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug587"></script>
-<script src="js/render-nightsky-3d.js?perfdebug587"></script>
-<script src="js/render-nightsky-globe.js?perfdebug587"></script>
-<script src="js/render-nightsky-solar.js?perfdebug587"></script>
-<script src="js/render-search.js?perfdebug587"></script>
-<script src="js/render-locpick.js?perfdebug587"></script>
-<script src="js/tz-lookup.js?perfdebug587"></script>
-<script src="js/lp-lookup.js?perfdebug587"></script>
-<script src="js/lp-dir.js?perfdebug587"></script>
-<script src="js/render-locpick-glow.js?perfdebug587"></script>
-<script src="js/render-tzsearch.js?perfdebug587"></script>
-<script src="js/render-eclipse-map.js?perfdebug587"></script>
-<script src="js/render-export.js?perfdebug587"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug587"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug587"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug587"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug587"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug587"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug587"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug587"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug587"></script>
-<script src="js/render-eclipse.js?perfdebug587"></script>
+<script src="js/core.js?perfdebug591"></script>
+<script src="js/render-2d.js?perfdebug591"></script>
+<script src="js/controls.js?perfdebug591"></script>
+<script src="js/render-sungraph.js?perfdebug591"></script>
+<script src="js/render-3d.js?perfdebug591"></script>
+<script src="js/render-skydome.js?perfdebug591"></script>
+<script src="js/render-moon.js?perfdebug591"></script>
+<script src="js/render-planets.js?perfdebug591"></script>
+<script src="js/render-milkyway.js?perfdebug591"></script>
+<script src="js/render-deepsky.js?perfdebug591"></script>
+<script src="js/render-skyglow.js?perfdebug591"></script>
+<script src="js/render-nightsky.js?perfdebug591"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug591"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug591"></script>
+<script src="js/render-nightsky-trails.js?perfdebug591"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug591"></script>
+<script src="js/render-nightsky-globe.js?perfdebug591"></script>
+<script src="js/render-nightsky-solar.js?perfdebug591"></script>
+<script src="js/render-search.js?perfdebug591"></script>
+<script src="js/render-locpick.js?perfdebug591"></script>
+<script src="js/tz-lookup.js?perfdebug591"></script>
+<script src="js/lp-lookup.js?perfdebug591"></script>
+<script src="js/lp-dir.js?perfdebug591"></script>
+<script src="js/render-locpick-glow.js?perfdebug591"></script>
+<script src="js/render-tzsearch.js?perfdebug591"></script>
+<script src="js/render-eclipse-map.js?perfdebug591"></script>
+<script src="js/render-export.js?perfdebug591"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug591"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug591"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug591"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug591"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug591"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug591"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug591"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug591"></script>
+<script src="js/render-eclipse.js?perfdebug591"></script>
+<script src="js/render-fullscreen.js?perfdebug591"></script>
 </body>
 </html>
