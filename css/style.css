@@ -126,6 +126,8 @@
   }
   /* Hover repaints the fill to what light theme uses at rest (the light-theme hover rule below
      overrides this with its own, so this is effectively the dark-theme hover). */
+  /* The theme button matches #btnFullscreen under it (22px, right edges aligned). */
+  #btnTheme { width: 22px; height: 22px; font-size: 11px; border-radius: 7px; }
   #btnTheme:hover, #btnTimeMode:hover, #btnInfo:hover {
     color: var(--accent);
     background: rgba(18,22,28,0.82);
@@ -290,6 +292,26 @@
     font-size: 12px;
     flex-wrap: wrap;
   }
+
+  /* Fullscreen (js/render-fullscreen.js): a small square at the right end of the readout, shown
+     only with a canvas view on screen; filled blue while on. Same size as #btnTheme right above it,
+     whose right edge it shares. */
+  #btnFullscreen {
+    margin: -4px 0 -4px auto; flex: 0 0 auto;   /* overhangs the row: the strip keeps its height */
+    display: none; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0;
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  #btnFullscreen:hover { border-color: var(--accent2); color: var(--accent2); }
+  #btnFullscreen.active { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  #btnFullscreen .fs-out, #btnFullscreen.active .fs-in { display: none; }
+  #btnFullscreen.active .fs-out { display: block; }
+  /* On: only the readout strip stays above the canvas */
+  body.app-fullscreen header, body.app-fullscreen .sidebar, body.app-fullscreen .info-bar,
+  body.app-fullscreen .gallery-panel, body.app-fullscreen #can3dPanel,
+  body.app-fullscreen #eclipsePanel { display: none !important; }
 
   .readout-item {
     display: flex;
@@ -2263,7 +2285,6 @@
   body.light .nightsky-submode-row {
     background: rgba(220,228,236,0.82);
   }
-
   /* Night Sky's own Planetarium zoom - same control/mechanic/styling as #skyMap3DZoomCtl below,
      shown only by JS while the Planetarium sub-mode is selected
      (_nightSkyUpdatePlanetControlsVisibility(), render-nightsky.js). */
@@ -2606,6 +2627,7 @@
   }
   #nightSkyTrailCounter.exposing { color: #e04848; }
   body.ns-trail-exposing #nightSkySubmodeRow,
+  body.ns-trail-exposing #btnFullscreen,
   body.ns-trail-exposing #nightSkyTopRow,
   body.ns-trail-exposing #modeWheelTrack,
   body.ns-trail-exposing #btnModeDec,
@@ -2725,7 +2747,7 @@
   #nightSkyExportNote:empty { display: none; }
 
   /* Sky Map's "3D" ON/OFF toggle – small pill switch, same panel treatment as .skydome-proj-row */
-  #skyMap3DToggleRow, #nightSkyMap3DToggleRow {
+  #skyMap3DToggleRow {
     position: absolute; top: 48px; right: 12.5px;
     z-index: 12; display: none;          /* shown by JS only while Sky Map is selected */
     align-items: center; gap: 6px;
@@ -2735,14 +2757,14 @@
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     cursor: default;   /* over .canvas-container's cursor:none: the OS cursor stays visible */
   }
-  body.light #skyMap3DToggleRow, body.light #nightSkyMap3DToggleRow {
+  body.light #skyMap3DToggleRow {
     background: rgba(220,228,236,0.82);
   }
-  #skyMap3DToggleLabel, #nightSkyMap3DToggleRow .nightsky-3d-label {
+  #skyMap3DToggleLabel {
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
     color: var(--text);
   }
-  #btnSkyMap3DToggle, #btnNightSkyMap3D {
+  #btnSkyMap3DToggle {
     position: relative;
     flex: 0 0 auto;
     width: 30px; height: 17px;
@@ -2753,7 +2775,7 @@
     background: var(--control-fill-hover);
     transition: background 0.18s;
   }
-  #btnSkyMap3DToggle::after, #btnNightSkyMap3D::after {
+  #btnSkyMap3DToggle::after {
     content: '';
     position: absolute;
     top: 2px; left: 2px;
@@ -2763,8 +2785,8 @@
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
     transition: left 0.18s;
   }
-  #btnSkyMap3DToggle.on, #btnNightSkyMap3D.on { background: #e8a020; }
-  #btnSkyMap3DToggle.on::after, #btnNightSkyMap3D.on::after { left: 15px; }
+  #btnSkyMap3DToggle.on { background: #e8a020; }
+  #btnSkyMap3DToggle.on::after { left: 15px; }
 
   /* Sky Map 3D zoom – vertical slider, same mechanic/styling as #theaterZoomCtl */
   #skyMap3DZoomCtl {
