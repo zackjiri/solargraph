@@ -85,6 +85,23 @@
     "full": "img/astro/A2021-08-11_MLW01.jpg"
   },
   {
+    "id": "A2021-09-03_ORI01",
+    "object_name": "Orion",
+    "category": "landscape",
+    "date_utc": "2021-09-03",
+    "time_utc": "01:21:39",
+    "timezone": 2,
+    "lat": 49.57284, "lat_hemisphere": "N",
+    "lon": 16.274575, "lon_hemisphere": "E",
+    "ra": "5h55m14s",
+    "dec": "-4°04'29\"",
+    "fov_w_deg": 50.7,
+    "fov_h_deg": 35.1,
+    "rotation_deg": -38,
+    "thumbnail": "img/astro/A2021-09-03_ORI01_T.jpg",
+    "full": "img/astro/A2021-09-03_ORI01.jpg"
+  },  
+  {
     "id": "A2024-05-11_AUR06",
     "object_name": "Aurora borealis",
     "category": "landscape",
