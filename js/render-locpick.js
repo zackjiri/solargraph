@@ -591,6 +591,7 @@ function _locPickDraw() {
     _locPickZoneLegendSync();
   }
   if (_locPick.ecl && typeof _eclMapDraw === 'function') _eclMapDraw(ctx, V, w, h);
+  if (typeof _locPlacesDraw === 'function') _locPlacesDraw(ctx, V, w, h);   // the places (render-locplaces.js)
   const SB = _locPickScaleBar(V, w, h);
   if (SB) _locPickDrawScale(ctx, SB);
   _locPickDrawPin(ctx, V, hemisphere * LAT, lonHemisphere * LONG, '#e84040');   // the Location
@@ -833,6 +834,19 @@ function _locPickPoint(e) {
   const x = e.clientX - r.left, y = e.clientY - r.top;
   return { x, y, p: _locPickUnproject(_locPickView(cv.clientWidth, cv.clientHeight), x, y) };
 }
+// Sets the Location to a point picked on the globe (a click, or the search's place):
+// the hemispheres and fields, the Time zone following, the info line and the wave. name: the
+// place's, for the info line, or null.
+function _locPickApplyHere(lat, lon, name) {
+  _locHereApply(lat, lon);   // controls.js: hemispheres + applyLat/applyLong, every view redraws
+  const text = name ? `Set to ${name} (${_locHereShown()}) from the globe.` : `Set to ${_locHereShown()} from the globe.`;
+  _locHereInfo(text);
+  _tzFollowLocation(lat, lon, text);   // tz-lookup.js: the Time zone follows
+  document.getElementById('inpLat').classList.add('loc-preview');
+  document.getElementById('inpLong').classList.add('loc-preview');
+  _locPick.wave = { lat, lon, t0: performance.now(), zoom: _locPick.zoom };
+  _locPickRequest();
+}
 (function () {
   const cv = document.getElementById('locPickCanvas');
   // Pointers down (Pointer Events: mouse, pen, fingers). One drags or, without moving, picks;
@@ -892,14 +906,7 @@ function _locPickPoint(e) {
     if (!D || D.moved) { if (e.pointerType !== 'mouse') _locPickPreview(null); return; }
     const p = _locPickPoint(e).p;
     if (!p) { _locPickPreview(null); return; }
-    _locHereApply(p.lat, p.lon);   // controls.js: hemispheres + applyLat/applyLong, every view redraws
-    const text = `Set to ${_locHereShown()} from the globe.`;
-    _locHereInfo(text);
-    _tzFollowLocation(p.lat, p.lon, text);   // tz-lookup.js: the Time zone follows
-    document.getElementById('inpLat').classList.add('loc-preview');
-    document.getElementById('inpLong').classList.add('loc-preview');
-    _locPick.wave = { lat: p.lat, lon: p.lon, t0: performance.now(), zoom: _locPick.zoom };
-    _locPickRequest();
+    _locPickApplyHere(p.lat, p.lon, null);   // the point clicked, a place's dot or label included
   });
   cv.addEventListener('pointercancel', (e) => {
     pts.delete(e.pointerId);
@@ -980,7 +987,6 @@ document.getElementById('btnLocPickZones').addEventListener('click', (e) => {
   e.currentTarget.title = _locPick.zones ? 'Hide the time zones' : 'Show the time zones';
   if (_locPick.zones && _locPick.lp) _locPickSetLp(false);
   document.getElementById('locPickWin').classList.toggle('zones', _locPick.zones);   // their source (.loc-pick-credit) shows
-  if (!_locPick.zones && typeof _tzs !== 'undefined' && _tzs.open) _tzsSetOpen(false);   // the search's button goes with them
   if (_locPick.zones) _tzLoad().then((g) => {   // the first time: the grid comes in
     // the credit (both its places) names the data's release, read from the grid so it follows a
     // regeneration

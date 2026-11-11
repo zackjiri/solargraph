@@ -1,10 +1,17 @@
-// ─── Time zones search ──────────────────────────────────────────────────────────────────────────
-// Round magnifier button left of the time zones' button (#btnLocPickZoneSearch), in the globe's
-// window while the time zones show (SELECT and the Eclipse map). It opens #locPickZoneSearchPanel
+// ─── Places and time zones search ───────────────────────────────────────────────────────────────
+// Round magnifier button left of the places' button (#btnLocPickZoneSearch), always in the globe's
+// window (SELECT and the Eclipse map). It opens #locPickZoneSearchPanel
 // over the corner: a text box and the matches below it (five rows visible, a scrollbar for the
 // rest), filtered again on every change of the text, the keys as in Night Sky's search
 // (render-search.js): ArrowUp/ArrowDown move the highlight, Enter or a click picks, Escape closes.
-// Searched:
+// A switch above the text box (#locPickSearchType: ALL, PLACES, ZONES; ALL at every opening) says
+// what is searched. Places: the towns of Natural Earth (render-locplaces.js, _locPlaces.entries), on
+// grey rows with their country code and their map symbol at the left (its tier); picking one flies
+// there, sets the Location and shows the places.
+// Everything else is a time zone, on a row in its colour from the map (a region, a country or an
+// offset with several: their colours side by side) with a clock at the left; picking one with the
+// time zones off turns them on.
+// Searched among the time zones:
 //  - an offset: "+1", "UTC+1", "5:30", "-3" (without a sign both), its zones at the mode's moment
 //    (_tzModeOffsets, so summer time in Night Sky and Eclipse);
 //  - a region, the first part of the zones' names (Europe, America, Pacific ...);
@@ -27,8 +34,13 @@ const _tzs = {
   loading: false,
   rows: [], sel: 0,
   match: null,         // the picked one: {label, kind: 'offset', value} or {label, kind: 'zones', zones: Set}
+  type: 'all',         // what is searched: 'all' | 'places' | 'zones'
 };
 const TZS_MAX_ROWS = 200;
+// a time zone row's icon: a clock face, white with a dark rim to read on any zone colour
+const TZS_CLOCK_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+  + '<circle cx="8" cy="8" r="6.2" fill="rgba(0,0,0,0.35)" stroke="#ffffff" stroke-width="1.5"/>'
+  + '<path d="M8 4.4V8l2.6 1.6" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function _tzsNorm(s) {
   return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -51,6 +63,7 @@ function _tzsNameKeys(name) {
 
 // ── The data ─────────────────────────────────────────────────────────────────────────────────────
 function _tzsLoad() {
+  if (typeof _locPlacesLoad === 'function') _locPlacesLoad();   // the places (render-locplaces.js), their own file
   if (_tzs.data || _tzs.loading) return;
   _tzs.loading = true;
   const own = document.querySelector('script[src*="render-tzsearch.js"]');
@@ -177,10 +190,19 @@ function _tzsUpdate() {
   const text = input.value.trim(), q = _tzsNorm(text);
   list.innerHTML = '';
   _tzs.rows = []; _tzs.sel = 0;
-  if (!_tzs.data) { note.textContent = text ? 'Loading…' : ''; return; }
-  if (!text) { note.textContent = 'An offset (+1, 5:30), a region (Europe), a zone, city or country'; return; }
+  const wantZones = _tzs.type !== 'places', wantPlaces = _tzs.type !== 'zones';
+  const places = typeof _locPlaces !== 'undefined' ? _locPlaces.entries : null;
+  const ready = (wantZones && _tzs.data) || (wantPlaces && places);
+  if (!ready) { note.textContent = text ? 'Loading…' : ''; return; }
+  if (!text) {
+    note.textContent = _tzs.type === 'places' ? 'A town or city (Brno, Vienna)'
+      : _tzs.type === 'zones' ? 'An offset (+1, 5:30), a region (Europe), a zone, city or country'
+      : 'A town, an offset (+1), a region (Europe), a zone or a country';
+    return;
+  }
   const found = [];
-  const oq = _tzsOffsetQuery(text);
+  const oq = wantZones && _tzs.data ? _tzsOffsetQuery(text) : null;
+  if (q && wantPlaces && places) for (const e of places) { const r = _tzsRank(e, q); if (r >= 0) found.push({ e, r, o: 0, k: e.rank }); }
   if (oq) {
     for (const e of _tzsOffsetEntries(_tzGrid.data)) {
       if (oq.sign && oq.sign !== e.sign) continue;
@@ -188,25 +210,42 @@ function _tzsUpdate() {
       if (r >= 0) found.push({ e, r, o: 0 });
     }
   }
-  if (q) for (const e of _tzs.data.entries) { const r = _tzsRank(e, q); if (r >= 0) found.push({ e, r, o: e.order }); }
-  found.sort((a, b) => a.r - b.r || a.o - b.o || a.e.label.localeCompare(b.e.label));
+  if (q && wantZones && _tzs.data) for (const e of _tzs.data.entries) { const r = _tzsRank(e, q); if (r >= 0) found.push({ e, r, o: e.order }); }
+  // the best match first; a place before a zone of the same rank, places by importance
+  found.sort((a, b) => a.r - b.r || a.o - b.o || (a.k !== undefined && b.k !== undefined ? a.k - b.k : 0) || a.e.label.localeCompare(b.e.label));
   _tzs.rows = found.slice(0, TZS_MAX_ROWS).map(f => f.e);
-  const offs = _tzModeOffsets(_tzGrid.data);
+  const offs = _tzGrid.data ? _tzModeOffsets(_tzGrid.data) : null;
   _tzs.rows.forEach((e, i) => {
     const li = document.createElement('li');
     li.setAttribute('role', 'option');
+    li.dataset.kind = e.kind;
     const name = document.createElement('span'); name.className = 'tzs-name'; name.textContent = e.label;
     const sub = document.createElement('span'); sub.className = 'tzs-sub';
     // a zone's offset at the mode's moment
-    const h = e.zone ? offs.off[e.zone] : NaN;
+    const h = e.zone && offs ? offs.off[e.zone] : NaN;
     sub.textContent = e.sub || (h === h ? 'UTC' + _fmtTimeZone(h) : '');
-    li.append(name, sub);
+    // what the row is: a place its map symbol by tier (render-locplaces.js), a time zone a clock
+    const icon = document.createElement('span'); icon.className = 'tzs-icon';
+    if (e.kind === 'place') { icon.dataset.icon = 'place-' + e.tier; icon.innerHTML = _locPlacesIconSVG(e.tier); icon.title = LOC_PLACES_TIERS[e.tier].name; }
+    else { icon.dataset.icon = 'clock'; icon.innerHTML = TZS_CLOCK_SVG; icon.title = 'time zone'; }
+    li.append(icon, name, sub);
+    if (e.kind !== 'place' && offs) _tzsRowColour(li, e, offs);
     li.addEventListener('mousedown', (ev) => { ev.preventDefault(); _tzsPick(e); });
     li.addEventListener('mousemove', () => { if (_tzs.sel !== i) { _tzs.sel = i; _tzsMarkSel(); } });
     list.appendChild(li);
   });
   note.textContent = _tzs.rows.length ? (found.length > TZS_MAX_ROWS ? TZS_MAX_ROWS + ' of ' + found.length + ' shown' : '') : 'Nothing found';
   _tzsMarkSel();
+}
+// A zone's row on its colour from the map: its offset's at the mode's moment; several offsets (a
+// region, a country) their colours side by side, in order of the offset
+function _tzsRowColour(li, e, offs) {
+  const hs = e.kind === 'offset' ? [e.value] : [...new Set([...(e.zones || [])].map(s => offs.off[s]).filter(h => h === h))].sort((a, b) => a - b);
+  if (!hs.length) return;
+  const col = (h) => { const c = _locPickZoneRGB(h); return `rgba(${c.map(Math.round).join(',')},0.85)`; };
+  if (hs.length === 1) { li.style.backgroundColor = col(hs[0]); return; }
+  const shown = hs.length > 12 ? hs.filter((_, i) => i % Math.ceil(hs.length / 12) === 0) : hs;
+  li.style.backgroundImage = 'linear-gradient(90deg, ' + shown.map((h, i) => col(h) + ' ' + (i / shown.length * 100).toFixed(1) + '% ' + ((i + 1) / shown.length * 100).toFixed(1) + '%').join(', ') + ')';
 }
 function _tzsMarkSel() {
   const items = document.getElementById('locPickZoneSearchList').children;
@@ -218,6 +257,8 @@ function _tzsMarkSel() {
 // Turns the globe to the entry (an offset: to the middle of its zones at the moment) and keeps it
 // bright; the chip under the head names it
 function _tzsPick(e) {
+  if (e.kind === 'place') { _tzsSetOpen(false); _locPlacesPick(e); return; }   // render-locplaces.js
+  if (!_locPick.zones) document.getElementById('btnLocPickZones').click();   // the zone shows on the map
   const G = _tzGrid.data;
   let at = e.at;
   if (e.kind === 'offset') {
@@ -235,6 +276,8 @@ function _tzsPick(e) {
   if (at) { _locPick.lat0 = Math.max(-89, Math.min(89, at[0])); _locPick.lon0 = at[1]; }
   _tzsSetOpen(false);
   _tzsChip();
+  // the labels under the head (time zone, Bortle class) for the pick's place until the mouse is over the globe again
+  if (at) _locPickZoneHint({ lat: at[0], lon: at[1] });
   _locPickRequest();
 }
 // A zone's place as a unit vector, from the zone's own entry, or null
@@ -261,11 +304,20 @@ function _tzsSetOpen(on) {
   document.getElementById('btnLocPickZoneSearch').setAttribute('aria-pressed', String(on));
   if (on) {
     _tzsLoad();
+    _tzsSetType('all');
     const input = document.getElementById('locPickZoneSearchInput');
     input.value = '';
     _tzsUpdate();
     input.focus();
   }
+}
+function _tzsSetType(t) {
+  _tzs.type = t;
+  for (const b of document.querySelectorAll('#locPickSearchType [data-type]')) b.setAttribute('aria-pressed', String(b.dataset.type === t));
+}
+for (const b of document.querySelectorAll('#locPickSearchType [data-type]')) {
+  b.addEventListener('mousedown', (ev) => ev.preventDefault());   // the text box keeps the focus
+  b.addEventListener('click', () => { _tzsSetType(b.dataset.type); _tzsUpdate(); document.getElementById('locPickZoneSearchInput').focus(); });
 }
 document.getElementById('btnLocPickZoneSearch').addEventListener('click', () => _tzsSetOpen(!_tzs.open));
 document.getElementById('locPickZoneMatchClear').addEventListener('click', _tzsClear);
