@@ -8,7 +8,10 @@
 //  - the path of totality (annularity): the band between its northern and southern limits and its
 //    central line;
 //  - the lines of equal greatest magnitude 0.2, 0.4, 0.6 and 0.8, labelled, and the line of
-//    magnitude 0, the edge of the area where the eclipse is seen at all;
+//    magnitude 0, the edge of the area where the eclipse is seen at all; zoomed in, finer lines
+//    between them (every 0.1, 0.05, 0.02 or 0.01: _eclMapStep), thinner and fainter, drawn from the
+//    event's grid of greatest magnitude (js/eclipse-data/<id>.mag.js, window.ECLIPSE_MAG_GRIDS, loaded
+//    when first needed) by marching squares with linear interpolation (_eclMapContour, cached);
 //  - the Greatest Eclipse point;
 //  - a legend in the top left corner under the window's head, with the path's width and the
 //    central duration at the Greatest Eclipse point.
@@ -21,7 +24,16 @@ const ECLIPSE_MAP_PATH_FILL = 'rgba(96,42,196,0.46)';   // the slider's totality
 const ECLIPSE_MAP_PATH_EDGE = '#b49bff';
 const ECLIPSE_MAP_MAG = 'rgba(245,197,24,0.8)';         // the Sun's yellow
 const ECLIPSE_MAP_ZONE = 'rgba(6,8,12,0.15)';           // one zone's dark veil, laid on per level
-const _eclMap = { data: {}, loading: {} };   // per event id: the lines as unit vectors, or loading
+const _eclMap = { data: {}, loading: {},   // per event id: the lines as unit vectors, or loading
+  grids: {}, gridLoading: {},             // per event id: the decoded grid of greatest magnitude
+  contours: new Map(),                    // 'id|level' -> the finer line's polylines as unit vectors
+  step: 0.2, labelTexts: [], legendRows: [] };   // as last drawn
+// The finer lines: the step is the smallest of ECLIPSE_MAP_STEPS whose lines would lie about
+// ECLIPSE_MAP_LINE_PX apart on the screen, taking the magnitude to fall by 1 over ECLIPSE_MAP_KM_PER_MAG
+const ECLIPSE_MAP_STEPS = [0.2, 0.1, 0.05, 0.02, 0.01];
+const ECLIPSE_MAP_KM_PER_MAG = 3500, ECLIPSE_MAP_LINE_PX = 100;
+const ECLIPSE_MAP_FINE = 'rgba(245,197,24,0.55)';
+const ECLIPSE_MAP_VIEW_SAMPLES = 8;   // the view's magnitude range from 9 × 9 points of the grid
 
 function _eclMapCacheBust() {
   const s = document.querySelector('script[src*="render-eclipse-map.js"]');
@@ -167,25 +179,157 @@ function _eclMapLabel(ctx, text, x, y, col) {
   ctx.fillText(text, x, y + 0.5);
 }
 
+// ── The finer lines ────────────────────────────────────────────────────────────────────────────
+// The event's grid of greatest magnitude, decoded: {grid, nLat, nLon, g: Float32Array}, or null
+// while it loads (its script asked for the first time here; the globe redrawn when it is in)
+function _eclMapGrid(id) {
+  if (_eclMap.grids[id]) return _eclMap.grids[id];
+  const raw = window.ECLIPSE_MAG_GRIDS && window.ECLIPSE_MAG_GRIDS[id];
+  if (raw) {
+    const g = new Float32Array(raw.nLat * raw.nLon);
+    for (const [i, j0, b64] of raw.rows) {
+      const bin = atob(b64);
+      for (let k = 0; 2 * k + 1 < bin.length; k++) g[i * raw.nLon + j0 + k] = (bin.charCodeAt(2 * k) | (bin.charCodeAt(2 * k + 1) << 8)) / raw.scale;
+    }
+    return (_eclMap.grids[id] = { grid: raw.grid, nLat: raw.nLat, nLon: raw.nLon, g });
+  }
+  if (!_eclMap.gridLoading[id]) {
+    _eclMap.gridLoading[id] = true;
+    const sc = document.createElement('script');
+    sc.src = 'js/eclipse-data/' + id + '.mag.js' + _eclMapCacheBust();
+    sc.onload = () => _locPickRequest();
+    sc.onerror = () => { _eclMap.gridLoading[id] = 'missing'; };
+    document.head.appendChild(sc);
+  }
+  return null;
+}
+// The grid's magnitude at a point, interpolated between its four nearest points
+function _eclMapGridAt(G, lat, lon) {
+  const fi = (90 - lat) / G.grid, fj = (((lon + 180) % 360 + 360) % 360) / G.grid;
+  const i = Math.min(G.nLat - 2, Math.max(0, Math.floor(fi))), j = Math.min(G.nLon - 2, Math.floor(fj)), a = fi - i, b = fj - j;
+  const v = (ii, jj) => G.g[ii * G.nLon + jj];
+  return (1 - a) * ((1 - b) * v(i, j) + b * v(i, j + 1)) + a * ((1 - b) * v(i + 1, j) + b * v(i + 1, j + 1));
+}
+// The step of the lines for the view: the scale at its centre in km per px against the magnitude's
+// fall per km
+function _eclMapStep(V) {
+  const kmPerPx = 6371 / V.R;
+  let step = ECLIPSE_MAP_STEPS[0];
+  for (const s of ECLIPSE_MAP_STEPS) if (s * ECLIPSE_MAP_KM_PER_MAG / kmPerPx >= ECLIPSE_MAP_LINE_PX) step = s;
+  return step;
+}
+// A level's key and label: one decimal for steps of 0.1 and more, else two
+function _eclMapLevelKey(lv, step) { return lv.toFixed(step >= 0.1 ? 1 : 2); }
+// The lines of one level from the grid: marching squares, the crossings interpolated linearly on the
+// cells' edges, the segments joined into polylines, as unit vectors; cached per event and level
+function _eclMapContour(id, level) {
+  const key = id + '|' + level.toFixed(4);
+  if (_eclMap.contours.has(key)) return _eclMap.contours.get(key);
+  const G = _eclMapGrid(id);
+  if (!G) return [];
+  const { g, nLat, nLon, grid } = G;
+  const edgeId = (kind, i, j) => (i * nLon + j) * 2 + kind;   // kind 0: the edge right of (i, j), 1: below it
+  const pos = (e) => {
+    const kind = e & 1, c = e >> 1, i = Math.floor(c / nLon), j = c % nLon;
+    const a = g[c], b = kind ? g[c + nLon] : g[c + 1], f = Math.max(0, Math.min(1, (level - a) / ((b - a) || 1e-9)));
+    return kind ? [90 - (i + f) * grid, -180 + j * grid] : [90 - i * grid, -180 + (j + f) * grid];
+  };
+  const segs = [];
+  for (let i = 0; i < nLat - 1; i++) {
+    const r0 = i * nLon, r1 = r0 + nLon;
+    for (let j = 0; j < nLon - 1; j++) {
+      const va = g[r0 + j], vb = g[r0 + j + 1], vc = g[r1 + j + 1], vd = g[r1 + j];
+      if (va <= level && vb <= level && vc <= level && vd <= level) continue;
+      const idx = (va > level ? 8 : 0) | (vb > level ? 4 : 0) | (vc > level ? 2 : 0) | (vd > level ? 1 : 0);
+      if (idx === 15) continue;
+      const T = edgeId(0, i, j), B = edgeId(0, i + 1, j), L = edgeId(1, i, j), R = edgeId(1, i, j + 1 === nLon - 1 ? 0 : j + 1);
+      const centre = (va + vb + vc + vd) / 4 > level;
+      switch (idx) {
+        case 1: case 14: segs.push(L, B); break;
+        case 2: case 13: segs.push(B, R); break;
+        case 3: case 12: segs.push(L, R); break;
+        case 4: case 11: segs.push(T, R); break;
+        case 6: case 9: segs.push(T, B); break;
+        case 7: case 8: segs.push(L, T); break;
+        case 5: if (centre) segs.push(L, T, B, R); else segs.push(L, B, T, R); break;
+        case 10: if (centre) segs.push(T, R, L, B); else segs.push(L, T, B, R); break;
+      }
+    }
+  }
+  // join the segments at their shared edges
+  const n = segs.length / 2, ends = new Map(), used = new Uint8Array(n);
+  for (let s = 0; s < n; s++) for (const e of [segs[2 * s], segs[2 * s + 1]]) { const l = ends.get(e); if (l) l.push(s); else ends.set(e, [s]); }
+  const lines = [];
+  for (let s = 0; s < n; s++) {
+    if (used[s]) continue;
+    used[s] = 1;
+    const chain = [segs[2 * s], segs[2 * s + 1]];
+    for (const tail of [true, false]) {
+      for (;;) {
+        const tip = tail ? chain[chain.length - 1] : chain[0];
+        const next = (ends.get(tip) || []).find(m => !used[m]);
+        if (next === undefined) break;
+        used[next] = 1;
+        const other = segs[2 * next] === tip ? segs[2 * next + 1] : segs[2 * next];
+        if (tail) chain.push(other); else chain.unshift(other);
+      }
+    }
+    if (chain.length >= 3) lines.push(chain.map(e => { const p = pos(e); return _locPickVec(p[1], p[0]); }));
+  }
+  _eclMap.contours.set(key, lines);
+  return lines;
+}
+// The magnitude lines for the view, by key: the event's own (every 0.2, the edge of visibility),
+// and with a finer step the levels between them from the grid (while it loads, only the own)
+function _eclMapLinesNow(id, V) {
+  const M = _eclMapGet(id), out = {}, step = _eclMapStep(V);
+  if (!M) return out;
+  for (const k in M.mag) out[k] = M.mag[k];
+  const G = step < 0.2 ? _eclMapGrid(id) : null;
+  if (G) {
+    // only the levels in the view: the grid sampled over the window (ECLIPSE_MAP_VIEW_SAMPLES² points)
+    let lo = Infinity, hi = -Infinity;
+    const n0 = ECLIPSE_MAP_VIEW_SAMPLES, w = V.cx * 2, h = V.cy * 2;
+    for (let a = 0; a <= n0; a++) for (let b = 0; b <= n0; b++) {
+      const p = _locPickUnproject(V, w * a / n0, h * b / n0);
+      if (!p) continue;
+      const m = _eclMapGridAt(G, p.lat, p.lon);
+      if (m < lo) lo = m; if (m > hi) hi = m;
+    }
+    if (lo > hi) return out;
+    for (let n = 1; n * step < 1 - 1e-9; n++) {
+      const lv = Math.round(n * step * 1000) / 1000;
+      if (Math.abs(lv * 5 - Math.round(lv * 5)) < 1e-6) continue;   // 0.2, 0.4 ...: the event's own
+      if (lv < lo - 2 * step || lv > hi + 2 * step) continue;          // outside the view
+      const lines = _eclMapContour(id, lv);
+      if (lines.length) out[_eclMapLevelKey(lv, step)] = lines;
+    }
+  }
+  return out;
+}
+function _eclMapLegendRowsNow() { return _eclMap.legendRows.slice(); }
+
 // A label per magnitude line, at its point nearest the view's centre that leaves the label clear
 // of those already placed (with a gap), of the Greatest Eclipse mark and of the legend: where
 // lines crowd, by the limb or zoomed out, the labels spread along their lines instead of piling
 // up, and a line with no free point left goes without one. Only points well inside the disc
 // (z > 0.35) take a label.
 const ECLIPSE_MAP_LABEL_GAP = 6;
-function _eclMapLabels(ctx, V, M, G, ev, h) {
+function _eclMapLabels(ctx, V, M, G, ev, h, lines) {
   ctx.font = "10px 'Share Tech Mono', monospace";
   const taken = [];
+  _eclMap.labelTexts = [];
   const free = (b) => taken.every(t => b.x1 + ECLIPSE_MAP_LABEL_GAP <= t.x0 || t.x1 + ECLIPSE_MAP_LABEL_GAP <= b.x0
     || b.y1 + ECLIPSE_MAP_LABEL_GAP <= t.y0 || t.y1 + ECLIPSE_MAP_LABEL_GAP <= b.y0);
   const g = _locPickProject(V, G);
   if (g.z > 0) taken.push({ x0: g.x - 8, y0: g.y - 8, x1: g.x + 8, y1: g.y + 8 });
   const L = _eclMapLegendLayout(ctx, M, ev, h);
   taken.push({ x0: L.x0, y0: L.y0, x1: L.x0 + L.W, y1: L.y0 + L.H });
-  for (const k in M.mag) {
-    if (k === '0.0') continue;
+  // the event's own levels first, so the finer ones fit round them
+  const keys = Object.keys(lines).filter(k => k !== '0.0').sort((a, b) => (a.length - b.length) || (+a - +b));
+  for (const k of keys) {
     const w = ctx.measureText(k).width + 6;
-    for (const line of M.mag[k]) {
+    for (const line of lines[k]) {
       const cand = [];
       for (let i = 0; i < line.length; i++) {
         const s = _locPickProject(V, line[i]);
@@ -197,6 +341,7 @@ function _eclMapLabels(ctx, V, M, G, ev, h) {
         if (!free(b)) continue;
         taken.push(b);
         _eclMapLabel(ctx, k, s.x, s.y, '#f5c518');
+        _eclMap.labelTexts.push(k);
         break;
       }
     }
@@ -225,13 +370,16 @@ function _eclMapDraw(ctx, V, w, h) {
   for (const k in M.mag) if (M.mag[k].length) _eclMapFillZone(ctx, Vp, M.mag[k], G, ECLIPSE_MAP_ZONE);
   if (M.north && M.south && M.north.length > 1 && M.south.length > 1) _eclMapFillBand(ctx, Vp, M.north, M.south, G);
   ctx.restore();
-  // magnitude lines, the edge of visibility stronger
+  // magnitude lines, the edge of visibility stronger; zoomed in the finer ones from the grid, thinner
+  _eclMap.step = _eclMapStep(V);
+  const lines = _eclMapLinesNow(ev.id, V);
   ctx.lineJoin = 'round';
-  for (const k in M.mag) {
-    ctx.lineWidth = k === '0.0' ? 1.6 : 1;
-    ctx.strokeStyle = ECLIPSE_MAP_MAG;
-    ctx.setLineDash(k === '0.0' ? [] : [5, 3]);
-    _locPickStrokeLines(ctx, V, M.mag[k]);
+  for (const k in lines) {
+    const own = !!M.mag[k];
+    ctx.lineWidth = k === '0.0' ? 1.6 : own ? 1 : 0.8;
+    ctx.strokeStyle = own ? ECLIPSE_MAP_MAG : ECLIPSE_MAP_FINE;
+    ctx.setLineDash(k === '0.0' ? [] : own ? [5, 3] : [3, 3]);
+    _locPickStrokeLines(ctx, V, lines[k]);
   }
   ctx.setLineDash([]);
   if (M.north) {
@@ -240,7 +388,7 @@ function _eclMapDraw(ctx, V, w, h) {
     ctx.lineWidth = 0.9; ctx.strokeStyle = 'rgba(235,228,255,0.9)';
     _locPickStrokeLines(ctx, V, [M.central]);
   }
-  _eclMapLabels(ctx, V, M, G, ev, h);
+  _eclMapLabels(ctx, V, M, G, ev, h, lines);
   // the Greatest Eclipse point: a ringed dot
   const s = _locPickProject(V, G);
   if (s.z > 0) {
@@ -252,8 +400,10 @@ function _eclMapDraw(ctx, V, w, h) {
   ctx.restore();
   _eclMapLegend(ctx, M, ev, h);
 }
-// The legend's rows and box (top left, under the window's head however that wraps; the bottom left
-// is the time zones' legend), also kept free of the line labels
+// The legend's rows and box (top left, right under the window's title and hint however they wrap,
+// above the time zone and Bortle labels, which move under it: render-locpick.js _locPickInfoPlace;
+// the bottom left is the time zones' legend), also kept free of the line labels and, through
+// _eclMapLegendBox, of the places' labels (render-locplaces.js)
 function _eclMapLegendLayout(ctx, M, ev, h) {
   const central = ev.type === 'annular' ? 'annularity' : 'totality';
   const rows = [];
@@ -267,18 +417,22 @@ function _eclMapLegendLayout(ctx, M, ev, h) {
     }
     rows.push({ kind: 'band', text: 'Path of ' + central, sub });
   }
-  rows.push({ kind: 'dash', text: 'Greatest magnitude 0.2 to 0.8' });
+  const st = _eclMap.step;
+  rows.push({ kind: 'dash', text: st < 0.2 ? 'Greatest magnitude, every ' + _eclMapLevelKey(st, st) : 'Greatest magnitude 0.2 to 0.8' });
   rows.push({ kind: 'line', text: 'Edge of visibility' });
   rows.push({ kind: 'ge', text: 'Greatest eclipse' });
   const lineH = 15, pad = 8;
   const H = pad * 2 + rows.reduce((s, r) => s + lineH + (r.sub ? 12 : 0), 0) - 3;
-  const x0 = 12, y0 = _locPickHeadBottom() + 8;   // render-locpick.js
+  const x0 = 12, y0 = _locPickHeadTextBottom() + 8;   // render-locpick.js
   ctx.font = "10px 'Share Tech Mono', monospace";
   const W = pad * 2 + 22 + Math.max(...rows.map(r => Math.max(ctx.measureText(r.text).width, r.sub ? ctx.measureText(r.sub).width * 0.9 : 0)));
+  _eclMap.legendRows = rows.map(r => r.text);
   return { rows, x0, y0, W, H, lineH, pad };
 }
+let _eclMapLegendBox = null;   // the legend's box on the canvas as last drawn {x0, y0, x1, y1}
 function _eclMapLegend(ctx, M, ev, h) {
   const { rows, x0, y0, W, H, lineH, pad } = _eclMapLegendLayout(ctx, M, ev, h);
+  _eclMapLegendBox = { x0, y0, x1: x0 + W, y1: y0 + H };
   ctx.fillStyle = 'rgba(7,9,13,0.72)';
   ctx.fillRect(x0, y0, W, H);
   ctx.strokeStyle = 'rgba(160,200,240,0.25)'; ctx.lineWidth = 1;
