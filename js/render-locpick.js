@@ -311,6 +311,23 @@ function _locPickHeadBottom() {
   const head = document.querySelector('.loc-pick-head'), cv = document.getElementById('locPickCanvas');
   return head.getBoundingClientRect().bottom - cv.getBoundingClientRect().top;
 }
+// The bottom of the head's own text (title and hint, however they wrap), without the labels under
+// it, relative to the canvas: the Eclipse map's legend goes right under it
+function _locPickHeadTextBottom() {
+  const cv = document.getElementById('locPickCanvas').getBoundingClientRect();
+  return Math.max(document.getElementById('locPickTitle').getBoundingClientRect().bottom,
+    document.getElementById('locPickHint').getBoundingClientRect().bottom) - cv.top;
+}
+// On the Eclipse map the labels under the head (#locPickInfo: time zone, Bortle) go under the map's
+// legend (render-eclipse-map.js, _eclMapLegendBox); elsewhere right under the head's text
+function _locPickInfoPlace() {
+  const info = document.getElementById('locPickInfo');
+  let m = '';
+  if (_locPick.ecl && typeof _eclMapLegendBox !== 'undefined' && _eclMapLegendBox) {
+    m = Math.max(5, Math.round(_eclMapLegendBox.y1 + 6 - _locPickHeadTextBottom())) + 'px';
+  }
+  if (info.style.marginTop !== m) info.style.marginTop = m;
+}
 // The light pollution (#btnLocPickLightPollution, off at first, only in SELECT; it and the time
 // zones switch each other off): the zenith brightness (lp-lookup.js) as its Bortle class in the
 // colours of Display's Bortle scale, laid over land and sea at 0.55 where there are data. The
@@ -591,6 +608,7 @@ function _locPickDraw() {
     _locPickZoneLegendSync();
   }
   if (_locPick.ecl && typeof _eclMapDraw === 'function') _eclMapDraw(ctx, V, w, h);
+  _locPickInfoPlace();
   if (typeof _locPlacesDraw === 'function') _locPlacesDraw(ctx, V, w, h);   // the places (render-locplaces.js)
   const SB = _locPickScaleBar(V, w, h);
   if (SB) _locPickDrawScale(ctx, SB);
@@ -792,6 +810,7 @@ function _locPickSetOpen(on, ecl) {
   _locPick.ecl = on ? (ecl || null) : null;
   document.getElementById('locPickWin').classList.toggle('open', on);
   document.getElementById('locPickWin').classList.toggle('ecl', !!_locPick.ecl);
+  _locPickInfoPlace();   // the labels under the head: under the Eclipse map's legend only there
   const plain = on && !_locPick.ecl;
   const btn = document.getElementById('btnLocSelect');
   btn.classList.toggle('open', plain);

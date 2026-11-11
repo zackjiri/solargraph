@@ -119,6 +119,9 @@ function _locPlacesDraw(ctx, V, w, h) {
     const r = el.getBoundingClientRect();
     if (r.width && r.height) blocked.push({ x0: r.left - cr.left - 2, y0: r.top - cr.top - 2, x1: r.right - cr.left + 2, y1: r.bottom - cr.top + 2 });
   }
+  // the Eclipse map's legend, drawn on the canvas just before (render-eclipse-map.js)
+  const EL = _locPick.ecl && typeof _eclMapLegendBox !== 'undefined' ? _eclMapLegendBox : null;
+  if (EL) blocked.push({ x0: EL.x0 - 2, y0: EL.y0 - 2, x1: EL.x1 + 2, y1: EL.y1 + 2 });
   const cellsOf = (b) => { const r = []; for (let gx = Math.floor(b.x0 / CELL); gx <= Math.floor(b.x1 / CELL); gx++) for (let gy = Math.floor(b.y0 / CELL); gy <= Math.floor(b.y1 / CELL); gy++) r.push(gx + ',' + gy); return r; };
   const free = (b) => {
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > w || b.y1 > h) return false;
