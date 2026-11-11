@@ -13,6 +13,7 @@ that package is used; the TopoJSON is decoded by this project's own renderer
 |---|---|---|
 | `land-110m.json` | Land polygons, TopoJSON, quantized, 1:110m scale | [world-atlas@2.0.2/land-110m.json](https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/land-110m.json) |
 | `ne_110m_lakes.geojson` | The 24 largest lakes, GeoJSON, 1:110m scale (Natural Earth 1:110m Physical Vectors, Lakes) | [nvkelso/natural-earth-vector, geojson/ne_110m_lakes.geojson](https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_lakes.geojson) |
+| `places-10m.js` | Towns and cities for the Location globe (`window.NE_PLACES`), **derived**: Natural Earth 1:10m Cultural Vectors, Populated Places (simple), version 5.1.2, trimmed by `tools/ne-places.py` to name, country code, coordinates, min_zoom, kind and population, with a few corrections listed in that script (Plzeň, Ústí nad Labem, Zlín, Karlovy Vary added) | [nvkelso/natural-earth-vector v5.1.2, geojson/ne_10m_populated_places_simple.geojson](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_10m_populated_places_simple.geojson) |
 | `LICENSE` | world-atlas's own ISC license text | [world-atlas@2.0.2/LICENSE](https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/LICENSE) |
 
 Coordinates are `[longitude, latitude]` in degrees, on the sphere: some rings cross the 180°
@@ -23,4 +24,4 @@ map, so their fill doesn't come out inverted.
 
 world-atlas is released under the **ISC license** (see `LICENSE`). Its geometry is derived from
 [Natural Earth](https://www.naturalearthdata.com/), which is in the **public domain**, as is the
-lake file taken from Natural Earth directly.
+lake file taken from Natural Earth directly and the places derived from it.
