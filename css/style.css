@@ -3187,7 +3187,7 @@
   /* Night Sky's own 4 segments (ALL/LANDSCAPE/SOLAR SYSTEM/DEEP SKY) need more room than Eclipse's
      260px default - "SOLAR SYSTEM" alone measured ~84px at this font/padding, clipped at the
      shared floor's 65px-per-segment share. */
-  #nightSkyCatalogTypeFilter { min-width: 410px; }
+  #nightSkyCatalogTypeFilter { min-width: 500px; }   /* five equal segments, wide enough for SOLAR SYSTEM */
   .catalog-type-filter .ns-btn {
     flex: 1 1 0;
     min-width: 0;      /* without this, flex:1 alone still yields content-driven widths (the longest
@@ -3844,14 +3844,17 @@
   .loc-pick-credit a { color: var(--accent2); text-decoration: none; }
   .loc-pick-credit a:hover { text-decoration: underline; }
   body.light .loc-pick-credit { background: rgba(220,228,236,0.85); }
-  #locPickCredit { position: absolute; right: 106px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of both buttons */
+  #locPickCredit { position: absolute; right: 152px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of the buttons (Eclipse map: three) */
   #locPickWin.zones #locPickCredit { display: block; }
   /* the time zones search (js/render-tzsearch.js): the magnifier left of the time zones' button
      while they show, its panel above the buttons (as Night Sky's), and the chip of its pick under
      the window's head */
-  #btnLocPickZoneSearch {
-    position: absolute; right: 58.5px; bottom: 12.5px;
-    z-index: 2; display: none;
+  /* the places' button (js/render-locplaces.js) left of the time zones', the search left of it;
+     both always there: SELECT LP | zones | places | search from the corner, the Eclipse map
+     zones | places | search */
+  #btnLocPickPlaces {
+    position: absolute; right: 104.5px; bottom: 12.5px;
+    z-index: 2; display: flex;
     width: 38px; height: 38px; padding: 0;
     align-items: center; justify-content: center;
     border-radius: 50%;
@@ -3862,7 +3865,27 @@
     cursor: pointer;
     transition: background 0.15s, color 0.15s, box-shadow 0.15s;
   }
-  #locPickWin.zones #btnLocPickZoneSearch { display: flex; }
+  #btnLocPickPlaces:hover { border-color: var(--accent2); }
+  #btnLocPickPlaces[aria-pressed="true"] {
+    background: var(--accent2); color: #fff; border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
+  }
+  body.light #btnLocPickPlaces[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
+  #locPickWin.ecl #btnLocPickPlaces { right: 58.5px; }
+  #locPickWin.ecl #btnLocPickZoneSearch { right: 104.5px; }
+  #btnLocPickZoneSearch {
+    position: absolute; right: 150.5px; bottom: 12.5px;
+    z-index: 2; display: flex;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: var(--accent2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
   #btnLocPickZoneSearch:hover { border-color: var(--accent2); }
   #btnLocPickZoneSearch[aria-pressed="true"] { background: var(--accent2); color: #fff; border-color: var(--accent2); }
   body.light #btnLocPickZoneSearch[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
@@ -3877,6 +3900,9 @@
     box-sizing: border-box;
   }
   #locPickZoneSearchPanel.open { display: block; }
+  #locPickSearchType { display: flex; margin-bottom: 5px; }
+  #locPickSearchType .ns-btn { flex: 1 1 0; }
+  #locPickSearchType .ns-btn[aria-pressed="true"] { background: var(--accent2); color: #fff; border-color: var(--accent2); }
   body.light #locPickZoneSearchPanel { background: rgba(245,247,249,0.95); }
   #locPickZoneSearchInput {
     width: 100%; box-sizing: border-box;
@@ -3889,7 +3915,7 @@
   #locPickZoneSearchInput:focus { border-color: var(--accent2); }
   #locPickZoneSearchList {
     list-style: none; margin: 5px 0 0; padding: 0;
-    max-height: calc(5 * 26px); overflow-y: auto;
+    max-height: calc(5 * 28px); overflow-y: auto;
   }
   #locPickZoneSearchList:empty { display: none; }
   #locPickZoneSearchList li {
@@ -3898,7 +3924,13 @@
     font-family: var(--mono); font-size: 12px; color: var(--text);
     border-radius: 3px; cursor: pointer; white-space: nowrap;
   }
-  #locPickZoneSearchList li.sel, #locPickZoneSearchList li:hover { background: var(--control-fill-hover); }
+  /* a place on grey, a time zone (region, country, offset) on its colour from the map (set inline,
+     js/render-tzsearch.js); the highlighted row framed */
+  #locPickZoneSearchList li { margin-bottom: 2px; text-shadow: 0 0 2px rgba(0,0,0,0.85), 0 0 1px rgba(0,0,0,0.9); color: #f2f5f8; }
+  #locPickZoneSearchList li[data-kind="place"] { background-color: rgb(92, 92, 92); }
+  #locPickZoneSearchList li.sel, #locPickZoneSearchList li:hover { box-shadow: inset 0 0 0 2px var(--accent2); }
+  #locPickZoneSearchList li .tzs-sub { color: #dde3ea; }
+  #locPickZoneSearchList .tzs-icon { flex: none; width: 14px; height: 14px; align-self: center; display: flex; margin-right: -2px; }
   #locPickZoneSearchList .tzs-name { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
   #locPickZoneSearchList .tzs-sub { color: var(--dim); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; flex: 1 1 0; text-align: right; }
   #locPickZoneSearchNote { font-family: var(--mono); font-size: 10.5px; color: var(--dim); padding: 4px 2px 0; }
@@ -3969,8 +4001,7 @@
   body.light #btnLocPickLightPollution[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
   #locPickWin.ecl #btnLocPickLightPollution { display: none; }
   #locPickWin.ecl #btnLocPickZones { right: 12.5px; }   /* the corner, where the light pollution's button is hidden */
-  #locPickWin.zones:not(.ecl) #btnLocPickZoneSearch { right: 104.5px; }
-  #locPickWin.zones:not(.ecl) #locPickCredit { right: 152px; }
+  #locPickWin:not(.ecl) #locPickCredit { right: 198px; }
   #locPickLpLegend {
     position: absolute; left: 12px; bottom: 12px; z-index: 2; display: none;
     width: 216px; max-width: calc(100% - 140px); box-sizing: border-box;
@@ -4001,7 +4032,7 @@
   .lpl-scale button.here { outline: 2.5px solid #fff; outline-offset: 1px; box-shadow: 0 0 0 4px rgba(0,0,0,0.75); z-index: 2; }
   body.light .lpl-scale button.here { outline-color: #000; box-shadow: 0 0 0 4px rgba(255,255,255,0.85); }
   .lpl-ends { display: flex; justify-content: space-between; margin-top: 2px; color: var(--dim); font-size: 9px; }
-  #locPickLpCredit { position: absolute; right: 106px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of both buttons */
+  #locPickLpCredit { position: absolute; right: 198px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of the four buttons */
   #locPickWin.lp:not(.ecl) #locPickLpCredit { display: block; }
   #locPickLpCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
   @container (max-width: 640px) {   /* the credit ~290 px + the two buttons, the legend ~216 px */
