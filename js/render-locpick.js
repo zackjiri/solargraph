@@ -339,6 +339,41 @@ const LOC_PICK_LP_RGB = [[0, 0, 0], [110, 110, 110], [28, 47, 122], [47, 111, 21
 function _locPickLpColor(sqm) {
   return LOC_PICK_LP_RGB[_nightSkySQMToBortle(sqm) - 1];
 }
+// The layer is a gradient between the class colours, not steps: each class's colour at the middle of
+// its range (NIGHTSKY_BORTLE_EDGE; the open ends 0.1 above class 1's edge and 0.3 below class 9's),
+// linear between two middles. A table per stored value (16.0 + 0.05 v, 255 of them) of the colour and
+// the class, made once (_locPickLpLut); the globe looks a pixel's value up in it. Zoomed in, where a
+// cell of the tiles spans more than LOC_PICK_LP_SMOOTH_PX pixels of the disc, the value is blended
+// between the four nearest cells (_lpValueSmooth) before the look-up, so the cells do not show.
+const LOC_PICK_LP_SMOOTH_PX = 2;
+const LOC_PICK_LP_TILE_PX = 3;   // the tiles once a coarse cell (0.1°) spans more buffer pixels than this
+let _locPickLpTable = null;
+function _locPickLpGradRaw(sqm) {
+  const E = NIGHTSKY_BORTLE_EDGE, C = [E[0] + 0.1];
+  for (let i = 0; i + 1 < E.length; i++) C.push((E[i] + E[i + 1]) / 2);
+  C.push(E[E.length - 1] - 0.3);
+  if (sqm >= C[0]) return LOC_PICK_LP_RGB[0].slice();
+  for (let i = 0; i + 1 < C.length; i++) {
+    if (sqm <= C[i] && sqm >= C[i + 1]) {
+      const f = (C[i] - sqm) / (C[i] - C[i + 1]), a = LOC_PICK_LP_RGB[i], b = LOC_PICK_LP_RGB[i + 1];
+      return a.map((v, k) => v + (b[k] - v) * f);
+    }
+  }
+  return LOC_PICK_LP_RGB[8].slice();
+}
+function _locPickLpLut() {
+  if (_locPickLpTable) return _locPickLpTable;
+  const rgb = new Float32Array(255 * 3), cls = new Uint8Array(255);
+  for (let b = 0; b < 255; b++) {
+    const s = LP_Q_MIN + b * LP_Q_STEP, c = _locPickLpGradRaw(s);
+    rgb[3 * b] = c[0]; rgb[3 * b + 1] = c[1]; rgb[3 * b + 2] = c[2];
+    cls[b] = _nightSkySQMToBortle(s);
+  }
+  return (_locPickLpTable = { rgb, cls });
+}
+function _locPickLpIndex(sqm) { return Math.max(0, Math.min(254, Math.round((sqm - LP_Q_MIN) / LP_Q_STEP))); }
+function _locPickLpGrad(sqm) { const T = _locPickLpLut(), b = _locPickLpIndex(sqm); return [T.rgb[3 * b], T.rgb[3 * b + 1], T.rgb[3 * b + 2]]; }
+function _locPickLpClass(sqm) { return _locPickLpLut().cls[_locPickLpIndex(sqm)]; }
 // The class shown alone (the one pointed at, else the one picked), null for all
 function _locPickLpHiClass() {
   return _locPick.lpHi.hover ?? _locPick.lpHi.pin;
@@ -386,9 +421,12 @@ function _locPickDrawEarth(w, h, res, V) {
   // per pixel the index of its offset, the veil is redone from it alone when a zone passes midnight
   const list = G ? _locPickOffsetList(offs) : null;
   const { x0, y0, bw, bh, q } = _locPickBuffer(w, h, res, V);
-  // the light pollution: the tiles only where a buffer pixel spans less than the coarse grid's cell,
-  // the disc's key with their count only then
-  const lpOn = _locPickLpOn(), lpFine = lpOn && 180 / (Math.PI * V.R * q) < _lp.coarse.step;
+  // the light pollution: the tiles only where a cell of the coarse grid would span more than
+  // LOC_PICK_LP_TILE_PX buffer pixels at the centre (blocky); before that the coarse grid is as sharp
+  // as the screen, and asking for the tiles would bring in every one in view (some 300 at the
+  // whole Earth on a sharp screen). The disc's key with their count only then.
+  const lpOn = _locPickLpOn(), lpFine = lpOn && 180 / (Math.PI * V.R * q) < _lp.coarse.step / LOC_PICK_LP_TILE_PX;
+  _locPick.lpFine = lpOn ? lpFine : null;
   const key = [w, h, res, _locPick.lon0, _locPick.lat0, _locPick.zoom, lt, !!_nsGlobeTex, _locPick.moving,
     offs ? offs.sig : '', !!_locPick.ecl, G ? [P.dateLine, P.hatch, P.labels].join(',') : '',
     lpOn ? 'lp' + (lpFine ? Object.keys(_lp.tiles).length : '') : ''].join('|');
@@ -421,7 +459,10 @@ function _locPickDrawEarth(w, h, res, V) {
     // a 10° cell's number, its buckets shifted to 0 and up so that west and south survive the round trip
     const lpCell = (la, lo) => (la + 9) * 100 + lo + 18;
     if (lpFine) for (const k in _lp.tiles) { const t = _lp.tiles[k]; lpTiles.set(lpCell(Math.round(t.lat0 / 10), Math.round(t.lon0 / 10)), t); }
-    const lpA = LOC_PICK_LP_ALPHA;
+    const lpA = LOC_PICK_LP_ALPHA, lpT = LP ? _locPickLpLut() : null;
+    // close in, a cell of the tiles (1/40°) over LOC_PICK_LP_SMOOTH_PX pixels at the centre: blended between cells
+    const lpSmooth = !!LP && lpFine && 0.025 * D2R_LP * V.R * q > LOC_PICK_LP_SMOOTH_PX;
+    _locPick.lpMode = LP ? (lpSmooth ? 'smooth' : 'gradient') : null;
     for (let j = 0; j < sh; j++) {
       const v = -((y0 + (j + 0.5) / q) - V.cy) / V.R;
       for (let i = 0; i < sw; i++) {
@@ -461,11 +502,12 @@ function _locPickDrawEarth(w, h, res, V) {
             const tk = lpCell(Math.floor(lat / 10), Math.floor(lon / 10)), t = lpTiles.get(tk);
             if (t) grid = t; else lpWant.add(tk);
           }
-          const sqm = _lpValueAt(grid, lat, lon);
+          const sqm = lpSmooth && grid !== LP ? _lpValueSmooth(grid, lat, lon) : _lpValueAt(grid, lat, lon);
           lpCls[j * sw + i] = 0;
           if (sqm !== null) {
-            const cl = _nightSkySQMToBortle(sqm), c = LOC_PICK_LP_RGB[cl - 1]; lpCls[j * sw + i] = cl;
-            r += (c[0] - r) * lpA; g += (c[1] - g) * lpA; b += (c[2] - b) * lpA;
+            const bi = sqm <= LP_Q_MIN ? 0 : sqm >= LP_Q_MIN + 254 * LP_Q_STEP ? 254 : Math.round((sqm - LP_Q_MIN) / LP_Q_STEP), t = 3 * bi;
+            lpCls[j * sw + i] = lpT.cls[bi];
+            r += (lpT.rgb[t] - r) * lpA; g += (lpT.rgb[t + 1] - g) * lpA; b += (lpT.rgb[t + 2] - b) * lpA;
           }
         }
         px[o] = r * k;

@@ -1402,33 +1402,81 @@ _nightSkyStripEl.addEventListener('wheel', (e) => {
 // the chosen rate until Stop. The speed chip is visible in BOTH static and playing states (unlike
 // Eclipse's ORIGINAL behaviour, since fixed alongside this - see _eclipseSetPlayIcon's own updated
 // comment), so the rate can be set before the first Play too.
-const NIGHTSKY_ANIM_SPEED_TIERS = [1, 10, 60, 300];
-let _nightSkyAnimSpeedIdx = NIGHTSKY_ANIM_SPEED_TIERS.length - 1;   // starts on 300x
+// The speeds, round ones from 1x to 300x: the ring round Play (#nightSkyPlayRing) lays them along its
+// right, bottom and left walls clockwise, a click there picks the one at that place; its label
+// (#nightSkySpeedBox, the top wall) steps through NIGHTSKY_ANIM_SPEED_STEPS
+const NIGHTSKY_ANIM_SPEEDS = [1, 2, 5, 10, 20, 30, 60, 120, 180, 300];
+const NIGHTSKY_ANIM_SPEED_STEPS = [1, 10, 60, 300];
+let _nightSkyAnimSpeedIdx = NIGHTSKY_ANIM_SPEEDS.length - 1;   // starts on 300x
+// The fill: NIGHTSKY_RING_SEGS short pieces along the walls, from light blue at the start to dark blue
+const NIGHTSKY_RING_SEGS = 30;
+const NIGHTSKY_RING_LIGHT = [150, 205, 255], NIGHTSKY_RING_DARK = [22, 70, 168];
 function _nightSkyAnimRateHps() {
   const videoRate = _nightSkyVideoRate(_nightSkyVideoWindow());
   if (videoRate) return videoRate / 3600;
-  return NIGHTSKY_ANIM_SPEED_TIERS[_nightSkyAnimSpeedIdx] / 3600;   // hours of sim time per real second
+  return NIGHTSKY_ANIM_SPEEDS[_nightSkyAnimSpeedIdx] / 3600;   // hours of sim time per real second
+}
+// The ring's pieces, made once: each a dash of its share of the walls' path (pathLength 100)
+function _nightSkyRingSegs() {
+  const g = document.querySelector('#nightSkyPlayRing .ns-ring-segs');
+  if (!g) return [];
+  if (!g.children.length) {
+    const d = document.querySelector('#nightSkyPlayRing .ns-ring-walls').getAttribute('d'), len = 100 / NIGHTSKY_RING_SEGS;
+    for (let k = 0; k < NIGHTSKY_RING_SEGS; k++) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'), f = (k + 0.5) / NIGHTSKY_RING_SEGS;
+      p.setAttribute('d', d); p.setAttribute('pathLength', '100'); p.setAttribute('class', 'ns-ring-seg');
+      p.style.strokeDasharray = (len + 0.4) + ' 200';   // a hair longer, so the pieces join without gaps
+      p.style.strokeDashoffset = String(-k * len);
+      p.style.stroke = 'rgb(' + NIGHTSKY_RING_LIGHT.map((c, i) => Math.round(c + (NIGHTSKY_RING_DARK[i] - c) * f)).join(',') + ')';
+      g.appendChild(p);
+    }
+  }
+  return [...g.children];
 }
 function _nightSkyUpdateSpeedBoxLabel() {
   const box = document.getElementById('nightSkySpeedBox');
   if (!box) return;
   const win = _nightSkyVideoWindow(), videoRate = _nightSkyVideoRate(win);
   box.classList.toggle('fixed', !!win);
+  // the ring round Play: the speed's place along its three walls filled, all with a video's speed
+  const ring = document.getElementById('nightSkyPlayRing');
+  if (ring) {
+    ring.classList.toggle('fixed', !!win);
+    const share = win ? 100 : 100 * (_nightSkyAnimSpeedIdx + 1) / NIGHTSKY_ANIM_SPEEDS.length;
+    ring.dataset.share = String(share);
+    _nightSkyRingSegs().forEach((p, k) => { p.style.display = (k + 0.5) / NIGHTSKY_RING_SEGS * 100 <= share + 1e-9 ? '' : 'none'; });
+  }
   if (win) {
     box.textContent = videoRate ? Math.round(videoRate) + 'x' : '…';
     const mins = Math.round((win.endJD - win.startJD) * 1440);
     box.title = videoRate ? `Video speed: ${mins} min of sky in ${win.duration.toFixed(1)} s of video` : 'Reading the video length…';
   } else {
-    box.textContent = NIGHTSKY_ANIM_SPEED_TIERS[_nightSkyAnimSpeedIdx] + 'x';
-    box.title = 'Click to change animation speed';
+    box.textContent = NIGHTSKY_ANIM_SPEEDS[_nightSkyAnimSpeedIdx] + 'x';
+    box.title = 'Click to step 1x, 10x, 60x, 300x; click the ring’s sides for a speed in between';
   }
+  if (ring) ring.title = win ? box.title : 'Speed: click a place on the ring (slower right, faster left), or the label to step';
 }
-function _nightSkyCycleAnimSpeed() {
+function _nightSkySetAnimSpeedIdx(i) {
   if (_nightSkyVideoWindow()) return;   // fixed to the video's own speed
-  _nightSkyAnimSpeedIdx = (_nightSkyAnimSpeedIdx + 1) % NIGHTSKY_ANIM_SPEED_TIERS.length;
+  _nightSkyAnimSpeedIdx = Math.max(0, Math.min(NIGHTSKY_ANIM_SPEEDS.length - 1, i));
   // under the NEW rate, the motion continues from here instead of jumping
   _nightSkyReanchorAnim();
   _nightSkyUpdateSpeedBoxLabel();
+}
+// The label: the next of NIGHTSKY_ANIM_SPEED_STEPS above the current speed, after 300x 1x again
+function _nightSkyCycleAnimSpeed() {
+  const v = NIGHTSKY_ANIM_SPEEDS[_nightSkyAnimSpeedIdx], next = NIGHTSKY_ANIM_SPEED_STEPS.find(s => s > v) || NIGHTSKY_ANIM_SPEED_STEPS[0];
+  _nightSkySetAnimSpeedIdx(NIGHTSKY_ANIM_SPEEDS.indexOf(next));
+}
+// A click on a wall: its nearest point along the walls' path, the speed whose share of the walls
+// reaches it
+function _nightSkyRingClickSpeed(e) {
+  const path = document.querySelector('#nightSkyPlayRing .ns-ring-walls'), svg = path.ownerSVGElement, r = svg.getBoundingClientRect();
+  const x = (e.clientX - r.left) * 48 / r.width, y = (e.clientY - r.top) * 48 / r.height, L = path.getTotalLength();
+  let best = 0, bd = Infinity;
+  for (let k = 0; k <= 120; k++) { const q = path.getPointAtLength(L * k / 120), d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = k / 120; } }
+  const n = NIGHTSKY_ANIM_SPEEDS.length, i = Math.min(n - 1, Math.max(0, Math.ceil(best * n) - 1));
+  if (i !== _nightSkyAnimSpeedIdx) _nightSkySetAnimSpeedIdx(i);
 }
 // The running animation counts from the instant it was (re)started, so anything that sets the
 // time while it runs (SET NOW, the date controls, a speed change) re-anchors it to the current
@@ -1438,10 +1486,34 @@ function _nightSkyReanchorAnim() {
   _nightSkyAnimStartJD = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
   _nightSkyAnimStart = null;
 }
-document.getElementById('nightSkySpeedBox').addEventListener('click', (e) => {
-  e.stopPropagation();
-  _nightSkyCycleAnimSpeed();
+// the label steps the speed, a click on the ring's sides picks the speed there; Play in the middle plays
+// (by the event's path as it was when the click began: Play's handler swaps its icon, so by the
+// time the click reaches the ring its target may no longer be inside Play)
+document.getElementById('nightSkyPlayRing').addEventListener('click', (e) => {
+  const path = e.composedPath();
+  if (path.some(n => n.id === 'btnNightSkyPlay')) return;
+  if (path.some(n => n.id === 'nightSkySpeedBox')) _nightSkyCycleAnimSpeed();
+  else _nightSkyRingClickSpeed(e);
 });
+// Dragging along the walls, as on a slider: pressed on a wall (not Play, not the label), the speed
+// follows the pointer through the fixed speeds until it is let go, wherever it goes meanwhile
+(function () {
+  const ring = document.getElementById('nightSkyPlayRing');
+  let drag = null;   // the pointer's id while dragging
+  ring.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || ring.classList.contains('fixed')) return;
+    const path = e.composedPath();
+    if (path.some(n => n.id === 'btnNightSkyPlay' || n.id === 'nightSkySpeedBox')) return;
+    drag = e.pointerId;
+    try { ring.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events */ }
+    _nightSkyRingClickSpeed(e);
+    e.preventDefault();
+  });
+  ring.addEventListener('pointermove', (e) => { if (drag === e.pointerId) _nightSkyRingClickSpeed(e); });
+  const end = (e) => { if (drag === e.pointerId) drag = null; };
+  ring.addEventListener('pointerup', end);
+  ring.addEventListener('pointercancel', end);
+})();
 let _nightSkyAnimActive = false;
 let _nightSkyAnimStart = null;      // ms timestamp captured on the first frame after Play
 let _nightSkyAnimStartJD = 0;       // JD at the moment Play was pressed (or last re-anchored)
@@ -1450,6 +1522,7 @@ function _nightSkySetPlayIcon(playing) {
   const btn = document.getElementById('btnNightSkyPlay');
   if (!btn) return;
   btn.classList.toggle('playing', playing);
+  document.getElementById('nightSkyPlayRing').classList.toggle('playing', playing);
   // only an existing dot: stop() also runs on leaving Night Sky, when #valTime may already be another mode's
   const dot = document.querySelector('#valTime .rec-dot');
   if (dot) dot.classList.toggle('on', playing);

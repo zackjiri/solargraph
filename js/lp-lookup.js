@@ -76,6 +76,34 @@ function _lpValueAt(g, lat, lon) {
   const v = g.v[r * g.nx + c];
   return v === LP_NODATA ? null : LP_Q_MIN + v * LP_Q_STEP;
 }
+// The brightness between the four nearest cell centres (bilinear). At a tile's edge the cells
+// beyond it come from the neighbouring tile if it is in memory (tiles share one 1/40° grid), so the
+// blend runs on across the edge without a seam; a cell with no data, or beyond the grid with no tile
+// there, gives the nearest cell's value (_lpValueAt). For the globe's smooth close view (render-locpick.js).
+function _lpCellAcross(g, r, c) {   // the stored value of g's cell (r, c), r and c possibly outside g
+  if (r >= 0 && c >= 0 && r < g.ny && c < g.nx) return g.v[r * g.nx + c];
+  if (g === _lp.coarse) return LP_NODATA;
+  const lat = g.lat0 + (g.ny - r - 0.5) * g.step, lon = ((g.lon0 + (c + 0.5) * g.step + 540) % 360) - 180;
+  const t = _lp.tiles[_lpTileKey(lat, lon)];
+  if (!t) return LP_NODATA;
+  const rr = Math.floor((t.lat0 + t.ny * t.step - lat) / t.step), cc = Math.floor((lon - t.lon0) / t.step);
+  return rr >= 0 && cc >= 0 && rr < t.ny && cc < t.nx ? t.v[rr * t.nx + cc] : LP_NODATA;
+}
+function _lpValueSmooth(g, lat, lon) {
+  if (!g) return null;
+  const top = g.lat0 + g.ny * g.step;
+  const fy = (top - lat) / g.step - 0.5, fx = (lon - g.lon0) / g.step - 0.5;
+  const r = Math.floor(fy), c = Math.floor(fx);
+  let a, b, d, e;
+  if (r >= 0 && c >= 0 && r + 1 < g.ny && c + 1 < g.nx) {
+    a = g.v[r * g.nx + c]; b = g.v[r * g.nx + c + 1]; d = g.v[(r + 1) * g.nx + c]; e = g.v[(r + 1) * g.nx + c + 1];
+  } else {
+    a = _lpCellAcross(g, r, c); b = _lpCellAcross(g, r, c + 1); d = _lpCellAcross(g, r + 1, c); e = _lpCellAcross(g, r + 1, c + 1);
+  }
+  if (a === LP_NODATA || b === LP_NODATA || d === LP_NODATA || e === LP_NODATA) return _lpValueAt(g, lat, lon);
+  const ty = fy - r, tx = fx - c;
+  return LP_Q_MIN + LP_Q_STEP * ((a * (1 - tx) + b * tx) * (1 - ty) + (d * (1 - tx) + e * tx) * ty);
+}
 function _lpSQMAt(lat, lon) {
   if (!_lp.index || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const key = _lpTileKey(lat, lon), t = _lp.tiles[key];
