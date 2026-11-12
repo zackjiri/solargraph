@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solargraphy All-Sky Calibration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --panel: #0f1318;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --pin: #20a0e8;
+    --err: #e84040;
+    --accent-green: #50dc78;
+    --text: #c8d4e0;
+    --dim: #6a7a8a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+    --radius-sm: 6px;
+    --control-fill: rgba(128,128,128,0.14);
+    --control-fill-hover: rgba(128,128,128,0.24);
+    --sidebar: 300px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    height: 100dvh;
+    height: var(--app-h, 100dvh);   /* measured in JS, see fitToViewport() */
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 15px;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; color: var(--accent); }
+  header .sub { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+  main { flex: 1; display: flex; min-height: 0; }
+  .view { flex: 1; position: relative; min-width: 0; background: #000; }
+  .view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .view .tag {
+    position: absolute; left: 10px; top: 8px; z-index: 2; pointer-events: none;
+    font-family: var(--mono); font-size: 12px; padding: 3px 8px; border-radius: var(--radius-sm);
+    background: rgba(10,12,15,0.75); border: 1px solid var(--border);
+  }
+  .view .tag b { font-weight: normal; color: var(--accent); }
+  .view .empty {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    container-type: size;
+  }
+  .view .empty[hidden] { display: none; }
+  .zone {
+    width: min(calc(100cqw - 16px), calc(100cqh - 16px)); aspect-ratio: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    border: 1px dashed var(--accent); border-radius: 50%;
+    background: var(--panel); cursor: pointer; text-align: center; padding: 8px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .zone:hover { border-style: solid; background: #12161c; }
+  .zone p { margin: 0; font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: 0.13em; }
+  .zone p span { color: var(--accent); }
+  .view.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
+
+  aside {
+    width: var(--sidebar); flex: none; background: var(--panel); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 10px 12px 16px; display: flex; flex-direction: column;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .sidebar-section { padding: 8px 0; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .sidebar-title {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent-green); margin-bottom: 2px;
+  }
+  .sidebar-title > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+  .section-toggle {
+    background: none; border: none; color: var(--accent-green); cursor: pointer;
+    font-size: 12px; padding: 0; line-height: 1; opacity: 0.75;
+  }
+  .section-toggle:hover:not(:disabled) { opacity: 1; background: none; }
+  .sidebar-section.collapsed > :not(.sidebar-title) { display: none !important; }
+  .step {
+    width: 17px; height: 17px; border-radius: 50%; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0; text-transform: none;
+    color: #0a0c0f; background: var(--step);
+  }
+  .step.info { background: var(--dim); color: var(--panel); font-family: var(--sans); font-size: 13px; font-weight: 700; }
+  button, select {
+    font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text);
+    background: var(--control-fill); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 6px 10px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--control-fill-hover); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .row { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
+  .row > button { flex: 1; min-width: 0; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+  .row.halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .field { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .field-label {
+    font-family: var(--mono); font-size: 10px; line-height: 11px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--dim); text-align: center;
+  }
+  input[type=text], textarea {
+    width: 100%; min-width: 0; font-family: var(--mono); font-size: 13px; color: var(--text);
+    background: var(--control-fill); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 4px 6px;
+  }
+  input[type=text] { height: 27px; text-align: center; }
+  input[type=text].bad { border-color: var(--err); }
+  input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+  textarea { resize: vertical; height: 54px; font-size: 11px; }
+  .pill { display: flex; background: var(--control-fill); border-radius: var(--radius-sm); overflow: hidden; height: 27px; }
+  .pill button {
+    flex: 1; border: none; border-radius: 0; background: none; color: var(--dim); padding: 0;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  }
+  .pill button:hover:not(.on):not(:disabled) { background: var(--control-fill-hover); }
+  .pill button.on { background: var(--accent); color: #000; font-weight: bold; }
+  .file-line { font-family: var(--mono); font-size: 12px; color: var(--dim); word-break: break-all; }
+  .file-line b { font-weight: normal; color: var(--text); }
+  .help { font-size: 13px; color: var(--dim); line-height: 1.45; }
+  .help-lines div + div { margin-top: 3px; }
+  .help kbd {
+    font-family: var(--mono); font-size: 11px; padding: 0 4px; border: 1px solid var(--border);
+    border-radius: 3px; color: var(--text);
+  }
+  .slider { display: grid; grid-template-columns: 50px 1fr 52px; gap: 6px; align-items: center; font-size: 14px; }
+  .slider output { font-family: var(--mono); font-size: 12px; text-align: right; color: #fff; }
+  .slider.off { color: var(--dim); }
+  .slider.off output { color: var(--dim); }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+    background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); border: 2px solid var(--panel); box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type=range]:disabled { filter: grayscale(1); opacity: 0.35; cursor: default; }
+  #status { font-family: var(--mono); font-size: 12px; color: var(--dim); min-height: 1.4em; }
+  #status.ok { color: var(--accent-green); }
+  #status.err { color: var(--err); }
+  #fitReason { font-family: var(--mono); font-size: 12px; color: var(--accent); line-height: 1.35; }
+  #fitReason:empty { display: none; }
+  .pin-hint { font-size: 11px; color: var(--dim); line-height: 1.35; margin: 0 0 6px; }
+  /* projection table: name | rms px; the winner is highlighted */
+  #projTable { font-family: var(--mono); font-size: 12px; border-collapse: collapse; width: 100%; }
+  #projTable td { padding: 2px 6px; }
+  #projTable td:last-child { text-align: right; }
+  #projTable tr.best td { color: var(--accent-green); }
+  #projTable[hidden] { display: none; }
+  #fitSummary { font-family: var(--mono); font-size: 12px; color: var(--dim); line-height: 1.5; }
+  #fitSummary b { font-weight: normal; color: var(--text); }
+  /* pin table: star | residual px | dt min | remove */
+  .pin-head, #pinList li {
+    display: grid; grid-template-columns: 1fr 58px 50px 26px; align-items: center;
+    padding: 3px 6px; font-family: var(--mono); font-size: 12px;
+  }
+  .pin-head {
+    color: var(--dim); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); padding-bottom: 4px; position: sticky; top: 0; background: var(--panel);
+  }
+  .pin-table { overflow-y: auto; max-height: 300px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .pin-table:not(:has(li)) { display: none; }
+  .pin-head .num, #pinList .num { text-align: right; padding-right: 4px; }
+  #pinList { list-style: none; margin: 0; padding: 0; }
+  #pinList li { border-radius: var(--radius-sm); cursor: pointer; }
+  #pinList li:hover { background: var(--control-fill); }
+  #pinList li.sel { background: var(--control-fill-hover); outline: 1px solid var(--accent); outline-offset: -1px; }
+  #pinList .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pinList .name::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pin); margin-right: 6px; }
+  #pinList .num { color: #fff; }
+  #pinList .num.hi { color: var(--err); }
+  #pinList .del { padding: 0; font-size: 13px; line-height: 18px; }
+  #btnCopy { background: var(--text); color: var(--bg); border-color: var(--text); }
+  #btnCopy:hover:not(:disabled) { background: #fff; border-color: #fff; }
+  .note { font-size: 12px; color: var(--dim); line-height: 1.35; }
+  @media (max-width: 760px) {
+    main { flex-direction: column; overflow-y: auto; }
+    .view { flex: none; height: 100vw; }
+    aside { width: 100%; border-left: none; border-top: 1px solid var(--border); overflow: visible; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ALL-SKY CALIBRATION</h1>
+  <span class="sub">star pins &rarr; zenith, scale, projection and north of an all-sky photo</span>
+</header>
+<main>
+  <div class="view" id="view">
+    <canvas></canvas>
+    <div class="tag"><b>&#9679;</b> ALL-SKY PHOTO <span class="name" id="tagName"></span></div>
+    <div class="empty"><div class="zone" data-load title="Load the all-sky photo (the full-size image the catalog entry points to)">
+      <p>Drop all-sky photo here or <span>click to select file</span></p>
+    </div></div>
+  </div>
+  <aside>
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e84040">1</span>Photo</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row"><button data-load title="Load the full-size all-sky photo; pixel positions in the output refer to this image">Load photo</button></div>
+      <div class="file-line" id="infoImg">Photo: -</div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8702c">2</span>Time and place</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <textarea id="inEntry" spellcheck="false" placeholder="Paste a catalog entry (JSON) to take its date, time and place"></textarea>
+      <div class="row"><button id="btnEntry" title="Read date, time, place and time zone from the pasted entry; an entry with an allsky block also brings back its circle, span and pins">Apply entry</button></div>
+      <div class="row halves">
+        <div class="field"><label class="field-label" for="inDate">Date UTC</label><input type="text" id="inDate" placeholder="YYYY-MM-DD" title="Date of the middle of the shoot, UTC"></div>
+        <div class="field"><label class="field-label" for="inTime">Time UTC</label><input type="text" id="inTime" placeholder="HH:MM:SS" title="Middle of the shoot, UTC"></div>
+      </div>
+      <div class="row halves">
+        <div class="field"><label class="field-label" for="inLat">Latitude</label><input type="text" id="inLat" placeholder="49.2" title="Decimal degrees, north positive"></div>
+        <div class="field"><label class="field-label" for="inLon">Longitude</label><input type="text" id="inLon" placeholder="16.6" title="Decimal degrees, east positive"></div>
+      </div>
+      <div class="row halves">
+        <div class="field"><label class="field-label" for="inSpan">Span min</label><input type="text" id="inSpan" value="10" title="How long shooting all frames of the panorama took, in minutes; each pin may shift in time by up to half of it. 0 = one exposure, no time shifts"></div>
+        <div class="field"><label class="field-label" for="inTz">Time zone</label><input type="text" id="inTz" value="0" title="Hours from UTC, only copied into the full entry"></div>
+      </div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8a020">3</span>Image circle</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row"><button id="btnDetect" disabled title="Find the photo circle again from the dark corners">Detect circle</button></div>
+      <div class="file-line" id="infoCircle">Circle: -</div>
+      <div class="note">Drag the green centre or edge handles on the photo to adjust it.</div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#c8b830">4</span>Orientation</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="slider" id="northRow" title="Direction of north in the photo, clockwise from image-up. Turn the predicted stars until they lie near the photo's stars">
+        <span>North</span><input type="range" id="rngNorth" min="0" max="360" step="0.5" value="0"><output id="outNorth">0.0&deg;</output>
+      </div>
+      <div class="field">
+        <span class="field-label">East with north up</span>
+        <div class="pill" id="eastToggle" role="group" aria-label="East with north up">
+          <button data-east="left" class="on" title="East left of north: the sky seen from below (usual)">Left</button>
+          <button data-east="right" title="East right of north: a mirrored photo">Right</button>
+        </div>
+      </div>
+      <div class="note" id="orientNote">Before pinning, turn the prediction roughly onto the stars, then drag star markers onto their images.</div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#a8c840">5</span>Pins and fit</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="pin-hint">Add a pin: drag an amber circle (a predicted star) onto that star's image in the photo. Pasting the photo's catalog entry in step 2 brings back its pins.</div>
+      <div id="fitReason"></div>
+      <table id="projTable" hidden title="Fit error of each projection: RMS of the pins' pixel residuals after each pin's own time shift (slightly smaller than the error between pins)"><tbody></tbody></table>
+      <div id="fitSummary"></div>
+      <div class="pin-table">
+        <div class="pin-head"><span>Star</span><span class="num" title="Residual of the pin after its own time shift, in photo px">Res px</span><span class="num" title="Fitted time shift of the frame the star is on, minutes from the time above">dt min</span><span></span></div>
+        <ul id="pinList"></ul>
+      </div>
+      <div class="row"><button id="btnClearPins" disabled title="Remove all pins (asks for confirmation)">Clear pins</button></div>
+    </section>
+
+    <section class="sidebar-section">
+      <div class="sidebar-title"><span><span class="step" style="--step:#50dc78">6</span>Output</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row">
+        <button id="btnCopy" disabled title="Copy the allsky block as JSON, to paste into the photo's entry in filelist_astro.json">Copy JSON</button>
+        <button id="btnCopyEntry" disabled title="Copy a whole all_sky catalog entry with this date, time and place; fill in id, object_name, thumbnail and full">Copy full entry</button>
+      </div>
+      <div id="status"></div>
+    </section>
+
+    <section class="sidebar-section help">
+      <div class="sidebar-title"><span><span class="step info" aria-hidden="true">i</span>Controls</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="help-lines">
+      <div>Amber circles: predicted bright stars. Drag one onto the star's image on the photo to pin it</div>
+      <div>Blue: pins. Drag to move, <kbd>Shift</kbd> moves at 1/4 speed</div>
+      <div>The fit runs after each pin change; 6 pins at least (4 with span 0), 8 to 10 spread from the horizon to the zenith are best</div>
+      <div>Drag the photo to pan, wheel or double-click to zoom</div>
+      <div><kbd>Del</kbd> removes the selected pin, <kbd>F</kbd> fits the photo to the view</div>
+      </div>
+    </section>
+  </aside>
+</main>
+<input type="file" id="fileImg" accept="image/*" hidden>
+
+<script src="js/sky-astro.js?perfdebug628"></script>
+<script src="js/allsky-model.js?perfdebug628"></script>
+<script>
+// All-sky calibration page. Loads only js/sky-astro.js (positions of the stars) and
+// js/allsky-model.js (photo model and fit); everything else lives in this closure. The page's
+// operations are exposed as window.ast for tests.
+(function () {
+'use strict';
+
+const $ = id => document.getElementById(id);
+const D2R = Math.PI / 180;
+const PRED_MAG = 2.5;            // predicted stars: brighter than this
+const FIT_DEBOUNCE_MS = 150;
+const COLOR = { pred: '#e8a020', pin: '#20a0e8', circle: '#50dc78', sky: 'rgba(200,212,224,0.55)' };
+const HILITE = '#ffd23c';
+
+const S = {
+  img: null, small: null, smallK: 1, name: '', W: 0, H: 0,
+  circle: null,                  // [cx, cy, r] in photo px
+  north: 0, east: 'left',        // initial guess, used until a fit is ok
+  pins: [],                      // [{ hip, px: [x, y] }]
+  fit: null,                     // last _allskyFit result (ok or not)
+  preview: null,                 // fit without time shifts, drawn while the real fit lacks pins
+  entry: null,                   // pasted entry (id, names, files, video for the full entry)
+  pendingAllsky: null,           // pasted allsky block waiting for a photo
+  stars: null, names: {},        // HIP catalog (J2000) and star names
+  sky: null, skyKey: '',         // apparent az/el per HIP at the time and place in the panel
+  pred: null,                    // cached prediction
+  selected: null, hover: null,
+  fitTimer: 0, fitRuns: 0,
+};
+
+/* ---------- page height (as in the warp tool) ---------- */
+function fitToViewport() {
+  const vv = window.visualViewport;
+  if (vv && vv.scale > 1.01) return;
+  const h = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-h', Math.round(h) + 'px');
+  if (window.scrollY) window.scrollTo(0, 0);
+}
+fitToViewport();
+for (const ev of ['resize', 'orientationchange', 'pageshow']) window.addEventListener(ev, fitToViewport);
+if (window.visualViewport) visualViewport.addEventListener('resize', fitToViewport);
+
+/* ---------- star data ---------- */
+const ready = (async () => {
+  try {
+    const [st, nm] = await Promise.all([
+      fetch('data/celestial/stars.6.json').then(r => r.json()),
+      fetch('data/celestial/starnames.json').then(r => r.json()),
+    ]);
+    S.stars = new Map(st.features.map(f => [f.id, {
+      hip: f.id, ra: ((f.geometry.coordinates[0] % 360) + 360) % 360, dec: f.geometry.coordinates[1], mag: f.properties.mag,
+    }]));
+    S.names = nm;
+  } catch (e) {
+    setStatus('Could not load the star catalog (open the page over http)', 'err');
+  }
+})();
+function starName(hip) { const n = S.names[hip]; return n && n.name ? n.name : 'HIP ' + hip; }
+
+/* ---------- time and place ---------- */
+function fields() {
+  const num = id => { const t = $(id).value.trim(); return t === '' ? NaN : Number(t); };
+  return { date: $('inDate').value.trim(), time: $('inTime').value.trim(), lat: num('inLat'), lon: num('inLon'), span: num('inSpan'), tz: num('inTz') };
+}
+// { Y, M, D, h, lat, lon, span } or null when a field is not valid; marks bad inputs.
+function place() {
+  const f = fields();
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f.date), tm = /^(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/.exec(f.time);
+  const ok = {
+    inDate: !!dm && +dm[2] >= 1 && +dm[2] <= 12 && +dm[3] >= 1 && +dm[3] <= 31,
+    inTime: !!tm && +tm[1] < 24 && +tm[2] < 60 && !(+tm[3] >= 60),
+    inLat: Number.isFinite(f.lat) && Math.abs(f.lat) <= 90,
+    inLon: Number.isFinite(f.lon) && Math.abs(f.lon) <= 180,
+    inSpan: Number.isFinite(f.span) && f.span >= 0 && f.span <= 120,
+    inTz: Number.isFinite(f.tz) && Math.abs(f.tz) <= 14,
+  };
+  for (const id in ok) $(id).classList.toggle('bad', !ok[id] && $(id).value.trim() !== '');
+  if (!ok.inDate || !ok.inTime || !ok.inLat || !ok.inLon || !ok.inSpan) return null;
+  return { Y: +dm[1], M: +dm[2], D: +dm[3], h: +tm[1] + +tm[2] / 60 + (tm[3] ? +tm[3] : 0) / 3600, lat: f.lat, lon: f.lon, span: f.span };
+}
+// Apparent az/el (precession to the date, refraction) of every star brighter than PRED_MAG and of
+// every pinned star, at the panel's time and place; recomputed when those change.
+function skyPositions() {
+  const p = place();
+  if (!p || !S.stars) { S.sky = null; S.skyKey = ''; return null; }
+  const key = [p.Y, p.M, p.D, p.h, p.lat, p.lon].join('|') + '|' + S.pins.map(q => q.hip).join(',');
+  if (key === S.skyKey && S.sky) return S.sky;
+  const lst = _skySiderealTimeHours(p.Y, p.M, p.D, p.h, p.lon), jde = _moonJDE(p.Y, p.M, p.D, p.h);
+  const sky = new Map(), want = new Set(S.pins.map(q => q.hip));
+  for (const s of S.stars.values()) {
+    if (s.mag > PRED_MAG && !want.has(s.hip)) continue;
+    const q = _skyJ2000ToDate(s.ra, s.dec, jde), a = _skyRaDecToAzEl(q.ra, q.dec, lst, p.lat);
+    sky.set(s.hip, { az: ((a.az % 360) + 360) % 360, el: a.el, mag: s.mag });
+  }
+  S.sky = sky; S.skyKey = key;
+  return sky;
+}
+
+/* ---------- calibration in use ---------- */
+function defaultCircle() { return [S.W / 2, S.H / 2, Math.min(S.W, S.H) / 2]; }
+// Initial guess: zenith at the circle centre, equidistant, the circle edge at the horizon, north
+// and east from the Orientation controls.
+function guessCal() {
+  const c = S.circle || defaultCircle();
+  return {
+    image_size: [S.W, S.H], zenith_px: [c[0], c[1]], projection: 'equidistant', f_px: c[2] / (Math.PI / 2),
+    north_deg: S.north, east: S.east, circle_px: c.slice(), span_min: 0, pins: [],
+  };
+}
+function fitOk() { return !!(S.fit && S.fit.ok); }
+function currentCal() {
+  if (fitOk()) return S.fit.cal;
+  if (S.preview && S.preview.ok) return S.preview.cal;
+  return guessCal();
+}
+function invalidate() { S.pred = null; }
+// Predicted photo position of every bright star (and every pinned star) through the calibration
+// in use, with the per-frame time shift interpolated from the pins once a fit is ok. px is null
+// when the star falls outside the circle.
+function predicted() {
+  if (S.pred) return S.pred;
+  const sky = skyPositions(), p = place();
+  if (!sky || !S.img) return (S.pred = []);
+  const cal = currentCal(), pinned = new Set(S.pins.map(q => q.hip)), out = [];
+  for (const [hip, s] of sky) {
+    if (s.el < -10) continue;
+    const px = _allskySkyToPhoto(cal, s.az, s.el, p.lat);
+    out.push({ hip, name: starName(hip), mag: s.mag, az: s.az, el: s.el, px, pinned: pinned.has(hip) });
+  }
+  return (S.pred = out);
+}
+
+/* ---------- fit ---------- */
+function pinsForFit() {
+  const sky = skyPositions();
+  if (!sky) return [];
+  return S.pins.filter(q => sky.has(q.hip)).map(q => {
+    const s = sky.get(q.hip);
+    return { hip: q.hip, px: q.px.slice(), az: s.az, el: s.el };
+  });
+}
+function fitOpts() {
+  const p = place();
+  return { latDeg: p ? p.lat : NaN, spanMin: p ? p.span : 0, circle: (S.circle || defaultCircle()).slice(), imageSize: [S.W, S.H] };
+}
+function runFit() {
+  clearTimeout(S.fitTimer); S.fitTimer = 0;
+  if (view.drag) { S.fitTimer = setTimeout(runFit, FIT_DEBOUNCE_MS); return; }   // never during a drag
+  S.preview = null; S.fitRuns++;
+  if (!S.img) S.fit = { ok: false, reason: 'Load a photo first.', perPin: [], byProjection: {} };
+  else if (!place()) S.fit = { ok: false, reason: 'Enter a valid date, time (UTC), latitude, longitude and span.', perPin: [], byProjection: {} };
+  else {
+    const pins = pinsForFit(), opts = fitOpts();
+    S.fit = _allskyFit(pins, opts);
+    // Too few pins for the time shifts: a fit without them still puts the prediction near the
+    // stars while the user adds the rest.
+    if (!S.fit.ok && opts.spanMin > 0 && pins.length >= 4 && pins.length < 6) {
+      S.preview = _allskyFit(pins, Object.assign({}, opts, { spanMin: 0 }));
+    }
+  }
+  if (fitOk()) { S.north = S.fit.cal.north_deg; S.east = S.fit.cal.east; }
+  else if (S.preview && S.preview.ok) { S.north = S.preview.cal.north_deg; S.east = S.preview.cal.east; }
+  invalidate(); renderPanel(); view.draw();
+}
+function scheduleFit() {
+  invalidate();
+  clearTimeout(S.fitTimer);
+  S.fitTimer = setTimeout(runFit, FIT_DEBOUNCE_MS);
+}
+
+/* ---------- pins ---------- */
+function pinOf(hip) { return S.pins.find(q => q.hip === hip) || null; }
+function addPin(hip, px) {
+  hip = +hip;
+  const q = pinOf(hip);
+  if (q) q.px = [px[0], px[1]]; else S.pins.push({ hip, px: [px[0], px[1]] });
+  S.selected = hip; scheduleFit(); renderPanel(); view.draw();
+}
+function movePin(hip, px) { const q = pinOf(+hip); if (!q) return false; q.px = [px[0], px[1]]; scheduleFit(); view.draw(); return true; }
+function deletePin(hip) {
+  const i = S.pins.findIndex(q => q.hip === +hip);
+  if (i < 0) return false;
+  S.pins.splice(i, 1);
+  if (S.selected === +hip) S.selected = null;
+  scheduleFit(); renderPanel(); view.draw();
+  return true;
+}
+
+/* ---------- output ---------- */
+const rnd = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
+function output() {
+  if (!fitOk()) return null;
+  const c = S.fit.cal;
+  let north = rnd(c.north_deg, 3); if (north >= 360) north -= 360;
+  return {
+    image: 'img/astro/' + S.name,
+    image_size: [S.W, S.H],
+    zenith_px: [rnd(c.zenith_px[0], 2), rnd(c.zenith_px[1], 2)],
+    projection: c.projection,
+    f_px: rnd(c.f_px, 2),
+    north_deg: north,
+    east: c.east,
+    circle_px: c.circle_px.map(v => rnd(v, 1)),
+    alt_edge: rnd(c.alt_edge, 1),
+    span_min: c.span_min,
+    rms_px: rnd(c.rms_px, 2),
+    pins: c.pins.map(q => ({ hip: q.hip, px: [rnd(q.px[0], 1), rnd(q.px[1], 1)], dt_min: rnd(q.dt_min, 2) })),
+  };
+}
+function outputEntry() {
+  const a = output(), f = fields();
+  if (!a) return null;
+  const e = S.entry || {}, base = 'A' + f.date + '_TODO';
+  const out = {
+    id: e.id || base,
+    object_name: e.object_name || 'TODO',
+    category: 'all_sky',
+    date_utc: f.date,
+    time_utc: f.time,
+    timezone: Number.isFinite(f.tz) ? f.tz : 0,
+    lat: Math.abs(f.lat), lat_hemisphere: f.lat < 0 ? 'S' : 'N',
+    lon: Math.abs(f.lon), lon_hemisphere: f.lon < 0 ? 'W' : 'E',
+    thumbnail: e.thumbnail || 'img/astro/' + base + '_T.jpg',
+    full: e.full || 'img/astro/' + base + '.jpg',
+  };
+  if (e.video) out.video = e.video;
+  out.allsky = a;
+  return out;
+}
+// JSON as in filelist_astro.json: two-space indent, number arrays and pins on one line each.
+function formatJSON(o) {
+  return JSON.stringify(o, null, 2)
+    .replace(/\[\s+([^\[\]{}"]*?)\s+\]/g, (m, inner) => '[' + inner.split(/,\s*/).join(', ') + ']')
+    .replace(/\{\s+("hip"[^{}]*?)\s+\}/g, (m, inner) => '{ ' + inner.replace(/\s*\n\s*/g, ' ') + ' }');
+}
+function copyText(text, what) {
+  api.lastCopied = text;
+  const done = () => setStatus(`Copied ${what} to the clipboard`, 'ok');
+  const fallback = () => {
+    const t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    t.remove();
+    if (ok) done(); else setStatus('The browser blocked the clipboard', 'err');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+
+/* ---------- pasted catalog entry ---------- */
+function parseEntry(src) {
+  if (typeof src !== 'string') return src;
+  let t = src.trim().replace(/,\s*$/, '');
+  if (!t.startsWith('{') && !t.startsWith('[')) t = '{' + t + '}';   // a "key": value fragment
+  let o = JSON.parse(t);
+  if (Array.isArray(o)) o = entryForPhoto(o);
+  if (o && !o.date_utc && o.allsky === undefined && o.image_size) o = { allsky: o };   // a bare allsky block
+  return o;
+}
+// From a pasted list (e.g. the whole filelist_astro.json): the entry of the loaded photo, matched
+// by its file name (A2021-08-12_PER01_C.jpg -> id A2021-08-12_PER01, or the entry's allsky.image);
+// a one-entry list is that entry. Throws when the photo does not say which entry is meant.
+function entryMatchesPhoto(x) {
+  const file = (S.name || '').split('/').pop();
+  return !!(file && x && ((x.allsky && x.allsky.image && x.allsky.image.split('/').pop() === file)
+    || (x.id && file.replace(/\.[^.]+$/, '').replace(/_[A-Z]$/, '') === x.id)));
+}
+function entryForPhoto(list) {
+  if (list.length === 1) return list[0];
+  const file = (S.name || '').split('/').pop(), e = list.find(entryMatchesPhoto);
+  if (!e) throw new Error(S.img ? 'No entry in the pasted list matches the photo ' + file + '; paste just its entry'
+    : 'Load the photo first, or paste just one entry, so the matching entry can be found');
+  return e;
+}
+function setEntry(src) {
+  let e;
+  try { e = parseEntry(src); } catch (err) { setStatus(err instanceof SyntaxError ? 'The pasted text is not valid JSON' : err.message, 'err'); return false; }
+  if (!e || typeof e !== 'object') { setStatus('The pasted text is not a catalog entry', 'err'); return false; }
+  S.entry = e;
+  const signed = (v, hemi, neg) => { const n = parseFloat(v); return Number.isFinite(n) ? (String(hemi).toUpperCase() === neg ? -Math.abs(n) : n) : NaN; };
+  const set = {};
+  if (e.date_utc) set.date = String(e.date_utc);
+  if (e.time_utc) set.time = String(e.time_utc);
+  if (e.lat !== undefined) set.lat = signed(e.lat, e.lat_hemisphere, 'S');
+  if (e.lon !== undefined) set.lon = signed(e.lon, e.lon_hemisphere, 'W');
+  if (e.timezone !== undefined) set.tz = +e.timezone;
+  if (e.allsky && Number.isFinite(+e.allsky.span_min)) set.span = +e.allsky.span_min;
+  setFields(set);
+  if (e.allsky) { S.pendingAllsky = e.allsky; if (S.img) applyPendingAllsky(); }
+  setStatus('Entry applied' + (e.allsky ? ' with its calibration' : ''), 'ok');
+  return true;
+}
+// Brings back the circle, orientation and pins of a pasted allsky block, scaled to the loaded photo.
+function applyPendingAllsky() {
+  const a = S.pendingAllsky; S.pendingAllsky = null;
+  if (!a || !a.image_size) return;
+  const sx = S.W / a.image_size[0], sy = S.H / a.image_size[1];
+  if (Array.isArray(a.circle_px)) S.circle = [a.circle_px[0] * sx, a.circle_px[1] * sy, a.circle_px[2] * sx];
+  if (Number.isFinite(a.north_deg)) S.north = a.north_deg;
+  if (a.east === 'left' || a.east === 'right') S.east = a.east;
+  if (Array.isArray(a.pins)) S.pins = a.pins.filter(q => q && q.px).map(q => ({ hip: +q.hip, px: [q.px[0] * sx, q.px[1] * sy] }));
+  scheduleFit(); renderPanel(); view.draw();
+}
+function setFields(o) {
+  const put = (id, v) => { if (v !== undefined) $(id).value = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : v; };
+  put('inDate', o.date); put('inTime', o.time); put('inLat', o.lat); put('inLon', o.lon); put('inSpan', o.span); put('inTz', o.tz);
+  place(); scheduleFit(); view.draw();
+}
+
+/* ---------- photo and circle ---------- */
+async function loadImage(src, name) {
+  await ready;
+  let blob = src;
+  if (typeof src === 'string') { const r = await fetch(src); if (!r.ok) throw new Error('HTTP ' + r.status); blob = await r.blob(); name = name || src.split('/').pop(); }
+  const bmp = await createImageBitmap(blob);
+  // a copy of at most 2048 px for the overview and the circle detection
+  const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+  S.small = k < 1 ? await createImageBitmap(bmp, { resizeWidth: Math.round(bmp.width * k), resizeHeight: Math.round(bmp.height * k), resizeQuality: 'high' }) : bmp;
+  S.smallK = S.small.width / bmp.width;
+  S.img = bmp; S.W = bmp.width; S.H = bmp.height; S.name = name || (blob && blob.name) || 'photo';
+  S.pins = []; S.selected = null; S.fit = null; S.preview = null;
+  S.circle = detectCircle() || defaultCircle();
+  // the photo loaded again after its entry was applied: the entry's pins come back too
+  if (!S.pendingAllsky && S.entry && S.entry.allsky) {
+    if (entryMatchesPhoto(S.entry)) S.pendingAllsky = S.entry.allsky;
+  }
+  if (S.pendingAllsky) applyPendingAllsky();
+  $('infoImg').innerHTML = `Photo: <b>${escapeHtml(S.name)}</b> ${S.W} &times; ${S.H} px`;
+  $('tagName').textContent = '· ' + S.name;
+  $('btnDetect').disabled = false;
+  invalidate(); view.fit(); runFit();
+  setStatus('Photo loaded', 'ok');
+}
+function escapeHtml(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// Circle of the photo from its dark corners: the corner level plus a margin is the threshold; along
+// 720 rays from the image centre the first sample from the outside that is above it (and stays above
+// for 3 samples) is an edge point, refined to the half-level crossing; a least-squares circle through
+// the edge points, refitted twice without outliers. Works on the copy of at most 2048 px. null when
+// too few edge points are found.
+function detectCircle() {
+  const im = S.small, w = im.width, h = im.height, k = S.smallK;
+  const cv = new OffscreenCanvas(w, h), g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, w, h).data, L = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < L.length; i += 4, j++) L[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  const patch = (x0, y0, n) => {
+    let s = 0, s2 = 0, c = 0;
+    for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) { const v = L[y * w + x]; s += v; s2 += v * v; c++; }
+    const m = s / c; return { m, sd: Math.sqrt(Math.max(0, s2 / c - m * m)) };
+  };
+  const n = Math.max(4, Math.round(0.02 * Math.min(w, h)));
+  const corners = [patch(0, 0, n), patch(w - n, 0, n), patch(0, h - n, n), patch(w - n, h - n, n)].sort((a, b) => a.m - b.m);
+  const dark = corners[1].m, noise = Math.max(corners[0].sd, corners[1].sd);
+  const mid = [];
+  for (let y = Math.round(h * 0.3); y < h * 0.7; y += 4) for (let x = Math.round(w * 0.3); x < w * 0.7; x += 4) mid.push(L[y * w + x]);
+  mid.sort((a, b) => a - b);
+  const inner = mid[mid.length >> 1];
+  const T = dark + Math.max(3 * noise + 1.5, 0.15 * (inner - dark));
+  // bilinear sample at continuous image coordinates (pixel i covers [i, i + 1))
+  const at = (x, y) => {
+    const u = Math.min(w - 1.001, Math.max(0, x - 0.5)), v = Math.min(h - 1.001, Math.max(0, y - 0.5));
+    const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, o = j * w + i;
+    return (L[o] * (1 - fu) + L[o + 1] * fu) * (1 - fv) + (L[o + w] * (1 - fu) + L[o + w + 1] * fu) * fv;
+  };
+  const cx0 = w / 2, cy0 = h / 2, step = 0.5, pts = [];
+  for (let a = 0; a < 720; a++) {
+    const t = a * Math.PI / 360, dx = Math.sin(t), dy = -Math.cos(t);
+    const tx = dx > 0 ? (w - cx0) / dx : dx < 0 ? -cx0 / dx : Infinity;
+    const ty = dy > 0 ? (h - cy0) / dy : dy < 0 ? -cy0 / dy : Infinity;
+    const tmax = Math.min(tx, ty) - 0.6;
+    if (at(cx0 + dx * tmax, cy0 + dy * tmax) > T) continue;   // the circle reaches the image border here
+    let prev = at(cx0 + dx * tmax, cy0 + dy * tmax);
+    for (let r = tmax - step; r > 2; r -= step) {
+      const v = at(cx0 + dx * r, cy0 + dy * r);
+      if (v > T && at(cx0 + dx * (r - step), cy0 + dy * (r - step)) > T && at(cx0 + dx * (r - 2 * step), cy0 + dy * (r - 2 * step)) > T) {
+        let re = r + step * (v - T) / (v - prev);   // linear crossing between r + step and r
+        // refine to the crossing halfway between the corner level and the photo just inside the
+        // edge, which a blurred or antialiased edge does not shift
+        const inside = [];
+        for (let q = 4; q <= 16; q++) inside.push(at(cx0 + dx * (re - q * step), cy0 + dy * (re - q * step)));
+        inside.sort((a, b) => a - b);
+        const half = (dark + inside[inside.length >> 1]) / 2;
+        if (half > T) {
+          let pv = at(cx0 + dx * (re + 4 * step), cy0 + dy * (re + 4 * step));
+          for (let q = re + 3 * step; q > re - 8 * step; q -= step) {
+            const qv = at(cx0 + dx * q, cy0 + dy * q);
+            if (qv >= half && pv < half) { re = q + step * (qv - half) / (qv - pv); break; }
+            pv = qv;
+          }
+        }
+        pts.push([cx0 + dx * re, cy0 + dy * re]);
+        break;
+      }
+      prev = v;
+    }
+  }
+  let use = pts, c = null;
+  for (let iter = 0; iter < 3; iter++) {
+    if (use.length < 20) return null;
+    c = circleFit(use);
+    if (!c) return null;
+    const res = use.map(p => Math.abs(Math.hypot(p[0] - c[0], p[1] - c[1]) - c[2]));
+    const med = res.slice().sort((a, b) => a - b)[res.length >> 1];
+    use = use.filter((p, i) => res[i] <= Math.max(1.5, 3 * med));
+  }
+  return [c[0] / k, c[1] / k, c[2] / k];
+}
+// Algebraic least-squares circle (x^2 + y^2 + D x + E y + F = 0) through points; [cx, cy, r] or null.
+function circleFit(pts) {
+  let mx = 0, my = 0;
+  for (const p of pts) { mx += p[0]; my += p[1]; }
+  mx /= pts.length; my /= pts.length;
+  let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0;
+  for (const p of pts) {
+    const u = p[0] - mx, v = p[1] - my;
+    suu += u * u; svv += v * v; suv += u * v; suuu += u * u * u; svvv += v * v * v; suvv += u * v * v; svuu += v * u * u;
+  }
+  const det = suu * svv - suv * suv;
+  if (Math.abs(det) < 1e-9) return null;
+  const b1 = (suuu + suvv) / 2, b2 = (svvv + svuu) / 2;
+  const uc = (b1 * svv - b2 * suv) / det, vc = (b2 * suu - b1 * suv) / det;
+  const r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / pts.length);
+  return [uc + mx, vc + my, r];
+}
+function setCircle(c) { S.circle = c.slice(); renderCircleInfo(); scheduleFit(); view.draw(); }
+
+/* ---------- view (zoom/pan canvas, as in the warp tool) ---------- */
+class View {
+  constructor(el) {
+    this.el = el; this.cv = el.querySelector('canvas'); this.ctx = this.cv.getContext('2d');
+    this.scale = 1; this.ox = 0; this.oy = 0; this.mouse = null; this.drag = null;
+    new ResizeObserver(() => { this.measure(); if (!this.userMoved) this.fit(); else this.draw(); }).observe(el);
+    this.bind();
+  }
+  measure() {
+    const r = this.el.getBoundingClientRect(), d = devicePixelRatio || 1;
+    this.w = r.width; this.h = r.height;
+    this.cv.width = Math.round(r.width * d); this.cv.height = Math.round(r.height * d);
+  }
+  fit() {
+    this.userMoved = false;
+    if (!this.w) this.measure();
+    if (!S.img || !this.w) { this.draw(); return; }
+    const pad = 12;
+    this.scale = Math.min((this.w - 2 * pad) / S.W, (this.h - 2 * pad) / S.H);
+    this.ox = (this.w - S.W * this.scale) / 2; this.oy = (this.h - S.H * this.scale) / 2;
+    this.draw();
+  }
+  toImg(sx, sy) { return [(sx - this.ox) / this.scale, (sy - this.oy) / this.scale]; }
+  toScr(p) { return [p[0] * this.scale + this.ox, p[1] * this.scale + this.oy]; }
+  circleHandles() {
+    const c = S.circle; if (!c) return [];
+    return [{ kind: 'centre', p: [c[0], c[1]] }].concat([0, 90, 180, 270].map(a => ({
+      kind: 'edge', p: [c[0] + c[2] * Math.sin(a * D2R), c[1] - c[2] * Math.cos(a * D2R)] })));
+  }
+  // What lies under a screen point: a pin, a predicted star, a circle handle, or nothing.
+  hit(sx, sy) {
+    let best = null, bd = 12;
+    const near = (p, what, lim) => { const s = this.toScr(p), d = Math.hypot(s[0] - sx, s[1] - sy); if (d < Math.min(bd, lim)) { bd = d; best = what; } };
+    for (const q of S.pins) near(q.px, { kind: 'pin', hip: q.hip }, 12);
+    if (best) return best;
+    for (const s of predicted()) if (!s.pinned && s.px) near(s.px, { kind: 'star', hip: s.hip }, 10);
+    if (best) return best;
+    for (const hd of this.circleHandles()) near(hd.p, { kind: 'circle', handle: hd.kind }, 9);
+    return best;
+  }
+  bind() {
+    const cv = this.cv;
+    const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    cv.addEventListener('wheel', e => {
+      if (!S.img) return;
+      e.preventDefault();
+      const m = pos(e), ns = Math.min(40, Math.max(0.02, this.scale * Math.exp(-e.deltaY * 0.0015)));
+      this.ox = m[0] - (m[0] - this.ox) * ns / this.scale; this.oy = m[1] - (m[1] - this.oy) * ns / this.scale;
+      this.scale = ns; this.userMoved = true; this.draw();
+    }, { passive: false });
+    cv.addEventListener('pointerdown', e => {
+      if (!S.img || e.button !== 0) return;
+      const m = pos(e), h = this.hit(m[0], m[1]);
+      cv.setPointerCapture(e.pointerId);
+      if (h && h.kind === 'pin') {
+        S.selected = h.hip; renderPanel();
+        this.drag = { kind: 'pin', hip: h.hip, start: m, orig: pinOf(h.hip).px.slice(), moved: false };
+      } else if (h && h.kind === 'star') {
+        const s = predicted().find(q => q.hip === h.hip);
+        this.drag = { kind: 'star', hip: h.hip, start: m, orig: s.px.slice(), px: s.px.slice(), moved: false };
+      } else if (h && h.kind === 'circle') {
+        this.drag = { kind: 'circle', handle: h.handle, start: m, orig: S.circle.slice(), moved: false };
+      } else {
+        this.drag = { kind: 'pan', start: m, ox: this.ox, oy: this.oy, moved: false };
+        cv.style.cursor = 'grabbing';
+      }
+      this.mouse = m; this.draw();
+    });
+    cv.addEventListener('pointermove', e => {
+      const m = pos(e); this.mouse = m;
+      const d = this.drag;
+      if (d) {
+        const dx = m[0] - d.start[0], dy = m[1] - d.start[1];
+        if (Math.hypot(dx, dy) > 3) d.moved = true;
+        if (!d.moved) return;
+        const f = e.shiftKey ? 0.25 : 1, ix = dx * f / this.scale, iy = dy * f / this.scale;
+        if (d.kind === 'pan') { this.ox = d.ox + dx; this.oy = d.oy + dy; this.userMoved = true; }
+        else if (d.kind === 'pin') { pinOf(d.hip).px = clampToImg([d.orig[0] + ix, d.orig[1] + iy]); invalidate(); }
+        else if (d.kind === 'star') d.px = clampToImg([d.orig[0] + ix, d.orig[1] + iy]);
+        else if (d.kind === 'circle') {
+          const o = d.orig;
+          if (d.handle === 'centre') S.circle = [o[0] + ix, o[1] + iy, o[2]];
+          else { const p = this.toImg(m[0], m[1]); S.circle = [o[0], o[1], Math.max(10, Math.hypot(p[0] - o[0], p[1] - o[1]))]; }
+          renderCircleInfo(); invalidate();
+        }
+      } else {
+        const h = this.hit(m[0], m[1]);
+        const hov = h && (h.kind === 'pin' || h.kind === 'star') ? h.hip : null;
+        if (hov !== S.hover) { S.hover = hov; renderPanel(); }
+        cv.style.cursor = h ? (h.kind === 'circle' ? (h.handle === 'centre' ? 'move' : 'nwse-resize') : 'move') : 'grab';
+      }
+      this.draw();
+    });
+    const end = () => {
+      const d = this.drag; this.drag = null;
+      if (this.mouse) { const h = this.hit(this.mouse[0], this.mouse[1]); cv.style.cursor = h ? 'move' : 'grab'; }
+      if (d && d.moved) {
+        if (d.kind === 'pin') scheduleFit();
+        else if (d.kind === 'star') addPin(d.hip, d.px);
+        else if (d.kind === 'circle') scheduleFit();
+      } else if (d && (d.kind === 'pin' || d.kind === 'star')) { S.selected = d.hip; renderPanel(); }
+      else if (d && d.kind === 'pan') { S.selected = null; renderPanel(); }
+      this.draw();
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('pointerleave', () => { if (!this.drag) { this.mouse = null; this.draw(); } });
+    cv.addEventListener('dblclick', e => {
+      const m = pos(e);
+      if (!S.img || this.hit(m[0], m[1])) return;
+      const ns = Math.min(40, this.scale * 2);
+      this.ox = m[0] - (m[0] - this.ox) * ns / this.scale; this.oy = m[1] - (m[1] - this.oy) * ns / this.scale;
+      this.scale = ns; this.userMoved = true; this.draw();
+    });
+  }
+  // the photo at scale s, offset (ox, oy) in CSS px; the small copy while it has enough pixels
+  drawPhoto(ctx, s, ox, oy, full) {
+    const d = ctx._d, useSmall = !full && s * d <= S.smallK * 1.01;
+    const src = useSmall ? S.small : S.img, k = useSmall ? S.smallK : 1;
+    ctx.imageSmoothingEnabled = s * d / k < 3; ctx.imageSmoothingQuality = 'high';
+    ctx.setTransform(d * s / k, 0, 0, d * s / k, d * ox, d * oy);
+    ctx.drawImage(src, 0, 0);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  draw() {
+    const ctx = this.ctx, d = devicePixelRatio || 1; ctx._d = d;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.cv.width, this.cv.height);
+    this.el.querySelector('.empty').hidden = !!S.img;
+    if (!S.img) return;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    this.drawPhoto(ctx, this.scale, this.ox, this.oy, false);
+    this.drawSkyGrid(ctx);
+    this.drawCircle(ctx);
+    this.drawStars(ctx);
+    const dr = this.drag;
+    if (this.mouse && dr && dr.moved && dr.kind !== 'pan') this.drawLoupe(ctx, this.mouse);
+  }
+  // horizon line, zenith cross and N / E / S / W letters of the calibration in use
+  drawSkyGrid(ctx) {
+    const cal = currentCal();
+    ctx.save();
+    ctx.strokeStyle = COLOR.sky; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    for (let a = 0; a <= 360; a += 3) {
+      const s = this.toScr(_allskyForward(cal, a, 0));
+      if (a === 0) ctx.moveTo(s[0], s[1]); else ctx.lineTo(s[0], s[1]);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    const z = this.toScr(cal.zenith_px);
+    ctx.beginPath(); ctx.moveTo(z[0] - 8, z[1]); ctx.lineTo(z[0] + 8, z[1]); ctx.moveTo(z[0], z[1] - 8); ctx.lineTo(z[0], z[1] + 8); ctx.stroke();
+    ctx.font = '600 15px "Share Tech Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [lbl, az] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
+      const s = this.toScr(_allskyForward(cal, az, 6));
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(lbl, s[0] + 1, s[1] + 1);
+      ctx.fillStyle = lbl === 'N' ? COLOR.pred : COLOR.sky; ctx.fillText(lbl, s[0], s[1]);
+    }
+    ctx.restore();
+  }
+  drawCircle(ctx) {
+    const c = S.circle; if (!c) return;
+    const z = this.toScr([c[0], c[1]]);
+    ctx.save();
+    ctx.strokeStyle = COLOR.circle; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.arc(z[0], z[1], c[2] * this.scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    for (const hd of this.circleHandles()) {
+      const s = this.toScr(hd.p);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.strokeStyle = COLOR.circle; ctx.lineWidth = 1.5;
+      if (hd.kind === 'centre') {
+        ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else { ctx.fillRect(s[0] - 4.5, s[1] - 4.5, 9, 9); ctx.strokeRect(s[0] - 4.5, s[1] - 4.5, 9, 9); }
+    }
+    ctx.restore();
+  }
+  drawStars(ctx) {
+    const pred = predicted(), dr = this.drag;
+    ctx.save();
+    ctx.font = '12px "Share Tech Mono", monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    for (const s of pred) {
+      if (s.pinned || !s.px) continue;
+      const dragging = dr && dr.kind === 'star' && dr.hip === s.hip && dr.moved;
+      const p = this.toScr(dragging ? dr.px : s.px), hi = s.hip === S.hover || s.hip === S.selected;
+      ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1.4; ctx.strokeStyle = hi ? HILITE : COLOR.pred;
+      ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.stroke();
+      if (s.name.startsWith('HIP') && s.mag > 1.5 && !hi) continue;   // unnamed fainter stars: marker only
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, p[0] + 10, p[1] + 1);
+      ctx.fillStyle = hi ? HILITE : COLOR.pred; ctx.fillText(s.name, p[0] + 9, p[1]);
+    }
+    // pins: where the fitted model puts the star (small cross, joined to the pin by its residual)
+    const byHip = new Map(pred.map(s => [s.hip, s]));
+    for (const q of S.pins) {
+      const s = byHip.get(q.hip), p = this.toScr(q.px);
+      if (s && s.px && (fitOk() || (S.preview && S.preview.ok))) {
+        const e = this.toScr(s.px);
+        ctx.strokeStyle = COLOR.pred; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(e[0] - 3, e[1] - 3); ctx.lineTo(e[0] + 3, e[1] + 3); ctx.moveTo(e[0] - 3, e[1] + 3); ctx.lineTo(e[0] + 3, e[1] - 3); ctx.stroke();
+      }
+      drawPin(ctx, p[0], p[1], starName(q.hip), COLOR.pin, q.hip === S.selected, q.hip === S.hover);
+    }
+    ctx.restore();
+  }
+  drawLoupe(ctx, m) {
+    const R = 80, mag = Math.max(4, 6 / this.scale) * this.scale, dr = this.drag;
+    let cx = m[0] + R + 24, cy = m[1] - R - 24;
+    if (cx + R > this.w - 4) cx = m[0] - R - 24;
+    if (cy - R < 4) cy = m[1] + R + 24;
+    // the dragged point sits at the loupe centre
+    let ip = this.toImg(m[0], m[1]);
+    if (dr.kind === 'pin') ip = pinOf(dr.hip).px;
+    else if (dr.kind === 'star') ip = dr.px;
+    const ox = cx - ip[0] * mag, oy = cy - ip[1] * mag;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#000'; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    this.drawPhoto(ctx, mag, ox, oy, true);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx - 5, cy); ctx.moveTo(cx + 5, cy); ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy - 5); ctx.moveTo(cx, cy + 5); ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+    ctx.restore();
+    ctx.lineWidth = 2; ctx.strokeStyle = dr.kind === 'circle' ? COLOR.circle : COLOR.pin;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = '11px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.textAlign = 'center';
+    const label = dr.kind === 'circle' ? 'circle' : starName(dr.hip);
+    ctx.fillText(`${label} ${ip[0].toFixed(1)}, ${ip[1].toFixed(1)}`, cx, cy + R + 14);
+  }
+}
+function drawPin(ctx, x, y, label, color, sel, hov) {
+  ctx.save();
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fill();
+  const hi = sel || hov;
+  if (hi) { ctx.strokeStyle = HILITE; ctx.lineWidth = sel ? 2 : 1.5; ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.font = '600 12px "Share Tech Mono", monospace';
+  const w = ctx.measureText(label).width + 8, lx = x + 8, ly = y - 22;
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 5, y - 5); ctx.lineTo(lx + 3, ly + 16); ctx.stroke();
+  ctx.fillStyle = hi ? '#fff' : color; roundRect(ctx, lx, ly, w, 16, 3); ctx.fill();
+  ctx.fillStyle = hi ? color : '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, lx + 4, ly + 8.5);
+  ctx.restore();
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function clampToImg(p) { return [Math.min(S.W, Math.max(0, p[0])), Math.min(S.H, Math.max(0, p[1]))]; }
+const view = new View($('view'));
+
+/* ---------- panel ---------- */
+function setStatus(t, cls) { const s = $('status'); s.textContent = t; s.className = cls || ''; }
+function renderCircleInfo() {
+  const c = S.circle;
+  $('infoCircle').innerHTML = c ? `Circle: centre <b>${c[0].toFixed(1)}, ${c[1].toFixed(1)}</b> radius <b>${c[2].toFixed(1)}</b> px` : 'Circle: -';
+}
+function renderPanel() {
+  renderCircleInfo();
+  const fit = S.fit, ok = fitOk();
+  $('fitReason').textContent = fit && !ok ? fit.reason : '';
+  // projections
+  const tb = $('projTable').tBodies[0];
+  tb.innerHTML = '';
+  if (ok) {
+    for (const pr of ALLSKY_PROJECTIONS) {
+      const b = fit.byProjection[pr], tr = document.createElement('tr');
+      if (pr === fit.cal.projection) tr.className = 'best';
+      tr.innerHTML = `<td>${pr}${pr === fit.cal.projection ? ' &#10003;' : ''}</td><td>${b ? 'RMS ' + b.rms.toFixed(2) + ' px' : '-'}</td>`;
+      tb.appendChild(tr);
+    }
+  }
+  $('projTable').hidden = !ok;
+  if (ok) {
+    const c = fit.cal;
+    $('fitSummary').innerHTML = `Zenith <b>${c.zenith_px[0].toFixed(1)}, ${c.zenith_px[1].toFixed(1)}</b> px<br>`
+      + `f <b>${c.f_px.toFixed(1)}</b> px &middot; north <b>${c.north_deg.toFixed(2)}&deg;</b> &middot; east <b>${c.east}</b><br>`
+      + `Circle edge down to <b>${c.alt_edge.toFixed(1)}&deg;</b> altitude<br>`
+      + `<span title="RMS of the pins' residuals after each pin's own time shift; the error between pins is somewhat larger">RMS <b>${c.rms_px.toFixed(2)}</b> px after time shifts</span>`;
+  } else $('fitSummary').textContent = S.preview && S.preview.ok ? 'Prediction from a fit without time shifts until there are enough pins.' : '';
+  // pins
+  const res = new Map(ok ? fit.perPin.map(p => [p.hip, p]) : []);
+  const maxRes = Math.max(0, ...[...res.values()].map(p => p.residPx));
+  const ul = $('pinList'); ul.innerHTML = '';
+  for (const q of S.pins) {
+    const li = document.createElement('li'), r = res.get(q.hip);
+    if (q.hip === S.selected) li.classList.add('sel');
+    const big = r && maxRes > 0 && r.residPx === maxRes && r.residPx > 2 * fit.cal.rms_px && r.residPx > 1;
+    li.innerHTML = `<span class="name" title="HIP ${q.hip}">${escapeHtml(starName(q.hip))}</span>`
+      + `<span class="num${big ? ' hi' : ''}">${r ? r.residPx.toFixed(2) : '-'}</span>`
+      + `<span class="num">${r ? r.dtMin.toFixed(1) : '-'}</span>`
+      + `<button class="del" title="Remove this pin">&times;</button>`;
+    li.addEventListener('click', e => {
+      if (e.target.closest('.del')) { deletePin(q.hip); return; }
+      S.selected = q.hip; centreOn(q.px); renderPanel();
+    });
+    li.addEventListener('mouseenter', () => { S.hover = q.hip; view.draw(); });
+    li.addEventListener('mouseleave', () => { S.hover = null; view.draw(); });
+    ul.appendChild(li);
+  }
+  $('btnClearPins').disabled = !S.pins.length;
+  $('btnCopy').disabled = !ok; $('btnCopyEntry').disabled = !ok;
+  // orientation controls follow the fit once there is one
+  const fitted = ok || (S.preview && S.preview.ok);
+  $('rngNorth').value = S.north; $('rngNorth').disabled = !!fitted;
+  $('outNorth').textContent = S.north.toFixed(1) + '°';
+  $('northRow').classList.toggle('off', !!fitted);
+  for (const b of document.querySelectorAll('#eastToggle button')) { b.classList.toggle('on', b.dataset.east === S.east); b.disabled = !!fitted; }
+  $('orientNote').textContent = fitted ? 'Set by the fit.' : 'Before pinning, turn the prediction roughly onto the stars, then drag star markers onto their images.';
+}
+function centreOn(p) {
+  if (!S.img) return;
+  const s = view.toScr(p);
+  if (s[0] < 40 || s[1] < 40 || s[0] > view.w - 40 || s[1] > view.h - 40) {
+    view.ox += view.w / 2 - s[0]; view.oy += view.h / 2 - s[1]; view.userMoved = true;
+  }
+  view.draw();
+}
+
+/* ---------- wiring ---------- */
+for (const el of document.querySelectorAll('[data-load]')) el.addEventListener('click', () => $('fileImg').click());
+$('fileImg').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (f) loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err'));
+});
+const ve = $('view');
+ve.addEventListener('dragover', e => { e.preventDefault(); ve.classList.add('drop'); });
+ve.addEventListener('dragleave', () => ve.classList.remove('drop'));
+ve.addEventListener('drop', e => {
+  e.preventDefault(); ve.classList.remove('drop');
+  const f = e.dataTransfer.files[0];
+  if (f) loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err'));
+});
+$('btnEntry').addEventListener('click', () => setEntry($('inEntry').value));
+for (const id of ['inDate', 'inTime', 'inLat', 'inLon', 'inSpan', 'inTz']) $(id).addEventListener('input', () => { place(); scheduleFit(); view.draw(); });
+$('btnDetect').addEventListener('click', () => {
+  if (!S.img) return;
+  const c = detectCircle();
+  if (c) { setCircle(c); setStatus('Circle detected', 'ok'); } else setStatus('No circle found; drag the handles instead', 'err');
+});
+$('rngNorth').addEventListener('input', e => { setNorth(+e.target.value); });
+for (const b of document.querySelectorAll('#eastToggle button')) b.addEventListener('click', () => setEast(b.dataset.east));
+$('btnClearPins').addEventListener('click', () => {
+  if (!S.pins.length || !confirm(`Remove all ${S.pins.length} pins?`)) return;
+  S.pins = []; S.selected = null; scheduleFit(); renderPanel(); view.draw();
+});
+$('btnCopy').addEventListener('click', () => { const o = output(); if (o) copyText(formatJSON(o), 'the allsky block'); });
+$('btnCopyEntry').addEventListener('click', () => { const o = outputEntry(); if (o) copyText(formatJSON(o), 'the full entry'); });
+function setNorth(v) { S.north = ((v % 360) + 360) % 360; invalidate(); renderPanel(); view.draw(); }
+function setEast(v) { S.east = v === 'right' ? 'right' : 'left'; invalidate(); renderPanel(); view.draw(); }
+document.querySelectorAll('.section-toggle').forEach(btn => btn.addEventListener('click', () => {
+  const sec = btn.closest('.sidebar-section'), c = !sec.classList.contains('collapsed');
+  sec.classList.toggle('collapsed', c); btn.innerHTML = c ? '&#9654;' : '&#9660;';
+}));
+document.addEventListener('keydown', e => {
+  if (e.target instanceof Element && e.target.matches('input, select, textarea')) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected != null && pinOf(S.selected)) { e.preventDefault(); deletePin(S.selected); }
+  else if (e.key === 'f' || e.key === 'F') view.fit();
+});
+renderPanel();
+
+/* ---------- test and automation interface ---------- */
+const api = {
+  ready,
+  lastCopied: '',
+  reset() {
+    clearTimeout(S.fitTimer);
+    S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; $('btnDetect').disabled = true;
+    $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
+    S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null;
+    S.north = 0; S.east = 'left'; S.selected = null; S.hover = null; invalidate(); renderPanel(); view.draw();
+  },
+  loadImage: (src, name) => loadImage(src, name),
+  setEntry, setFields, fields() { const f = fields(); return f; },
+  detectCircle() { const c = detectCircle(); if (c) setCircle(c); return c; },
+  setCircle, setNorth, setEast,
+  predicted: () => predicted().map(s => Object.assign({}, s, { px: s.px ? s.px.slice() : null })),
+  addPin, movePin, deletePin, pins: () => S.pins.map(q => ({ hip: q.hip, px: q.px.slice() })),
+  fitNow() { runFit(); return Promise.resolve(S.fit); },
+  fit: () => S.fit,
+  // photo px -> client (page) coordinates of the view, for driving the canvas with pointer events
+  toClient(p) { const r = view.cv.getBoundingClientRect(), s = view.toScr(p); return [r.left + s[0], r.top + s[1]]; },
+  fitView: () => view.fit(),
+  pinsForFit, fitOpts, output, outputEntry,
+  get state() { return { circle: S.circle && S.circle.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag }; },
+};
+window.ast = api;
+})();
+</script>
+</body>
+</html>

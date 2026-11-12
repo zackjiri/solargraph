@@ -134,7 +134,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 - **Coordinate grids** - the Az/Alt and equatorial grids of the Planetarium follow the zoom: 30° in the all-sky view, then 15°, 10°, 5° and finer down to arcminutes, so a zoomed view always has a few lines with their labels.
 
-- **Catalog** - the author's astrophotographs of landscapes, Solar System objects and deep-sky targets. A photo restores the date, time and place it was taken and marks its field on the sky through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs. A star trails photo opens with its exposure running inside its frame, between its own start and end.
+- **Catalog** - the author's astrophotographs of landscapes, Solar System objects and deep-sky targets. A photo restores the date, time and place it was taken and marks its field on the sky through an exact gnomonic projection, so even a 100° wide-angle frame lands where it belongs. A star trails photo opens with its exposure running inside its frame, between its own start and end. An all-sky panorama turns the view to the zenith and outlines the photo's edge on the sky; a button lays the photo itself over the Planetarium with adjustable opacity, warped frame by frame so its stars sit on the drawn ones.
 
 📍 **Set here** - fills in Location from the device's position (the browser asks for permission). If that is refused or unavailable, it falls back to an approximate, city-level position looked up from the IP address via ipapi.co or geojs.io, which then receive the visitor's IP address. Only on click, never automatically.
 
@@ -149,6 +149,8 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 🔗 **Links** - the address names the view on screen (for example `#night-sky/visualization/orbit/sun` or `#eclipse/visualization/2027-08-02/map`), so a copied link opens the same view.
 
 🪡 **[Warp tool](https://zackjiri.github.io/solargraph/warp_tool.html)** - a companion page that prepares the real-scene layer for Split screen. A camera panorama is bent onto the can's projection: numbered pin pairs mark the same points on the scan and on the photo, a thin-plate spline carries the rest of the image along, and an edge comparison shows where the two still disagree. `Prepare L2` in the Analyzer opens it with the current scan already loaded, together with the camera panorama (`GEN-X_Y_pano`) and saved pins (`GEN-X_Y_warp.json`) when they are in the `img` folder.
+
+🌌 **[All-sky calibration](https://zackjiri.github.io/solargraph/allsky_tool.html)** - a companion page that calibrates an all-sky panorama for the Catalog. Drag the predicted bright stars onto their images in the photo; a least-squares fit finds the zenith, the lens projection (equidistant, stereographic or equal-area), north and the shooting time of each part of the panorama, and copies the result as the catalog entry's `allsky` block.
 
 ---
 

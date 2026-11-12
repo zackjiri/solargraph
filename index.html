@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug616">
+  <link rel="stylesheet" href="css/style.css?perfdebug628">
 </head>
 <body>
 
@@ -548,6 +548,22 @@
           <line x1="14.8" y1="14.8" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
       </button>
+      <!-- All-sky photo overlay (js/render-nightsky-allsky.js) - round button left of the search,
+           shown only while an all-sky Catalog photo is presented in the Planetarium; on, the photo
+           lies over the sky and #nightSkyAllskyOpacityCtl beside the button sets its opacity. -->
+      <button id="btnNightSkyAllskyOverlay" title="Lay the photo over the sky" aria-pressed="false">
+        <!-- the photo's circle, its lower half filled (the landscape), two stars above -->
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M3.6 13.5 Q8 10.5 12 12.5 T20.4 13.5 A9 9 0 0 1 3.6 13.5 Z" fill="currentColor" opacity="0.75"/>
+          <circle cx="9" cy="7.5" r="1.2" fill="currentColor"/>
+          <circle cx="15" cy="8.5" r="0.9" fill="currentColor"/>
+        </svg>
+      </button>
+      <div id="nightSkyAllskyOpacityCtl" title="Opacity of the photo over the sky">
+        <input type="range" id="nightSkyAllskyOpacity" min="0" max="1" step="0.01" value="0.7" aria-label="Opacity of the photo over the sky">
+        <span id="nightSkyAllskyOpacityVal">70%</span>
+      </div>
       <!-- Sky Map rotation (render-nightsky.js) - round button in the picker's place, right of the
            search, flat Sky Map only: each click turns the map, its compass points, 90° clockwise. -->
       <button id="btnNightSkyMapRotate" title="Turn the map 90° clockwise (now N at the top)">
@@ -740,6 +756,7 @@
             <button class="ns-btn" data-type="solar_system">SOLAR SYSTEM</button>
             <button class="ns-btn" data-type="deep_sky">DEEP SKY</button>
             <button class="ns-btn" data-type="star_trails">STAR TRAILS</button>
+            <button class="ns-btn" data-type="all_sky">ALL SKY</button>
           </div>
         </div>
         <div id="nightSkyCatalogGrid" class="catalog-grid"></div>
@@ -1531,47 +1548,50 @@
 </div>
 
 <div class="info-bar">
-  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
+  © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.12
 </div>
 
-<script src="js/core.js?perfdebug616"></script>
-<script src="js/render-2d.js?perfdebug616"></script>
-<script src="js/controls.js?perfdebug616"></script>
-<script src="js/render-sungraph.js?perfdebug616"></script>
-<script src="js/render-3d.js?perfdebug616"></script>
-<script src="js/render-skydome.js?perfdebug616"></script>
-<script src="js/render-moon.js?perfdebug616"></script>
-<script src="js/render-planets.js?perfdebug616"></script>
-<script src="js/render-milkyway.js?perfdebug616"></script>
-<script src="js/render-deepsky.js?perfdebug616"></script>
-<script src="js/render-skyglow.js?perfdebug616"></script>
-<script src="js/render-nightsky.js?perfdebug616"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug616"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug616"></script>
-<script src="js/render-nightsky-trails.js?perfdebug616"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug616"></script>
-<script src="js/render-nightsky-globe.js?perfdebug616"></script>
-<script src="js/render-nightsky-solar.js?perfdebug616"></script>
-<script src="js/render-search.js?perfdebug616"></script>
-<script src="js/render-locpick.js?perfdebug616"></script>
-<script src="js/tz-lookup.js?perfdebug616"></script>
-<script src="js/lp-lookup.js?perfdebug616"></script>
-<script src="js/lp-dir.js?perfdebug616"></script>
-<script src="js/render-locpick-glow.js?perfdebug616"></script>
-<script src="js/render-tzsearch.js?perfdebug616"></script>
-<script src="js/render-locplaces.js?perfdebug616"></script>
-<script src="js/render-eclipse-map.js?perfdebug616"></script>
-<script src="js/render-export.js?perfdebug616"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug616"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug616"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug616"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug616"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug616"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug616"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug616"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug616"></script>
-<script src="js/render-eclipse.js?perfdebug616"></script>
-<script src="js/render-fullscreen.js?perfdebug616"></script>
-<script src="js/render-route.js?perfdebug616"></script>
+<script src="js/sky-astro.js?perfdebug628"></script>
+<script src="js/allsky-model.js?perfdebug628"></script>
+<script src="js/core.js?perfdebug628"></script>
+<script src="js/render-2d.js?perfdebug628"></script>
+<script src="js/controls.js?perfdebug628"></script>
+<script src="js/render-sungraph.js?perfdebug628"></script>
+<script src="js/render-3d.js?perfdebug628"></script>
+<script src="js/render-skydome.js?perfdebug628"></script>
+<script src="js/render-moon.js?perfdebug628"></script>
+<script src="js/render-planets.js?perfdebug628"></script>
+<script src="js/render-milkyway.js?perfdebug628"></script>
+<script src="js/render-deepsky.js?perfdebug628"></script>
+<script src="js/render-skyglow.js?perfdebug628"></script>
+<script src="js/render-nightsky.js?perfdebug628"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug628"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug628"></script>
+<script src="js/render-nightsky-trails.js?perfdebug628"></script>
+<script src="js/render-nightsky-allsky.js?perfdebug628"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug628"></script>
+<script src="js/render-nightsky-globe.js?perfdebug628"></script>
+<script src="js/render-nightsky-solar.js?perfdebug628"></script>
+<script src="js/render-search.js?perfdebug628"></script>
+<script src="js/render-locpick.js?perfdebug628"></script>
+<script src="js/tz-lookup.js?perfdebug628"></script>
+<script src="js/lp-lookup.js?perfdebug628"></script>
+<script src="js/lp-dir.js?perfdebug628"></script>
+<script src="js/render-locpick-glow.js?perfdebug628"></script>
+<script src="js/render-tzsearch.js?perfdebug628"></script>
+<script src="js/render-locplaces.js?perfdebug628"></script>
+<script src="js/render-eclipse-map.js?perfdebug628"></script>
+<script src="js/render-export.js?perfdebug628"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug628"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug628"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug628"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug628"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug628"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug628"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug628"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug628"></script>
+<script src="js/render-eclipse.js?perfdebug628"></script>
+<script src="js/render-fullscreen.js?perfdebug628"></script>
+<script src="js/render-route.js?perfdebug628"></script>
 </body>
 </html>
