@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug605">
+  <link rel="stylesheet" href="css/style.css?perfdebug613">
 </head>
 <body>
 
@@ -688,17 +688,22 @@
             <span id="nightSkyTrailCounter" title="Star trails: exposure time" style="display:none">00:00</span>
           </div>
           <div id="nightSkyTimeSliderRow">
-            <button id="btnNightSkyPlay" title="Animate time forward, resuming from the current position">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
-              <!-- Nested INSIDE the button, same as Eclipse's own #eclipseSpeedBox inside
-                   #btnEclipsePlay - its CSS floats it via bottom:100% relative to the button
-                   (position:relative), which only works with the button as its actual containing
-                   block. A stray earlier cut had this as a sibling instead, which silently mispositioned
-                   it (the CSS's positioned ancestor ended up being #nightSkyTimeWrap several levels up,
-                   not the button) - looked fine in the CSS, wrong on screen ("mimo" - off to the side/
-                   clipped by the box's own overflow:hidden). -->
-              <span id="nightSkySpeedBox" title="Click to change animation speed">300x</span>
-            </button>
+            <!-- Play inside the speed ring (render-nightsky.js): 48 px, a 10 px ring. The label across its top
+                 steps 1x, 10x, 60x, 300x; a click on its right, bottom or left wall picks the round speed
+                 at that place (1x right at the top, 300x left at the top); the fill runs that far along the
+                 walls, light blue to dark blue; grey and full with a video's own speed. The square in the
+                 middle plays or stops. -->
+            <div id="nightSkyPlayRing">
+              <svg class="ns-ring" viewBox="0 0 48 48" aria-hidden="true">
+                <path class="ns-ring-track" d="M11 5 H37 Q43 5 43 11 V37 Q43 43 37 43 H11 Q5 43 5 37 V11 Q5 5 11 5 Z"/>
+                <path class="ns-ring-walls" d="M37 5 Q43 5 43 11 V37 Q43 43 37 43 H11 Q5 43 5 37 V11 Q5 5 11 5"/>
+                <g class="ns-ring-segs"></g>
+              </svg>
+              <button id="btnNightSkyPlay" title="Animate time forward, resuming from the current position">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+              </button>
+              <span id="nightSkySpeedBox">300x</span>
+            </div>
             <div id="nightSkyStripWrap">
               <div id="nightSkyTimeStrip" title="Drag to scrub through time - crossing midnight changes the date too">
                 <!-- Discrete day/civil/nautical/astronomical-twilight/night band, hard-edged, exact
@@ -1529,43 +1534,43 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.05
 </div>
 
-<script src="js/core.js?perfdebug605"></script>
-<script src="js/render-2d.js?perfdebug605"></script>
-<script src="js/controls.js?perfdebug605"></script>
-<script src="js/render-sungraph.js?perfdebug605"></script>
-<script src="js/render-3d.js?perfdebug605"></script>
-<script src="js/render-skydome.js?perfdebug605"></script>
-<script src="js/render-moon.js?perfdebug605"></script>
-<script src="js/render-planets.js?perfdebug605"></script>
-<script src="js/render-milkyway.js?perfdebug605"></script>
-<script src="js/render-deepsky.js?perfdebug605"></script>
-<script src="js/render-skyglow.js?perfdebug605"></script>
-<script src="js/render-nightsky.js?perfdebug605"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug605"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug605"></script>
-<script src="js/render-nightsky-trails.js?perfdebug605"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug605"></script>
-<script src="js/render-nightsky-globe.js?perfdebug605"></script>
-<script src="js/render-nightsky-solar.js?perfdebug605"></script>
-<script src="js/render-search.js?perfdebug605"></script>
-<script src="js/render-locpick.js?perfdebug605"></script>
-<script src="js/tz-lookup.js?perfdebug605"></script>
-<script src="js/lp-lookup.js?perfdebug605"></script>
-<script src="js/lp-dir.js?perfdebug605"></script>
-<script src="js/render-locpick-glow.js?perfdebug605"></script>
-<script src="js/render-tzsearch.js?perfdebug605"></script>
-<script src="js/render-locplaces.js?perfdebug605"></script>
-<script src="js/render-eclipse-map.js?perfdebug605"></script>
-<script src="js/render-export.js?perfdebug605"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug605"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug605"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug605"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug605"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug605"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug605"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug605"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug605"></script>
-<script src="js/render-eclipse.js?perfdebug605"></script>
-<script src="js/render-fullscreen.js?perfdebug605"></script>
+<script src="js/core.js?perfdebug613"></script>
+<script src="js/render-2d.js?perfdebug613"></script>
+<script src="js/controls.js?perfdebug613"></script>
+<script src="js/render-sungraph.js?perfdebug613"></script>
+<script src="js/render-3d.js?perfdebug613"></script>
+<script src="js/render-skydome.js?perfdebug613"></script>
+<script src="js/render-moon.js?perfdebug613"></script>
+<script src="js/render-planets.js?perfdebug613"></script>
+<script src="js/render-milkyway.js?perfdebug613"></script>
+<script src="js/render-deepsky.js?perfdebug613"></script>
+<script src="js/render-skyglow.js?perfdebug613"></script>
+<script src="js/render-nightsky.js?perfdebug613"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug613"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug613"></script>
+<script src="js/render-nightsky-trails.js?perfdebug613"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug613"></script>
+<script src="js/render-nightsky-globe.js?perfdebug613"></script>
+<script src="js/render-nightsky-solar.js?perfdebug613"></script>
+<script src="js/render-search.js?perfdebug613"></script>
+<script src="js/render-locpick.js?perfdebug613"></script>
+<script src="js/tz-lookup.js?perfdebug613"></script>
+<script src="js/lp-lookup.js?perfdebug613"></script>
+<script src="js/lp-dir.js?perfdebug613"></script>
+<script src="js/render-locpick-glow.js?perfdebug613"></script>
+<script src="js/render-tzsearch.js?perfdebug613"></script>
+<script src="js/render-locplaces.js?perfdebug613"></script>
+<script src="js/render-eclipse-map.js?perfdebug613"></script>
+<script src="js/render-export.js?perfdebug613"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug613"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug613"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug613"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug613"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug613"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug613"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug613"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug613"></script>
+<script src="js/render-eclipse.js?perfdebug613"></script>
+<script src="js/render-fullscreen.js?perfdebug613"></script>
 </body>
 </html>
