@@ -21,64 +21,7 @@
 
 
 
-// Greenwich Mean Sidereal Time, in degrees [0, 360), for Julian Date jd (UT-based).
-function _skyGMSTDeg(jd) {
-  const d = jd - 2451545.0;
-  const t = d / 36525;
-  let theta = 280.46061837 + 360.98564736629 * d + 0.000387933 * t * t - (t * t * t) / 38710000;
-  theta = theta % 360;
-  return theta < 0 ? theta + 360 : theta;
-}
-
-// Local Sidereal Time, in hours [0, 24), for a real civil UT date/time and observer longitude
-// (degrees, EAST-positive - matches lonHemisphere*LONG's sign convention used elsewhere, e.g.
-// _eclipseLocalCirc's own note on the app's LONG/lonHemisphere fields).
-function _skySiderealTimeHours(year, month, day, hourUT, lonDegEast) {
-  const jd = _skyToJulianDateUT(year, month, day, hourUT);
-  const gmstDeg = _skyGMSTDeg(jd);
-  let lstHours = (gmstDeg / 15) + (lonDegEast / 15);
-  lstHours = lstHours % 24;
-  return lstHours < 0 ? lstHours + 24 : lstHours;
-}
-
-// ─── Phase 2: equatorial (RA/Dec) -> horizontal (Az/El) ────────────────────────────────────────
-// Reuses sunPosition(H, delta, phi) from core.js UNCHANGED - despite the name it's already a
-// generic hour-angle/declination/latitude -> az/el transform (standard spherical astronomy), not
-// Sun-specific. The only thing star positions need that the Sun's own call sites don't derive the
-// same way is the hour angle H itself: for the Sun the app computes H from apparent solar time
-// (sunTimeHours), but a star's fixed RA needs H = LST - RA (LST from Phase 1 above).
-//
-// raDeg/decDeg: star's equatorial coordinates in degrees (as given by the GeoJSON catalogs, J2000).
-// lstHours: local sidereal time (Phase 1). latDegSigned: real signed latitude, i.e. LAT*hemisphere
-// (see core.js's LAT/hemisphere convention, same as _eclipseLocalCirc's LAT*hemisphere usage).
-// GEOMETRIC (true, airless) position. Everything Night Sky draws goes through _skyRaDecToAzEl
-// below instead, which adds atmospheric refraction; this one is kept for the few things defined on
-// the true altitude (the twilight phases: the Sun's centre at -6/-12/-18 deg).
-function _skyRaDecToAzElTrue(raDeg, decDeg, lstHours, latDegSigned) {
-  const D2R = Math.PI / 180;
-  let hDeg = lstHours * 15 - raDeg;
-  hDeg = ((hDeg + 180) % 360 + 360) % 360 - 180;   // normalize to (-180, 180]
-  return sunPositionTrue(hDeg * D2R, decDeg * D2R, latDegSigned * D2R);
-}
-// APPARENT position - what an observer sees and what Night Sky draws: true position plus refraction.
-// Returns sunPosition's own shape, el replaced by the apparent altitude, plus elTrue.
-function _skyRaDecToAzEl(raDeg, decDeg, lstHours, latDegSigned) {
-  const p = _skyRaDecToAzElTrue(raDeg, decDeg, lstHours, latDegSigned);
-  return Object.assign({}, p, { el: p.el + _skyRefractionDeg(p.el), elTrue: p.el });
-}
-// Inverse of _skyRaDecToAzEl: APPARENT {az, el} (degrees, az from north through east, the app's own
-// convention - e.g. the point under the cursor) -> {ra, dec} for the same local sidereal time and
-// signed latitude: refraction removed first, then the standard horizontal -> equatorial
-// transformation (Meeus 13.5/13.6 turned round).
-function _skyAzElToRaDec(azDeg, elDeg, lstHours, latDegSigned) {
-  const D2R = Math.PI / 180;
-  const A = azDeg * D2R, h = _skyTrueFromApparentEl(elDeg) * D2R, phi = latDegSigned * D2R;
-  const sinDec = Math.sin(phi) * Math.sin(h) + Math.cos(phi) * Math.cos(h) * Math.cos(A);
-  const dec = Math.asin(Math.max(-1, Math.min(1, sinDec)));
-  const H = Math.atan2(-Math.sin(A) * Math.cos(h), Math.cos(phi) * Math.sin(h) - Math.sin(phi) * Math.cos(h) * Math.cos(A));
-  const ra = ((lstHours * 15 - H / D2R) % 360 + 360) % 360;
-  return { ra, dec: dec / D2R };
-}
+// Sidereal time and RA/Dec <-> Az/El (_skyGMSTDeg .. _skyAzElToRaDec): moved to js/sky-astro.js
 
 // Convenience wrapper: star Az/El for a real civil UT date/time, using the app's OWN current
 // Location (LAT/hemisphere/LONG/lonHemisphere, core.js) - same "reuse the app's own location"
@@ -139,31 +82,7 @@ function _skyHorizonAzEl(m, x, y, z) {
   if (az < 0) az += 360;
   return { az, el: elTrue + _skyRefractionDeg(elTrue) };
 }
-// J2000 -> mean equinox of date as one 3x3 rotation (Meeus ch. 21, the same precession as
-// _moonPrecessFromJ2000 - its three columns ARE that formula applied to the x/y/z axes), cached per
-// ~1.4 min of JDE: precession moves the sky ~50"/year, so reusing one matrix per redraw is exact to
-// well under 0.001". Thousands of stars and line vertices per frame then cost 9 multiplications each.
-let _skyPrecCache = { key: null, m: null };
-function _skyPrecessionMatrix(jde) {
-  const key = Math.round(jde * 1000);
-  if (_skyPrecCache.key === key) return _skyPrecCache.m;
-  const col = (ra, dec) => _skyDomeUnitVecRaDec(_moonPrecessFromJ2000(ra, dec, jde));
-  const x = col(0, 0), y = col(90, 0), z = col(0, 90);
-  _skyPrecCache = { key, m: [[x[0], y[0], z[0]], [x[1], y[1], z[1]], [x[2], y[2], z[2]]] };
-  return _skyPrecCache.m;
-}
-function _skyDomeUnitVecRaDec(q) {
-  const a = q.ra * Math.PI / 180, d = q.dec * Math.PI / 180;
-  return [Math.cos(d) * Math.cos(a), Math.cos(d) * Math.sin(a), Math.sin(d)];
-}
-function _skyJ2000ToDate(raDeg, decDeg, jde) {
-  const m = _skyPrecessionMatrix(jde);
-  const v = _skyDomeUnitVecRaDec({ ra: raDeg, dec: decDeg });
-  const x = m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2];
-  const y = m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2];
-  const z = m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2];
-  return { ra: ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
-}
+// _skyPrecessionMatrix, _skyDomeUnitVecRaDec, _skyJ2000ToDate: moved to js/sky-astro.js
 
 // ─── Astro Catalog frame geometry (build 40_1) ─────────────────────────────────────────────────
 // Local East/North unit tangent vectors at a given point on the celestial sphere (RA/Dec, degrees)
@@ -500,6 +419,7 @@ function exitNightSkyVisualization() {
   // (exitNightSky() calls this same function while in Visualization). Returning to Planetarium
   // later always starts from a clean slate, not a stale photo from a previous visit.
   _nightSkyActiveFrame = null;
+  _nightSkyPlanetZoomReclamp();
   if (typeof _nsTrSync === 'function') _nsTrSync();   // a star trails photo's exposure ends with it
   // Stop the animation loop, if running - it has no reason to keep advancing time (and burning a
   // rAF callback) once the canvas showing it is hidden.
@@ -520,6 +440,7 @@ function exitNightSkyVisualization() {
   document.getElementById('btnNightSkyMapRotate').style.display = 'none';
   document.getElementById('btnNightSkyExport').style.display = 'none';
   document.getElementById('btnNightSkyEquipment').style.display = 'none';
+  if (typeof _nsAllskySyncUI === 'function') _nsAllskySyncUI();   // the frame is gone: overlay button and slider hide
   document.getElementById('nightSkyEquipmentChips').style.display = 'none';
   document.getElementById('nightSkyEquipmentMount').style.display = 'none';
   if (typeof _nsSearchSetOpen === 'function') { _nsSearchSetOpen(false); _nsSearch.mark = null; }
@@ -563,7 +484,7 @@ function _nightSkyParseDecDeg(str) {
 }
 
 let _nightSkyAstroCatalog = [];   // filelist_astro.json, fetched once at module load
-let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky' | 'star_trails'
+let _nightSkyCatalogTypeFilter = 'all';   // 'all' | 'landscape' | 'solar_system' | 'deep_sky' | 'star_trails' | 'all_sky'
 async function _nightSkyLoadAstroCatalog() {
   try {
     const res = await fetch('filelist_astro.json', { cache: 'no-cache' });   // hand-edited, always revalidate
@@ -656,8 +577,35 @@ function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const thetaMax = Math.atan(Math.hypot(halfW, halfH));
   return Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax));   // lower bound: setNightSkyPlanetZoom's own 0.5x clamp
 }
-let _nightSkyActiveFrame = null;   // {raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg, thumbnail, full, video,
-                                   //  videoStartJD, videoEndJD, videoDuration, videoMount, refTime} | null
+// All-sky photo (category "all_sky", js/allsky-model.js): the camera looks at the zenith, so thetaMax
+// is the zenith distance of the photo's lowest edge (90 - alt_edge) plus the camera's own offset
+// from the zenith; the same margin and cap as a rectangular photo. The result may be below the
+// slider's 0.5x; _nightSkyPlanetZoomMin lets the zoom go that low while the photo is presented.
+function _nightSkyFitZoomForAllsky(frame) {
+  const D2R = Math.PI / 180, cal = frame.allsky;
+  // without a calibration the whole sky down to the horizon (alt_edge 0)
+  const altEdge = !cal ? 0 : Number.isFinite(cal.alt_edge) ? cal.alt_edge : _allskyEdgeMinAlt(cal);
+  const thetaMax = (90 - altEdge) * D2R + (Math.PI / 2 - _nightSkyPlanet3D.camEl);
+  return Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax));
+}
+// The edge of an all-sky photo's circle (allsky.circle_px, else the circle inscribed in the image) on the sky: 180 points every 2 degrees
+// round the circle, clockwise from image-up, as apparent {az, el} at the photo's own time_utc
+// (calibration only, no per-frame time shift). A point the projection can't map is null: the
+// outline has a gap there.
+function _nightSkyAllskyEdgeAzEl(frame) {
+  const cal = frame.allsky, out = [];
+  if (!cal) return out;   // not calibrated: no outline
+  const [cx, cy, r] = _allskyCircle(cal);
+  for (let k = 0; k < 180; k++) {
+    const a = k * 2 * Math.PI / 180;
+    out.push(_allskyInverse(cal, cx + r * Math.sin(a), cy - r * Math.cos(a)));
+  }
+  return out;
+}
+let _nightSkyActiveFrame = null;   // null, or the presented Catalog photo:
+  // common: {kind, thumbnail, full, video, videoStartJD, videoEndJD, videoDuration, videoMount, refTime, id, trails}
+  // kind 'rect':   + raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg
+  // kind 'allsky': + allsky (the entry's calibration block), latDeg (signed), zoomMin (its fit zoom)
 
 // ─── Video playback window ──────────────────────────────────────────────────────────────────────
 // A catalog entry whose video carries its real capture interval ("video_start_utc"/"video_end_utc",
@@ -779,11 +727,18 @@ function _nightSkyApplyCatalogTile(entry) {
   applyLong(entry.lon);
   applyTimeZone(entry.timezone);
 
-  const raDeg = _nightSkyParseRaHours(entry.ra) * 15;
-  const decDeg = _nightSkyParseDecDeg(entry.dec);
+  // All-sky photo: no RA/Dec or field of view, the zenith follows from the time and the place.
+  // An all_sky entry without a calibration block (not calibrated yet) is still an all-sky frame:
+  // allsky is null, so it has no outline and no overlay.
+  const isAllsky = entry.category === 'all_sky';
+  const allsky = isAllsky && entry.allsky ? entry.allsky : null;
+  const raDeg = isAllsky ? 0 : _nightSkyParseRaHours(entry.ra) * 15;
+  const decDeg = isAllsky ? 0 : _nightSkyParseDecDeg(entry.dec);
+  const geometry = isAllsky
+    ? { kind: 'allsky', allsky, latDeg: LAT * hemisphere }
+    : { kind: 'rect', raDeg, decDeg, fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0 };
   _nightSkyActiveFrame = {
-    raDeg, decDeg,
-    fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0,
+    ...geometry,
     thumbnail: entry.thumbnail, full: entry.full, video: entry.video || null,
     ..._nightSkyVideoInterval(entry),
     // how the video was shot: 'tripod' (fixed to the landscape) or 'equatorial' (tracking the stars)
@@ -795,6 +750,9 @@ function _nightSkyApplyCatalogTile(entry) {
     trails: _nightSkyTrailsWindow(entry),
   };
   _nightSkyLoadVideoDuration(_nightSkyActiveFrame);
+  // a lock from before would re-aim the camera away from the photo's own view
+  _nightSkyPickerSetActive(false);
+  if (typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
   _nightSkyPlanet3D.roll = 0;
   _nightSkyTrackJD = null;   // tracking starts from the photo's instant, at the centred camera below
 
@@ -803,10 +761,19 @@ function _nightSkyApplyCatalogTile(entry) {
   _nightSkyUpdatePlanetControlsVisibility();
   _nightSkyUpdatePresentationLock();
 
-  const target = _skyStarAzEl(raDeg, decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-  _nightSkyPlanet3D.camAz = target.az * Math.PI / 180;
-  _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, target.el * Math.PI / 180));   // same clamp as the drag handler below
-  setNightSkyPlanetZoom(_nightSkyFitZoomForFrame(entry.fov_w_deg, entry.fov_h_deg));
+  if (isAllsky) {
+    // at the zenith (the drag handler's own upper limit), camAz unchanged; zoomMin before the zoom,
+    // so setNightSkyPlanetZoom's clamp lets it below 0.5x
+    _nightSkyPlanet3D.camEl = Math.PI / 2 - 0.02;
+    const z = _nightSkyFitZoomForAllsky(_nightSkyActiveFrame);
+    _nightSkyActiveFrame.zoomMin = z;
+    setNightSkyPlanetZoom(z);
+  } else {
+    const target = _skyStarAzEl(raDeg, decDeg, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+    _nightSkyPlanet3D.camAz = target.az * Math.PI / 180;
+    _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, target.el * Math.PI / 180));   // same clamp as the drag handler below
+    setNightSkyPlanetZoom(_nightSkyFitZoomForFrame(entry.fov_w_deg, entry.fov_h_deg));
+  }
   _nightSkyUpdatePlanetCamera();
 
   if (_nightSkyActiveFrame.trails && typeof _nsTrStartCatalog === 'function') _nsTrStartCatalog(_nightSkyActiveFrame.trails);
@@ -2574,7 +2541,7 @@ const NIGHTSKY_SUN_GLOW_RATIO = 25 / 8;
 // Refraction flattening of a disc of true semi-diameter semi (°) whose centre is at apparent altitude
 // elApp (°): the lower limb is lifted more than the upper one, so the vertical diameter shrinks to
 // (upper − lower apparent limb altitude) / (2·semi) of the horizontal, from the same refraction the
-// positions use (_skyRefractionDeg, core.js). About 0.8 with the centre on the horizon, 0.9 at
+// positions use (_skyRefractionDeg, js/sky-astro.js). About 0.8 with the centre on the horizon, 0.9 at
 // ~1.5°, 0.97 at ~5°, 1 high up.
 function _nightSkyRefrFlattening(elApp, semi) {
   const hT = _skyTrueFromApparentEl(elApp);
@@ -2740,7 +2707,7 @@ function _nightSkyCommitSubmode() {
   // AWAY from Planetarium to Sky Map, while staying in Visualization, is still "leaving" the
   // photo's presentation (user's own "kamkoliv" - anywhere), so it clears here too, not just on a
   // full Visualization exit.
-  if (nightSkySubmode !== 'planetarium') { _nightSkyActiveFrame = null; if (typeof _nsTrSync === 'function') _nsTrSync(); }
+  if (nightSkySubmode !== 'planetarium') { _nightSkyActiveFrame = null; _nightSkyPlanetZoomReclamp(); if (typeof _nsTrSync === 'function') _nsTrSync(); }
   _nightSkySubmodeWheel.render();
   _nightSkyUpdatePlanetControlsVisibility();
   _nightSkyUpdatePresentationLock();
@@ -2892,19 +2859,86 @@ _nightSkyUpdatePlanetCamera();
 // render-nightsky-equipment.js). The slider runs in log2(zoom) (-1..log2 20), so each octave takes
 // the same travel - linear steps would be either coarse at the low end or tediously fine at the top.
 const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 20;
-function setNightSkyPlanetZoom(z) {
-  _nightSkyPlanet3D.zoom = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
+// anchor (optional, the wheel and the pinch): a canvas point in CSS px whose sky direction stays
+// under it through the zoom, instead of the view's centre.
+// The zoom's lower limit: 0.5x, or an all-sky photo's own fit zoom while it is presented (the whole
+// sky down to the photo's edge needs less than 0.5x). The slider stays at 0.5x-20x and shows 0.5x
+// below that; the wheel, the pinch and the slider continue from the real value.
+function _nightSkyPlanetZoomMin() {
+  const f = _nightSkyActiveFrame;
+  return f && f.kind === 'allsky' && Number.isFinite(f.zoomMin) ? Math.min(NIGHTSKY_PLANET_ZOOM_MIN, f.zoomMin) : NIGHTSKY_PLANET_ZOOM_MIN;
+}
+function setNightSkyPlanetZoom(z, anchor) {
+  if (!Number.isFinite(z)) return;   // keep the current zoom
+  const hit = anchor ? _nightSkyPlanetAnchorHit(anchor) : null;
+  _nightSkyPlanet3D.zoom = Math.max(_nightSkyPlanetZoomMin(), Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
   _nightSkyUpdatePlanetCamera();
+  if (hit) _nightSkyPlanetKeepUnder(anchor, hit);
+  _nightSkyPlanetZoomSyncSlider();
+  if (nightSkyActive) drawNightSky();
+}
+function _nightSkyPlanetZoomSyncSlider() {
+  const shown = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, _nightSkyPlanet3D.zoom);
   const rng = document.getElementById('nightSkyPlanetZoom');
-  const log = Math.log2(_nightSkyPlanet3D.zoom);
+  const log = Math.log2(shown);
   if (rng && Math.abs(parseFloat(rng.value) - log) > 1e-9) rng.value = log;
   const val = document.getElementById('nightSkyPlanetZoomVal');
-  if (val) val.textContent = _nightSkyPlanet3D.zoom.toFixed(1) + '×';
-  if (nightSkyActive) drawNightSky();
+  if (val) val.textContent = shown.toFixed(1) + '×';
+}
+// Back within the limit after an all-sky presentation ends (the frame is cleared), without a redraw.
+function _nightSkyPlanetZoomReclamp() {
+  if (_nightSkyPlanet3D.zoom >= _nightSkyPlanetZoomMin()) return;
+  _nightSkyPlanet3D.zoom = _nightSkyPlanetZoomMin();
+  _nightSkyUpdatePlanetCamera();
+  _nightSkyPlanetZoomSyncSlider();
+}
+// The sky direction under a canvas point, or null when the camera may not turn (picker lock, star
+// trails) or the point is off the projection.
+function _nightSkyPlanetAnchorHit(a) {
+  if (_nightSkyPicker.lock) return null;
+  if (typeof _nsTrLocking === 'function' && _nsTrLocking()) return null;
+  return _nightSkyPlanetPixelToAzEl(_nightSkyPlanetLayout(a.w, a.h), a.x, a.y);
+}
+// Turns the camera so that the direction hit ({az, el} in deg) lies under the canvas point a ({x, y,
+// w, h}, CSS px): after a zoom, and through a drag, which carries the point grabbed with the
+// pointer. Newton steps on where the direction lands (camAz, camEl), the altitude within the drag's
+// own limits; at a limit the direction lands as close as it can. Returns whether it got there.
+function _nightSkyPlanetKeepUnder(a, hit) {
+  const layout = _nightSkyPlanetLayout(a.w, a.h), v = _skyDomeUnitVec(hit.az, hit.el);
+  const P = _nightSkyPlanet3D, EL_MAX = Math.PI / 2 - 0.02, H = 1e-5;
+  const at = (az, el) => {
+    P.camAz = az; P.camEl = el; _nightSkyUpdatePlanetCamera();
+    const q = _nightSkyPlanetProjectRaw(layout, v);
+    return q.visible ? [q.x - a.x, q.y - a.y] : null;
+  };
+  let az = P.camAz, el = P.camEl, f = at(az, el), ok = false, goodAz = az, goodEl = el;
+  for (let i = 0; f && i < 12; i++) {
+    goodAz = az; goodEl = el;
+    if (Math.abs(f[0]) < 1e-3 && Math.abs(f[1]) < 1e-3) { ok = true; break; }
+    const elH = el + H > EL_MAX ? el - H : el + H;
+    const f1 = at(az + H, el), f2 = at(az, elH);
+    if (!f1 || !f2) break;
+    const j11 = (f1[0] - f[0]) / H, j21 = (f1[1] - f[1]) / H;
+    const j12 = (f2[0] - f[0]) / (elH - el), j22 = (f2[1] - f[1]) / (elH - el);
+    const det = j11 * j22 - j12 * j21;
+    if (Math.abs(det) < 1e-9) break;
+    let dAz = -(j22 * f[0] - j12 * f[1]) / det, dEl = -(-j21 * f[0] + j11 * f[1]) / det;
+    const big = Math.max(Math.abs(dAz), Math.abs(dEl));
+    if (big > 0.5) { dAz *= 0.5 / big; dEl *= 0.5 / big; }   // no wild steps far from the answer
+    az += dAz; el = Math.max(0, Math.min(EL_MAX, el + dEl));
+    f = at(az, el);
+  }
+  if (!f) { az = goodAz; el = goodEl; }   // a step ran off the projection: back to the last good one
+  P.camAz = az; P.camEl = el;
+  _nightSkyUpdatePlanetCamera();
+  return ok;
 }
 const _nightSkyPlanetZoomEl = document.getElementById('nightSkyPlanetZoom');
 if (_nightSkyPlanetZoomEl) {
-  _nightSkyPlanetZoomEl.addEventListener('input', (e) => setNightSkyPlanetZoom(Math.pow(2, parseFloat(e.target.value))));
+  _nightSkyPlanetZoomEl.addEventListener('input', (e) => {
+    if (typeof _nsAllskyMove === 'function') _nsAllskyMove();   // the photo overlay at its lower resolution
+    setNightSkyPlanetZoom(Math.pow(2, parseFloat(e.target.value)));
+  });
 }
 // Shown/hidden alongside the rest of this sub-mode's own state - see _nightSkyCommitSubmode() and
 // enterNightSky()/exitNightSky() below.
@@ -2941,6 +2975,7 @@ function _nightSkyUpdatePlanetControlsVisibility() {
   if (!pickerShown || _nightSkyPickerSubmode !== nightSkySubmode) _nightSkyPickerSetActive(false);
   _nightSkyPickerSubmode = pickerShown ? nightSkySubmode : null;
   if (typeof _nsGlobeSyncUI === 'function') _nsGlobeSyncUI();   // Globe's controls (render-nightsky-globe.js)
+  if (typeof _nsAllskySyncUI === 'function') _nsAllskySyncUI();   // all-sky photo overlay (render-nightsky-allsky.js)
   if (typeof _appFsSync === 'function') _appFsSync();   // fullscreen button (render-fullscreen.js)
 }
 
@@ -2966,17 +3001,20 @@ function _nightSkyUpdatePresentationLock() {
   // Play needs the video's duration for its speed; until the metadata is in, only the strip moves
   document.getElementById('btnNightSkyPlay').classList.toggle('nightsky-play-waiting', !!win && !win.duration);
   _nightSkyUpdateSpeedBoxLabel();
-  // The picker would fight the photo's own centring and time lock - unavailable while presenting.
+  // The picker and the search would fight a rectangular photo's own centring - unavailable while
+  // one is presented. An all-sky photo has no framing to keep (the overlay follows the camera and
+  // the time stays locked), so there they name the objects in the photo and turn the view to them.
+  const blocked = (presenting && _nightSkyActiveFrame.kind !== 'allsky') || exposing;
   const picker = document.getElementById('btnNightSkyPicker');
-  picker.disabled = presenting || exposing;
-  picker.title = presenting ? 'Picker unavailable while a Catalog photo is shown'
-    : exposing ? 'Picker unavailable during a star-trail exposure' : 'Pick a point by RA/Dec and lock the view on it';
-  if (presenting || exposing) _nightSkyPickerSetActive(false);
+  picker.disabled = blocked;
+  picker.title = exposing ? 'Picker unavailable during a star-trail exposure'
+    : blocked ? 'Picker unavailable while a Catalog photo is shown' : 'Pick a point by RA/Dec and lock the view on it';
+  if (blocked) _nightSkyPickerSetActive(false);
   const search = document.getElementById('btnNightSkySearch');
-  search.disabled = presenting || exposing;
-  search.title = presenting ? 'Search unavailable while a Catalog photo is shown'
-    : exposing ? 'Search unavailable during a star-trail exposure' : 'Find an object and lock the view on it';
-  if ((presenting || exposing) && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
+  search.disabled = blocked;
+  search.title = exposing ? 'Search unavailable during a star-trail exposure'
+    : blocked ? 'Search unavailable while a Catalog photo is shown' : 'Find an object and lock the view on it';
+  if (blocked && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();   // Equipment: disabled the same way
 }
 
@@ -3540,9 +3578,49 @@ function _nightSkyDrawFrameSegment(ctx, layout, ra0, dec0, ra1, dec1, color) {
   ctx.lineTo(p1.x, p1.y);
   ctx.stroke();
 }
+// An all-sky photo's outline in screen space: the 180 edge points projected, null where the edge
+// point is unmapped or the camera can't see it (the curve breaks there, never bridging the gap).
+function _nightSkyAllskyOutlineScreen(layout) {
+  return _nightSkyAllskyEdgeAzEl(_nightSkyActiveFrame).map((p) => {
+    if (!p) return null;
+    const q = _nightSkyPlanetProject(layout, p.az, p.el);
+    return q.visible ? q : null;
+  });
+}
 function _nightSkyDrawCatalogFrame(ctx, layout) {
   if (!_nightSkyActiveFrame) return;
   const f = _nightSkyActiveFrame;
+  if (f.kind === 'allsky') {
+    if (!f.allsky) return;   // not calibrated: nothing to outline
+    // The photo's circle edge as one closed curve, in the brackets' own line (colour, width, the
+    // projection's rim fade); each unbroken run is one path, at the faintest alpha along it.
+    const pts = _nightSkyAllskyOutlineScreen(layout), n = pts.length;
+    const start = pts.indexOf(null);
+    const closed = start === -1;
+    const baseAlpha = _sd3AlphaOf(NIGHTSKY_FRAME_COLOR);
+    ctx.save();
+    ctx.lineWidth = 2;
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) {
+        ctx.strokeStyle = _sd3WithAlpha(NIGHTSKY_FRAME_COLOR, baseAlpha * Math.min(...run.map((q) => q.alpha)));
+        ctx.beginPath();
+        ctx.moveTo(run[0].x, run[0].y);
+        for (let i = 1; i < run.length; i++) ctx.lineTo(run[i].x, run[i].y);
+        if (closed) ctx.closePath();
+        ctx.stroke();
+      }
+      run = [];
+    };
+    // with a gap, start right after it so no run wraps across the array's end
+    for (let k = 1; k <= n; k++) {
+      const q = pts[(start + k + n) % n];
+      if (q) run.push(q); else flush();
+    }
+    flush();
+    ctx.restore();
+    return;
+  }
   if (f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);   // star trails photo, under the brackets
   const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
   ctx.save();
@@ -3588,10 +3666,62 @@ function _segIntersectsBox(x0, y0, x1, y1, bx0, by0, bx1, by1) {
   }
   return true;
 }
+// The four outside positions round a bounding box, in the order tried: right, left, below, above;
+// each centred on the box along its side and kept on-screen there.
+function _nightSkyThumbSides(bx0, by0, bx1, by1, w, h) {
+  const S = NIGHTSKY_FRAME_THUMB_SIZE, G = NIGHTSKY_FRAME_THUMB_GAP;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const vCenter = clamp((by0 + by1) / 2 - S / 2, 0, h - S);   // kept on-screen; never moved past the frame's own edge
+  const hCenter = clamp((bx0 + bx1) / 2 - S / 2, 0, w - S);
+  return [
+    { left: bx1 + G,     top: vCenter,     room: w - bx1, fits: bx1 + G + S <= w },
+    { left: bx0 - G - S, top: vCenter,     room: bx0,     fits: bx0 - G - S >= 0 },
+    { left: hCenter,     top: by1 + G,     room: h - by1, fits: by1 + G + S <= h },
+    { left: hCenter,     top: by0 - G - S, room: by0,     fits: by0 - G - S >= 0 },
+  ];
+}
+// All-sky photo: a side of the outline's bounding box as for a rectangular photo; when none has
+// room, a free corner of the canvas (bottom-right, bottom-left, top-right, top-left; the first
+// whose box touches neither the outline nor the projected zenith), never the middle, which would
+// cover the zenith; failing that, the side with the most room (possibly clipped by the canvas edge).
+function _nightSkyAllskyThumbPlace(layout, w, h) {
+  const pts = _nightSkyAllskyOutlineScreen(layout), vis = pts.filter(Boolean);
+  const calibrated = !!_nightSkyActiveFrame.allsky;
+  if (calibrated && !vis.length) return null;
+  // not calibrated (no outline): the free corners only
+  let sides = [];
+  if (calibrated) {
+    const bx0 = Math.min(...vis.map((p) => p.x)), bx1 = Math.max(...vis.map((p) => p.x));
+    const by0 = Math.min(...vis.map((p) => p.y)), by1 = Math.max(...vis.map((p) => p.y));
+    sides = _nightSkyThumbSides(bx0, by0, bx1, by1, w, h);
+    const side = sides.find((s) => s.fits);
+    if (side) return side;
+  }
+  const S = NIGHTSKY_FRAME_THUMB_SIZE, n = pts.length;
+  const segs = [];
+  for (let i = 0; i < n; i++) if (pts[i] && pts[(i + 1) % n]) segs.push([pts[i], pts[(i + 1) % n]]);
+  const z = _nightSkyPlanetProject(layout, 0, 90);
+  const corners = [[w - S, h - S], [0, h - S], [w - S, 0], [0, 0]];
+  for (const [left, top] of corners) {
+    if (z.visible && z.x >= left && z.x <= left + S && z.y >= top && z.y <= top + S) continue;
+    if (segs.some(([a, b]) => _segIntersectsBox(a.x, a.y, b.x, b.y, left, top, left + S, top + S))) continue;
+    return { left, top };
+  }
+  return sides.length ? sides.reduce((a, b) => (b.room > a.room ? b : a)) : { left: w - S, top: h - S };
+}
 function _nightSkyUpdateFrameThumb(layout, w, h) {
   const el = document.getElementById('nightSkyFrameThumb');
   const f = _nightSkyActiveFrame;
   if (!f) { el.style.display = 'none'; return; }
+  if (f.kind === 'allsky') {
+    const place = _nightSkyAllskyThumbPlace(layout, w, h);
+    if (!place) { el.style.display = 'none'; return; }
+    if (el.src.indexOf(f.thumbnail) === -1) el.src = f.thumbnail;   // avoid re-decoding on every redraw
+    el.style.left = place.left + 'px';
+    el.style.top = place.top + 'px';
+    el.style.display = 'block';
+    return;
+  }
   // No horizon check here either (see _nightSkyDrawFrameSegment's own comment) - the thumbnail
   // should stay put next to the frame even while its centre is below the horizon, only actually
   // disappearing once the camera itself can't see that direction at all (proj.visible).
@@ -3637,16 +3767,9 @@ function _nightSkyUpdateFrameThumb(layout, w, h) {
 
   if (el.src.indexOf(f.thumbnail) === -1) el.src = f.thumbnail;   // avoid re-decoding on every redraw
 
-  const S = NIGHTSKY_FRAME_THUMB_SIZE, G = NIGHTSKY_FRAME_THUMB_GAP;
+  const S = NIGHTSKY_FRAME_THUMB_SIZE;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const vCenter = clamp((by0 + by1) / 2 - S / 2, 0, h - S);   // kept on-screen; never moved past the frame's own edge
-  const hCenter = clamp((bx0 + bx1) / 2 - S / 2, 0, w - S);
-  const outsideSides = [
-    { left: bx1 + G,     top: vCenter,     room: w - bx1, fits: bx1 + G + S <= w },
-    { left: bx0 - G - S, top: vCenter,     room: bx0,     fits: bx0 - G - S >= 0 },
-    { left: hCenter,     top: by1 + G,     room: h - by1, fits: by1 + G + S <= h },
-    { left: hCenter,     top: by0 - G - S, room: by0,     fits: by0 - G - S >= 0 },
-  ];
+  const outsideSides = _nightSkyThumbSides(bx0, by0, bx1, by1, w, h);
   let chosen = outsideSides.find((s) => s.fits);
   if (!chosen) {
     // No side has room OUTSIDE the frame (a wide-FOV shot's bbox can span most of the canvas) -
@@ -3771,6 +3894,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
   if (_glowShown()) _glowDrawPlanetarium(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
   if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout);   // render-milkyway.js
+  // the presented all-sky photo over the sky, under the grid, stars and labels (render-nightsky-allsky.js)
+  if (typeof _nsAllskyDraw === 'function') _nsAllskyDraw(ctx, w, h, _nsAllsky.moving);
 
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
@@ -3811,9 +3936,15 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   const cv = document.getElementById('nightSkyCanvas');
   let dragging = false, lastX = 0, lastY = 0;
 
+  // The sky direction pressed on (grab) goes with the pointer: each move turns the camera so it
+  // lies under the pointer again (_nightSkyPlanetKeepUnder). Pressed off the projection, or where
+  // the camera's altitude limit stops it, the old rate-based turn takes over for that move.
+  let grab = null;
   function dragStart(x, y) {
     dragging = true;
     lastX = x; lastY = y;
+    grab = anchorAt({ x, y });
+    grab.hit = _nightSkyPlanetPixelToAzEl(_nightSkyPlanetLayout(grab.w, grab.h), grab.x, grab.y);
     cv.style.cursor = 'grabbing';
   }
   function dragMove(x, y) {
@@ -3822,6 +3953,15 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     lastX = x; lastY = y;
     if (_nightSkyPicker.lock) return;   // the view is held on the picked point
     if (typeof _nsTrLocking === 'function' && _nsTrLocking()) return;   // star trails: the camera stays pointed
+    if (typeof _nsAllskyMove === 'function') _nsAllskyMove();   // the photo overlay at its lower resolution
+    if (grab && grab.hit) {
+      const a = anchorAt({ x, y });
+      if (_nightSkyPlanetKeepUnder(a, grab.hit)) { drawNightSky(); return; }
+      // not reachable (the altitude limit): from here on the point under the pointer is the grab
+      drawNightSky();
+      grab.hit = _nightSkyPlanetPixelToAzEl(_nightSkyPlanetLayout(a.w, a.h), a.x, a.y);
+      return;
+    }
     // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.
     const z = _nightSkyPlanet3D.zoom;
     _nightSkyPlanet3D.camAz -= dx * 0.005 / z;
@@ -3840,6 +3980,12 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   const pts = new Map();
   let pinch = null;
   const spread = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+  const mid = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+  // the zoom's anchor (setNightSkyPlanetZoom): a client point turned into canvas CSS px
+  function anchorAt(p) {
+    const r = cv.getBoundingClientRect(), dpr = cv._res || 1;
+    return { x: p.x - r.left, y: p.y - r.top, w: cv.width / dpr, h: cv.height / dpr };
+  }
   cv.addEventListener('pointerdown', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -3852,7 +3998,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   });
   cv.addEventListener('pointermove', (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch) { if (pts.size === 2) setNightSkyPlanetZoom(pinch.z * spread() / pinch.d); return; }
+    if (pinch && pts.size === 2 && typeof _nsAllskyMove === 'function') _nsAllskyMove();
+    if (pinch) { if (pts.size === 2) setNightSkyPlanetZoom(pinch.z * spread() / pinch.d, anchorAt(mid())); return; }
     dragMove(e.clientX, e.clientY);
   });
   const up = (e) => {
@@ -3867,12 +4014,14 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   cv.addEventListener('gesturestart', (e) => e.preventDefault());
 
   // One tick = an eighth of an octave (x2^(1/8)), matching the slider's log scale: ~43 ticks from
-  // 0.5x to 20x. The exponent is snapped to whole eighths so repeated ticks don't drift.
+  // 0.5x to 20x. The exponent is snapped to whole eighths so repeated ticks don't drift. The sky
+  // under the cursor stays under it (the pinch keeps the point between the two fingers).
   cv.addEventListener('wheel', (e) => {
     if (!nightSkyActive || nightSkySubmode !== 'planetarium') return;
     e.preventDefault();
+    if (typeof _nsAllskyMove === 'function') _nsAllskyMove();
     const eighths = Math.round(Math.log2(_nightSkyPlanet3D.zoom) * 8) - Math.sign(e.deltaY);
-    setNightSkyPlanetZoom(Math.pow(2, eighths / 8));
+    setNightSkyPlanetZoom(Math.pow(2, eighths / 8), anchorAt({ x: e.clientX, y: e.clientY }));
   }, { passive: false });
 })();
 

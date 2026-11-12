@@ -99,26 +99,7 @@ function _moonEclipticOfDate(jde) {
 
 
 
-// Precession angles zeta, z, theta (degrees) from J2000 to the epoch jde (Meeus 21.3, J2000 start).
-function _moonPrecessionAngles(jde) {
-  const T = (jde - 2451545.0) / 36525;
-  const T2 = T * T, T3 = T2 * T;
-  return {
-    zeta:  (2306.2181 * T + 0.30188 * T2 + 0.017998 * T3) / 3600,
-    z:     (2306.2181 * T + 1.09468 * T2 + 0.018203 * T3) / 3600,
-    theta: (2004.3109 * T - 0.42665 * T2 - 0.041833 * T3) / 3600,
-  };
-}
-// J2000 -> mean equinox of jde (Meeus 21.4). Night Sky's precession matrix is built from it
-// (_skyPrecessionMatrix, render-nightsky.js).
-function _moonPrecessFromJ2000(ra0, dec0, jde) {
-  const { zeta, z, theta } = _moonPrecessionAngles(jde);
-  const a = (ra0 + zeta) * _MOON_D2R, d = dec0 * _MOON_D2R, th = theta * _MOON_D2R;
-  const A = Math.cos(d) * Math.sin(a);
-  const B = Math.cos(th) * Math.cos(d) * Math.cos(a) - Math.sin(th) * Math.sin(d);
-  const C = Math.sin(th) * Math.cos(d) * Math.cos(a) + Math.cos(th) * Math.sin(d);
-  return { ra: _moonNorm360(Math.atan2(A, B) / _MOON_D2R + z), dec: Math.asin(C) / _MOON_D2R };
-}
+// Precession angles and J2000 -> date (_moonPrecessionAngles, _moonPrecessFromJ2000): moved to js/sky-astro.js
 // Mean equinox of jde -> J2000: the exact inverse rotation of _moonPrecessFromJ2000.
 function _moonPrecessToJ2000(ra, dec, jde) {
   const { zeta, z, theta } = _moonPrecessionAngles(jde);

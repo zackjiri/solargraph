@@ -18,7 +18,7 @@
 // section 15) from the heliocentric and geocentric distances and the phase angle, with Saturn's
 // ring term from the ring tilt B. Good to ~0.1-0.2 mag, which only sets the dot size here.
 //
-// Time: the elements run in TT; Night Sky's clock is UT, so _moonJDE() (core.js, UT + deltaT).
+// Time: the elements run in TT; Night Sky's clock is UT, so _moonJDE() (js/sky-astro.js, UT + deltaT).
 
 // [a (au), e, I, L, long.peri, long.node] at J2000 and per Julian century, degrees for angles
 const PLANET_ELEMENTS = {
