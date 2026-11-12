@@ -699,6 +699,9 @@ function _nightSkyVideoRate(win) {
 // then the RA/Dec picker's own horizon stop. stopped = the window's end (or the horizon) was hit.
 function _nightSkyClampTimeJD(jdFrom, jdTo) {
   if (typeof _nsTr !== 'undefined' && _nsTr.state === 'exposing' && jdTo < _nsTr.startJD) jdTo = _nsTr.startJD;   // star trails: not before the exposure's start
+  // a star trails photo from the Catalog: not after its end either; reaching it stops Play
+  const trw = _nightSkyActiveFrame && _nightSkyActiveFrame.trails;
+  if (trw && typeof _nsTrCatalog === 'function' && _nsTrCatalog() && jdTo >= trw.endJD) return { jd: trw.endJD, stopped: true };
   const win = _nightSkyVideoWindow();
   if (win) {
     const jd = Math.max(win.startJD, Math.min(win.endJD, jdTo));
