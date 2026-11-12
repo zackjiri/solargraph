@@ -2498,6 +2498,51 @@
   }
   #btnNightSkyEquipment:disabled { opacity: 0.35; cursor: not-allowed; border-color: var(--border); box-shadow: none; }
   body.light #btnNightSkyEquipment:not(.active) { background: rgba(220,228,236,0.82); color: #a07c00; }
+  /* All-sky photo overlay (js/render-nightsky-allsky.js) - the same round button, left of the
+     search, in green; on: filled green. The opacity slider sits left of it in a panel like the
+     zoom control's, shown while the overlay is on. */
+  #btnNightSkyAllskyOverlay {
+    position: absolute; right: 150.5px; bottom: 12.5px;
+    z-index: 12; display: none;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #4fd1a5;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  #btnNightSkyAllskyOverlay:hover { border-color: #4fd1a5; }
+  #btnNightSkyAllskyOverlay.active {
+    background: #4fd1a5; color: #15181d; border-color: #4fd1a5;
+    box-shadow: 0 0 0 3px rgba(79,209,165,0.28), 0 0 12px rgba(79,209,165,0.5);
+  }
+  body.light #btnNightSkyAllskyOverlay:not(.active) { background: rgba(220,228,236,0.82); color: #178a64; }
+  #nightSkyAllskyOpacityCtl {
+    position: absolute; right: 196.5px; bottom: 12.5px;
+    z-index: 12; display: none;
+    align-items: center; gap: 7px;
+    height: 38px; box-sizing: border-box; padding: 0 10px;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border); border-radius: 19px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    cursor: default;
+  }
+  body.light #nightSkyAllskyOpacityCtl { background: rgba(220,228,236,0.82); }
+  #nightSkyAllskyOpacity {
+    width: 110px; margin: 0;
+    accent-color: #4fd1a5;
+    cursor: pointer;
+    touch-action: none;
+  }
+  #nightSkyAllskyOpacityVal {
+    min-width: 34px; text-align: right;
+    font-family: var(--mono); font-size: 11.25px;
+    color: #4fd1a5; letter-spacing: 0.04em;
+  }
+  body.light #nightSkyAllskyOpacityVal { color: #178a64; }
   #nightSkyEquipmentPanel {
     position: absolute; right: 12.5px; bottom: 60px;
     z-index: 14; display: none;
