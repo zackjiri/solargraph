@@ -1393,7 +1393,7 @@
   /* Night Sky's own time-shift controls (drag-the-belt strip + animate Play), locked alongside
      Calibration while a catalog photo's frame is being presented in Planetarium - same reasoning,
      different DOM subtree (#nightSkyTimeWrap sits over the canvas, not in the sidebar). */
-  .nightsky-time-locked #btnNightSkyPlay,
+  .nightsky-time-locked #nightSkyPlayRing,
   .nightsky-time-locked #nightSkyTimeStrip {
     pointer-events: none;
     opacity: 0.35;
@@ -1837,9 +1837,26 @@
      6px -> 20px, per the user's own request for more breathing room between button and strip - the
      strip (flex:1) narrows automatically to make room, no separate width rule needed. */
   #nightSkyTimeSliderRow { display: flex; align-items: flex-start; gap: 20px; }
+  /* The speed ring round Play (index.html, render-nightsky.js): 48 px, a 10 px ring (the rounded
+     square's path in SVG): a faint track, the fill in short pieces from light to dark blue along the
+     right, bottom and left walls, Play centred in it, the speed's label across the whole top wall */
+  #nightSkyPlayRing {
+    position: relative; flex: 0 0 auto;
+    width: 48px; height: 48px; margin-top: -10px;   /* Play's square stays level with the strip */
+    cursor: pointer;
+    touch-action: none;   /* a finger drags the speed along the walls instead of scrolling */
+  }
+  #nightSkyPlayRing .ns-ring { position: absolute; inset: 0; width: 48px; height: 48px; overflow: visible; }
+  #nightSkyPlayRing .ns-ring path { fill: none; stroke-width: 10; stroke-linejoin: round; }
+  #nightSkyPlayRing .ns-ring-track { stroke: rgba(110,170,240,0.16); }
+  #nightSkyPlayRing .ns-ring-walls { stroke: none; }
+  #nightSkyPlayRing .ns-ring-seg { stroke-linecap: butt; }
+  #nightSkyPlayRing:hover .ns-ring-track { stroke: rgba(110,170,240,0.3); }
+  #nightSkyPlayRing:hover .ns-ring-segs { filter: brightness(1.12); }
+  #nightSkyPlayRing.fixed { cursor: default; }
+  #nightSkyPlayRing.fixed .ns-ring-segs { filter: grayscale(1) opacity(0.5); }
   #btnNightSkyPlay {
-    position: relative;   /* anchors #nightSkySpeedBox above it, back to Eclipse's own layout */
-    flex: 0 0 auto;
+    position: absolute; left: 10px; top: 10px;
     width: 28px; height: 28px;
     display: flex; align-items: center; justify-content: center;
     background: rgba(80,220,120,0.22);
@@ -1859,24 +1876,33 @@
      fix), same reasoning as #eclipseSpeedBox. */
   #nightSkySpeedBox {
     position: absolute;
-    bottom: 100%; left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: 4px;
-    padding: 1px 5px;
+    /* the ring's whole top wall and 8 px above it (a touch target of 18 px, over the empty corner
+       left of the date row, so the box keeps its height), the text centred */
+    top: -8px; left: 0; width: 48px; height: 18px; box-sizing: border-box;
+    text-align: center;
+    padding: 0; line-height: 16px;   /* 18 px with its 1 px border, the text centred */
     font-family: var(--mono);
     font-size: 10px;
     font-weight: bold;
     white-space: nowrap;
     color: var(--accent);
     background: var(--panel);
+    /* its own amber border, set apart from the ring's blue; brighter with a light amber fill on hover */
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
     border-radius: var(--radius-sm);
     box-shadow: 0 1px 4px rgba(0,0,0,0.35);
     cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s, box-shadow 0.15s;
   }
-  #nightSkySpeedBox:hover { color: var(--text); }
+  #nightSkySpeedBox:hover {
+    color: var(--text);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent), 0 1px 4px rgba(0,0,0,0.35);
+  }
   /* video playback window (render-nightsky.js): the speed is the video's own, not a choice */
-  #nightSkySpeedBox.fixed { cursor: default; }
-  #nightSkySpeedBox.fixed:hover { color: var(--accent); }
+  #nightSkySpeedBox.fixed { cursor: default; border-color: rgba(150,160,170,0.45); }
+  #nightSkySpeedBox.fixed:hover { color: var(--accent); border-color: rgba(150,160,170,0.45); background: var(--panel); box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
   #btnNightSkyPlay.nightsky-play-waiting { opacity: 0.35; pointer-events: none; }
   /* Date/time value label indented to start at the STRIP's own left edge, not the box's - i.e.
      past the play button (28px) + row gap (6px) that sit to the strip's left. */
@@ -1885,7 +1911,7 @@
      strip, "running off" to the left of where it visually belongs) = 48px to line up with the
      strip's own left edge exactly, +6px more on top of that as a deliberate small indent so the
      label doesn't sit flush against the strip's edge. */
-  #nightSkyTimeBox .slider-header { margin-left: 54px; }
+  #nightSkyTimeBox .slider-header { margin-left: 74px; }   /* the speed ring's 48 px + the gap's 20 + 6 */
 
   #nightSkyStripWrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
