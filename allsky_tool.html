@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solargraphy All-Sky Calibration</title>
+<title>Solargraphy Photo Calibration</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -129,10 +129,15 @@
     font-family: var(--mono); font-size: 11px; padding: 0 4px; border: 1px solid var(--border);
     border-radius: 3px; color: var(--text);
   }
-  .slider { display: grid; grid-template-columns: 50px 1fr 52px; gap: 6px; align-items: center; font-size: 14px; }
+  .slider { display: grid; grid-template-columns: 58px 1fr 52px; gap: 6px; align-items: center; font-size: 14px; }
   .slider output { font-family: var(--mono); font-size: 12px; text-align: right; color: #fff; }
   .slider.off { color: var(--dim); }
   .slider.off output { color: var(--dim); }
+  .slider input[type=text] { height: 22px; padding: 2px 4px; font-size: 12px; text-align: right; }
+  select { width: 100%; text-align: left; }
+  body:not(.t-frame) .frame-only, body.t-frame .allsky-only, body:not(.t-sunmoon) .sunmoon-only { display: none !important; }
+  #lensRow[hidden] { display: none !important; }
+  .file-line.err { color: var(--err); }
   input[type=range] {
     -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
     background: transparent; cursor: pointer;
@@ -195,28 +200,45 @@
 </head>
 <body>
 <header>
-  <h1>ALL-SKY CALIBRATION</h1>
-  <span class="sub">star pins &rarr; zenith, scale, projection and north of an all-sky photo</span>
+  <h1>PHOTO CALIBRATION</h1>
+  <span class="sub">pins &rarr; where an astro photo looks, its scale, projection and rotation</span>
 </header>
 <main>
   <div class="view" id="view">
     <canvas></canvas>
-    <div class="tag"><b>&#9679;</b> ALL-SKY PHOTO <span class="name" id="tagName"></span></div>
-    <div class="empty"><div class="zone" data-load title="Load the all-sky photo (the full-size image the catalog entry points to)">
-      <p>Drop all-sky photo here or <span>click to select file</span></p>
+    <div class="tag"><b>&#9679;</b> <span id="tagType">ALL-SKY PHOTO</span> <span class="name" id="tagName"></span></div>
+    <div class="empty"><div class="zone" data-load title="Load the photo (the full-size image the catalog entry points to)">
+      <p>Drop photo here or <span>click to select file</span></p>
     </div></div>
   </div>
   <aside>
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#e84040">1</span>Photo</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
-      <div class="row"><button data-load title="Load the full-size all-sky photo; pixel positions in the output refer to this image">Load photo</button></div>
+      <div class="row"><button data-load title="Load the full-size photo; pixel positions in the output refer to this image">Load photo</button></div>
       <div class="file-line" id="infoImg">Photo: -</div>
     </section>
 
     <section class="sidebar-section">
-      <div class="sidebar-title"><span><span class="step" style="--step:#e8702c">2</span>Time and place</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8702c">2</span>Setup</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="field">
+        <span class="field-label">Photo type</span>
+        <div class="pill" id="typeToggle" role="group" aria-label="Photo type">
+          <button data-type="allsky" class="on" title="A stitched all-sky photo: the whole sky in a circle, zenith inside">All-sky</button>
+          <button data-type="frame" title="Any other photo of the night sky: a rectangle with stars, planets or deep sky objects">Frame</button>
+          <button data-type="sunmoon" title="A photo of the Sun or the Moon (eclipse, transit): disc pins, rotation set by hand">Sun / Moon</button>
+        </div>
+      </div>
+      <div class="field frame-only">
+        <label class="field-label" for="selEquip">Equipment</label>
+        <select id="selEquip" title="Where the starting field of view comes from: a saved Imaging setup of the app's Equipment panel, a lens focal length with the camera's crop factor, or the Field control in step 3"></select>
+      </div>
+      <div class="row halves frame-only" id="lensRow" hidden>
+        <div class="field"><label class="field-label" for="inFocal">Focal mm</label><input type="text" id="inFocal" placeholder="24" title="Focal length of the lens (or telescope times Barlow / reducer), mm"></div>
+        <div class="field"><label class="field-label" for="inCrop">Crop</label><input type="text" id="inCrop" value="1" title="Crop factor of the camera: 1 full frame, 1.5 or 1.6 APS-C, 2 Micro Four Thirds"></div>
+      </div>
+      <div class="file-line frame-only" id="infoEquip">Field: -</div>
       <textarea id="inEntry" spellcheck="false" placeholder="Paste a catalog entry (JSON) to take its date, time and place"></textarea>
-      <div class="row"><button id="btnEntry" title="Read date, time, place and time zone from the pasted entry; an entry with an allsky block also brings back its circle, span and pins">Apply entry</button></div>
+      <div class="row"><button id="btnEntry" title="Read date, time, place and time zone from the pasted entry; an entry with a calib block also brings back its circle, span and pins">Apply entry</button></div>
       <div class="row halves">
         <div class="field"><label class="field-label" for="inDate">Date UTC</label><input type="text" id="inDate" placeholder="YYYY-MM-DD" title="Date of the middle of the shoot, UTC"></div>
         <div class="field"><label class="field-label" for="inTime">Time UTC</label><input type="text" id="inTime" placeholder="HH:MM:SS" title="Middle of the shoot, UTC"></div>
@@ -229,18 +251,43 @@
         <div class="field"><label class="field-label" for="inSpan">Span min</label><input type="text" id="inSpan" value="10" title="How long shooting all frames of the panorama took, in minutes; each pin may shift in time by up to half of it. 0 = one exposure, no time shifts"></div>
         <div class="field"><label class="field-label" for="inTz">Time zone</label><input type="text" id="inTz" value="0" title="Hours from UTC, only copied into the full entry"></div>
       </div>
+      <div class="field frame-only">
+        <label class="field-label" for="inObject">Object</label>
+        <input type="text" id="inObject" list="objList" spellcheck="false" placeholder="Betelgeuse, M42, Moon" title="What the photo is centred on: a named star, the Sun, the Moon, a planet or a deep sky object (M42, NGC 2244, Orion Nebula). The frame starts with its axis there">
+        <datalist id="objList"></datalist>
+      </div>
+      <div class="file-line frame-only" id="infoObject">Object: -</div>
     </section>
 
     <section class="sidebar-section">
-      <div class="sidebar-title"><span><span class="step" style="--step:#e8a020">3</span>Image circle</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
-      <div class="row"><button id="btnDetect" disabled title="Find the photo circle again from the dark corners">Detect circle</button></div>
-      <div class="file-line" id="infoCircle">Circle: -</div>
-      <div class="note">Drag the green centre or edge handles on the photo to adjust it.</div>
+      <div class="sidebar-title"><span><span class="step" style="--step:#e8a020">3</span><span id="sec3Title">Image circle</span></span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
+      <div class="row allsky-only"><button id="btnDetect" disabled title="Find the photo circle again from the dark corners">Detect circle</button></div>
+      <div class="file-line allsky-only" id="infoCircle">Circle: -</div>
+      <div class="note allsky-only">Drag the green centre or edge handles on the photo to adjust it.</div>
+      <div class="slider frame-only" id="rollRow" title="Rotation of the frame: position angle of image-up, from north through east (the catalog's rotation_deg)">
+        <span>Rotation</span><input type="range" id="rngRoll" min="-180" max="180" step="0.1" value="0"><input type="text" id="inRoll" value="0.0" aria-label="Rotation in degrees">
+      </div>
+      <div class="slider frame-only" id="fovRow" title="Field of view across the photo's longer side, degrees">
+        <span>Field</span><input type="range" id="rngFov" min="0" max="1000" step="1" value="500"><input type="text" id="inFov" value="50.0" aria-label="Field of view in degrees">
+      </div>
+      <div class="row halves frame-only" id="shiftRow">
+        <div class="field"><label class="field-label" for="inShiftX">Shift x&deg;</label><input type="text" id="inShiftX" value="0" title="Moves the prediction to the right (+) or left (-) on the photo, degrees"></div>
+        <div class="field"><label class="field-label" for="inShiftY">Shift y&deg;</label><input type="text" id="inShiftY" value="0" title="Moves the prediction down (+) or up (-) on the photo, degrees"></div>
+      </div>
+      <div class="field frame-only">
+        <span class="field-label">Dragging the photo moves</span>
+        <div class="pill" id="dragToggle" role="group" aria-label="Dragging the photo moves">
+          <button data-drag="photo" class="on" title="Dragging pans the photo; markers can be dragged onto their images">Photo</button>
+          <button data-drag="frame" title="Dragging anywhere shifts the prediction over the photo (no pins are made)">Prediction</button>
+        </div>
+      </div>
+      <div class="row sunmoon-only"><button id="btnRollDiscs" hidden title="With both the Sun and the Moon pinned as discs the fit can find the rotation from the line between their centres">Rotation from discs</button></div>
+      <div class="note frame-only" id="frameNote"></div>
     </section>
 
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#c8b830">4</span>Orientation</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
-      <div class="slider" id="northRow" title="Direction of north in the photo, clockwise from image-up. Turn the predicted stars until they lie near the photo's stars">
+      <div class="slider allsky-only" id="northRow" title="Direction of north in the photo, clockwise from image-up. Turn the predicted stars until they lie near the photo's stars">
         <span>North</span><input type="range" id="rngNorth" min="0" max="360" step="0.5" value="0"><output id="outNorth">0.0&deg;</output>
       </div>
       <div class="field">
@@ -255,12 +302,13 @@
 
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#a8c840">5</span>Pins and fit</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
-      <div class="pin-hint">Add a pin: drag an amber circle (a predicted star) onto that star's image in the photo. Pasting the photo's catalog entry in step 2 brings back its pins.</div>
+      <div class="pin-hint" id="pinHint">Add a pin: drag an amber circle (a predicted star) onto that star's image in the photo. Pasting the photo's catalog entry in step 2 brings back its pins.</div>
+      <div class="row"><button id="btnFindStars" disabled title="Match the photo's bright points to the stars, starting from the prediction as it is now (frame of step 3, or circle and north): scans the rotation (a framed photo also the scale, 15 % either way), pins the stars it can tell apart and fits. Pins you placed stay">Find stars</button></div>
       <div id="fitReason"></div>
       <table id="projTable" hidden title="Fit error of each projection: RMS of the pins' pixel residuals after each pin's own time shift (slightly smaller than the error between pins)"><tbody></tbody></table>
       <div id="fitSummary"></div>
       <div class="pin-table">
-        <div class="pin-head"><span>Star</span><span class="num" title="Residual of the pin after its own time shift, in photo px">Res px</span><span class="num" title="Fitted time shift of the frame the star is on, minutes from the time above">dt min</span><span></span></div>
+        <div class="pin-head"><span>Object</span><span class="num" title="Residual of the pin after its own time shift, in photo px">Res px</span><span class="num" title="Fitted time shift of the frame the star is on, minutes from the time above">dt min</span><span></span></div>
         <ul id="pinList"></ul>
       </div>
       <div class="row"><button id="btnClearPins" disabled title="Remove all pins (asks for confirmation)">Clear pins</button></div>
@@ -269,8 +317,8 @@
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#50dc78">6</span>Output</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
       <div class="row">
-        <button id="btnCopy" disabled title="Copy the allsky block as JSON, to paste into the photo's entry in filelist_astro.json">Copy JSON</button>
-        <button id="btnCopyEntry" disabled title="Copy a whole all_sky catalog entry with this date, time and place; fill in id, object_name, thumbnail and full">Copy full entry</button>
+        <button id="btnCopy" disabled title="Copy the calib block as JSON, to paste into the photo's entry in filelist_astro.json (a framed photo: also ra, dec, fov_w_deg, fov_h_deg and rotation_deg derived from it)">Copy JSON</button>
+        <button id="btnCopyEntry" disabled title="Copy a whole catalog entry with this date, time and place; fill in id, object_name, thumbnail and full">Copy full entry</button>
       </div>
       <div id="status"></div>
     </section>
@@ -278,10 +326,11 @@
     <section class="sidebar-section help">
       <div class="sidebar-title"><span><span class="step info" aria-hidden="true">i</span>Controls</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
       <div class="help-lines">
-      <div>Amber circles: predicted bright stars. Drag one onto the star's image on the photo to pin it</div>
-      <div>Blue: pins. Drag to move, <kbd>Shift</kbd> moves at 1/4 speed</div>
-      <div>The fit runs after each pin change; 6 pins at least (4 with span 0), 8 to 10 spread from the horizon to the zenith are best</div>
-      <div>Drag the photo to pan, wheel or double-click to zoom</div>
+      <div>Amber circles: predicted stars (planets, Sun and Moon discs, deep sky squares in a framed photo). Drag one onto its image on the photo to pin it</div>
+      <div>Blue: pins. Drag to move, <kbd>Shift</kbd> moves at 1/4 speed; a disc pin's square handle sets its radius</div>
+      <div>The fit runs after each pin change. All-sky: 6 pins at least (4 with span 0), 8 to 10 spread from the horizon to the zenith are best. Frame: 2 pins at least, 6 to 10 spread over the photo are best</div>
+      <div>Drag the photo to pan, wheel or double-click to zoom; in a framed photo, Prediction (step 3) makes a drag shift the prediction instead</div>
+      <div>Find stars: line the prediction up roughly (rotation, field, shift, or north), then let it pin the stars; it scans the rotation and, in a framed photo, the scale 15 % either way</div>
       <div><kbd>Del</kbd> removes the selected pin, <kbd>F</kbd> fits the photo to the view</div>
       </div>
     </section>
@@ -289,12 +338,19 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug628"></script>
-<script src="js/allsky-model.js?perfdebug628"></script>
+<script src="js/sky-astro.js?perfdebug638"></script>
+<script src="js/allsky-model.js?perfdebug638"></script>
 <script>
-// All-sky calibration page. Loads only js/sky-astro.js (positions of the stars) and
-// js/allsky-model.js (photo model and fit); everything else lives in this closure. The page's
-// operations are exposed as window.ast for tests.
+// Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
+// planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
+// page's operations are exposed as window.ast for tests.
+//
+// Three photo types (step 2): "allsky" (a stitched all-sky photo: image circle, north, east; calib
+// kind "allsky"), "frame" (any other photo: calib kind "frame", axis anywhere on the sky) and
+// "sunmoon" (a framed photo of the Sun or the Moon: disc pins, the rotation control is the roll).
+// A framed photo starts from a frame built from the setup (equipment field, object, time and place,
+// or the pasted entry's ra / dec / fov / rotation) and the step 3 controls; once a fit is ok the fit
+// drives the prediction and the controls follow it.
 (function () {
 'use strict';
 
@@ -304,21 +360,56 @@ const PRED_MAG = 2.5;            // predicted stars: brighter than this
 const FIT_DEBOUNCE_MS = 150;
 const COLOR = { pred: '#e8a020', pin: '#20a0e8', circle: '#50dc78', sky: 'rgba(200,212,224,0.55)' };
 const HILITE = '#ffd23c';
+const TYPES = ['allsky', 'frame', 'sunmoon'];
+const TYPE_TAG = { allsky: 'ALL-SKY PHOTO', frame: 'FRAMED PHOTO', sunmoon: 'SUN / MOON PHOTO' };
+const FRAME_FOV_DEFAULT = 50;    // degrees across the longer side when nothing else is known
+const FOV_MIN = 0.2, FOV_MAX = 180;
+const DEEP_FIELD_DEG = 10;       // a field narrower than this predicts stars to mag 8, else to 6
+const DSO_EXTENDED_ARCMIN = 5;   // deep sky objects larger than this: a pin goes on the catalog centre
+
+// Equipment, as the app's Equipment panel (js/render-nightsky-equipment.js) stores and computes it:
+// the same localStorage key (the page runs on the same address) and the same pure field formula.
+const EQ_STORE_KEY = 'solargraphyEquipmentSetups';
+const EQ_FF_DIAG_MM = 43.27;   // full frame 36 x 24 mm
+function eqComputeImaging(s) {
+  const effFocal = s.telescopeFocal * s.accessory, diag = EQ_FF_DIAG_MM / s.crop;
+  const k = diag / Math.hypot(s.sensorW, s.sensorH), sensorWmm = s.sensorW * k, sensorHmm = s.sensorH * k;
+  const fov = mm => 2 * Math.atan(mm / (2 * effFocal)) * 180 / Math.PI;
+  const pixelUm = sensorWmm / s.sensorW * 1000;
+  return {
+    effFocal, sensorWmm, sensorHmm, pixelUm, fovW: fov(sensorWmm), fovH: fov(sensorHmm), fovDiag: fov(diag),
+    scale: 206.265 * pixelUm / effFocal, fRatio: effFocal / s.aperture,
+  };
+}
 
 const S = {
   img: null, small: null, smallK: 1, name: '', W: 0, H: 0,
   circle: null,                  // [cx, cy, r] in photo px
   north: 0, east: 'left',        // initial guess, used until a fit is ok
-  pins: [],                      // [{ hip, px: [x, y] }]
+  type: 'allsky',                // 'allsky' | 'frame' | 'sunmoon'
+  pins: [],                      // [{ hip, px: [x, y] }] or [{ obj, px, r_px (discs) }]; auto: placed by Find stars
   fit: null,                     // last _allskyFit result (ok or not)
   preview: null,                 // fit without time shifts, drawn while the real fit lacks pins
   entry: null,                   // pasted entry (id, names, files, video for the full entry)
-  pendingAllsky: null,           // pasted allsky block waiting for a photo
+  pendingAllsky: null,           // pasted calib block waiting for a photo
   stars: null, names: {},        // HIP catalog (J2000) and star names
+  deep: null, deepP: null,       // stars of mag 6 to 8 (stars.6-8.json), loaded when needed
+  dsos: [], objIndex: new Map(), // deep sky objects; search index (normalized name -> object)
+  setups: [],                    // saved Imaging setups of the Equipment panel
+  equip: null,                   // { name, fovL, fovS }: field of the chosen equipment (long, short side)
+  object: null,                  // { name, hip | obj, ra, dec (J2000; none for Sun, Moon, planets) }
+  // Starting frame: axis (J2000 [ra, dec], null = on the object), roll (position angle of
+  // image-up), fov (degrees across the photo's longer side), shift of the prediction (degrees,
+  // x right, y down on the photo).
+  frame: { axis: null, roll: 0, fov: FRAME_FOV_DEFAULT, shiftX: 0, shiftY: 0 },
+  rollFree: false,               // Sun / Moon: rotation fitted from two discs, not the control
+  dragMode: 'photo',             // framed photo: an empty drag pans the 'photo' or shifts the 'frame' prediction
   sky: null, skyKey: '',         // apparent az/el per HIP at the time and place in the panel
   pred: null,                    // cached prediction
   selected: null, hover: null,
   fitTimer: 0, fitRuns: 0,
+  peaks: null,                   // bright points of the photo for Find stars { img, list }, made once per photo
+  finding: false,                // Find stars is running
 };
 
 /* ---------- page height (as in the warp tool) ---------- */
@@ -333,7 +424,8 @@ fitToViewport();
 for (const ev of ['resize', 'orientationchange', 'pageshow']) window.addEventListener(ev, fitToViewport);
 if (window.visualViewport) visualViewport.addEventListener('resize', fitToViewport);
 
-/* ---------- star data ---------- */
+/* ---------- star and object data ---------- */
+const ra360 = v => ((v % 360) + 360) % 360;
 const ready = (async () => {
   try {
     const [st, nm] = await Promise.all([
@@ -341,14 +433,92 @@ const ready = (async () => {
       fetch('data/celestial/starnames.json').then(r => r.json()),
     ]);
     S.stars = new Map(st.features.map(f => [f.id, {
-      hip: f.id, ra: ((f.geometry.coordinates[0] % 360) + 360) % 360, dec: f.geometry.coordinates[1], mag: f.properties.mag,
+      hip: f.id, ra: ra360(f.geometry.coordinates[0]), dec: f.geometry.coordinates[1], mag: f.properties.mag,
     }]));
     S.names = nm;
   } catch (e) {
     setStatus('Could not load the star catalog (open the page over http)', 'err');
   }
+  try {
+    const get = name => fetch('data/celestial/' + name).then(r => r.json());
+    const [messier, bright, dnames] = await Promise.all([get('messier.json'), get('dsos.bright.json'), get('dsonames.json')]);
+    S.dsos = dsoList(messier, bright, dnames);
+  } catch (e) { S.dsos = []; }
+  buildObjectIndex();
 })();
 function starName(hip) { const n = S.names[hip]; return n && n.name ? n.name : 'HIP ' + hip; }
+function starOf(hip) { return (S.stars && S.stars.get(hip)) || (S.deep && S.deep.get(hip)) || null; }
+// Stars of mag 6 to 8, for narrow fields and for pins on them; loaded once.
+function ensureDeep() {
+  if (!S.deepP) {
+    S.deepP = fetch('data/celestial/stars.6-8.json').then(r => r.json()).then(j => {
+      S.deep = new Map(j.stars.map(a => [a[0], { hip: a[0], mag: a[1], ra: ra360(a[3]), dec: a[4] }]));
+      S.skyKey = ''; invalidate(); if (S.pins.length) scheduleFit(); renderPanel(); view.draw();
+    }).catch(() => { S.deep = new Map(); });
+  }
+  return S.deepP;
+}
+// Deep sky objects as the Planetarium lists them (js/render-deepsky.js): the Messier catalogue
+// plus the bright showpieces that are not Messier objects. obj is the id (M42, NGC 2244, Cr 140),
+// name the common name where there is one; dim the major axis in arcminutes.
+function dsoList(messier, bright, dnames) {
+  const key = t => String(t || '').replace(/\s+/g, '');
+  const taken = new Set(), out = [];
+  const add = (f, name) => {
+    const a = parseFloat(String(f.properties.dim || '').split('x')[0]);
+    out.push({ obj: String(f.id), desig: f.properties.desig || '', name: name || '', dim: a > 0 ? a : 0,
+      ra: ra360(f.geometry.coordinates[0]), dec: f.geometry.coordinates[1] });
+  };
+  for (const f of messier.features) {
+    taken.add(key(f.id)); if (f.properties.desig) taken.add(key(f.properties.desig));
+    const n = dnames[f.properties.desig];
+    add(f, (n && n.name) || f.properties.alt);
+  }
+  for (const f of bright.features) {
+    if (taken.has(key(f.id))) continue;
+    const n = dnames[f.id];
+    add(f, n && n.name);
+  }
+  return out;
+}
+const normName = t => String(t || '').toLowerCase().replace(/\s+/g, '');
+const BODY_NAMES = { sun: 'Sun', moon: 'Moon' };
+function isBody(obj) { return obj === 'sun' || obj === 'moon' || PLANETS.some(p => p.key === obj); }
+function bodyName(obj) { return BODY_NAMES[obj] || (PLANETS.find(p => p.key === obj) || {}).name || obj; }
+function dsoOf(obj) { return S.dsos.find(d => d.obj === obj) || null; }
+// The searchable objects of step 2 (Sun, Moon, planets, named stars, deep sky) by normalized
+// name, and the suggestions list.
+function buildObjectIndex() {
+  const idx = new Map(), list = [];
+  const put = (names, o) => { for (const n of names) if (n && !idx.has(normName(n))) idx.set(normName(n), o); list.push(o.name); };
+  for (const obj of ['sun', 'moon']) put([obj, bodyName(obj)], { name: bodyName(obj), obj });
+  for (const p of PLANETS) put([p.key, p.name], { name: p.name, obj: p.key });
+  for (const hip of Object.keys(S.names)) {
+    const s = S.stars && S.stars.get(+hip), n = S.names[hip] && S.names[hip].name;
+    if (s && n) put([n, 'HIP ' + hip], { name: n, hip: +hip, ra: s.ra, dec: s.dec });
+  }
+  for (const d of S.dsos) {
+    const o = { name: d.obj + (d.name ? ' ' + d.name : ''), obj: d.obj, ra: d.ra, dec: d.dec, dim: d.dim };
+    put([d.obj, d.desig, d.name, o.name], o);
+  }
+  S.objIndex = idx;
+  $('objList').innerHTML = list.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+}
+function findObject(name) {
+  const t = normName(name);
+  if (!t) return null;
+  let o = S.objIndex.get(t);
+  if (!o) { const m = /^hip(\d+)$/.exec(t), s = m && starOf(+m[1]); if (s) o = { name: starName(s.hip), hip: s.hip, ra: s.ra, dec: s.dec }; }
+  return o ? Object.assign({}, o) : null;
+}
+// Pin keys: a HIP number for a star, the obj string otherwise.
+function keyOf(q) { return q.hip !== undefined ? q.hip : q.obj; }
+function normKey(k) { return typeof k === 'string' && /^\d+$/.test(k) ? +k : k; }
+function nameOfKey(k) {
+  if (typeof k === 'number') return starName(k);
+  if (isBody(k)) return bodyName(k);
+  return k;
+}
 
 /* ---------- time and place ---------- */
 function fields() {
@@ -396,35 +566,137 @@ function defaultCircle() { return [S.W / 2, S.H / 2, Math.min(S.W, S.H) / 2]; }
 function guessCal() {
   const c = S.circle || defaultCircle();
   return {
-    image_size: [S.W, S.H], zenith_px: [c[0], c[1]], projection: 'equidistant', f_px: c[2] / (Math.PI / 2),
+    kind: 'allsky', image_size: [S.W, S.H], center_px: [c[0], c[1]], projection: 'equidistant', f_px: c[2] / (Math.PI / 2),
     north_deg: S.north, east: S.east, circle_px: c.slice(), span_min: 0, pins: [],
   };
 }
 function fitOk() { return !!(S.fit && S.fit.ok); }
+function isFrame() { return S.type !== 'allsky'; }
 function currentCal() {
   if (fitOk()) return S.fit.cal;
+  if (isFrame()) return startCal();
   if (S.preview && S.preview.ok) return S.preview.cal;
   return guessCal();
 }
 function invalidate() { S.pred = null; }
+
+/* ---------- framed photos: starting frame ---------- */
+function siteOf(p) { return { year: p.Y, month: p.M, day: p.D, hourUT: p.h, latDeg: p.lat, lonDegEast: p.lon }; }
+// Apparent { az, el, semiDeg } of a Sun, Moon or planet key at a site.
+function bodyAt(obj, st) {
+  const b = _skyBodyAzEl(obj, st.year, st.month, st.day, st.hourUT, st.latDeg, st.lonDegEast);
+  return { az: ra360(b.az), el: b.el, semiDeg: b.semiDeg };
+}
+// J2000 [ra, dec] the starting frame is centred on before the shift: the pasted entry's or the last
+// fit's axis, else the object (the Sun, Moon and planets where they are at the photo's moment).
+function baseAxis() {
+  if (S.frame.axis) return S.frame.axis;
+  const o = S.object, p = place();
+  if (!o) return null;
+  if (o.ra !== undefined) return [o.ra, o.dec];
+  if (!p) return null;
+  const st = siteOf(p), b = bodyAt(o.obj, st), q = _allskyAppToRadec(b.az, b.el, st);
+  return [q.ra, q.dec];
+}
+function fovToF(fovDeg, longSide) { return longSide / 2 / Math.tan(fovDeg / 2 * D2R); }
+function fovOfCal(c) { return 2 * Math.atan(Math.max(c.image_size[0], c.image_size[1]) / 2 / c.f_px) / D2R; }
+// The starting frame (a resolved frame cal, rectilinear, k1 0, centre at the image centre) from the
+// step 3 controls: axis on baseAxis(), roll, the field across the longer side, then the prediction
+// shifted by (shiftX, shiftY) degrees on the photo: the new axis is the sky point that was at the
+// image centre minus the shift. null without a photo, a valid time and place, or an axis.
+function startCal() {
+  const p = place(), ax = baseAxis();
+  if (!p || !S.img || !ax) return null;
+  const st = siteOf(p), F = S.frame, f = fovToF(F.fov, Math.max(S.W, S.H));
+  const base = {
+    kind: 'frame', image_size: [S.W, S.H], axis_radec: ax.slice(), roll_deg: F.roll, east: S.east,
+    projection: 'rectilinear', f_px: f, k1: 0, center_px: [S.W / 2, S.H / 2], span_min: 0, pins: [],
+  };
+  let C = _allskyResolve(base, st);
+  if (F.shiftX || F.shiftY) {
+    const q = _allskyInverse(C, S.W / 2 - f * Math.tan(F.shiftX * D2R), S.H / 2 - f * Math.tan(F.shiftY * D2R));
+    if (q) { const r = _allskyAppToRadec(q.az, q.el, st); C = _allskyResolve(Object.assign(base, { axis_radec: [r.ra, r.dec] }), st); }
+  }
+  return C;
+}
+// Apparent position of a pin key at a site: { az, el } (+ semiDeg for the Sun and the Moon), or null.
+function positionOf(key, st) {
+  if (typeof key === 'number') { const s = starOf(key); return s ? _allskyRadecToApp(s.ra, s.dec, st) : null; }
+  if (isBody(key)) return bodyAt(key, st);
+  const d = dsoOf(key);
+  return d ? _allskyRadecToApp(d.ra, d.dec, st) : null;
+}
+// Predictions inside a framed photo: stars to mag 6 (to mag 8 in a field under 10 degrees),
+// planets, deep sky objects, the Sun and the Moon as discs (rPx: their radius on the photo at their
+// own place); a Sun / Moon photo predicts only the two discs. Every pinned object is listed too
+// (px may be null). Candidates are first cut to a cone around the axis in J2000.
+function predictedFrame() {
+  const p = place(), C = currentCal();
+  if (!p || !C || !S.img) return [];
+  const st = siteOf(p), pinned = new Set(S.pins.map(keyOf)), out = [];
+  const fov = fovOfCal(C), magLim = fov < DEEP_FIELD_DEG ? 8 : 6;
+  const vec = (ra, dec) => [Math.cos(dec * D2R) * Math.cos(ra * D2R), Math.cos(dec * D2R) * Math.sin(ra * D2R), Math.sin(dec * D2R)];
+  const av = vec(C.axis_radec[0], C.axis_radec[1]);
+  const cone = Math.cos(Math.min(179, Math.atan(Math.hypot(S.W, S.H) / 2 / C.f_px) / D2R * 1.15 + 2) * D2R);
+  const near = (ra, dec) => { const v = vec(ra, dec); return v[0] * av[0] + v[1] * av[1] + v[2] * av[2] >= cone; };
+  const add = (o, pos) => {
+    const isPinned = pinned.has(o.key);
+    if (!pos || (!isPinned && pos.el < -1)) return;
+    const px = _allskySkyToPhoto(C, pos.az, pos.el, p.lat);
+    if (!px && !isPinned) return;
+    out.push(Object.assign(o, { az: pos.az, el: pos.el, px, pinned: isPinned }));
+  };
+  if (S.type === 'frame') {
+    if (magLim > 6) ensureDeep();
+    const seen = new Set();
+    for (const cat of [S.stars, magLim > 6 ? S.deep : null]) {
+      if (!cat) continue;
+      for (const s of cat.values()) {
+        if (seen.has(s.hip)) continue;
+        if ((s.mag > magLim && !pinned.has(s.hip)) || !near(s.ra, s.dec)) continue;
+        seen.add(s.hip);
+        add({ key: s.hip, hip: s.hip, name: starName(s.hip), mag: s.mag }, _allskyRadecToApp(s.ra, s.dec, st));
+      }
+    }
+    for (const hip of pinned) {   // pinned stars outside the magnitude limit or the cone
+      if (typeof hip !== 'number' || seen.has(hip)) continue;
+      const s = starOf(hip);
+      if (s) add({ key: hip, hip, name: starName(hip), mag: s.mag }, _allskyRadecToApp(s.ra, s.dec, st));
+    }
+    for (const pl of PLANETS) add({ key: pl.key, obj: pl.key, name: pl.name, planet: true }, bodyAt(pl.key, st));
+    for (const d of S.dsos) {
+      if (!near(d.ra, d.dec) && !pinned.has(d.obj)) continue;
+      add({ key: d.obj, obj: d.obj, name: d.obj, dso: true, dim: d.dim }, _allskyRadecToApp(d.ra, d.dec, st));
+    }
+  }
+  const B = _allskyFrameBasisOf(C);
+  for (const obj of ['sun', 'moon']) {
+    const b = bodyAt(obj, st);
+    const rPx = _allskyDiscRadiusPx(B, C.projection, C.center_px[0], C.center_px[1], C.f_px, C.k1 || 0, _allskyTrueVec(b.az, b.el), b.semiDeg);
+    add({ key: obj, obj, name: bodyName(obj), disc: true, semiDeg: b.semiDeg, rPx: Number.isFinite(rPx) ? rPx : 0 }, b);
+  }
+  return out;
+}
 // Predicted photo position of every bright star (and every pinned star) through the calibration
 // in use, with the per-frame time shift interpolated from the pins once a fit is ok. px is null
 // when the star falls outside the circle.
 function predicted() {
   if (S.pred) return S.pred;
+  if (isFrame()) return (S.pred = predictedFrame());
   const sky = skyPositions(), p = place();
   if (!sky || !S.img) return (S.pred = []);
   const cal = currentCal(), pinned = new Set(S.pins.map(q => q.hip)), out = [];
   for (const [hip, s] of sky) {
     if (s.el < -10) continue;
     const px = _allskySkyToPhoto(cal, s.az, s.el, p.lat);
-    out.push({ hip, name: starName(hip), mag: s.mag, az: s.az, el: s.el, px, pinned: pinned.has(hip) });
+    out.push({ key: hip, hip, name: starName(hip), mag: s.mag, az: s.az, el: s.el, px, pinned: pinned.has(hip) });
   }
   return (S.pred = out);
 }
 
 /* ---------- fit ---------- */
 function pinsForFit() {
+  if (isFrame()) return pinsForFitFrame();
   const sky = skyPositions();
   if (!sky) return [];
   return S.pins.filter(q => sky.has(q.hip)).map(q => {
@@ -432,18 +704,59 @@ function pinsForFit() {
     return { hip: q.hip, px: q.px.slice(), az: s.az, el: s.el };
   });
 }
+// Framed photo pins: [{ hip | obj, px, az, el, r_px, semiDeg (discs) }] at the panel's moment.
+function pinsForFitFrame() {
+  const p = place();
+  if (!p) return [];
+  const st = siteOf(p), out = [];
+  for (const q of S.pins) {
+    const pos = positionOf(keyOf(q), st);
+    if (!pos) continue;
+    const o = q.hip !== undefined ? { hip: q.hip } : { obj: q.obj };
+    o.px = q.px.slice(); o.az = pos.az; o.el = pos.el;
+    if (q.r_px > 0 && pos.semiDeg > 0) { o.r_px = q.r_px; o.semiDeg = pos.semiDeg; }
+    out.push(o);
+  }
+  return out;
+}
+// Options of a framed fit: the start is the last ok fit (re-resolved for the panel's moment) or the
+// step 3 frame; a Sun / Moon photo fixes the roll at the rotation control unless rollFree.
+function fitOptsFrame() {
+  const p = place(), st = siteOf(p);
+  const prev = fitOk() && S.fit.cal.kind === 'frame' && S.fit.cal.image_size[0] === S.W && S.fit.cal.image_size[1] === S.H ? S.fit.cal : null;
+  const start = prev ? _allskyResolve(prev, st) : startCal();
+  return {
+    kind: 'frame', site: st, start, latDeg: p.lat, spanMin: p.span,
+    rollFixed: S.type === 'sunmoon' && !S.rollFree ? S.frame.roll : null,
+    projections: start && fovOfCal(start) > 90 ? ALLSKY_FRAME_PROJECTIONS : ['rectilinear'],
+  };
+}
+function runFitFrame() {
+  const pins = pinsForFit(), opts = fitOptsFrame();
+  if (!opts.start) return { ok: false, reason: 'Choose the object in step 2 (or paste the photo\'s entry) to place the frame.', perPin: [], byProjection: {} };
+  if (!pins.length) return { ok: false, reason: S.type === 'sunmoon' ? 'Add a pin: drag the amber disc onto the Sun or the Moon in the photo, then its square handle onto the limb.' : 'Add pins: drag predicted markers onto their images (2 at least).', perPin: [], byProjection: {} };
+  let r = _allskyFit(pins, opts);
+  // A start far off in rotation: try the 8 roll starts of the model too.
+  if (opts.rollFixed === null && pins.length >= 3 && (!r.ok || r.cal.rms_px > 2)) {
+    const r2 = _allskyFit(pins, Object.assign({}, opts, { start: Object.assign({}, opts.start, { _roll_up: NaN }) }));
+    if (r2.ok && (!r.ok || r2.cal.rms_px < r.cal.rms_px)) r = r2;
+  }
+  return r;
+}
 function fitOpts() {
   const p = place();
   return { latDeg: p ? p.lat : NaN, spanMin: p ? p.span : 0, circle: (S.circle || defaultCircle()).slice(), imageSize: [S.W, S.H] };
 }
-function runFit() {
+// quick (all-sky): { projections, east, northStart } of _allskyFit, a refit near a known solution.
+function runFit(quick) {
   clearTimeout(S.fitTimer); S.fitTimer = 0;
-  if (view.drag) { S.fitTimer = setTimeout(runFit, FIT_DEBOUNCE_MS); return; }   // never during a drag
+  if (view.drag && !S.finding) { S.fitTimer = setTimeout(runFit, FIT_DEBOUNCE_MS); return; }   // never during a drag (Find stars fits while the view pans)
   S.preview = null; S.fitRuns++;
   if (!S.img) S.fit = { ok: false, reason: 'Load a photo first.', perPin: [], byProjection: {} };
   else if (!place()) S.fit = { ok: false, reason: 'Enter a valid date, time (UTC), latitude, longitude and span.', perPin: [], byProjection: {} };
+  else if (isFrame()) S.fit = runFitFrame();
   else {
-    const pins = pinsForFit(), opts = fitOpts();
+    const pins = pinsForFit(), opts = Object.assign(fitOpts(), quick || {});
     S.fit = _allskyFit(pins, opts);
     // Too few pins for the time shifts: a fit without them still puts the prediction near the
     // stars while the user adds the rest.
@@ -451,44 +764,487 @@ function runFit() {
       S.preview = _allskyFit(pins, Object.assign({}, opts, { spanMin: 0 }));
     }
   }
-  if (fitOk()) { S.north = S.fit.cal.north_deg; S.east = S.fit.cal.east; }
+  if (fitOk() && isFrame()) {
+    // the frame controls follow the fit (the start of the next fit and of the prediction without one)
+    const c = S.fit.cal;
+    S.frame = { axis: c.axis_radec.slice(), roll: c.roll_deg, fov: fovOfCal(c), shiftX: 0, shiftY: 0 };
+    S.east = c.east;
+  } else if (fitOk()) { S.north = S.fit.cal.north_deg; S.east = S.fit.cal.east; }
   else if (S.preview && S.preview.ok) { S.north = S.preview.cal.north_deg; S.east = S.preview.cal.east; }
   invalidate(); renderPanel(); view.draw();
 }
+// While Find stars runs it alone changes the pins, frame and fit: edits are refused with a message,
+// scheduled fits are skipped and the sidebar is inert (panning and zooming the view stay).
+function busy() {
+  if (!S.finding) return false;
+  setStatus('Finding stars, please wait', '');
+  return true;
+}
 function scheduleFit() {
+  if (S.finding) return;
   invalidate();
   clearTimeout(S.fitTimer);
   S.fitTimer = setTimeout(runFit, FIT_DEBOUNCE_MS);
 }
 
 /* ---------- pins ---------- */
-function pinOf(hip) { return S.pins.find(q => q.hip === hip) || null; }
-function addPin(hip, px) {
-  hip = +hip;
-  const q = pinOf(hip);
-  if (q) q.px = [px[0], px[1]]; else S.pins.push({ hip, px: [px[0], px[1]] });
-  S.selected = hip; scheduleFit(); renderPanel(); view.draw();
+// Pins are keyed by keyOf: the HIP number of a star, the obj string of anything else.
+function pinOf(key) { key = normKey(key); return S.pins.find(q => keyOf(q) === key) || null; }
+function pinName(q) { return nameOfKey(keyOf(q)); }
+// A pin on a star (HIP number) or an object (obj string: sun, moon, a planet key, a deep sky id).
+// The Sun and the Moon become disc pins with rPx (default: the predicted radius, else 20 px).
+function addPin(key, px, rPx) {
+  if (busy()) return false;
+  key = normKey(key);
+  if (typeof key === 'string' && !isFrame()) return false;
+  let q = pinOf(key);
+  if (!q) { q = typeof key === 'number' ? { hip: key } : { obj: key }; S.pins.push(q); }
+  q.px = [px[0], px[1]]; delete q.auto;
+  if (key === 'sun' || key === 'moon') {
+    const s = predicted().find(o => o.key === key);
+    q.r_px = rPx > 0 ? rPx : q.r_px > 0 ? q.r_px : s && s.rPx > 0 ? s.rPx : 20;
+  }
+  if (typeof key === 'number' && !starOf(key)) ensureDeep();
+  const d = typeof key === 'string' && dsoOf(key);
+  if (d && d.dim > DSO_EXTENDED_ARCMIN) setStatus(`${key} is extended (${Math.round(d.dim)}'): the pin goes on its catalog centre`, '');
+  S.selected = key; scheduleFit(); renderPanel(); view.draw();
+  return true;
 }
-function movePin(hip, px) { const q = pinOf(+hip); if (!q) return false; q.px = [px[0], px[1]]; scheduleFit(); view.draw(); return true; }
-function deletePin(hip) {
-  const i = S.pins.findIndex(q => q.hip === +hip);
+function addDiscPin(obj, px, rPx) { return obj === 'sun' || obj === 'moon' ? addPin(obj, px, rPx) : false; }
+function movePin(key, px) { if (busy()) return false; const q = pinOf(key); if (!q) return false; q.px = [px[0], px[1]]; delete q.auto; scheduleFit(); view.draw(); return true; }
+function deletePin(key) {
+  if (busy()) return false;
+  key = normKey(key);
+  const i = S.pins.findIndex(q => keyOf(q) === key);
   if (i < 0) return false;
   S.pins.splice(i, 1);
-  if (S.selected === +hip) S.selected = null;
+  if (S.selected === key) S.selected = null;
   scheduleFit(); renderPanel(); view.draw();
   return true;
+}
+
+/* ---------- Find stars ---------- */
+// Semi-automatic matching of the photo's bright points to the stars, from the prediction in use (an
+// ok fit, else the step 3 frame or the all-sky circle and north). Lengths are px of the working copy
+// of at most 2048 px (fsPx).
+// 1. Bright points: a pixel of the 3 x 3 smoothed working copy that is the maximum of its 5 x 5
+//    neighbourhood and lies clearly above the mean of the 21 x 21 around it (5 robust sigmas of
+//    that difference over the photo); its centroid from the 5 x 5 window and its flux in a 3 x 3
+//    aperture above that mean (a wider aperture ranks saturated bright stars in a dense field
+//    worse); sorted by flux. Points outside the image circle (all-sky) or within 12 px of the image
+//    edge (framed) are left out. "The brightest points" below are the first 10 per star predicted.
+// 2. Scan: the stars to the scan magnitude (3, or 6 in a field under 10 degrees) predicted by the
+//    starting calibration, turned about the projection centre in 1 degree steps over 360 degrees and,
+//    for a framed photo, scaled 0.85 to 1.15 in 1 % steps; the score is the number of those stars
+//    with one of the brightest points within 12 px. A best scale at either end of the range means
+//    the true scale is outside it: nothing is pinned and the page asks to adjust the frame scale.
+// 3. First pins: the scan stars' brightest points within 12 px of the best turn and scale; the
+//    worst pin over 2 px is dropped and the fit repeated, one at a time (an all-sky photo with time
+//    shifts first against a rigid fit without them, limit 8 px: a wrong match could otherwise hide
+//    in its own time shift). Then the scan stars are matched again within 12 px of the fit, which
+//    reaches the parts the turned start missed (an off-centre zenith, a wrong scale), until the set
+//    settles.
+// 4. Ladder: from the scan magnitude in 0.5 mag steps to 8 (4.5 in a field over 30 degrees, and in
+//    every all-sky photo): each star predicted by the last fit is pinned on its nearest bright point
+//    only when that is unambiguous (within 3 px, the second nearest farther than max(6 px, 3 x the
+//    first)) and no other star claims the point; after the fit its pins over 2 px are dropped and the
+//    fit runs again; repeated at that magnitude until the set settles. All-sky refits start from the
+//    last fit; the last one tries every projection again.
+// Pins placed by hand (or brought by an entry) stay and are never pruned; Find stars adds and
+// removes only its own pins (marked auto internally, never written out; moving one by hand makes it
+// the user's). A run replaces the auto pins of an earlier run. The result counts as found when the
+// fit is ok, at least 8 of its own pins remain and at least max(5, 15 %) of the scan's stars lie
+// within 3 px of one of the brightest points; otherwise its pins are removed again, the frame or
+// north is restored and the page says what to adjust.
+const FS_PEAK_BOX = 5, FS_BG_BOX = 21, FS_EDGE_PX = 12, FS_SCAN_PX = 12;
+const FS_RIGID_PX = 8, FS_MATCH_PX = 3, FS_SECOND_PX = 6, FS_SECOND_K = 3, FS_PRUNE_PX = 2, FS_SCALE = 0.15;
+const FS_PEAKS_PER_STAR = 10, FS_MAX_PEAKS = 30000, FS_MIN_PINS = 8, FS_MIN_BRIGHT = 5, FS_BRIGHT_SHARE = 0.15, FS_ITER_MAX = 6;
+// A length in px of the working copy -> photo px.
+function fsPx(v) { return v / S.smallK; }
+// A pause for the browser: a message to self is not throttled in a background tab as timers are.
+function fsYield() { return new Promise(r => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); }); }
+function fsTicker() {
+  let last = performance.now();
+  return async () => { if (performance.now() - last > 50) { await fsYield(); last = performance.now(); } };
+}
+// Bright points of the photo: [[x, y, flux]] in photo px, brightest first; cached per photo.
+async function detectPeaks() {
+  if (S.peaks && S.peaks.img === S.img) return S.peaks.list;
+  const im = S.small, w = im.width, h = im.height, k = S.smallK, tick = fsTicker();
+  const cv = new OffscreenCanvas(w, h), g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, w, h).data, L = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < L.length; i += 4, j++) L[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  // integral image: I[(y) * (w + 1) + x] = sum of L over [0, x) x [0, y)
+  const W1 = w + 1, I = new Float64Array(W1 * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let row = 0;
+    for (let x = 0; x < w; x++) { row += L[y * w + x]; I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + row; }
+    if ((y & 63) === 0) await tick();
+  }
+  const boxMean = (x, y, r) => {
+    const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(w, x + r + 1), y1 = Math.min(h, y + r + 1);
+    return (I[y1 * W1 + x1] - I[y0 * W1 + x1] - I[y1 * W1 + x0] + I[y0 * W1 + x0]) / ((x1 - x0) * (y1 - y0));
+  };
+  const rb = FS_BG_BOX >> 1, rp = FS_PEAK_BOX >> 1;
+  const m = Math.max(rp + 1, Math.ceil(FS_EDGE_PX * k));
+  // smoothed image and its excess over the background, inside the edge margin
+  const S3 = new Float32Array(w * h), V = new Float32Array(w * h);
+  for (let y = m - rp - 1; y < h - m + rp + 1; y++) {
+    for (let x = m - rp - 1; x < w - m + rp + 1; x++) { const o = y * w + x; S3[o] = boxMean(x, y, 1); V[o] = S3[o] - boxMean(x, y, rb); }
+    if ((y & 31) === 0) await tick();
+  }
+  // noise: robust sigma of the excess over a sample of the photo
+  const smp = [];
+  for (let y = m; y < h - m; y += 5) for (let x = m + (y % 3); x < w - m; x += 7) smp.push(V[y * w + x]);
+  smp.sort((a, b) => a - b);
+  const med = smp[smp.length >> 1] || 0;
+  const dev = smp.map(v => Math.abs(v - med)).sort((a, b) => a - b);
+  const sigma = 1.4826 * (dev[dev.length >> 1] || 0), thr = Math.max(1.5, med + 5 * sigma);
+  const list = [];
+  for (let y = m; y < h - m; y++) {
+    for (let x = m; x < w - m; x++) {
+      const o = y * w + x, v = S3[o];
+      if (V[o] <= thr) continue;
+      // maximum of the 5 x 5 window; a tie goes to the first pixel in reading order
+      let peak = true;
+      for (let dy = -rp; dy <= rp && peak; dy++) for (let dx = -rp; dx <= rp; dx++) {
+        if (!dx && !dy) continue;
+        const u = S3[o + dy * w + dx];
+        if (u > v || (u === v && (dy < 0 || (dy === 0 && dx < 0)))) { peak = false; break; }
+      }
+      if (!peak) continue;
+      const bg = boxMean(x, y, rb);
+      let sw = 0, sx = 0, sy = 0;
+      for (let dy = -rp; dy <= rp; dy++) for (let dx = -rp; dx <= rp; dx++) {
+        const wv = L[o + dy * w + dx] - bg;
+        if (wv > 0) { sw += wv; sx += wv * (x + dx + 0.5); sy += wv * (y + dy + 0.5); }
+      }
+      if (sw > 0) list.push([sx / sw / k, sy / sw / k, 9 * V[o]]);
+    }
+    if ((y & 31) === 0) await tick();
+  }
+  list.sort((a, b) => b[2] - a[2]);
+  if (list.length > FS_MAX_PEAKS) list.length = FS_MAX_PEAKS;
+  S.peaks = { img: S.img, list };
+  return list;
+}
+// Where Find stars may place a point: inside the image circle less the margin (all-sky), inside the
+// image less the margin (framed).
+function fsInside(p) {
+  if (!p) return false;
+  const m = fsPx(FS_EDGE_PX);
+  if (!isFrame()) { const c = S.circle || defaultCircle(); return Math.hypot(p[0] - c[0], p[1] - c[1]) <= c[2] - m; }
+  return p[0] >= m && p[0] <= S.W - m && p[1] >= m && p[1] <= S.H - m;
+}
+// Grid of points for nearest-neighbour queries.
+function fsGrid(pts, cell) {
+  const cols = Math.ceil(S.W / cell) + 2, rows = Math.ceil(S.H / cell) + 2, cells = new Array(cols * rows);
+  pts.forEach((p, i) => {
+    const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
+    if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return;
+    const c = cx + cy * cols; (cells[c] || (cells[c] = [])).push(i);
+  });
+  return { cols, rows, cell, cells, pts };
+}
+// The nearest point (index i, distance d1) and the distance of the second nearest (d2), searching
+// within r; i = -1 when nothing lies within r.
+function fsNearest(G, x, y, r) {
+  const n = Math.ceil(r / G.cell), cx = Math.floor(x / G.cell), cy = Math.floor(y / G.cell);
+  let d1 = Infinity, d2 = Infinity, i1 = -1;
+  for (let j = Math.max(0, cy - n); j <= Math.min(G.rows - 1, cy + n); j++) {
+    for (let i = Math.max(0, cx - n); i <= Math.min(G.cols - 1, cx + n); i++) {
+      const c = G.cells[i + j * G.cols];
+      if (!c) continue;
+      for (const q of c) {
+        const p = G.pts[q], dd = Math.hypot(p[0] - x, p[1] - y);
+        if (dd < d1) { d2 = d1; d1 = dd; i1 = q; } else if (dd < d2) d2 = dd;
+      }
+    }
+  }
+  return { i: d1 <= r ? i1 : -1, d1, d2 };
+}
+const fsUnambiguous = n => n.i >= 0 && n.d1 <= fsPx(FS_MATCH_PX) && n.d2 > Math.max(fsPx(FS_SECOND_PX), FS_SECOND_K * n.d1);
+// Stars to magMax with their apparent position at the panel's moment, above the horizon (2 degrees
+// in an all-sky photo) and, in a framed photo, within the cone the frame can reach.
+function fsStars(magMax, C, st) {
+  const out = [], seen = new Set(), frame = isFrame();
+  const vec = (ra, dec) => [Math.cos(dec * D2R) * Math.cos(ra * D2R), Math.cos(dec * D2R) * Math.sin(ra * D2R), Math.sin(dec * D2R)];
+  let av = null, cone = -2;
+  if (frame) {
+    av = vec(C.axis_radec[0], C.axis_radec[1]);
+    cone = Math.cos(Math.min(179, Math.atan(Math.hypot(S.W, S.H) / 2 / C.f_px) / D2R / (1 - FS_SCALE) + 3) * D2R);
+  }
+  for (const cat of [S.stars, magMax > 6 ? S.deep : null]) {
+    if (!cat) continue;
+    for (const s of cat.values()) {
+      if (s.mag > magMax || seen.has(s.hip)) continue;
+      if (av) { const v = vec(s.ra, s.dec); if (v[0] * av[0] + v[1] * av[1] + v[2] * av[2] < cone) continue; }
+      seen.add(s.hip);
+      const a = _allskyRadecToApp(s.ra, s.dec, st);
+      if (a.el < (frame ? 0.5 : 2)) continue;
+      out.push({ hip: s.hip, mag: s.mag, az: a.az, el: a.el });
+    }
+  }
+  return out;
+}
+// Distances from each unpinned star in [magLo, magHi] predicted by the ok fit to its nearest bright
+// point, where that point is unambiguous within 12 px: { n, median, p90 } in photo px.
+async function unpinnedStats(magLo, magHi) {
+  if (!fitOk() || !S.img) return null;
+  const p = place();
+  if (!p) return null;
+  if (magHi > 6) await ensureDeep();
+  const G = fsGrid(await detectPeaks(), fsPx(FS_SCAN_PX)), st = siteOf(p), cal = S.fit.cal;
+  const pinned = new Set(S.pins.map(keyOf)), ds = [];
+  for (const s of fsStars(magHi, cal, st)) {
+    if (s.mag < magLo || pinned.has(s.hip)) continue;
+    const q = _allskySkyToPhoto(cal, s.az, s.el, p.lat);
+    if (!fsInside(q)) continue;
+    const n = fsNearest(G, q[0], q[1], fsPx(FS_SCAN_PX));
+    if (n.i >= 0 && n.d2 > Math.max(fsPx(FS_SECOND_PX), FS_SECOND_K * n.d1)) ds.push(n.d1);
+  }
+  ds.sort((a, b) => a - b);
+  const at = f => ds.length ? ds[Math.min(ds.length - 1, Math.floor(f * ds.length))] : NaN;
+  return { n: ds.length, median: at(0.5), p90: at(0.9) };
+}
+function canFindStars() {
+  return !!(S.img && !S.finding && S.stars && S.type !== 'sunmoon' && place() && (!isFrame() || currentCal()));
+}
+// Find stars (see above). opts: { maxMag } to stop the ladder earlier. Resolves to { ok, pins (all
+// pins now), auto (its own pins), rms, unpinnedMedian, unpinnedP90, steps, message }.
+async function findStars(opts) {
+  opts = opts || {};
+  const fail = message => { setStatus(message, 'err'); return { ok: false, pins: S.pins.length, auto: 0, rms: NaN, unpinnedMedian: NaN, unpinnedP90: NaN, steps: [], message }; };
+  if (S.finding) return fail('Find stars is already running');
+  if (!canFindStars()) return fail(S.type === 'sunmoon' ? 'Find stars works on star fields, not on a Sun / Moon photo' : 'Find stars needs the photo, a valid date, time and place, and the starting frame');
+  S.finding = true; document.querySelector('aside').inert = true; renderPanel();
+  const before = { pins: S.pins.map(q => Object.assign({}, q, { px: q.px.slice() })), frame: Object.assign({}, S.frame), north: S.north };
+  try {
+    return await findStarsRun(opts, before);
+  } catch (err) {
+    S.pins = before.pins; S.frame = before.frame; S.north = before.north; runFit();
+    console.error(err);
+    return fail('Find stars failed: ' + err.message);
+  } finally {
+    S.finding = false; document.querySelector('aside').inert = false; renderPanel(); view.draw();
+  }
+}
+async function findStarsRun(opts, before) {
+  const frame = isFrame(), p = place(), st = siteOf(p), tick = fsTicker(), steps = [];
+  const giveUp = message => {
+    S.pins = before.pins; S.frame = before.frame; S.north = before.north;
+    runFit();
+    setStatus(message, 'err');
+    return { ok: false, pins: S.pins.length, auto: 0, rms: NaN, unpinnedMedian: NaN, unpinnedP90: NaN, steps, message };
+  };
+  const adjust = frame ? 'adjust the frame scale, rotation and shift (step 3) until the markers lie near the photo\'s stars'
+    : 'adjust north (step 4) and the image circle until the markers lie near the photo\'s stars';
+  setStatus('Find stars: looking for bright points…', '');
+  await fsYield();
+  const peaks = await detectPeaks();
+  const usable = peaks.filter(fsInside);
+  // earlier auto pins are redone; pins placed by hand stay
+  const kept = S.pins.filter(q => !q.auto);
+  const keptKeys = new Set(kept.map(keyOf)), keptPx = kept.map(q => q.px);
+  const freePeaks = usable.filter(pk => !keptPx.some(q => Math.hypot(q[0] - pk[0], q[1] - pk[1]) <= fsPx(FS_MATCH_PX)));
+  // the starting calibration and the magnitudes
+  const C0 = fitOk() ? S.fit.cal : currentCal();
+  const field = frame ? fovOfCal(C0) : 180;
+  const scanMag = field < DEEP_FIELD_DEG ? 6 : 3;
+  const maxMag = Math.min(Number.isFinite(opts.maxMag) ? opts.maxMag : 8, field > 30 ? 4.5 : 8);
+  if (maxMag > 6 || scanMag > 6) await ensureDeep();
+  const stars = fsStars(Math.max(maxMag, scanMag), C0, st);
+  // 2. scan
+  const c = C0.center_px, scan = [];
+  for (const s of stars) {
+    if (s.mag > scanMag || keptKeys.has(s.hip)) continue;
+    const q = _allskySkyToPhoto(C0, s.az, s.el, p.lat, true);
+    if (!q || !Number.isFinite(q[0])) continue;
+    const dx = q[0] - c[0], dy = q[1] - c[1];
+    if (Math.hypot(dx, dy) > Math.hypot(S.W, S.H) / (1 - FS_SCALE)) continue;
+    scan.push({ s, dx, dy });
+  }
+  const nIn0 = scan.filter(o => fsInside([c[0] + o.dx, c[1] + o.dy])).length;
+  if (nIn0 < 3) return giveUp(`Find stars: fewer than 3 stars to mag ${scanMag} are predicted in the photo; ${adjust}`);
+  // the brightest points, 10 per star predicted in the photo
+  const bright = fsGrid(freePeaks.slice(0, Math.max(50, FS_PEAKS_PER_STAR * nIn0)), fsPx(FS_SCAN_PX));
+  const scales = [];
+  if (frame) for (let i = -Math.round(FS_SCALE * 100); i <= Math.round(FS_SCALE * 100); i++) scales.push(1 + i / 100);
+  else scales.push(1);
+  let best = null;
+  for (let a = 0; a < 360; a++) {
+    const ca = Math.cos(a * D2R), sa = Math.sin(a * D2R);
+    for (const k of scales) {
+      let score = 0;
+      for (const o of scan) {
+        // turned clockwise on the photo by a, scaled by k about the projection centre
+        const x = c[0] + k * (o.dx * ca - o.dy * sa), y = c[1] + k * (o.dx * sa + o.dy * ca);
+        if (!fsInside([x, y])) continue;
+        if (fsNearest(bright, x, y, fsPx(FS_SCAN_PX)).i >= 0) score++;
+      }
+      const off = Math.min(a, 360 - a) + Math.abs(k - 1) * 100;
+      if (!best || score > best.score || (score === best.score && off < best.off)) best = { a, k, score, off };
+    }
+    if (a % 10 === 0) { setStatus(`Find stars: scanning the rotation ${Math.round(a / 3.6)} %`, ''); await tick(); }
+  }
+  steps.push({ stage: 'scan', mag: scanMag, rotation: best.a > 180 ? best.a - 360 : best.a, scale: best.k, score: best.score, stars: nIn0 });
+  if (frame && Math.abs(best.k - 1) >= FS_SCALE - 1e-9) {
+    return giveUp(`Find stars: the best match lies at the end of the scale search (${best.k < 1 ? 'smaller' : 'larger'} by 15 %); adjust the frame scale (Field in step 3) so the markers lie near the photo's stars, then try again`);
+  }
+  if (best.score < 3) return giveUp(`Find stars: no rotation matches the stars; ${adjust}`);
+  // the starting calibration turned and scaled
+  if (frame) {
+    const base = r => _allskyResolve(Object.assign({}, C0, { roll_deg: _allskyAngle180(r), f_px: C0.f_px * best.k, pins: [] }), st);
+    let cal1 = base(C0.roll_deg);
+    if (best.a) {
+      // the sign of the roll that turns the photo clockwise: checked on a star off the centre
+      const ref = scan.slice().sort((u, v) => Math.abs(Math.hypot(u.dx, u.dy) - S.H / 3) - Math.abs(Math.hypot(v.dx, v.dy) - S.H / 3))[0];
+      const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
+      const want = [c[0] + best.k * (ref.dx * ca - ref.dy * sa), c[1] + best.k * (ref.dx * sa + ref.dy * ca)];
+      const err = C => { const q = _allskyForward(C, ref.s.az, ref.s.el); return q ? Math.hypot(q[0] - want[0], q[1] - want[1]) : Infinity; };
+      const plus = base(C0.roll_deg + best.a), minus = base(C0.roll_deg - best.a);
+      cal1 = err(plus) <= err(minus) ? plus : minus;
+    }
+    S.frame = { axis: cal1.axis_radec.slice(), roll: cal1.roll_deg, fov: fovOfCal(cal1), shiftX: 0, shiftY: 0 };
+    S.east = cal1.east;
+  } else {
+    S.north = ((C0.north_deg + best.a) % 360 + 360) % 360;
+  }
+  // 3. first pins: the scan stars' matches within 12 px (a point claimed by two stars goes to the
+  // nearer); xy(o) is the star's predicted pixel
+  const firstMatches = xy => {
+    const claim = new Map();
+    for (const o of scan) {
+      const q = xy(o);
+      if (!fsInside(q)) continue;
+      const n = fsNearest(bright, q[0], q[1], fsPx(FS_SCAN_PX));
+      if (n.i < 0) continue;
+      const pt = bright.pts[n.i], cur = claim.get(pt);
+      if (!cur || n.d1 < cur.d) claim.set(pt, { hip: o.s.hip, d: n.d1 });
+    }
+    return [...claim].map(([pt, m]) => ({ hip: m.hip, px: [pt[0], pt[1]], auto: true }));
+  };
+  const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
+  let auto = firstMatches(o => [c[0] + best.k * (o.dx * ca - o.dy * sa), c[1] + best.k * (o.dx * sa + o.dy * ca)]);
+  // Fit with the hand-placed pins and list. quick: an all-sky refit from the last fit's projection,
+  // east and north (one LM run instead of 48; the result is fitted in full at the end); rigid: an
+  // all-sky fit without time shifts.
+  const fitWith = (list, quick, rigid) => {
+    const prev = quick && !frame && fitOk() ? S.fit.cal : null;
+    S.pins = kept.concat(list); S.fit = null; S.preview = null;
+    const o = Object.assign(prev ? { projections: [prev.projection], east: prev.east, northStart: prev.north_deg } : {}, rigid ? { spanMin: 0 } : {});
+    runFit(Object.keys(o).length ? o : undefined);
+    return fitOk();
+  };
+  const resid = () => new Map(S.fit.perPin.map(r => [r.hip !== undefined && r.hip !== null ? r.hip : r.obj, r.residPx]));
+  const prune = list => { const r = resid(); return list.filter(q => !(r.get(q.hip) > fsPx(FS_PRUNE_PX))); };
+  // The first matches may include wrong ones: the worst pin over the limit is dropped, one at a
+  // time. All-sky: first against a rigid fit without time shifts (a wrong match could hide in its
+  // own time shift), with the limit the time shifts themselves allow, then with them.
+  const dropWorst = async (limit, rigid) => {
+    if (!fitWith(auto, false, rigid)) return false;
+    for (let guard = auto.length; guard > 0; guard--) {
+      const r = resid();
+      let worst = null;
+      for (const q of auto) if (r.get(q.hip) > limit && (!worst || r.get(q.hip) > r.get(worst.hip))) worst = q;
+      if (!worst) break;
+      auto = auto.filter(q => q !== worst);
+      if (!fitWith(auto, true, rigid)) return false;
+      await tick();
+    }
+    return true;
+  };
+  // the scan stars matched again within 12 px of the fit, which reaches parts of the photo the
+  // turned start missed (an off-centre zenith, a wrong scale), until the set settles
+  let firstKey = '';
+  for (let round = 0; round < FS_ITER_MAX; round++) {
+    if (round) { const cal = S.fit.cal; auto = firstMatches(o => _allskySkyToPhoto(cal, o.s.az, o.s.el, p.lat, true)); }
+    if (!frame && p.span > 0 && !await dropWorst(fsPx(FS_RIGID_PX), true)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
+    if (!await dropWorst(fsPx(FS_PRUNE_PX), false)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
+    const key = auto.map(q => q.hip).sort((u, v) => u - v).join(',');
+    if (key === firstKey) break;
+    firstKey = key;
+  }
+  steps.push({ stage: 'first', mag: scanMag, pins: auto.length, rms: S.fit.cal.rms_px });
+  // 4. ladder of fainter stars
+  for (let mag = scanMag; mag <= maxMag + 1e-9; mag += 0.5) {
+    let prevKey = '';
+    for (let it = 0; it < FS_ITER_MAX; it++) {
+      setStatus(`Find stars: stars to mag ${mag.toFixed(1)}, ${auto.length} pinned…`, '');
+      await fsYield();
+      const cal = S.fit.cal, cand = [], byPeak = new Map(), at = [];
+      for (const s of stars) {
+        if (s.mag > mag || keptKeys.has(s.hip)) continue;
+        const q = _allskySkyToPhoto(cal, s.az, s.el, p.lat);
+        if (fsInside(q)) at.push({ s, q });
+      }
+      // the brightest points, 10 per star predicted to this magnitude (a faint point next to the
+      // prediction of a brighter star is not its image)
+      const G = fsGrid(freePeaks.slice(0, Math.max(100, FS_PEAKS_PER_STAR * at.length)), fsPx(FS_SCAN_PX));
+      for (const { s, q } of at) {
+        const n = fsNearest(G, q[0], q[1], fsPx(FS_SECOND_PX) * 2);
+        if (!fsUnambiguous(n)) continue;
+        cand.push({ hip: s.hip, i: n.i });
+        byPeak.set(n.i, (byPeak.get(n.i) || 0) + 1);
+      }
+      let next = cand.filter(m => byPeak.get(m.i) === 1).map(m => ({ hip: m.hip, px: G.pts[m.i].slice(0, 2), auto: true }));
+      // a set that does not fit: back to the last one, and no fainter stars
+      if (!fitWith(next, true)) { fitWith(auto, true); mag = Infinity; break; }
+      const pruned = prune(next);
+      if (pruned.length < next.length) { next = pruned; if (!fitWith(next, true)) { fitWith(auto, true); mag = Infinity; break; } }
+      auto = next;
+      const key = auto.map(q => q.hip).sort((u, v) => u - v).join(',');
+      if (key === prevKey) break;
+      prevKey = key;
+      await tick();
+    }
+    if (!fitOk() || mag === Infinity) break;
+    steps.push({ stage: 'ladder', mag, pins: auto.length, rms: S.fit.cal.rms_px });
+  }
+  // the full fit (every projection, both east values, all north starts), its pins over 2 px dropped
+  if (fitOk() && !frame) {
+    setStatus(`Find stars: final fit of ${auto.length} pins…`, ''); await fsYield();
+    if (fitWith(auto)) { const pruned = prune(auto); if (pruned.length < auto.length) { auto = pruned; fitWith(auto); } }
+  }
+  // the check: the bright stars of the scan must sit on bright points (within 3 px) far more often
+  // than chance would put them there
+  let nB = 0, mB = 0;
+  if (fitOk()) {
+    const top = fsGrid(usable.slice(0, Math.max(50, FS_PEAKS_PER_STAR * nIn0)), fsPx(FS_SCAN_PX));
+    for (const s of stars) {
+      if (s.mag > scanMag) continue;
+      const q = _allskySkyToPhoto(S.fit.cal, s.az, s.el, p.lat);
+      if (!fsInside(q)) continue;
+      nB++;
+      if (fsNearest(top, q[0], q[1], fsPx(FS_MATCH_PX)).i >= 0) mB++;
+    }
+    steps.push({ stage: 'check', mag: scanMag, bright: mB, of: nB });
+  }
+  if (fitOk() && auto.length >= FS_MIN_PINS && mB < Math.max(FS_MIN_BRIGHT, FS_BRIGHT_SHARE * nB)) {
+    return giveUp(`Find stars: the match is not convincing (${mB} of ${nB} stars to mag ${scanMag} on bright points); ${adjust}, or pin a few stars by hand`);
+  }
+  if (!fitOk() || auto.length < FS_MIN_PINS) {
+    return giveUp(`Find stars: only ${auto.length} star${auto.length === 1 ? '' : 's'} could be told apart, too few to trust; ${adjust}, or pin a few stars by hand`);
+  }
+  const u = await unpinnedStats(-Infinity, Math.min(8, maxMag + 1.5));
+  const rms = S.fit.cal.rms_px;
+  setStatus(`Find stars: ${auto.length} stars pinned, RMS ${rms.toFixed(2)} px` + (u && u.n ? `; other stars ${u.median.toFixed(1)} px median` : ''), 'ok');
+  return { ok: true, pins: S.pins.length, auto: auto.length, rms, unpinnedMedian: u ? u.median : NaN, unpinnedP90: u ? u.p90 : NaN, steps, message: '' };
 }
 
 /* ---------- output ---------- */
 const rnd = (v, d) => Math.round(v * 10 ** d) / 10 ** d;
 function output() {
   if (!fitOk()) return null;
+  if (S.fit.cal.kind === 'frame') return outputFrame();
   const c = S.fit.cal;
   let north = rnd(c.north_deg, 3); if (north >= 360) north -= 360;
   return {
+    kind: 'allsky',
     image: 'img/astro/' + S.name,
     image_size: [S.W, S.H],
-    zenith_px: [rnd(c.zenith_px[0], 2), rnd(c.zenith_px[1], 2)],
+    center_px: [rnd(c.center_px[0], 2), rnd(c.center_px[1], 2)],
     projection: c.projection,
     f_px: rnd(c.f_px, 2),
     north_deg: north,
@@ -500,31 +1256,81 @@ function output() {
     pins: c.pins.map(q => ({ hip: q.hip, px: [rnd(q.px[0], 1), rnd(q.px[1], 1)], dt_min: rnd(q.dt_min, 2) })),
   };
 }
+// The public frame block (no internal `_` fields), in the order of the catalog.
+function outputFrame() {
+  const c = S.fit.cal;
+  return {
+    kind: 'frame',
+    image: 'img/astro/' + S.name,
+    image_size: [S.W, S.H],
+    axis_radec: [rnd(c.axis_radec[0], 5), rnd(c.axis_radec[1], 5)],
+    roll_deg: rnd(c.roll_deg, 3),
+    east: c.east,
+    projection: c.projection,
+    f_px: rnd(c.f_px, 2),
+    k1: rnd(c.k1 || 0, 5),
+    center_px: [rnd(c.center_px[0], 2), rnd(c.center_px[1], 2)],
+    span_min: c.span_min,
+    rms_px: rnd(c.rms_px, 2),
+    pins: c.pins.map(q => {
+      const o = q.hip !== undefined ? { hip: q.hip } : { obj: q.obj };
+      o.px = [rnd(q.px[0], 1), rnd(q.px[1], 1)];
+      if (q.dt_min !== undefined) o.dt_min = rnd(q.dt_min, 2);
+      if (q.r_px > 0) o.r_px = rnd(q.r_px, 2);
+      return o;
+    }),
+  };
+}
+// "5h55m14s" and "-4°04'29\"" as the catalog writes them (whole seconds).
+function fmtRa(deg) {
+  const t = Math.round(ra360(deg) / 15 * 3600) % 86400, h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return `${h}h${String(m).padStart(2, '0')}m${String(s).padStart(2, '0')}s`;
+}
+function fmtDec(deg) {
+  const t = Math.round(Math.abs(deg) * 3600), d = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return `${deg < 0 && t > 0 ? '-' : ''}${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+}
+// The entry's older fields derived from a framed calibration: axis as ra / dec, the fields of view
+// across the image centre (from f, projection and k1), rotation_deg = roll_deg. null otherwise.
+function outputFields() {
+  const o = output();
+  if (!o || o.kind !== 'frame') return null;
+  const across = half => { const r = _allskyUndistort(half, o.f_px, o.k1); const t = r === null ? null : _allskyTheta(o.projection, o.f_px, r); return t === null ? null : rnd(2 * t / D2R, 1); };
+  return {
+    ra: fmtRa(o.axis_radec[0]), dec: fmtDec(o.axis_radec[1]),
+    fov_w_deg: across(o.center_px[0]), fov_h_deg: across(o.center_px[1]),
+    rotation_deg: rnd(o.roll_deg, 1),
+  };
+}
 function outputEntry() {
   const a = output(), f = fields();
   if (!a) return null;
   const e = S.entry || {}, base = 'A' + f.date + '_TODO';
+  const frame = a.kind === 'frame';
   const out = {
     id: e.id || base,
     object_name: e.object_name || 'TODO',
-    category: 'all_sky',
+    category: frame ? (e.category && e.category !== 'all_sky' ? e.category : S.type === 'sunmoon' ? 'solar_system' : 'landscape') : 'all_sky',
     date_utc: f.date,
     time_utc: f.time,
     timezone: Number.isFinite(f.tz) ? f.tz : 0,
     lat: Math.abs(f.lat), lat_hemisphere: f.lat < 0 ? 'S' : 'N',
     lon: Math.abs(f.lon), lon_hemisphere: f.lon < 0 ? 'W' : 'E',
+  };
+  if (frame) Object.assign(out, outputFields());
+  Object.assign(out, {
     thumbnail: e.thumbnail || 'img/astro/' + base + '_T.jpg',
     full: e.full || 'img/astro/' + base + '.jpg',
-  };
+  });
   if (e.video) out.video = e.video;
-  out.allsky = a;
+  out.calib = a;
   return out;
 }
 // JSON as in filelist_astro.json: two-space indent, number arrays and pins on one line each.
 function formatJSON(o) {
   return JSON.stringify(o, null, 2)
     .replace(/\[\s+([^\[\]{}"]*?)\s+\]/g, (m, inner) => '[' + inner.split(/,\s*/).join(', ') + ']')
-    .replace(/\{\s+("hip"[^{}]*?)\s+\}/g, (m, inner) => '{ ' + inner.replace(/\s*\n\s*/g, ' ') + ' }');
+    .replace(/\{\s+("hip"[^{}]*?|"obj"[^{}]*?)\s+\}/g, (m, inner) => '{ ' + inner.replace(/\s*\n\s*/g, ' ') + ' }');
 }
 function copyText(text, what) {
   api.lastCopied = text;
@@ -548,15 +1354,24 @@ function parseEntry(src) {
   if (!t.startsWith('{') && !t.startsWith('[')) t = '{' + t + '}';   // a "key": value fragment
   let o = JSON.parse(t);
   if (Array.isArray(o)) o = entryForPhoto(o);
-  if (o && !o.date_utc && o.allsky === undefined && o.image_size) o = { allsky: o };   // a bare allsky block
-  return o;
+  if (o && !o.date_utc && o.calib === undefined && o.allsky === undefined && o.image_size) o = o.zenith_px ? { allsky: o } : { calib: o };   // a bare calib block (or legacy allsky block)
+  return legacyCalib(o);
+}
+// A pasted entry with a legacy `allsky` block (zenith_px, no kind) is read as its `calib` block.
+function legacyCalib(o) {
+  if (!o || typeof o !== 'object' || o.calib !== undefined || !o.allsky || typeof o.allsky !== 'object') return o;
+  const a = o.allsky, c = { kind: 'allsky' };
+  for (const k of Object.keys(a)) c[k === 'zenith_px' ? 'center_px' : k] = a[k];
+  const out = Object.assign({}, o, { calib: c });
+  delete out.allsky;
+  return out;
 }
 // From a pasted list (e.g. the whole filelist_astro.json): the entry of the loaded photo, matched
-// by its file name (A2021-08-12_PER01_C.jpg -> id A2021-08-12_PER01, or the entry's allsky.image);
+// by its file name (A2021-08-12_PER01_C.jpg -> id A2021-08-12_PER01, or the entry's calib.image);
 // a one-entry list is that entry. Throws when the photo does not say which entry is meant.
 function entryMatchesPhoto(x) {
   const file = (S.name || '').split('/').pop();
-  return !!(file && x && ((x.allsky && x.allsky.image && x.allsky.image.split('/').pop() === file)
+  return !!(file && x && ((x.calib && x.calib.image && x.calib.image.split('/').pop() === file)
     || (x.id && file.replace(/\.[^.]+$/, '').replace(/_[A-Z]$/, '') === x.id)));
 }
 function entryForPhoto(list) {
@@ -567,6 +1382,7 @@ function entryForPhoto(list) {
   return e;
 }
 function setEntry(src) {
+  if (busy()) return false;
   let e;
   try { e = parseEntry(src); } catch (err) { setStatus(err instanceof SyntaxError ? 'The pasted text is not valid JSON' : err.message, 'err'); return false; }
   if (!e || typeof e !== 'object') { setStatus('The pasted text is not a catalog entry', 'err'); return false; }
@@ -578,17 +1394,68 @@ function setEntry(src) {
   if (e.lat !== undefined) set.lat = signed(e.lat, e.lat_hemisphere, 'S');
   if (e.lon !== undefined) set.lon = signed(e.lon, e.lon_hemisphere, 'W');
   if (e.timezone !== undefined) set.tz = +e.timezone;
-  if (e.allsky && Number.isFinite(+e.allsky.span_min)) set.span = +e.allsky.span_min;
+  // the photo type: an all-sky entry stays all-sky; one with ra / dec or a frame calib is framed
+  // (a Sun / Moon photo when its pins are only the Sun and Moon discs)
+  const c = e.calib && typeof e.calib === 'object' ? e.calib : null;
+  const framed = c ? c.kind === 'frame' : e.category !== 'all_sky' && (e.ra !== undefined || e.dec !== undefined);
+  if (!framed && (e.category === 'all_sky' || c)) setType('allsky');
+  else if (framed) {
+    const discs = c && Array.isArray(c.pins) && c.pins.length && c.pins.every(q => q && (q.obj === 'sun' || q.obj === 'moon'));
+    setType(discs ? 'sunmoon' : 'frame');
+    set.span = 0;
+    if (!c) {
+      const ra = parseRa(e.ra), dec = parseDec(e.dec);
+      const fov = Math.max(+e.fov_w_deg || 0, +e.fov_h_deg || 0);
+      S.object = null; S.fit = null;
+      S.frame = { axis: Number.isFinite(ra) && Number.isFinite(dec) ? [ra, dec] : null, roll: Number.isFinite(+e.rotation_deg) ? +e.rotation_deg : 0,
+        fov: fov > 0 ? fov : S.frame.fov, shiftX: 0, shiftY: 0 };
+    }
+  }
+  if (c && Number.isFinite(+c.span_min)) set.span = +c.span_min;
   setFields(set);
-  if (e.allsky) { S.pendingAllsky = e.allsky; if (S.img) applyPendingAllsky(); }
-  setStatus('Entry applied' + (e.allsky ? ' with its calibration' : ''), 'ok');
+  if (c) { S.pendingAllsky = c; if (S.img) applyPendingAllsky(); }
+  renderPanel();
+  if (!framed && c) document.getElementById('pinHint').scrollIntoView({ block: 'nearest' });
+  setStatus('Entry applied' + (c ? ' with its calibration' : framed && S.frame.axis ? ' with its ra, dec, field and rotation' : ''), 'ok');
   return true;
 }
-// Brings back the circle, orientation and pins of a pasted allsky block, scaled to the loaded photo.
+// "5h55m14s" -> degrees, "-4°04'29\"" -> degrees (as the app reads the catalog); NaN when not parsable.
+function parseRa(t) {
+  const m = /(-?\d+)h\s*(\d+)m\s*([\d.]+)s/.exec(t || '');
+  return m ? (parseFloat(m[1]) + parseFloat(m[2]) / 60 + parseFloat(m[3]) / 3600) * 15 : NaN;
+}
+function parseDec(t) {
+  const m = /([+-]?)(\d+)°\s*(\d+)'\s*([\d.]+)"/.exec(t || '');
+  if (!m) return NaN;
+  const v = parseFloat(m[2]) + parseFloat(m[3]) / 60 + parseFloat(m[4]) / 3600;
+  return m[1] === '-' ? -v : v;
+}
+// Brings back the circle, orientation and pins of a pasted calib block, scaled to the loaded photo;
+// a frame block: its axis, roll, field and east as the starting frame, and its star, object and
+// disc pins.
 function applyPendingAllsky() {
   const a = S.pendingAllsky; S.pendingAllsky = null;
   if (!a || !a.image_size) return;
   const sx = S.W / a.image_size[0], sy = S.H / a.image_size[1];
+  if (a.kind === 'frame') {
+    if (Array.isArray(a.axis_radec) && a.f_px > 0) {
+      S.object = null;
+      S.frame = { axis: a.axis_radec.slice(), roll: Number.isFinite(a.roll_deg) ? a.roll_deg : 0,
+        fov: 2 * Math.atan(Math.max(S.W, S.H) / 2 / (a.f_px * sx)) / D2R, shiftX: 0, shiftY: 0 };
+    }
+    if (a.east === 'left' || a.east === 'right') S.east = a.east;
+    if (Array.isArray(a.pins)) {
+      S.pins = a.pins.filter(q => q && q.px && (q.hip !== undefined || typeof q.obj === 'string')).map(q => {
+        const o = q.hip !== undefined ? { hip: +q.hip } : { obj: q.obj };
+        o.px = [q.px[0] * sx, q.px[1] * sy];
+        if (q.r_px > 0) o.r_px = q.r_px * sx;
+        return o;
+      });
+      if (S.pins.some(q => q.hip !== undefined && !(S.stars && S.stars.has(q.hip)))) ensureDeep();
+    }
+    scheduleFit(); renderPanel(); view.draw();
+    return;
+  }
   if (Array.isArray(a.circle_px)) S.circle = [a.circle_px[0] * sx, a.circle_px[1] * sy, a.circle_px[2] * sx];
   if (Number.isFinite(a.north_deg)) S.north = a.north_deg;
   if (a.east === 'left' || a.east === 'right') S.east = a.east;
@@ -596,6 +1463,7 @@ function applyPendingAllsky() {
   scheduleFit(); renderPanel(); view.draw();
 }
 function setFields(o) {
+  if (busy()) return false;
   const put = (id, v) => { if (v !== undefined) $(id).value = typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '') : v; };
   put('inDate', o.date); put('inTime', o.time); put('inLat', o.lat); put('inLon', o.lon); put('inSpan', o.span); put('inTz', o.tz);
   place(); scheduleFit(); view.draw();
@@ -603,6 +1471,7 @@ function setFields(o) {
 
 /* ---------- photo and circle ---------- */
 async function loadImage(src, name) {
+  if (busy()) return false;
   await ready;
   let blob = src;
   if (typeof src === 'string') { const r = await fetch(src); if (!r.ok) throw new Error('HTTP ' + r.status); blob = await r.blob(); name = name || src.split('/').pop(); }
@@ -613,10 +1482,11 @@ async function loadImage(src, name) {
   S.smallK = S.small.width / bmp.width;
   S.img = bmp; S.W = bmp.width; S.H = bmp.height; S.name = name || (blob && blob.name) || 'photo';
   S.pins = []; S.selected = null; S.fit = null; S.preview = null;
-  S.circle = detectCircle() || defaultCircle();
+  S.circle = S.type === 'allsky' ? detectCircle() || defaultCircle() : null;
+  if ($('selEquip').value === 'lens') applyLens();
   // the photo loaded again after its entry was applied: the entry's pins come back too
-  if (!S.pendingAllsky && S.entry && S.entry.allsky) {
-    if (entryMatchesPhoto(S.entry)) S.pendingAllsky = S.entry.allsky;
+  if (!S.pendingAllsky && S.entry && S.entry.calib) {
+    if (entryMatchesPhoto(S.entry)) S.pendingAllsky = S.entry.calib;
   }
   if (S.pendingAllsky) applyPendingAllsky();
   $('infoImg').innerHTML = `Photo: <b>${escapeHtml(S.name)}</b> ${S.W} &times; ${S.H} px`;
@@ -717,7 +1587,7 @@ function circleFit(pts) {
   const r = Math.sqrt(uc * uc + vc * vc + (suu + svv) / pts.length);
   return [uc + mx, vc + my, r];
 }
-function setCircle(c) { S.circle = c.slice(); renderCircleInfo(); scheduleFit(); view.draw(); }
+function setCircle(c) { if (busy()) return false; S.circle = c.slice(); renderCircleInfo(); scheduleFit(); view.draw(); }
 
 /* ---------- view (zoom/pan canvas, as in the warp tool) ---------- */
 class View {
@@ -748,14 +1618,23 @@ class View {
     return [{ kind: 'centre', p: [c[0], c[1]] }].concat([0, 90, 180, 270].map(a => ({
       kind: 'edge', p: [c[0] + c[2] * Math.sin(a * D2R), c[1] - c[2] * Math.cos(a * D2R)] })));
   }
-  // What lies under a screen point: a pin, a predicted star, a circle handle, or nothing.
+  // What lies under a screen point: a disc pin's radius handle, a pin, a predicted marker (a disc
+  // anywhere inside it), a circle handle, or nothing.
   hit(sx, sy) {
     let best = null, bd = 12;
     const near = (p, what, lim) => { const s = this.toScr(p), d = Math.hypot(s[0] - sx, s[1] - sy); if (d < Math.min(bd, lim)) { bd = d; best = what; } };
-    for (const q of S.pins) near(q.px, { kind: 'pin', hip: q.hip }, 12);
+    for (const q of S.pins) if (q.r_px > 0) near(radiusHandle(q), { kind: 'radius', key: keyOf(q) }, 9);
     if (best) return best;
-    for (const s of predicted()) if (!s.pinned && s.px) near(s.px, { kind: 'star', hip: s.hip }, 10);
+    for (const q of S.pins) near(q.px, { kind: 'pin', key: keyOf(q) }, 12);
     if (best) return best;
+    const pred = predicted();
+    for (const s of pred) if (!s.pinned && s.px && !s.disc) near(s.px, { kind: 'star', key: s.key }, 10);
+    if (best) return best;
+    for (const s of pred) {
+      if (s.pinned || !s.px || !s.disc) continue;
+      const c = this.toScr(s.px);
+      if (Math.hypot(c[0] - sx, c[1] - sy) <= Math.max(10, s.rPx * this.scale)) return { kind: 'star', key: s.key };
+    }
     for (const hd of this.circleHandles()) near(hd.p, { kind: 'circle', handle: hd.kind }, 9);
     return best;
   }
@@ -771,14 +1650,22 @@ class View {
     }, { passive: false });
     cv.addEventListener('pointerdown', e => {
       if (!S.img || e.button !== 0) return;
-      const m = pos(e), h = this.hit(m[0], m[1]);
+      const m = pos(e), shifting = !S.finding && isFrame() && S.dragMode === 'frame' && !fitOk(), h = shifting || S.finding ? null : this.hit(m[0], m[1]);
       cv.setPointerCapture(e.pointerId);
-      if (h && h.kind === 'pin') {
-        S.selected = h.hip; renderPanel();
-        this.drag = { kind: 'pin', hip: h.hip, start: m, orig: pinOf(h.hip).px.slice(), moved: false };
+      if (shifting) {
+        const C = startCal();
+        this.drag = C ? { kind: 'shift', start: m, f: fovToF(S.frame.fov, Math.max(S.W, S.H)), sx: S.frame.shiftX, sy: S.frame.shiftY, moved: false }
+          : { kind: 'pan', start: m, ox: this.ox, oy: this.oy, moved: false };
+      } else if (h && h.kind === 'radius') {
+        S.selected = h.key; renderPanel();
+        const q = pinOf(h.key);
+        this.drag = { kind: 'radius', key: h.key, start: m, orig: q.r_px, moved: false };
+      } else if (h && h.kind === 'pin') {
+        S.selected = h.key; renderPanel();
+        this.drag = { kind: 'pin', key: h.key, start: m, orig: pinOf(h.key).px.slice(), moved: false };
       } else if (h && h.kind === 'star') {
-        const s = predicted().find(q => q.hip === h.hip);
-        this.drag = { kind: 'star', hip: h.hip, start: m, orig: s.px.slice(), px: s.px.slice(), moved: false };
+        const s = predicted().find(q => q.key === h.key);
+        this.drag = { kind: 'star', key: h.key, start: m, orig: s.px.slice(), px: s.px.slice(), rPx: s.rPx, moved: false };
       } else if (h && h.kind === 'circle') {
         this.drag = { kind: 'circle', handle: h.handle, start: m, orig: S.circle.slice(), moved: false };
       } else {
@@ -796,7 +1683,17 @@ class View {
         if (!d.moved) return;
         const f = e.shiftKey ? 0.25 : 1, ix = dx * f / this.scale, iy = dy * f / this.scale;
         if (d.kind === 'pan') { this.ox = d.ox + dx; this.oy = d.oy + dy; this.userMoved = true; }
-        else if (d.kind === 'pin') { pinOf(d.hip).px = clampToImg([d.orig[0] + ix, d.orig[1] + iy]); invalidate(); }
+        else if (d.kind === 'shift') {
+          // the prediction follows the pointer: the shift's offset on the photo is f tan(shift)
+          S.frame.shiftX = Math.atan((d.f * Math.tan(d.sx * D2R) + ix) / d.f) / D2R;
+          S.frame.shiftY = Math.atan((d.f * Math.tan(d.sy * D2R) + iy) / d.f) / D2R;
+          invalidate(); renderFrameControls();
+        }
+        else if (d.kind === 'pin') { const q = pinOf(d.key); q.px = clampToImg([d.orig[0] + ix, d.orig[1] + iy]); delete q.auto; invalidate(); }
+        else if (d.kind === 'radius') {
+          const q = pinOf(d.key), p = this.toImg(m[0], m[1]);
+          q.r_px = e.shiftKey ? Math.max(1, d.orig + ix) : Math.max(1, Math.hypot(p[0] - q.px[0], p[1] - q.px[1]));
+        }
         else if (d.kind === 'star') d.px = clampToImg([d.orig[0] + ix, d.orig[1] + iy]);
         else if (d.kind === 'circle') {
           const o = d.orig;
@@ -805,10 +1702,11 @@ class View {
           renderCircleInfo(); invalidate();
         }
       } else {
-        const h = this.hit(m[0], m[1]);
-        const hov = h && (h.kind === 'pin' || h.kind === 'star') ? h.hip : null;
+        const shifting = isFrame() && S.dragMode === 'frame' && !fitOk();
+        const h = shifting ? null : this.hit(m[0], m[1]);
+        const hov = h && (h.kind === 'pin' || h.kind === 'star' || h.kind === 'radius') ? h.key : null;
         if (hov !== S.hover) { S.hover = hov; renderPanel(); }
-        cv.style.cursor = h ? (h.kind === 'circle' ? (h.handle === 'centre' ? 'move' : 'nwse-resize') : 'move') : 'grab';
+        cv.style.cursor = shifting ? 'move' : h ? (h.kind === 'circle' ? (h.handle === 'centre' ? 'move' : 'nwse-resize') : h.kind === 'radius' ? 'ew-resize' : 'move') : 'grab';
       }
       this.draw();
     });
@@ -816,10 +1714,11 @@ class View {
       const d = this.drag; this.drag = null;
       if (this.mouse) { const h = this.hit(this.mouse[0], this.mouse[1]); cv.style.cursor = h ? 'move' : 'grab'; }
       if (d && d.moved) {
-        if (d.kind === 'pin') scheduleFit();
-        else if (d.kind === 'star') addPin(d.hip, d.px);
+        if (d.kind === 'pin' || d.kind === 'radius') scheduleFit();
+        else if (d.kind === 'star') addPin(d.key, d.px, d.rPx);
         else if (d.kind === 'circle') scheduleFit();
-      } else if (d && (d.kind === 'pin' || d.kind === 'star')) { S.selected = d.hip; renderPanel(); }
+        else if (d.kind === 'shift') { renderPanel(); if (S.pins.length) scheduleFit(); }
+      } else if (d && (d.kind === 'pin' || d.kind === 'star' || d.kind === 'radius')) { S.selected = d.key; renderPanel(); }
       else if (d && d.kind === 'pan') { S.selected = null; renderPanel(); }
       this.draw();
     };
@@ -851,11 +1750,45 @@ class View {
     if (!S.img) return;
     ctx.setTransform(d, 0, 0, d, 0, 0);
     this.drawPhoto(ctx, this.scale, this.ox, this.oy, false);
-    this.drawSkyGrid(ctx);
-    this.drawCircle(ctx);
+    if (isFrame()) this.drawFrameGrid(ctx);
+    else { this.drawSkyGrid(ctx); this.drawCircle(ctx); }
     this.drawStars(ctx);
     const dr = this.drag;
-    if (this.mouse && dr && dr.moved && dr.kind !== 'pan') this.drawLoupe(ctx, this.mouse);
+    if (this.mouse && dr && dr.moved && dr.kind !== 'pan' && dr.kind !== 'shift') this.drawLoupe(ctx, this.mouse);
+  }
+  // framed photo: the horizon where it crosses the photo and a north / east compass at the image
+  // centre, of the calibration in use
+  drawFrameGrid(ctx) {
+    const cal = currentCal(), p = place();
+    if (!cal || !p) return;
+    ctx.save();
+    ctx.strokeStyle = COLOR.sky; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.beginPath();
+    let prev = null;
+    for (let a = 0; a <= 360; a += 0.5) {
+      const q = _allskySkyToPhoto(cal, a, 0, p.lat, true);
+      const ok = q && Math.abs(q[0] - S.W / 2) < 3 * S.W && Math.abs(q[1] - S.H / 2) < 3 * S.H;
+      if (ok) { const s = this.toScr(q); if (prev) ctx.lineTo(s[0], s[1]); else ctx.moveTo(s[0], s[1]); }
+      prev = ok ? q : null;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    // compass: directions of J2000 north (Dec + 0.5) and east (RA + 0.5 / cos Dec) at the axis
+    const st = siteOf(p), [ra, dec] = cal.axis_radec, c = this.toScr(cal.center_px);
+    ctx.font = '600 13px "Share Tech Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [lbl, r2, d2] of [['N', ra, dec + 0.5], ['E', ra + 0.5 / Math.max(0.05, Math.cos(dec * D2R)), dec]]) {
+      const a = _allskyRadecToApp(r2, Math.min(90, d2), st), q = _allskyForward(cal, a.az, a.el);
+      if (!q) continue;
+      const s = this.toScr(q), L = Math.hypot(s[0] - c[0], s[1] - c[1]);
+      if (!(L > 0)) continue;
+      const ux = (s[0] - c[0]) / L, uy = (s[1] - c[1]) / L, e = [c[0] + ux * 34, c[1] + uy * 34];
+      ctx.strokeStyle = lbl === 'N' ? COLOR.pred : COLOR.sky; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(lbl, c[0] + ux * 44 + 1, c[1] + uy * 44 + 1);
+      ctx.fillStyle = lbl === 'N' ? COLOR.pred : COLOR.sky; ctx.fillText(lbl, c[0] + ux * 44, c[1] + uy * 44);
+    }
+    ctx.beginPath(); ctx.moveTo(c[0] - 6, c[1]); ctx.lineTo(c[0] + 6, c[1]); ctx.moveTo(c[0], c[1] - 6); ctx.lineTo(c[0], c[1] + 6);
+    ctx.strokeStyle = COLOR.sky; ctx.stroke();
+    ctx.restore();
   }
   // horizon line, zenith cross and N / E / S / W letters of the calibration in use
   drawSkyGrid(ctx) {
@@ -868,7 +1801,7 @@ class View {
       if (a === 0) ctx.moveTo(s[0], s[1]); else ctx.lineTo(s[0], s[1]);
     }
     ctx.stroke(); ctx.setLineDash([]);
-    const z = this.toScr(cal.zenith_px);
+    const z = this.toScr(cal.center_px);
     ctx.beginPath(); ctx.moveTo(z[0] - 8, z[1]); ctx.lineTo(z[0] + 8, z[1]); ctx.moveTo(z[0], z[1] - 8); ctx.lineTo(z[0], z[1] + 8); ctx.stroke();
     ctx.font = '600 15px "Share Tech Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const [lbl, az] of [['N', 0], ['E', 90], ['S', 180], ['W', 270]]) {
@@ -894,32 +1827,51 @@ class View {
     ctx.restore();
   }
   drawStars(ctx) {
-    const pred = predicted(), dr = this.drag;
+    const pred = predicted(), dr = this.drag, frame = isFrame();
     ctx.save();
     ctx.font = '12px "Share Tech Mono", monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     for (const s of pred) {
       if (s.pinned || !s.px) continue;
-      const dragging = dr && dr.kind === 'star' && dr.hip === s.hip && dr.moved;
-      const p = this.toScr(dragging ? dr.px : s.px), hi = s.hip === S.hover || s.hip === S.selected;
+      const dragging = dr && dr.kind === 'star' && dr.key === s.key && dr.moved;
+      const p = this.toScr(dragging ? dr.px : s.px), hi = s.key === S.hover || s.key === S.selected;
+      // marker size: a disc at its size on the photo, a framed star by its magnitude
+      const r = s.disc ? Math.max(6, s.rPx * this.scale) : frame && s.hip !== undefined ? Math.max(2.5, Math.min(7, 7 - 0.7 * s.mag)) : 6;
       ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.stroke();
-      ctx.lineWidth = 1.4; ctx.strokeStyle = hi ? HILITE : COLOR.pred;
-      ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.stroke();
-      if (s.name.startsWith('HIP') && s.mag > 1.5 && !hi) continue;   // unnamed fainter stars: marker only
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, p[0] + 10, p[1] + 1);
-      ctx.fillStyle = hi ? HILITE : COLOR.pred; ctx.fillText(s.name, p[0] + 9, p[1]);
+      const shape = () => {
+        ctx.beginPath();
+        if (s.dso) ctx.rect(p[0] - r, p[1] - r, 2 * r, 2 * r); else ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+      };
+      // faint framed stars lighter, so the photo still shows through a field of hundreds
+      const faint = frame && s.hip !== undefined && s.mag > 3.5 && !hi;
+      ctx.globalAlpha = faint ? 0.5 : 1;
+      shape(); ctx.stroke();
+      ctx.lineWidth = faint ? 1 : 1.4; ctx.strokeStyle = hi ? HILITE : COLOR.pred;
+      if (s.disc) ctx.setLineDash([5, 3]);
+      shape(); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (s.hip !== undefined && s.name.startsWith('HIP') && s.mag > 1.5 && !hi) continue;   // unnamed fainter stars: marker only
+      const lx = p[0] + (s.disc ? Math.min(r, 40) * 0.7 + 9 : r + 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(s.name, lx + 1, p[1] + 1);
+      ctx.fillStyle = hi ? HILITE : COLOR.pred; ctx.fillText(s.name, lx, p[1]);
     }
-    // pins: where the fitted model puts the star (small cross, joined to the pin by its residual)
-    const byHip = new Map(pred.map(s => [s.hip, s]));
+    // pins: where the fitted model puts the object (small cross, joined to the pin by its residual);
+    // a disc pin also draws its circle and the radius handle
+    const byKey = new Map(pred.map(s => [s.key, s]));
     for (const q of S.pins) {
-      const s = byHip.get(q.hip), p = this.toScr(q.px);
+      const k = keyOf(q), s = byKey.get(k), p = this.toScr(q.px);
       if (s && s.px && (fitOk() || (S.preview && S.preview.ok))) {
         const e = this.toScr(s.px);
         ctx.strokeStyle = COLOR.pred; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(e[0] - 3, e[1] - 3); ctx.lineTo(e[0] + 3, e[1] + 3); ctx.moveTo(e[0] - 3, e[1] + 3); ctx.lineTo(e[0] + 3, e[1] - 3); ctx.stroke();
       }
-      drawPin(ctx, p[0], p[1], starName(q.hip), COLOR.pin, q.hip === S.selected, q.hip === S.hover);
+      if (q.r_px > 0) {
+        const h = this.toScr(radiusHandle(q)), hi = k === S.selected || k === S.hover;
+        ctx.strokeStyle = COLOR.pin; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p[0], p[1], q.r_px * this.scale, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.strokeStyle = hi ? HILITE : COLOR.pin;
+        ctx.fillRect(h[0] - 4.5, h[1] - 4.5, 9, 9); ctx.strokeRect(h[0] - 4.5, h[1] - 4.5, 9, 9);
+      }
+      drawPin(ctx, p[0], p[1], pinName(q), COLOR.pin, k === S.selected, k === S.hover);
     }
     ctx.restore();
   }
@@ -930,7 +1882,7 @@ class View {
     if (cy - R < 4) cy = m[1] + R + 24;
     // the dragged point sits at the loupe centre
     let ip = this.toImg(m[0], m[1]);
-    if (dr.kind === 'pin') ip = pinOf(dr.hip).px;
+    if (dr.kind === 'pin') ip = pinOf(dr.key).px;
     else if (dr.kind === 'star') ip = dr.px;
     const ox = cx - ip[0] * mag, oy = cy - ip[1] * mag;
     ctx.save();
@@ -946,7 +1898,7 @@ class View {
     ctx.lineWidth = 2; ctx.strokeStyle = dr.kind === 'circle' ? COLOR.circle : COLOR.pin;
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
     ctx.font = '11px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.textAlign = 'center';
-    const label = dr.kind === 'circle' ? 'circle' : starName(dr.hip);
+    const label = dr.kind === 'circle' ? 'circle' : dr.kind === 'radius' ? nameOfKey(dr.key) + ' r ' + pinOf(dr.key).r_px.toFixed(1) : nameOfKey(dr.key);
     ctx.fillText(`${label} ${ip[0].toFixed(1)}, ${ip[1].toFixed(1)}`, cx, cy + R + 14);
   }
 }
@@ -973,6 +1925,8 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
+// The radius handle of a disc pin: on its circle, to the right of the centre.
+function radiusHandle(q) { return [q.px[0] + q.r_px, q.px[1]]; }
 function clampToImg(p) { return [Math.min(S.W, Math.max(0, p[0])), Math.min(S.H, Math.max(0, p[1]))]; }
 const view = new View($('view'));
 
@@ -984,13 +1938,15 @@ function renderCircleInfo() {
 }
 function renderPanel() {
   renderCircleInfo();
-  const fit = S.fit, ok = fitOk();
+  renderSetup();
+  renderFrameControls();
+  const fit = S.fit, ok = fitOk(), frameFit = ok && fit.cal.kind === 'frame';
   $('fitReason').textContent = fit && !ok ? fit.reason : '';
   // projections
   const tb = $('projTable').tBodies[0];
   tb.innerHTML = '';
   if (ok) {
-    for (const pr of ALLSKY_PROJECTIONS) {
+    for (const pr of frameFit ? Object.keys(fit.byProjection) : ALLSKY_PROJECTIONS) {
       const b = fit.byProjection[pr], tr = document.createElement('tr');
       if (pr === fit.cal.projection) tr.className = 'best';
       tr.innerHTML = `<td>${pr}${pr === fit.cal.projection ? ' &#10003;' : ''}</td><td>${b ? 'RMS ' + b.rms.toFixed(2) + ' px' : '-'}</td>`;
@@ -998,34 +1954,42 @@ function renderPanel() {
     }
   }
   $('projTable').hidden = !ok;
-  if (ok) {
+  if (frameFit) {
+    const c = fit.cal, F = outputFields();
+    $('fitSummary').innerHTML = `Axis RA <b>${F.ra}</b> Dec <b>${F.dec}</b><br>`
+      + `Rotation <b>${c.roll_deg.toFixed(2)}&deg;</b> &middot; east <b>${c.east}</b>${S.type === 'sunmoon' && !S.rollFree ? ' (set by hand)' : ''}<br>`
+      + `Field <b>${F.fov_w_deg} &times; ${F.fov_h_deg}&deg;</b> &middot; f <b>${c.f_px.toFixed(1)}</b> px${c.k1 ? ` &middot; k1 <b>${c.k1.toFixed(4)}</b>` : ''}<br>`
+      + `<span title="RMS of the pins' residuals in photo px (a disc pin's radius counts as one more residual)">RMS <b>${c.rms_px.toFixed(2)}</b> px</span>`;
+  } else if (ok) {
     const c = fit.cal;
-    $('fitSummary').innerHTML = `Zenith <b>${c.zenith_px[0].toFixed(1)}, ${c.zenith_px[1].toFixed(1)}</b> px<br>`
+    $('fitSummary').innerHTML = `Zenith <b>${c.center_px[0].toFixed(1)}, ${c.center_px[1].toFixed(1)}</b> px<br>`
       + `f <b>${c.f_px.toFixed(1)}</b> px &middot; north <b>${c.north_deg.toFixed(2)}&deg;</b> &middot; east <b>${c.east}</b><br>`
       + `Circle edge down to <b>${c.alt_edge.toFixed(1)}&deg;</b> altitude<br>`
       + `<span title="RMS of the pins' residuals after each pin's own time shift; the error between pins is somewhat larger">RMS <b>${c.rms_px.toFixed(2)}</b> px after time shifts</span>`;
   } else $('fitSummary').textContent = S.preview && S.preview.ok ? 'Prediction from a fit without time shifts until there are enough pins.' : '';
   // pins
-  const res = new Map(ok ? fit.perPin.map(p => [p.hip, p]) : []);
+  const res = new Map(ok ? fit.perPin.map(p => [p.hip !== undefined && p.hip !== null ? p.hip : p.obj, p]) : []);
   const maxRes = Math.max(0, ...[...res.values()].map(p => p.residPx));
   const ul = $('pinList'); ul.innerHTML = '';
   for (const q of S.pins) {
-    const li = document.createElement('li'), r = res.get(q.hip);
-    if (q.hip === S.selected) li.classList.add('sel');
+    const k = keyOf(q), li = document.createElement('li'), r = res.get(k);
+    if (k === S.selected) li.classList.add('sel');
     const big = r && maxRes > 0 && r.residPx === maxRes && r.residPx > 2 * fit.cal.rms_px && r.residPx > 1;
-    li.innerHTML = `<span class="name" title="HIP ${q.hip}">${escapeHtml(starName(q.hip))}</span>`
+    const title = q.hip !== undefined ? 'HIP ' + q.hip : q.r_px > 0 ? `${pinName(q)}: disc radius ${q.r_px.toFixed(1)} px` + (r && Number.isFinite(r.residRPx) ? `, radius residual ${r.residRPx.toFixed(2)} px` : '') : q.obj;
+    li.innerHTML = `<span class="name" title="${escapeHtml(title)}">${escapeHtml(pinName(q))}</span>`
       + `<span class="num${big ? ' hi' : ''}">${r ? r.residPx.toFixed(2) : '-'}</span>`
-      + `<span class="num">${r ? r.dtMin.toFixed(1) : '-'}</span>`
+      + `<span class="num">${r && (q.hip !== undefined || fit.cal.span_min > 0) ? r.dtMin.toFixed(1) : '-'}</span>`
       + `<button class="del" title="Remove this pin">&times;</button>`;
     li.addEventListener('click', e => {
-      if (e.target.closest('.del')) { deletePin(q.hip); return; }
-      S.selected = q.hip; centreOn(q.px); renderPanel();
+      if (e.target.closest('.del')) { deletePin(k); return; }
+      S.selected = k; centreOn(q.px); renderPanel();
     });
-    li.addEventListener('mouseenter', () => { S.hover = q.hip; view.draw(); });
+    li.addEventListener('mouseenter', () => { S.hover = k; view.draw(); });
     li.addEventListener('mouseleave', () => { S.hover = null; view.draw(); });
     ul.appendChild(li);
   }
   $('btnClearPins').disabled = !S.pins.length;
+  $('btnFindStars').disabled = !canFindStars();
   $('btnCopy').disabled = !ok; $('btnCopyEntry').disabled = !ok;
   // orientation controls follow the fit once there is one
   const fitted = ok || (S.preview && S.preview.ok);
@@ -1033,8 +1997,60 @@ function renderPanel() {
   $('outNorth').textContent = S.north.toFixed(1) + '°';
   $('northRow').classList.toggle('off', !!fitted);
   for (const b of document.querySelectorAll('#eastToggle button')) { b.classList.toggle('on', b.dataset.east === S.east); b.disabled = !!fitted; }
-  $('orientNote').textContent = fitted ? 'Set by the fit.' : 'Before pinning, turn the prediction roughly onto the stars, then drag star markers onto their images.';
+  $('orientNote').textContent = isFrame()
+    ? (fitted ? 'Set by the fit.' : 'East left is an ordinary photo, right a mirrored one; with 3 or more objects pinned the fit tries both.')
+    : fitted ? 'Set by the fit.' : 'Before pinning, turn the prediction roughly onto the stars, then drag star markers onto their images.';
 }
+// Step 2: type, equipment and object lines.
+function renderSetup() {
+  document.body.classList.toggle('t-frame', isFrame());
+  document.body.classList.toggle('t-sunmoon', S.type === 'sunmoon');
+  for (const b of document.querySelectorAll('#typeToggle button')) b.classList.toggle('on', b.dataset.type === S.type);
+  $('tagType').textContent = TYPE_TAG[S.type];
+  $('sec3Title').textContent = isFrame() ? 'Frame' : 'Image circle';
+  $('lensRow').hidden = $('selEquip').value !== 'lens';
+  const E = S.equip;
+  $('infoEquip').innerHTML = E ? `Field <b>${E.fovL.toFixed(2)}&deg; &times; ${E.fovS.toFixed(2)}&deg;</b> (long &times; short side)` : 'Field: set in step 3';
+  const o = S.object, ax = baseAxis(), info = $('infoObject');
+  info.classList.remove('err');
+  const axisLine = ax ? `RA ${fmtRa(ax[0])} Dec ${escapeHtml(fmtDec(ax[1]))}` : '';
+  let html = '';
+  if (o) {
+    const big = o.dim > DSO_EXTENDED_ARCMIN ? ` &middot; extended (${Math.round(o.dim)}'): a pin goes on its centre` : '';
+    html = `Object: <b>${escapeHtml(o.name)}</b>` + (S.frame.axis ? '' : ax ? ' ' + axisLine : ' (needs the time and place)') + big;
+  }
+  if (S.frame.axis) html += (html ? '<br>' : '') + `Axis: <b>${axisLine}</b> (entry or fit)`;
+  info.innerHTML = html || 'Object: -';
+  $('pinHint').textContent = S.type === 'allsky'
+    ? 'Add a pin: drag an amber circle (a predicted star) onto that star\'s image in the photo. Pasting the photo\'s catalog entry in step 2 brings back its pins.'
+    : S.type === 'sunmoon'
+      ? 'Add a pin: drag the dashed amber disc onto the Sun or the Moon in the photo, then drag the pin\'s square handle onto the limb. Set the rotation in step 3.'
+      : 'Add a pin: drag an amber marker (star, planet, deep sky square, Sun or Moon disc) onto its image in the photo; 6 to 10 spread over the photo are best.';
+}
+// Step 3 of a framed photo: rotation, field and shift follow S.frame (an input being edited is
+// left alone); disabled while an ok fit drives the prediction, except the rotation of a Sun / Moon
+// photo, which is the fit's fixed roll.
+function renderFrameControls() {
+  const F = S.frame, ok = fitOk(), rollHand = S.type === 'sunmoon' && !S.rollFree;
+  const put = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
+  put('rngRoll', F.roll); put('inRoll', F.roll.toFixed(1));
+  put('rngFov', fovToSlider(F.fov)); put('inFov', F.fov.toFixed(F.fov < 10 ? 2 : 1));
+  put('inShiftX', rnd(F.shiftX, 3)); put('inShiftY', rnd(F.shiftY, 3));
+  const rollOff = ok && !rollHand;
+  $('rngRoll').disabled = $('inRoll').disabled = rollOff; $('rollRow').classList.toggle('off', rollOff);
+  for (const id of ['rngFov', 'inFov', 'inShiftX', 'inShiftY']) $(id).disabled = ok;
+  $('fovRow').classList.toggle('off', ok);
+  for (const b of document.querySelectorAll('#dragToggle button')) { b.classList.toggle('on', b.dataset.drag === S.dragMode); b.disabled = ok; }
+  const discs = S.pins.filter(q => (q.obj === 'sun' || q.obj === 'moon') && q.r_px > 0).length >= 2;
+  $('btnRollDiscs').hidden = !(S.type === 'sunmoon' && discs);
+  $('btnRollDiscs').textContent = S.rollFree ? 'Rotation by hand' : 'Rotation from discs';
+  $('frameNote').textContent = !baseAxis() && !ok ? 'Choose the object in step 2 (or paste the photo\'s entry) to place the frame.'
+    : ok ? (rollHand ? 'Set by the fit; the rotation is yours (the fit keeps it).' : 'Set by the fit.')
+    : 'Turn, scale and shift the prediction roughly onto the photo, then drag markers onto their images.';
+}
+// Field slider: logarithmic from FOV_MIN to FOV_MAX degrees over 0..1000.
+function fovToSlider(fov) { return Math.round(1000 * Math.log(fov / FOV_MIN) / Math.log(FOV_MAX / FOV_MIN)); }
+function sliderToFov(v) { return FOV_MIN * Math.pow(FOV_MAX / FOV_MIN, v / 1000); }
 function centreOn(p) {
   if (!S.img) return;
   const s = view.toScr(p);
@@ -1059,26 +2075,150 @@ ve.addEventListener('drop', e => {
   if (f) loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err'));
 });
 $('btnEntry').addEventListener('click', () => setEntry($('inEntry').value));
+$('btnFindStars').addEventListener('click', () => { findStars(); });
 for (const id of ['inDate', 'inTime', 'inLat', 'inLon', 'inSpan', 'inTz']) $(id).addEventListener('input', () => { place(); scheduleFit(); view.draw(); });
 $('btnDetect').addEventListener('click', () => {
-  if (!S.img) return;
+  if (!S.img || busy()) return;
   const c = detectCircle();
   if (c) { setCircle(c); setStatus('Circle detected', 'ok'); } else setStatus('No circle found; drag the handles instead', 'err');
 });
 $('rngNorth').addEventListener('input', e => { setNorth(+e.target.value); });
+for (const b of document.querySelectorAll('#typeToggle button')) b.addEventListener('click', () => setType(b.dataset.type));
+for (const b of document.querySelectorAll('#dragToggle button')) b.addEventListener('click', () => setDragMode(b.dataset.drag));
+$('selEquip').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v === 'lens') applyLens();
+  else if (v.startsWith('s')) setEquipment(S.setups[+v.slice(1)]);
+  else S.equip = null;   // the field comes from the step 3 control alone
+  renderPanel();
+});
+for (const id of ['inFocal', 'inCrop']) $(id).addEventListener('input', applyLens);
+$('inObject').addEventListener('change', e => setObject(e.target.value));
+$('inObject').addEventListener('keydown', e => { if (e.key === 'Enter') setObject(e.target.value); });
+const numIn = id => { const t = $(id).value.trim().replace(',', '.'); return t === '' ? NaN : Number(t); };
+$('rngRoll').addEventListener('input', e => setFrame({ roll: +e.target.value }));
+$('inRoll').addEventListener('change', () => setFrame({ roll: numIn('inRoll') }));
+$('rngFov').addEventListener('input', e => setFrame({ fovW: sliderToFov(+e.target.value) }));
+$('inFov').addEventListener('change', () => setFrame({ fovW: numIn('inFov') }));
+$('inShiftX').addEventListener('change', () => setFrame({ shiftX: numIn('inShiftX') }));
+$('inShiftY').addEventListener('change', () => setFrame({ shiftY: numIn('inShiftY') }));
+$('btnRollDiscs').addEventListener('click', () => setRollFixed(S.rollFree ? S.frame.roll : null));
 for (const b of document.querySelectorAll('#eastToggle button')) b.addEventListener('click', () => setEast(b.dataset.east));
 $('btnClearPins').addEventListener('click', () => {
+  if (busy()) return;
   if (!S.pins.length || !confirm(`Remove all ${S.pins.length} pins?`)) return;
   S.pins = []; S.selected = null; scheduleFit(); renderPanel(); view.draw();
 });
-$('btnCopy').addEventListener('click', () => { const o = output(); if (o) copyText(formatJSON(o), 'the allsky block'); });
+$('btnCopy').addEventListener('click', () => {
+  const o = output();
+  if (!o) return;
+  if (o.kind !== 'frame') { copyText(formatJSON(o), 'the calib block'); return; }
+  // framed: the derived fields and the calib block, as lines to paste into the entry
+  const t = formatJSON(Object.assign({}, outputFields(), { calib: o })).split('\n').slice(1, -1).map(l => l.replace(/^ {2}/, '')).join('\n');
+  copyText(t, 'ra, dec, fov, rotation and the calib block');
+});
 $('btnCopyEntry').addEventListener('click', () => { const o = outputEntry(); if (o) copyText(formatJSON(o), 'the full entry'); });
-function setNorth(v) { S.north = ((v % 360) + 360) % 360; invalidate(); renderPanel(); view.draw(); }
-function setEast(v) { S.east = v === 'right' ? 'right' : 'left'; invalidate(); renderPanel(); view.draw(); }
+function setNorth(v) { if (busy()) return; S.north = ((v % 360) + 360) % 360; invalidate(); renderPanel(); view.draw(); }
+function setEast(v) { if (busy()) return; S.east = v === 'right' ? 'right' : 'left'; invalidate(); renderPanel(); view.draw(); }
+
+/* ---------- setup (step 2) and frame (step 3) ---------- */
+// Photo type. All-sky keeps only star pins and finds its circle; switching between all-sky and a
+// framed type also sets the span default (10 min for a panorama, 0 for one exposure).
+function setType(kind) {
+  if (busy()) return false;
+  if (!TYPES.includes(kind)) return false;
+  if (kind === S.type) return true;
+  const wasAllsky = S.type === 'allsky';
+  S.type = kind; S.fit = null; S.preview = null;
+  if (kind === 'allsky') {
+    S.pins = S.pins.filter(q => q.hip !== undefined);
+    if (S.img && !S.circle) S.circle = detectCircle() || defaultCircle();
+  }
+  if (wasAllsky !== (kind === 'allsky')) $('inSpan').value = kind === 'allsky' ? '10' : '0';
+  if (kind !== 'sunmoon') S.rollFree = false;
+  S.skyKey = ''; invalidate(); scheduleFit(); renderPanel(); view.draw();
+  return true;
+}
+// Saved Imaging setups of the Equipment panel (same localStorage key), as the select's options.
+function reloadEquipment() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || '[]'); } catch (e) { list = []; }
+  const pos = v => Number.isFinite(v) && v > 0;
+  S.setups = (Array.isArray(list) ? list : []).filter(q => q && typeof q === 'object' && q.mode === 'imaging' && typeof q.name === 'string' && q.name
+    && ['telescopeFocal', 'aperture', 'accessory', 'sensorW', 'sensorH', 'crop'].every(k => pos(q[k])) && Number.isInteger(q.sensorW) && Number.isInteger(q.sensorH));
+  const sel = $('selEquip'), was = sel.value;
+  sel.innerHTML = '<option value="">Field of view: set it in step 3</option><option value="lens">Lens: focal length and crop factor</option>'
+    + S.setups.map((q, i) => { const r = eqComputeImaging(q); return `<option value="s${i}">${escapeHtml(q.name)} (${r.fovW.toFixed(1)}&deg; &times; ${r.fovH.toFixed(1)}&deg;)</option>`; }).join('');
+  sel.value = [...sel.options].some(o => o.value === was) ? was : '';
+}
+// Equipment: an Imaging setup ({ mode: 'imaging', telescopeFocal, accessory, sensorW, sensorH,
+// crop, ... }) or a field { fovW, fovH } in degrees. The larger field goes across the photo's
+// longer side (a portrait photo turns the sensor) and becomes the frame's field.
+function setEquipment(x) {
+  if (busy()) return null;
+  let w, h, name = '';
+  if (x && x.mode === 'imaging') { const r = eqComputeImaging(x); w = r.fovW; h = r.fovH; name = x.name || ''; }
+  else if (x && Number.isFinite(x.fovW) && x.fovW > 0) { w = x.fovW; h = Number.isFinite(x.fovH) && x.fovH > 0 ? x.fovH : x.fovW; }
+  if (!(w > 0) || !(h > 0)) return null;
+  S.equip = { name, fovL: Math.max(w, h), fovS: Math.min(w, h) };
+  S.frame.fov = Math.min(FOV_MAX, Math.max(FOV_MIN, S.equip.fovL));
+  invalidate(); if (S.pins.length && !fitOk()) scheduleFit(); renderPanel(); view.draw();
+  return { fovW: w, fovH: h, fovLong: S.equip.fovL };
+}
+// Lens mode: focal length and crop factor, the sensor in the photo's aspect (3:2 before a photo).
+function applyLens() {
+  if (busy()) return null;
+  const num = id => { const t = $(id).value.trim().replace(',', '.'); return t === '' ? NaN : Number(t); };
+  const focal = num('inFocal'), crop = num('inCrop');
+  const ok = { inFocal: focal > 0, inCrop: crop > 0 };
+  for (const id in ok) $(id).classList.toggle('bad', !ok[id] && $(id).value.trim() !== '');
+  if (!ok.inFocal || !ok.inCrop) return null;
+  const W = S.W || 3, H = S.H || 2;
+  return setEquipment({ mode: 'imaging', name: '', telescopeFocal: focal, aperture: 1, accessory: 1, sensorW: Math.max(W, H), sensorH: Math.min(W, H), crop });
+}
+// Object the frame is centred on (step 2); null when the name is not known.
+function setObject(name) {
+  if (busy()) return null;
+  const o = typeof name === 'string' ? findObject(name) : null;
+  if (!o) {
+    if (String(name || '').trim()) { $('infoObject').textContent = 'Not found: ' + name; $('infoObject').classList.add('err'); }
+    return null;
+  }
+  S.object = o;
+  S.frame.axis = null; S.frame.shiftX = 0; S.frame.shiftY = 0;
+  if (document.activeElement !== $('inObject')) $('inObject').value = o.name;
+  if (!fitOk() && S.pins.length) scheduleFit();
+  invalidate(); renderPanel(); view.draw();
+  return Object.assign({}, o);
+}
+// Step 3 controls: { roll (degrees, position angle of image-up), fovW (degrees across the photo's
+// longer side), shiftX, shiftY (degrees the prediction moves right / down) }; any subset.
+function setFrame(o) {
+  if (busy()) return Object.assign({}, S.frame);
+  o = o || {};
+  const F = S.frame;
+  if (Number.isFinite(o.roll)) F.roll = ((o.roll % 360) + 540) % 360 - 180;
+  if (Number.isFinite(o.fovW) && o.fovW > 0) F.fov = Math.min(FOV_MAX, Math.max(FOV_MIN, o.fovW));
+  if (Number.isFinite(o.shiftX)) F.shiftX = Math.max(-80, Math.min(80, o.shiftX));
+  if (Number.isFinite(o.shiftY)) F.shiftY = Math.max(-80, Math.min(80, o.shiftY));
+  // a Sun / Moon photo's rotation is the fit's fixed roll: a new value refits
+  const refit = S.pins.length && (!fitOk() || (S.type === 'sunmoon' && !S.rollFree && Number.isFinite(o.roll)));
+  invalidate(); if (refit) scheduleFit(); renderPanel(); view.draw();
+  return Object.assign({}, F);
+}
+// Sun / Moon photo: deg = the roll set by hand (the fit keeps it); null = from two discs.
+function setRollFixed(deg) {
+  if (busy()) return;
+  if (Number.isFinite(deg)) { S.rollFree = false; setFrame({ roll: deg }); }
+  else { S.rollFree = true; if (S.pins.length) scheduleFit(); renderPanel(); view.draw(); }
+}
+function setDragMode(m) { S.dragMode = m === 'frame' ? 'frame' : 'photo'; renderPanel(); }
 document.querySelectorAll('.section-toggle').forEach(btn => btn.addEventListener('click', () => {
   const sec = btn.closest('.sidebar-section'), c = !sec.classList.contains('collapsed');
   sec.classList.toggle('collapsed', c); btn.innerHTML = c ? '&#9654;' : '&#9660;';
 }));
+reloadEquipment();
+window.addEventListener('storage', e => { if (e.key === EQ_STORE_KEY) reloadEquipment(); });
 document.addEventListener('keydown', e => {
   if (e.target instanceof Element && e.target.matches('input, select, textarea')) return;
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected != null && pinOf(S.selected)) { e.preventDefault(); deletePin(S.selected); }
@@ -1091,25 +2231,40 @@ const api = {
   ready,
   lastCopied: '',
   reset() {
+    if (busy()) return false;
     clearTimeout(S.fitTimer);
     S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; $('btnDetect').disabled = true;
     $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
     S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null;
+    if (S.type !== 'allsky') $('inSpan').value = '10';
+    S.type = 'allsky'; S.object = null; S.equip = null; S.rollFree = false; S.dragMode = 'photo';
+    S.frame = { axis: null, roll: 0, fov: FRAME_FOV_DEFAULT, shiftX: 0, shiftY: 0 };
+    $('inObject').value = ''; $('selEquip').value = '';
     S.north = 0; S.east = 'left'; S.selected = null; S.hover = null; invalidate(); renderPanel(); view.draw();
   },
   loadImage: (src, name) => loadImage(src, name),
   setEntry, setFields, fields() { const f = fields(); return f; },
   detectCircle() { const c = detectCircle(); if (c) setCircle(c); return c; },
   setCircle, setNorth, setEast,
+  setType, setEquipment, setObject, setFrame, addDiscPin, setRollFixed, setDragMode, reloadEquipment,
+  deepStars: () => ensureDeep(),
+  startCal: () => { const c = startCal(); return c && JSON.parse(JSON.stringify(c)); },
+  outputFields,
   predicted: () => predicted().map(s => Object.assign({}, s, { px: s.px ? s.px.slice() : null })),
-  addPin, movePin, deletePin, pins: () => S.pins.map(q => ({ hip: q.hip, px: q.px.slice() })),
+  addPin, movePin, deletePin,
+  findStars: o => findStars(o), unpinnedStats,
+  peaks: async () => (await detectPeaks()).map(q => q.slice()),
+  pins: () => S.pins.map(q => { const o = q.hip !== undefined ? { hip: q.hip } : { obj: q.obj }; o.px = q.px.slice(); if (q.r_px > 0) o.r_px = q.r_px; return o; }),
   fitNow() { runFit(); return Promise.resolve(S.fit); },
   fit: () => S.fit,
   // photo px -> client (page) coordinates of the view, for driving the canvas with pointer events
   toClient(p) { const r = view.cv.getBoundingClientRect(), s = view.toScr(p); return [r.left + s[0], r.top + s[1]]; },
   fitView: () => view.fit(),
   pinsForFit, fitOpts, output, outputEntry,
-  get state() { return { circle: S.circle && S.circle.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag }; },
+  get state() {
+    return { circle: S.circle && S.circle.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag,
+      type: S.type, frame: Object.assign({}, S.frame), object: S.object && Object.assign({}, S.object), rollFree: S.rollFree };
+  },
 };
 window.ast = api;
 })();
