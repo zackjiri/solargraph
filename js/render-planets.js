@@ -20,65 +20,12 @@
 //
 // Time: the elements run in TT; Night Sky's clock is UT, so _moonJDE() (js/sky-astro.js, UT + deltaT).
 
-// [a (au), e, I, L, long.peri, long.node] at J2000 and per Julian century, degrees for angles
-const PLANET_ELEMENTS = {
-  mercury: [[0.38709927, 0.20563593, 7.00497902, 252.25032350, 77.45779628, 48.33076593],
-            [0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081]],
-  venus:   [[0.72333566, 0.00677672, 3.39467605, 181.97909950, 131.60246718, 76.67984255],
-            [0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418]],
-  earth:   [[1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0],
-            [0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0]],
-  mars:    [[1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891],
-            [0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343]],
-  jupiter: [[5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909],
-            [-0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106]],
-  saturn:  [[9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448],
-            [-0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794]],
-  uranus:  [[19.18916464, 0.04725744, 0.77263783, 313.23810451, 170.95427630, 74.01692503],
-            [-0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589]],
-  neptune: [[30.06992276, 0.00859048, 1.77004347, -55.12002969, 44.96476227, 131.78422574],
-            [0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664]],
-};
-// Display: name, dot colour (each planet's familiar naked-eye tint), magnitude law, radius (km,
-// for its silhouette in a transit)
-const PLANETS = [
-  { key: 'mercury', name: 'Mercury', radiusKm: 2439.7, color: '#cbbba6', mag: (r, R, fv) => -0.36 + 5 * Math.log10(r * R) + 0.027 * fv + 2.2e-13 * fv ** 6 },
-  { key: 'venus',   name: 'Venus',   radiusKm: 6051.8,   color: '#fff6dc', mag: (r, R, fv) => -4.34 + 5 * Math.log10(r * R) + 0.013 * fv + 4.2e-7 * fv ** 3 },
-  { key: 'mars',    name: 'Mars',    radiusKm: 3389.5,    color: '#ff8a5c', mag: (r, R, fv) => -1.51 + 5 * Math.log10(r * R) + 0.016 * fv },
-  { key: 'jupiter', name: 'Jupiter', radiusKm: 69911, color: '#f3dfb8', mag: (r, R, fv) => -9.25 + 5 * Math.log10(r * R) + 0.014 * fv },
-  { key: 'saturn',  name: 'Saturn',  radiusKm: 58232,  color: '#e9cf86', mag: (r, R, fv, ring) => -9.0 + 5 * Math.log10(r * R) + 0.044 * fv + ring },
-  { key: 'uranus',  name: 'Uranus',  radiusKm: 25362,  color: '#b8e6ea', faint: true, mag: (r, R, fv) => -7.15 + 5 * Math.log10(r * R) + 0.001 * fv },
-  { key: 'neptune', name: 'Neptune', radiusKm: 24622,  color: '#93b4ff', faint: true, mag: (r, R, fv) => -6.90 + 5 * Math.log10(r * R) + 0.001 * fv },
-];
+// PLANET_ELEMENTS and PLANETS: moved to js/sky-astro.js
 // Uranus and Neptune shown: Display "Only naked eye" (#btnNightSkyFaintPlanets, under Planets) off,
 // or always in Orbit (nightSkySubmode 'globe', render-nightsky.js), where that row is not shown.
 let showNightSkyFaintPlanets = false;
 function _planetShown(p) { return !p.faint || showNightSkyFaintPlanets || (typeof nightSkySubmode !== 'undefined' && nightSkySubmode === 'globe'); }
-const PLANET_LIGHT_DAYS_PER_AU = 0.0057755183;
-const PLANET_OBLIQUITY_J2000 = 23.43928 * Math.PI / 180;
-
-// Heliocentric ecliptic J2000 position [x, y, z] in au at JDE (TT).
-function _planetHelio(key, jde) {
-  const [e0, e1] = PLANET_ELEMENTS[key], T = (jde - 2451545.0) / 36525;
-  const el = e0.map((v, i) => v + e1[i] * T);
-  const [a, e] = el, d2r = Math.PI / 180;
-  const I = el[2] * d2r, Om = el[5] * d2r, w = (el[4] - el[5]) * d2r;
-  let M = ((el[3] - el[4]) % 360 + 540) % 360 - 180;   // -180..180
-  M *= d2r;
-  let E = M + e * Math.sin(M);
-  for (let k = 0; k < 15; k++) {
-    const dE = (M - (E - e * Math.sin(E))) / (1 - e * Math.cos(E));
-    E += dE;
-    if (Math.abs(dE) < 1e-12) break;
-  }
-  const xp = a * (Math.cos(E) - e), yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-  const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(Om), sO = Math.sin(Om), cI = Math.cos(I), sI = Math.sin(I);
-  return [
-    (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp,
-    (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp,
-    (sw * sI) * xp + (cw * sI) * yp,
-  ];
-}
+// PLANET_LIGHT_DAYS_PER_AU, PLANET_OBLIQUITY_J2000, _planetHelio: moved to js/sky-astro.js
 
 // Geocentric J2000 RA/Dec (deg), distances and magnitude of every planet at one UT instant.
 // Cached per instant: a redraw asks both the dots and the labels.

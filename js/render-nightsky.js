@@ -582,18 +582,18 @@ function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
 // from the zenith; the same margin and cap as a rectangular photo. The result may be below the
 // slider's 0.5x; _nightSkyPlanetZoomMin lets the zoom go that low while the photo is presented.
 function _nightSkyFitZoomForAllsky(frame) {
-  const D2R = Math.PI / 180, cal = frame.allsky;
+  const D2R = Math.PI / 180, cal = frame.calib;
   // without a calibration the whole sky down to the horizon (alt_edge 0)
   const altEdge = !cal ? 0 : Number.isFinite(cal.alt_edge) ? cal.alt_edge : _allskyEdgeMinAlt(cal);
   const thetaMax = (90 - altEdge) * D2R + (Math.PI / 2 - _nightSkyPlanet3D.camEl);
   return Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax));
 }
-// The edge of an all-sky photo's circle (allsky.circle_px, else the circle inscribed in the image) on the sky: 180 points every 2 degrees
+// The edge of an all-sky photo's circle (calib.circle_px, else the circle inscribed in the image) on the sky: 180 points every 2 degrees
 // round the circle, clockwise from image-up, as apparent {az, el} at the photo's own time_utc
 // (calibration only, no per-frame time shift). A point the projection can't map is null: the
 // outline has a gap there.
 function _nightSkyAllskyEdgeAzEl(frame) {
-  const cal = frame.allsky, out = [];
+  const cal = frame.calib, out = [];
   if (!cal) return out;   // not calibrated: no outline
   const [cx, cy, r] = _allskyCircle(cal);
   for (let k = 0; k < 180; k++) {
@@ -602,10 +602,53 @@ function _nightSkyAllskyEdgeAzEl(frame) {
   }
   return out;
 }
+// A rectangular photo with a calibration (calib kind 'frame', resolved for the photo's place and
+// moment): its outline is the image's edge on the sky (_allskyFrameOutline), as apparent {az, el} at
+// time_utc. The number of points is a multiple of the perimeter's step that also divides both sides
+// (so the four corners are outline points exactly), the step at most 1/200 of the perimeter.
+function _nightSkyFrameOutlineN(cal) {
+  const w = Math.round(cal.image_size[0]), h = Math.round(cal.image_size[1]), per = 2 * (w + h);
+  if (w !== cal.image_size[0] || h !== cal.image_size[1] || !(w > 0 && h > 0)) return 400;
+  let a = w, b = h;
+  while (b) [a, b] = [b, a % b];
+  let step = 1;
+  for (let d = 1; d <= a; d++) if (a % d === 0 && d <= per / 200) step = d;
+  return per / step;
+}
+// The calibrated outline of the presented photo, apparent {az, el} (null where unmapped): the all-sky
+// circle (_nightSkyAllskyEdgeAzEl) or the framed photo's edge (computed once when it is presented);
+// none without a calibration.
+function _nightSkyCalibOutlineAzEl(frame) {
+  if (!_nightSkyFrameCalibrated(frame)) return [];
+  return frame.kind === 'allsky' ? _nightSkyAllskyEdgeAzEl(frame) : frame.outline;
+}
+// Calibrated framed photo: the zoom that lands the outline point farthest from the camera's own
+// direction (after its altitude clamp) at the same reserve and cap as an uncalibrated photo. May be
+// below the slider's 0.5x for a very wide frame (zoomMin, as for an all-sky photo).
+function _nightSkyFitZoomForCalibFrame(outline) {
+  const D2R = Math.PI / 180, P = _nightSkyPlanet3D;
+  const cam = _skyDomeUnitVec(P.camAz / D2R, P.camEl / D2R);
+  let thetaMax = 0;
+  for (const p of outline) {
+    if (!p) continue;
+    const v = _skyDomeUnitVec(p.az, p.el);
+    thetaMax = Math.max(thetaMax, Math.acos(Math.max(-1, Math.min(1, _sd3Dot(cam, v)))));
+  }
+  return thetaMax > 0 ? Math.min(NIGHTSKY_FRAME_ZOOM_CAP, NIGHTSKY_FRAME_ZOOM_MARGIN / (_NIGHTSKY_PLANET_BASE_FOCAL * thetaMax)) : NIGHTSKY_FRAME_ZOOM_CAP;
+}
+// The presented photo has a calibration (all-sky or framed): its outline, the overlay, the picker,
+// the search and the object chip follow from it.
+function _nightSkyFrameCalibrated(f) { return !!(f && f.calib); }
+// The picker, the search and the object chip stay available for an all-sky photo (calibrated or not,
+// its framing is the whole sky) and for a calibrated framed photo; an uncalibrated framed photo
+// keeps its own centring.
+function _nightSkyFramePickable(f) { return !!f && (f.kind === 'allsky' || !!f.calib); }
 let _nightSkyActiveFrame = null;   // null, or the presented Catalog photo:
   // common: {kind, thumbnail, full, video, videoStartJD, videoEndJD, videoDuration, videoMount, refTime, id, trails}
-  // kind 'rect':   + raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg
-  // kind 'allsky': + allsky (the entry's calibration block), latDeg (signed), zoomMin (its fit zoom)
+  // kind 'rect':   + raDeg, decDeg, fovWDeg, fovHDeg, rotationDeg; with a calibration (calib kind
+  //                'frame') also calib (resolved copy, _allskyResolve), latDeg (signed), outline
+  //                (_nightSkyCalibOutlineAzEl) and zoomMin, the geometry then coming from calib alone
+  // kind 'allsky': + calib (the entry's calibration block), latDeg (signed), zoomMin (its fit zoom)
 
 // ─── Video playback window ──────────────────────────────────────────────────────────────────────
 // A catalog entry whose video carries its real capture interval ("video_start_utc"/"video_end_utc",
@@ -729,14 +772,29 @@ function _nightSkyApplyCatalogTile(entry) {
 
   // All-sky photo: no RA/Dec or field of view, the zenith follows from the time and the place.
   // An all_sky entry without a calibration block (not calibrated yet) is still an all-sky frame:
-  // allsky is null, so it has no outline and no overlay.
+  // calib is null, so it has no outline and no overlay.
   const isAllsky = entry.category === 'all_sky';
-  const allsky = isAllsky && entry.allsky ? entry.allsky : null;
+  const calib = isAllsky && entry.calib ? entry.calib : null;
   const raDeg = isAllsky ? 0 : _nightSkyParseRaHours(entry.ra) * 15;
   const decDeg = isAllsky ? 0 : _nightSkyParseDecDeg(entry.dec);
   const geometry = isAllsky
-    ? { kind: 'allsky', allsky, latDeg: LAT * hemisphere }
+    ? { kind: 'allsky', calib, latDeg: LAT * hemisphere }
     : { kind: 'rect', raDeg, decDeg, fovWDeg: entry.fov_w_deg, fovHDeg: entry.fov_h_deg, rotationDeg: entry.rotation_deg || 0 };
+  // A rectangular photo with a framed calibration: resolved once for its own place and moment (a new
+  // object, the catalog entry keeps only its public fields); its outline, camera and zoom come from it.
+  // A malformed block is dropped with a warning: the photo then presents as an uncalibrated frame.
+  if (!isAllsky && entry.calib && entry.calib.kind === 'frame') {
+    try {
+      const site = { year: nightSkyYear, month: nightSkyMonth, day: nightSkyDay, hourUT: nightSkyHourUT, latDeg: LAT * hemisphere, lonDegEast: LONG * lonHemisphere };
+      const resolved = _allskyResolve(entry.calib, site);
+      const outline = _allskyFrameOutline(resolved, _nightSkyFrameOutlineN(resolved));
+      geometry.calib = resolved;
+      geometry.latDeg = LAT * hemisphere;
+      geometry.outline = outline;
+    } catch (err) {
+      console.warn('Catalog entry ' + entry.id + ': frame calibration unusable, shown without it', err);
+    }
+  }
   _nightSkyActiveFrame = {
     ...geometry,
     thumbnail: entry.thumbnail, full: entry.full, video: entry.video || null,
@@ -766,6 +824,14 @@ function _nightSkyApplyCatalogTile(entry) {
     // so setNightSkyPlanetZoom's clamp lets it below 0.5x
     _nightSkyPlanet3D.camEl = Math.PI / 2 - 0.02;
     const z = _nightSkyFitZoomForAllsky(_nightSkyActiveFrame);
+    _nightSkyActiveFrame.zoomMin = z;
+    setNightSkyPlanetZoom(z);
+  } else if (_nightSkyFrameCalibrated(_nightSkyActiveFrame)) {
+    // on the calibrated axis (same clamp as the drag handler), the outline fitted in view
+    const cal = _nightSkyActiveFrame.calib;
+    _nightSkyPlanet3D.camAz = cal._axis_az * Math.PI / 180;
+    _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, cal._axis_el * Math.PI / 180));
+    const z = _nightSkyFitZoomForCalibFrame(_nightSkyActiveFrame.outline);
     _nightSkyActiveFrame.zoomMin = z;
     setNightSkyPlanetZoom(z);
   } else {
@@ -2861,12 +2927,12 @@ _nightSkyUpdatePlanetCamera();
 const NIGHTSKY_PLANET_ZOOM_MIN = 0.5, NIGHTSKY_PLANET_ZOOM_MAX = 20;
 // anchor (optional, the wheel and the pinch): a canvas point in CSS px whose sky direction stays
 // under it through the zoom, instead of the view's centre.
-// The zoom's lower limit: 0.5x, or an all-sky photo's own fit zoom while it is presented (the whole
-// sky down to the photo's edge needs less than 0.5x). The slider stays at 0.5x-20x and shows 0.5x
+// The zoom's lower limit: 0.5x, or a calibrated photo's own fit zoom while it is presented (the whole
+// sky down to an all-sky photo's edge, or a very wide framed photo, needs less than 0.5x). The slider stays at 0.5x-20x and shows 0.5x
 // below that; the wheel, the pinch and the slider continue from the real value.
 function _nightSkyPlanetZoomMin() {
   const f = _nightSkyActiveFrame;
-  return f && f.kind === 'allsky' && Number.isFinite(f.zoomMin) ? Math.min(NIGHTSKY_PLANET_ZOOM_MIN, f.zoomMin) : NIGHTSKY_PLANET_ZOOM_MIN;
+  return f && Number.isFinite(f.zoomMin) ? Math.min(NIGHTSKY_PLANET_ZOOM_MIN, f.zoomMin) : NIGHTSKY_PLANET_ZOOM_MIN;
 }
 function setNightSkyPlanetZoom(z, anchor) {
   if (!Number.isFinite(z)) return;   // keep the current zoom
@@ -3001,10 +3067,11 @@ function _nightSkyUpdatePresentationLock() {
   // Play needs the video's duration for its speed; until the metadata is in, only the strip moves
   document.getElementById('btnNightSkyPlay').classList.toggle('nightsky-play-waiting', !!win && !win.duration);
   _nightSkyUpdateSpeedBoxLabel();
-  // The picker and the search would fight a rectangular photo's own centring - unavailable while
-  // one is presented. An all-sky photo has no framing to keep (the overlay follows the camera and
-  // the time stays locked), so there they name the objects in the photo and turn the view to them.
-  const blocked = (presenting && _nightSkyActiveFrame.kind !== 'allsky') || exposing;
+  // The picker and the search would fight an uncalibrated photo's own centring - unavailable while
+  // one is presented. An all-sky photo or a calibrated framed photo has no framing to keep (its outline and
+  // overlay stay on the sky as the camera turns, the time stays locked), so there they name the
+  // objects in the photo and turn the view to them.
+  const blocked = (presenting && !_nightSkyFramePickable(_nightSkyActiveFrame)) || exposing;
   const picker = document.getElementById('btnNightSkyPicker');
   picker.disabled = blocked;
   picker.title = exposing ? 'Picker unavailable during a star-trail exposure'
@@ -3578,10 +3645,10 @@ function _nightSkyDrawFrameSegment(ctx, layout, ra0, dec0, ra1, dec1, color) {
   ctx.lineTo(p1.x, p1.y);
   ctx.stroke();
 }
-// An all-sky photo's outline in screen space: the 180 edge points projected, null where the edge
-// point is unmapped or the camera can't see it (the curve breaks there, never bridging the gap).
-function _nightSkyAllskyOutlineScreen(layout) {
-  return _nightSkyAllskyEdgeAzEl(_nightSkyActiveFrame).map((p) => {
+// A calibrated photo's outline in screen space (_nightSkyCalibOutlineAzEl projected), null where the
+// edge point is unmapped or the camera can't see it (the curve breaks there, never bridging the gap).
+function _nightSkyCalibOutlineScreen(layout) {
+  return _nightSkyCalibOutlineAzEl(_nightSkyActiveFrame).map((p) => {
     if (!p) return null;
     const q = _nightSkyPlanetProject(layout, p.az, p.el);
     return q.visible ? q : null;
@@ -3590,11 +3657,12 @@ function _nightSkyAllskyOutlineScreen(layout) {
 function _nightSkyDrawCatalogFrame(ctx, layout) {
   if (!_nightSkyActiveFrame) return;
   const f = _nightSkyActiveFrame;
-  if (f.kind === 'allsky') {
-    if (!f.allsky) return;   // not calibrated: nothing to outline
-    // The photo's circle edge as one closed curve, in the brackets' own line (colour, width, the
+  if (f.kind === 'rect' && f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);   // star trails photo, under the frame
+  if (f.kind === 'allsky' || _nightSkyFrameCalibrated(f)) {
+    if (!f.calib) return;   // not calibrated: nothing to outline
+    // The photo's calibrated edge as one closed curve, in the brackets' own line (colour, width, the
     // projection's rim fade); each unbroken run is one path, at the faintest alpha along it.
-    const pts = _nightSkyAllskyOutlineScreen(layout), n = pts.length;
+    const pts = _nightSkyCalibOutlineScreen(layout), n = pts.length;
     const start = pts.indexOf(null);
     const closed = start === -1;
     const baseAlpha = _sd3AlphaOf(NIGHTSKY_FRAME_COLOR);
@@ -3621,7 +3689,6 @@ function _nightSkyDrawCatalogFrame(ctx, layout) {
     ctx.restore();
     return;
   }
-  if (f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);   // star trails photo, under the brackets
   const { corners, arms } = _nightSkyFrameCorners(f.raDeg, f.decDeg, f.fovWDeg, f.fovHDeg, f.rotationDeg);
   ctx.save();
   ctx.lineWidth = 2;
@@ -3680,13 +3747,14 @@ function _nightSkyThumbSides(bx0, by0, bx1, by1, w, h) {
     { left: hCenter,     top: by0 - G - S, room: by0,     fits: by0 - G - S >= 0 },
   ];
 }
-// All-sky photo: a side of the outline's bounding box as for a rectangular photo; when none has
-// room, a free corner of the canvas (bottom-right, bottom-left, top-right, top-left; the first
-// whose box touches neither the outline nor the projected zenith), never the middle, which would
-// cover the zenith; failing that, the side with the most room (possibly clipped by the canvas edge).
-function _nightSkyAllskyThumbPlace(layout, w, h) {
-  const pts = _nightSkyAllskyOutlineScreen(layout), vis = pts.filter(Boolean);
-  const calibrated = !!_nightSkyActiveFrame.allsky;
+// All-sky or calibrated framed photo: a side of the outline's bounding box as for a rectangular
+// photo; when none has room, a free corner of the canvas (bottom-right, bottom-left, top-right,
+// top-left; the first whose box touches neither the outline nor, for an all-sky photo, the projected
+// zenith), never the middle, which would cover the zenith or the framed photo; failing that, the
+// side with the most room (possibly clipped by the canvas edge).
+function _nightSkyOutlineThumbPlace(layout, w, h) {
+  const pts = _nightSkyCalibOutlineScreen(layout), vis = pts.filter(Boolean);
+  const calibrated = !!_nightSkyActiveFrame.calib;
   if (calibrated && !vis.length) return null;
   // not calibrated (no outline): the free corners only
   let sides = [];
@@ -3700,7 +3768,7 @@ function _nightSkyAllskyThumbPlace(layout, w, h) {
   const S = NIGHTSKY_FRAME_THUMB_SIZE, n = pts.length;
   const segs = [];
   for (let i = 0; i < n; i++) if (pts[i] && pts[(i + 1) % n]) segs.push([pts[i], pts[(i + 1) % n]]);
-  const z = _nightSkyPlanetProject(layout, 0, 90);
+  const z = _nightSkyActiveFrame.kind === 'allsky' ? _nightSkyPlanetProject(layout, 0, 90) : { visible: false };
   const corners = [[w - S, h - S], [0, h - S], [w - S, 0], [0, 0]];
   for (const [left, top] of corners) {
     if (z.visible && z.x >= left && z.x <= left + S && z.y >= top && z.y <= top + S) continue;
@@ -3713,8 +3781,14 @@ function _nightSkyUpdateFrameThumb(layout, w, h) {
   const el = document.getElementById('nightSkyFrameThumb');
   const f = _nightSkyActiveFrame;
   if (!f) { el.style.display = 'none'; return; }
-  if (f.kind === 'allsky') {
-    const place = _nightSkyAllskyThumbPlace(layout, w, h);
+  if (f.kind === 'allsky' || _nightSkyFrameCalibrated(f)) {
+    // the photo laid over the sky (render-nightsky-allsky.js) takes the thumbnail's place; switching
+    // the overlay off brings it back, and with it the click to the full photo
+    if (typeof _nsAllsky !== 'undefined' && _nsAllsky.on && _nsAllskyFrame() === f && f !== _nsAllskyFailedFrame) {
+      el.style.display = 'none';
+      return;
+    }
+    const place = _nightSkyOutlineThumbPlace(layout, w, h);
     if (!place) { el.style.display = 'none'; return; }
     if (el.src.indexOf(f.thumbnail) === -1) el.src = f.thumbnail;   // avoid re-decoding on every redraw
     el.style.left = place.left + 'px';

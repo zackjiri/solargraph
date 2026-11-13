@@ -301,11 +301,7 @@ function effectiveLat() {
 
 // Shared astronomy (Julian Date, deltaT, Meeus Sun, refraction): moved to js/sky-astro.js
 
-// Semi-diameter of the Sun, degrees: 959.63" at 1 AU (Meeus ch. 55).
-function _skySunSemiDiamDeg(year, month, day, hourUT) {
-  const rAU = _skySunEclipticOfDate(_moonJDE(year, month, day, hourUT)).dist / 149597870.7;
-  return 959.63 / 3600 / rAU;
-}
+// _skySunSemiDiamDeg: moved to js/sky-astro.js
 // Rise and set, the standard (almanac) rule for the whole app: a body is up while its UPPER LIMB,
 // refracted, is above the horizon. The refraction is taken at the limb itself (the limb sits on the
 // apparent horizon at true altitude SKY_HORIZON_TRUE_ALT = -0.575 deg, 34.4'), so the centre's true

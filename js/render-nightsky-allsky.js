@@ -1,7 +1,8 @@
-// Overlay of a presented all-sky photo over the Planetarium sky (Catalog entries with an `allsky`
-// block). A round button in the Planetarium's button row (#btnNightSkyAllskyOverlay), shown only
-// while such a photo is presented, turns it on; the opacity slider beside it
-// (#nightSkyAllskyOpacity, 0 to 1) shows while it is on. Both values stay for as long as the page
+// Overlay of a presented calibrated photo over the Planetarium sky (Catalog entries with a `calib`
+// block: an all-sky photo, or a framed one of kind 'frame', resolved when presented). A round
+// button in the Planetarium's button row (#btnNightSkyAllskyOverlay), shown only while such a photo
+// is presented, turns it on; the opacity slider beside it (#nightSkyAllskyOpacity, 0 to 1) shows
+// while it is on. Both values stay for as long as the page
 // is open, across presentations.
 //
 // Drawing (_nsAllskyDraw, called by _nightSkyDrawPlanetarium above the sky background and below
@@ -10,8 +11,8 @@
 // at the photo's time_utc, and _allskySkyToPhoto turns it into a photo pixel with the time shift of
 // the frame that point was shot in, so the stars line up and the landscape may move by up to ~1°.
 // That mapping is computed on a grid of nodes NS_ALLSKY_GRID output pixels apart and interpolated
-// between them (it changes slowly); the photo is sampled bilinearly. Outside circle_px the overlay
-// is transparent. The result goes to an offscreen canvas at the canvas's own resolution at rest,
+// between them (it changes slowly); the photo is sampled bilinearly. Outside circle_px (all-sky)
+// or the image rectangle (framed) the overlay is transparent, with a one-pixel soft edge. The result goes to an offscreen canvas at the canvas's own resolution at rest,
 // NS_ALLSKY_MOVING_RES of it while the view is dragged, pinched or zoomed (_nsAllskyMove, called by
 // the Planetarium's interaction), and is kept until the view changes, so the opacity slider and
 // other redraws only blit it.
@@ -28,10 +29,10 @@ let _nsAllskyOut = null;     // { key, canvas }: the last rendered overlay
 let _nsAllskyRestTimer = 0;
 let _nsAllskyFailedFrame = null;   // the presented frame whose photo could not be loaded (a new presentation clears it)
 
-// The presented frame when it is an all-sky photo with a calibration, else null.
+// The presented frame when it has a calibration (all-sky or framed), else null.
 function _nsAllskyFrame() {
   const f = _nightSkyActiveFrame;
-  return f && f.kind === 'allsky' && f.allsky ? f : null;
+  return _nightSkyFrameCalibrated(f) ? f : null;
 }
 function _nsAllskyShown() {
   return nightSkyActive && nightSkyTopView === 'visualization' && nightSkySubmode === 'planetarium' && !!_nsAllskyFrame();
@@ -76,8 +77,8 @@ function _nsAllskyLoad(src) {
 }
 // The image the overlay is drawn from: the calibration's own `image` (the photo the pins were set
 // on, e.g. a crop without the print frame) or, without it, the entry's `full`.
-function _nsAllskySrc(f) { return (f.allsky && f.allsky.image) || f.full; }
-// Resolves (true) when the presented photo's pixels are in; false without an all-sky photo.
+function _nsAllskySrc(f) { return (f.calib && f.calib.image) || f.full; }
+// Resolves (true) when the presented photo's pixels are in; false without a calibrated photo.
 function _nsAllskyPhotoReady() {
   const f = _nsAllskyFrame();
   return f ? _nsAllskyLoad(_nsAllskySrc(f)).promise : Promise.resolve(false);
@@ -97,19 +98,22 @@ function _nsAllskyMove() {
 
 // Renders the overlay for a w x h (CSS px) canvas into an offscreen canvas of W x H pixels.
 function _nsAllskyRender(f, ph, w, h, W, H) {
-  if (ph.calFor !== f.allsky) { ph.cal = _allskyScaled(f.allsky, ph.w, ph.h); ph.calFor = f.allsky; }
-  const cal = ph.cal;
+  if (ph.calFor !== f.calib) { ph.cal = _allskyScaled(f.calib, ph.w, ph.h); ph.calFor = f.calib; }
+  const cal = ph.cal, rect = cal.kind === 'frame';
   const circle = cal.circle_px || [ph.w / 2, ph.h / 2, Math.min(ph.w, ph.h) / 2];
-  const calOpen = Object.assign({}, cal, { circle_px: null });   // the circle is tested per pixel
   const lat = f.latDeg, layout = _nightSkyPlanetLayout(w, h);
   const minEl = (Number.isFinite(cal.alt_edge) ? cal.alt_edge : -90) - 15;
+  // the circle or the rectangle is tested per pixel; a framed photo's nodes farther than one image
+  // size off it are dropped (near 90 deg from the axis a rectilinear image runs off to infinity)
+  const far = (p) => rect && (p[0] < -ph.w || p[0] > 2 * ph.w || p[1] < -ph.h || p[1] > 2 * ph.h);
   const S = NS_ALLSKY_GRID, sx = w / W, sy = h / H;
   const GW = Math.ceil((W - 1) / S) + 1, GH = Math.ceil((H - 1) / S) + 1;
   const GX = new Float64Array(GW * GH), GY = new Float64Array(GW * GH);
   for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
     const n = j * GW + i;
     const hit = _nightSkyPlanetPixelToAzEl(layout, (i * S + 0.5) * sx, (j * S + 0.5) * sy);
-    const p = hit && hit.el >= minEl ? _allskySkyToPhoto(calOpen, hit.az, hit.el, lat) : null;
+    let p = hit && hit.el >= minEl ? _allskySkyToPhoto(cal, hit.az, hit.el, lat, true) : null;
+    if (p && far(p)) p = null;
     GX[n] = p ? p[0] : NaN; GY[n] = p ? p[1] : NaN;
   }
 
@@ -117,7 +121,7 @@ function _nsAllskyRender(f, ph, w, h, W, H) {
   const src = ph.data, pw = ph.w, rowB = pw * 4;
   const ccx = circle[0], ccy = circle[1], cr = circle[2];
   const rOut2 = (cr + 0.5) * (cr + 0.5), rIn2 = Math.max(0, cr - 0.5) * Math.max(0, cr - 0.5);
-  const uMax = pw - 1 - 1e-6, vMax = ph.h - 1 - 1e-6;
+  const ph2 = ph.h, uMax = pw - 1 - 1e-6, vMax = ph2 - 1 - 1e-6;
   for (let j = 0; j < H; j++) {
     const gj = Math.min(GH - 2, (j / S) | 0), fy = (j - gj * S) / S, row = j * W;
     for (let gi = 0; gi < GW - 1; gi++) {
@@ -130,9 +134,16 @@ function _nsAllskyRender(f, ph, w, h, W, H) {
       const i0 = gi * S, i1 = gi === GW - 2 ? W : Math.min(W, i0 + S);
       let u = u0, v = v0;
       for (let i = i0; i < i1; i++, u += du, v += dv) {
-        const dx = u - ccx, dy = v - ccy, d2 = dx * dx + dy * dy;
-        if (d2 >= rOut2) continue;
-        const al = d2 <= rIn2 ? 255 : Math.round((cr + 0.5 - Math.sqrt(d2)) * 255);
+        let al;
+        if (rect) {   // distance inside the nearest image edge
+          const e = Math.min(u, pw - u, v, ph2 - v);
+          if (e <= -0.5) continue;
+          al = e >= 0.5 ? 255 : Math.round((e + 0.5) * 255);
+        } else {
+          const dx = u - ccx, dy = v - ccy, d2 = dx * dx + dy * dy;
+          if (d2 >= rOut2) continue;
+          al = d2 <= rIn2 ? 255 : Math.round((cr + 0.5 - Math.sqrt(d2)) * 255);
+        }
         let x = u - 0.5, y = v - 0.5;   // pixel centres sit at half-integer coordinates
         x = x < 0 ? 0 : x > uMax ? uMax : x;
         y = y < 0 ? 0 : y > vMax ? vMax : y;
@@ -154,7 +165,7 @@ function _nsAllskyRender(f, ph, w, h, W, H) {
 }
 
 // Draws the overlay on the Planetarium canvas (ctx in CSS px, w x h) when it is on and the
-// presented all-sky photo is loaded; moving: the lower resolution.
+// presented calibrated photo is loaded; moving: the lower resolution.
 function _nsAllskyDraw(ctx, w, h, moving) {
   const f = _nsAllskyFrame();
   if (!_nsAllsky.on || !f || f === _nsAllskyFailedFrame) return;
@@ -165,9 +176,9 @@ function _nsAllskyDraw(ctx, w, h, moving) {
   const W = Math.max(2, Math.round(w * res)), H = Math.max(2, Math.round(h * res));
   const P = _nightSkyPlanet3D;
   const key = [_nsAllskySrc(f), f.id, f.latDeg, ph.w, ph.h, w, h, W, H, P.FOCAL, P.FWD, P.UP, P.RIGHT].join('|');
-  if (!_nsAllskyOut || _nsAllskyOut.key !== key || f.allsky !== _nsAllskyOut.cal) {
+  if (!_nsAllskyOut || _nsAllskyOut.key !== key || f.calib !== _nsAllskyOut.cal) {
     const canvas = _nsAllskyRender(f, ph, w, h, W, H);
-    _nsAllskyOut = { key, canvas, cal: f.allsky };
+    _nsAllskyOut = { key, canvas, cal: f.calib };
   }
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, _nsAllsky.opacity));
@@ -177,7 +188,7 @@ function _nsAllskyDraw(ctx, w, h, moving) {
   _nsAllskyStats.blits++;
 }
 
-// The button and the slider: the button while an all-sky photo is presented in the Planetarium
+// The button and the slider: the button while a calibrated photo is presented in the Planetarium
 // (one place left of the search), the slider beside it while the overlay is on.
 function _nsAllskySyncUI() {
   const shown = _nsAllskyShown();

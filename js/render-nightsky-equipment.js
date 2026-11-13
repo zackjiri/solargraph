@@ -572,14 +572,14 @@ function _nsEqViewOn() {
     && document.getElementById('nightSkyCanvas').style.display !== 'none';
 }
 // The object the picker or the search locked on (render-search.js), its chip above the setups':
-// Planetarium and Orbit EARTH / MOON, the view on screen (no rectangular Catalog photo; an all-sky
-// photo keeps it); a plain point has none
+// Planetarium and Orbit EARTH / MOON, the view on screen (no uncalibrated framed Catalog photo; an
+// all-sky photo or a calibrated framed one keeps it); a plain point has none
 function _nsEqPickLock() {
   const L = _nightSkyPicker.lock, cv = document.getElementById('nightSkyCanvas');
   const sub = nightSkySubmode === 'planetarium' || (nightSkySubmode === 'globe' && _nsGlobe.body !== 'sun');
   const f = _nightSkyActiveFrame;
   return L && L.label && _nightSkyPicker.active && nightSkyActive && nightSkyTopView === 'visualization' && sub
-    && (!f || f.kind === 'allsky') && cv.style.display !== 'none' ? L : null;
+    && (!f || _nightSkyFramePickable(f)) && cv.style.display !== 'none' ? L : null;
 }
 // Its text: the name and the search's type (a planet's magnitude and distance move with the time)
 function _nsEqPickText(L) {
