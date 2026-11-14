@@ -224,8 +224,8 @@
   "fov_w_deg": 48.5,
   "fov_h_deg": 30.5,
   "rotation_deg": -37.9,
-  "thumbnail": "img/astro/A2021-09-03_TODO_T.jpg",
-  "full": "img/astro/A2021-09-03_TODO.jpg",
+  "thumbnail": "img/astro/A2021-09-03_ORI01_T.jpg",
+  "full": "img/astro/A2021-09-03_ORI01.jpg",
   "calib": {
     "kind": "frame",
     "image": "img/astro/A2021-09-03_ORI01.jpg",
