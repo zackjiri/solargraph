@@ -542,6 +542,36 @@ function _nightSkyRenderCatalogGrid() {
     });
     grid.appendChild(tile);
   }
+  if (_nightSkyCatalogTypeFilter === 'all') grid.appendChild(_nightSkyCalibTile());
+}
+// The last tile under ALL: not a photo but the way to the calibration page (allsky_tool.html, opened
+// in a new tab like the Warp tool). Same frame as a photo tile, its picture NIGHTSKY_CALIB_TILE_IMG;
+// one label "PHOTO CALIBRATION" in the date line, the caption line kept empty so the grid rows stay
+// level. Without the picture the square stays the panel's dark grey.
+const NIGHTSKY_CALIB_TILE_IMG = 'img/astro/photo_calib_T.jpg';
+function _nightSkyCalibTile() {
+  const tile = document.createElement('div');
+  tile.className = 'catalog-tile clickable catalog-tile-calib';
+  tile.title = 'Open Photo calibration: calibrate your own photo so it can be laid over the sky';
+  const thumb = document.createElement('img');
+  thumb.className = 'catalog-tile-thumb';
+  thumb.alt = 'Photo calibration';
+  thumb.addEventListener('error', () => {   // no picture yet: an empty dark square, no broken-image mark
+    thumb.classList.add('missing');
+    thumb.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  }, { once: true });
+  thumb.src = NIGHTSKY_CALIB_TILE_IMG;
+  tile.appendChild(thumb);
+  const label = document.createElement('div');
+  label.className = 'catalog-tile-date';
+  label.textContent = 'PHOTO CALIBRATION';
+  tile.appendChild(label);
+  const caption = document.createElement('div');
+  caption.className = 'catalog-tile-caption';
+  caption.textContent = '\u00a0';
+  tile.appendChild(caption);
+  tile.addEventListener('click', () => window.open('allsky_tool.html', '_blank', 'noopener'));
+  return tile;
 }
 document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (e) => {
   const filterEl = document.getElementById('nightSkyCatalogTypeFilter');
