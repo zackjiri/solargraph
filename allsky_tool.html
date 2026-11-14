@@ -223,8 +223,8 @@
       <div class="field">
         <span class="field-label">Photo type</span>
         <div class="pill" id="typeToggle" role="group" aria-label="Photo type">
-          <button data-type="allsky" class="on" title="A stitched all-sky photo: the whole sky in a circle, zenith inside">All-sky</button>
-          <button data-type="frame" title="Any other photo of the night sky: a rectangle with stars, planets or deep sky objects">Frame</button>
+          <button data-type="allsky" title="A stitched all-sky photo: the whole sky in a circle, zenith inside">All-sky</button>
+          <button data-type="frame" class="on" title="Any other photo of the night sky: a rectangle with stars, planets or deep sky objects">Frame</button>
           <button data-type="sunmoon" title="A photo of the Sun or the Moon (eclipse, transit): disc pins, rotation set by hand">Sun / Moon</button>
         </div>
       </div>
@@ -248,7 +248,7 @@
         <div class="field"><label class="field-label" for="inLon">Longitude</label><input type="text" id="inLon" placeholder="16.6" title="Decimal degrees, east positive"></div>
       </div>
       <div class="row halves">
-        <div class="field"><label class="field-label" for="inSpan">Span min</label><input type="text" id="inSpan" value="10" title="How long shooting all frames of the panorama took, in minutes; each pin may shift in time by up to half of it. 0 = one exposure, no time shifts"></div>
+        <div class="field"><label class="field-label" for="inSpan">Span min</label><input type="text" id="inSpan" value="0" title="How long shooting all frames of the panorama took, in minutes; each pin may shift in time by up to half of it. 0 = one exposure, no time shifts"></div>
         <div class="field"><label class="field-label" for="inTz">Time zone</label><input type="text" id="inTz" value="0" title="Hours from UTC, only copied into the full entry"></div>
       </div>
       <div class="field frame-only">
@@ -270,9 +270,11 @@
       <div class="slider frame-only" id="fovRow" title="Field of view across the photo's longer side, degrees">
         <span>Field</span><input type="range" id="rngFov" min="0" max="1000" step="1" value="500"><input type="text" id="inFov" value="50.0" aria-label="Field of view in degrees">
       </div>
-      <div class="row halves frame-only" id="shiftRow">
-        <div class="field"><label class="field-label" for="inShiftX">Shift x&deg;</label><input type="text" id="inShiftX" value="0" title="Moves the prediction to the right (+) or left (-) on the photo, degrees"></div>
-        <div class="field"><label class="field-label" for="inShiftY">Shift y&deg;</label><input type="text" id="inShiftY" value="0" title="Moves the prediction down (+) or up (-) on the photo, degrees"></div>
+      <div class="slider frame-only" id="shiftXRow" title="Moves the prediction to the right (+) or left (-) on the photo, degrees; the range reaches the photo's edge for the field set above">
+        <span>Shift x</span><input type="range" id="rngShiftX" min="-25" max="25" step="0.01" value="0"><input type="text" id="inShiftX" value="0.00" aria-label="Shift right in degrees">
+      </div>
+      <div class="slider frame-only" id="shiftYRow" title="Moves the prediction down (+) or up (-) on the photo, degrees; the range reaches the photo's edge for the field set above">
+        <span>Shift y</span><input type="range" id="rngShiftY" min="-25" max="25" step="0.01" value="0"><input type="text" id="inShiftY" value="0.00" aria-label="Shift down in degrees">
       </div>
       <div class="field frame-only">
         <span class="field-label">Dragging the photo moves</span>
@@ -338,8 +340,8 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug638"></script>
-<script src="js/allsky-model.js?perfdebug638"></script>
+<script src="js/sky-astro.js?perfdebug641"></script>
+<script src="js/allsky-model.js?perfdebug641"></script>
 <script>
 // Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
 // planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
@@ -386,7 +388,7 @@ const S = {
   img: null, small: null, smallK: 1, name: '', W: 0, H: 0,
   circle: null,                  // [cx, cy, r] in photo px
   north: 0, east: 'left',        // initial guess, used until a fit is ok
-  type: 'allsky',                // 'allsky' | 'frame' | 'sunmoon'
+  type: 'frame',                 // 'allsky' | 'frame' | 'sunmoon'
   pins: [],                      // [{ hip, px: [x, y] }] or [{ obj, px, r_px (discs) }]; auto: placed by Find stars
   fit: null,                     // last _allskyFit result (ok or not)
   preview: null,                 // fit without time shifts, drawn while the real fit lacks pins
@@ -599,6 +601,15 @@ function baseAxis() {
   return [q.ra, q.dec];
 }
 function fovToF(fovDeg, longSide) { return longSide / 2 / Math.tan(fovDeg / 2 * D2R); }
+// How far the shift can go, degrees: the image centre's sky point moved to the photo's edge, i.e.
+// half the field across each side for the field set in step 3 (half the field both ways before a
+// photo is loaded).
+function shiftLimits() {
+  const F = S.frame;
+  if (!(S.W > 0 && S.H > 0)) return [F.fov / 2, F.fov / 2];
+  const f = fovToF(F.fov, Math.max(S.W, S.H));
+  return [Math.atan(S.W / 2 / f) / D2R, Math.atan(S.H / 2 / f) / D2R];
+}
 function fovOfCal(c) { return 2 * Math.atan(Math.max(c.image_size[0], c.image_size[1]) / 2 / c.f_px) / D2R; }
 // The starting frame (a resolved frame cal, rectilinear, k1 0, centre at the image centre) from the
 // step 3 controls: axis on baseAxis(), roll, the field across the longer side, then the prediction
@@ -2035,11 +2046,16 @@ function renderFrameControls() {
   const put = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
   put('rngRoll', F.roll); put('inRoll', F.roll.toFixed(1));
   put('rngFov', fovToSlider(F.fov)); put('inFov', F.fov.toFixed(F.fov < 10 ? 2 : 1));
-  put('inShiftX', rnd(F.shiftX, 3)); put('inShiftY', rnd(F.shiftY, 3));
+  const [limX, limY] = shiftLimits();
+  for (const [ax, lim, v] of [['X', limX, F.shiftX], ['Y', limY, F.shiftY]]) {
+    const r = $('rngShift' + ax), m = Math.round(lim * 100) / 100;
+    r.min = String(-m); r.max = String(m);
+    put('rngShift' + ax, v); put('inShift' + ax, v.toFixed(2));
+  }
   const rollOff = ok && !rollHand;
   $('rngRoll').disabled = $('inRoll').disabled = rollOff; $('rollRow').classList.toggle('off', rollOff);
-  for (const id of ['rngFov', 'inFov', 'inShiftX', 'inShiftY']) $(id).disabled = ok;
-  $('fovRow').classList.toggle('off', ok);
+  for (const id of ['rngFov', 'inFov', 'rngShiftX', 'inShiftX', 'rngShiftY', 'inShiftY']) $(id).disabled = ok;
+  for (const id of ['fovRow', 'shiftXRow', 'shiftYRow']) $(id).classList.toggle('off', ok);
   for (const b of document.querySelectorAll('#dragToggle button')) { b.classList.toggle('on', b.dataset.drag === S.dragMode); b.disabled = ok; }
   const discs = S.pins.filter(q => (q.obj === 'sun' || q.obj === 'moon') && q.r_px > 0).length >= 2;
   $('btnRollDiscs').hidden = !(S.type === 'sunmoon' && discs);
@@ -2100,6 +2116,8 @@ $('rngRoll').addEventListener('input', e => setFrame({ roll: +e.target.value }))
 $('inRoll').addEventListener('change', () => setFrame({ roll: numIn('inRoll') }));
 $('rngFov').addEventListener('input', e => setFrame({ fovW: sliderToFov(+e.target.value) }));
 $('inFov').addEventListener('change', () => setFrame({ fovW: numIn('inFov') }));
+$('rngShiftX').addEventListener('input', e => setFrame({ shiftX: +e.target.value }));
+$('rngShiftY').addEventListener('input', e => setFrame({ shiftY: +e.target.value }));
 $('inShiftX').addEventListener('change', () => setFrame({ shiftX: numIn('inShiftX') }));
 $('inShiftY').addEventListener('change', () => setFrame({ shiftY: numIn('inShiftY') }));
 $('btnRollDiscs').addEventListener('click', () => setRollFixed(S.rollFree ? S.frame.roll : null));
@@ -2199,8 +2217,11 @@ function setFrame(o) {
   const F = S.frame;
   if (Number.isFinite(o.roll)) F.roll = ((o.roll % 360) + 540) % 360 - 180;
   if (Number.isFinite(o.fovW) && o.fovW > 0) F.fov = Math.min(FOV_MAX, Math.max(FOV_MIN, o.fovW));
-  if (Number.isFinite(o.shiftX)) F.shiftX = Math.max(-80, Math.min(80, o.shiftX));
-  if (Number.isFinite(o.shiftY)) F.shiftY = Math.max(-80, Math.min(80, o.shiftY));
+  if (Number.isFinite(o.shiftX)) F.shiftX = o.shiftX;
+  if (Number.isFinite(o.shiftY)) F.shiftY = o.shiftY;
+  const [limX, limY] = shiftLimits();   // the edge of the photo for the current field
+  F.shiftX = Math.max(-limX, Math.min(limX, F.shiftX));
+  F.shiftY = Math.max(-limY, Math.min(limY, F.shiftY));
   // a Sun / Moon photo's rotation is the fit's fixed roll: a new value refits
   const refit = S.pins.length && (!fitOk() || (S.type === 'sunmoon' && !S.rollFree && Number.isFinite(o.roll)));
   invalidate(); if (refit) scheduleFit(); renderPanel(); view.draw();
@@ -2236,8 +2257,8 @@ const api = {
     S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; $('btnDetect').disabled = true;
     $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
     S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null;
-    if (S.type !== 'allsky') $('inSpan').value = '10';
-    S.type = 'allsky'; S.object = null; S.equip = null; S.rollFree = false; S.dragMode = 'photo';
+    $('inSpan').value = '0';
+    S.type = 'frame'; S.object = null; S.equip = null; S.rollFree = false; S.dragMode = 'photo';
     S.frame = { axis: null, roll: 0, fov: FRAME_FOV_DEFAULT, shiftX: 0, shiftY: 0 };
     $('inObject').value = ''; $('selEquip').value = '';
     S.north = 0; S.east = 'left'; S.selected = null; S.hover = null; invalidate(); renderPanel(); view.draw();

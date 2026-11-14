@@ -134,7 +134,7 @@ The two *in the arcs* entries come from drawing each day as one line at the day'
 
 - **Coordinate grids** - the Az/Alt and equatorial grids of the Planetarium follow the zoom: 30° in the all-sky view, then 15°, 10°, 5° and finer down to arcminutes, so a zoomed view always has a few lines with their labels.
 
-- **Catalog** - the author's astrophotographs of landscapes, Solar System objects and deep-sky targets. A photo restores the date, time and place it was taken and marks its field on the sky; a star trails photo opens with its exposure running inside its frame. A calibrated photo, all-sky or framed, gets its exact edge outlined and can be laid over the Planetarium with adjustable opacity so its stars sit on the drawn ones; the picker and search then name what is in it.
+- **Catalog** - the author's astrophotographs of landscapes, Solar System objects and deep-sky targets. A photo restores the date, time and place it was taken and marks its field on the sky; a star trails photo opens with its exposure running inside its frame. A calibrated photo, all-sky or framed, gets its exact edge outlined and can be laid over the Planetarium with adjustable opacity so its stars sit on the drawn ones; the picker and search then name what is in it. The last tile opens Photo calibration.
 
 📍 **Set here** - fills in Location from the device's position (the browser asks for permission). If that is refused or unavailable, it falls back to an approximate, city-level position looked up from the IP address via ipapi.co or geojs.io, which then receive the visitor's IP address. Only on click, never automatically.
 
