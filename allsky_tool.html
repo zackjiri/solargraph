@@ -60,6 +60,8 @@
     background: var(--panel); cursor: pointer; text-align: center; padding: 8px;
     transition: border-color 0.2s, background 0.2s;
   }
+  /* a framed photo or a Sun / Moon photo: a 3:2 rectangle like a camera frame instead of the circle */
+  body.t-frame .zone { width: min(calc(100cqw - 16px), calc((100cqh - 16px) * 1.5)); aspect-ratio: 3 / 2; border-radius: var(--radius-sm); }
   .zone:hover { border-style: solid; background: #12161c; }
   .zone p { margin: 0; font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: 0.13em; }
   .zone p span { color: var(--accent); }
@@ -340,8 +342,8 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug641"></script>
-<script src="js/allsky-model.js?perfdebug641"></script>
+<script src="js/sky-astro.js?perfdebug642"></script>
+<script src="js/allsky-model.js?perfdebug642"></script>
 <script>
 // Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
 // planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
