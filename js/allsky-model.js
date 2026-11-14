@@ -106,8 +106,9 @@ function _allskyDtAt(cal, x, y) {
 
 // Sky point (apparent, at time_utc) -> photo pixel, with the time shift of the frame it falls in:
 // dt from the pin field at the unshifted pixel, then once more at the shifted one. null outside
-// circle_px (all-sky), outside the image rectangle (frame) or outside the projection; open: no
-// circle or rectangle test (null only outside the projection; the caller clips per pixel).
+// circle_px (all-sky), outside the usable rectangle (frame: crop_px or the whole image,
+// _allskyFrameRect) or outside the projection; open: no circle or rectangle test (null only outside
+// the projection; the caller clips per pixel).
 function _allskySkyToPhoto(cal, azDeg, elDeg, latDeg, open) {
   let p = _allskyForward(cal, azDeg, elDeg);
   if (p && (cal.pins || []).length && cal.span_min > 0) {
@@ -121,8 +122,8 @@ function _allskySkyToPhoto(cal, azDeg, elDeg, latDeg, open) {
   if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
   if (open) return p;
   if (cal.kind === 'frame') {
-    const [w, h] = cal.image_size;
-    return p[0] >= 0 && p[0] <= w && p[1] >= 0 && p[1] <= h ? p : null;
+    const [x0, y0, x1, y1] = _allskyFrameRect(cal);
+    return p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1 ? p : null;
   }
   const c = cal.circle_px;
   if (c && Math.hypot(p[0] - c[0], p[1] - c[1]) > c[2]) return null;
@@ -130,7 +131,8 @@ function _allskySkyToPhoto(cal, azDeg, elDeg, latDeg, open) {
 }
 
 // The same calibration for the image resized to w x h (aspect ratio kept, so the x scale also
-// scales f_px, the circle radius, the disc pins' r_px and rms_px; k1 is relative to f and stays).
+// scales f_px, the circle radius, the disc pins' r_px and rms_px; k1 is relative to f and stays;
+// crop_px scales with the image).
 function _allskyScaled(cal, w, h) {
   const sx = w / cal.image_size[0], sy = h / cal.image_size[1];
   const out = Object.assign({}, cal, {
@@ -139,6 +141,7 @@ function _allskyScaled(cal, w, h) {
     f_px: cal.f_px * sx,
   });
   if (cal.circle_px) out.circle_px = [cal.circle_px[0] * sx, cal.circle_px[1] * sy, cal.circle_px[2] * sx];
+  if (Array.isArray(cal.crop_px)) out.crop_px = [cal.crop_px[0] * sx, cal.crop_px[1] * sy, cal.crop_px[2] * sx, cal.crop_px[3] * sy];
   if (Number.isFinite(cal.rms_px)) out.rms_px = cal.rms_px * sx;
   if (cal.pins) out.pins = cal.pins.map(p => Object.assign({}, p, { px: [p.px[0] * sx, p.px[1] * sy] }, Number.isFinite(p.r_px) ? { r_px: p.r_px * sx } : {}));
   return out;
@@ -168,7 +171,13 @@ function _allskyEdgeMinAlt(cal) {
 // Public block: axis_radec [RA, Dec] (J2000, degrees), roll_deg (position angle of image-up,
 // measured from north through east in the tangent plane of the axis, the meaning of the catalog's
 // rotation_deg and _nightSkyFrameCorners), east ("left" = an ordinary photo, "right" = mirrored),
-// projection, f_px, k1, center_px (the image centre, not fitted), span_min, rms_px, pins.
+// projection, f_px, k1, center_px (the centre of the usable rectangle, not fitted), crop_px
+// (optional), span_min, rms_px, pins.
+//
+// Usable rectangle: crop_px [x0, y0, x1, y1] (pixels of the calibrated image, x0 < x1, y0 < y1) is
+// the picture inside a print's border; without it the whole image. center_px is its centre. Only
+// sky inside it maps to the photo (_allskySkyToPhoto) and the outline follows its edges
+// (_allskyFrameOutline); pins stay in whole-image pixels.
 //
 // _allskyResolve turns axis_radec/roll_deg into the apparent horizontal frame of the photo's moment:
 // _axis_az, _axis_el (apparent axis) and _roll_up (image-up turned from the vertical through the
@@ -336,15 +345,24 @@ function _allskyFrameToRadec(cal, site) {
   const c = _allskyAppToRadec(cal._axis_az, cal._axis_el, site);
   return { axis_radec: [c.ra, c.dec], roll_deg: _allskyAngle180(cal._roll_up + _allskyZenithPA(site, cal._axis_az, cal._axis_el)) };
 }
-// Outline of the image of a resolved frame cal: n points evenly along the edge of the rectangle
-// [0, w] x [0, h], clockwise from the top-left corner, each _allskyInverse ({ az, el } or null).
+// The usable rectangle [x0, y0, x1, y1] of a frame cal: crop_px when it is a valid rectangle, else
+// the whole image [0, 0, w, h].
+function _allskyFrameRect(cal) {
+  const c = cal.crop_px;
+  return _allskyCropValid(c) ? [c[0], c[1], c[2], c[3]] : [0, 0, cal.image_size[0], cal.image_size[1]];
+}
+function _allskyCropValid(c) {
+  return Array.isArray(c) && c.length >= 4 && c.slice(0, 4).every(Number.isFinite) && c[0] < c[2] && c[1] < c[3];
+}
+// Outline of the usable rectangle of a resolved frame cal (_allskyFrameRect), clockwise from its
+// top-left corner, each point _allskyInverse ({ az, el } or null). About n points: each side gets
+// round(n * side / perimeter) equal steps (at least 1), so all four corners are outline points for
+// any side ratio and the count is n give or take 2.
 function _allskyFrameOutline(cal, n) {
-  const [w, h] = cal.image_size, per = 2 * (w + h), out = [];
-  for (let k = 0; k < n; k++) {
-    let s = k * per / n, x, y;
-    if (s < w) { x = s; y = 0; } else if ((s -= w) < h) { x = w; y = s; } else if ((s -= h) < w) { x = w - s; y = h; } else { s -= w; x = 0; y = h - s; }
-    out.push(_allskyInverse(cal, x, y));
-  }
+  const [x0, y0, x1, y1] = _allskyFrameRect(cal), w = x1 - x0, h = y1 - y0, per = 2 * (w + h), out = [];
+  const nw = Math.max(1, Math.round(n * w / per)), nh = Math.max(1, Math.round(n * h / per));
+  const side = (ax, ay, bx, by, m) => { for (let i = 0; i < m; i++) out.push(_allskyInverse(cal, ax + (bx - ax) * i / m, ay + (by - ay) * i / m)); };
+  side(x0, y0, x1, y0, nw); side(x1, y0, x1, y1, nh); side(x1, y1, x0, y1, nw); side(x0, y1, x0, y0, nh);
   return out;
 }
 
@@ -570,10 +588,11 @@ const ALLSKY_K1_MIN_DIAG_DEG = 30, ALLSKY_K1_MIN_PINS = 8;
 // Least-squares calibration of a framed photo. pins: [{ hip | obj, px: [x, y], az, el, r_px?,
 // semiDeg? }] with the APPARENT position at time_utc; a disc pin (Sun, Moon) also has r_px and the
 // disc's angular radius semiDeg. opts: { kind: 'frame', site, start (a resolved frame cal: axis,
-// roll, f_px, projection, east, image_size, center_px), rollFixed (a roll_deg or null), projections
-// (default ['rectilinear']), spanMin (0), latDeg (site.latDeg), image }.
+// roll, f_px, projection, east, image_size, center_px, crop_px), rollFixed (a roll_deg or null),
+// projections (default ['rectilinear']), spanMin (0), latDeg (site.latDeg), image }. The result
+// keeps the start's crop_px; center_px is the start's (default: the centre of its usable rectangle).
 // Unknowns: axis_az, axis_el, roll_up (unless rollFixed), f_px, k1 (rectilinear with a diagonal
-// field over 30 deg and at least 8 pins; else 0) and, when spanMin > 0, one dt_min per pin. Roll
+// field of the usable rectangle over 30 deg and at least 8 pins; else 0) and, when spanMin > 0, one dt_min per pin. Roll
 // starts at the start's roll, or at 8 values when the start has none; with 3 or more distinct sky
 // points and a free roll both east values are tried (fewer points cannot tell a mirror image).
 function _allskyFitFrame(pins, opts) {
@@ -609,8 +628,9 @@ function _allskyFitFrame(pins, opts) {
     return _allskyFitFail(`Not enough pins: ${minUnknowns} unknowns (axis 2, ${rollFixed === null ? 'rotation, ' : ''}scale${dtCount ? ', one time shift per pin' : ''}) need as many equations; each pin gives 2, a disc radius 1 more (have ${eqs}).`);
   }
 
-  const size = start.image_size, center = start.center_px || [size[0] / 2, size[1] / 2];
-  const diagDeg = 2 * Math.atan(Math.hypot(size[0], size[1]) / 2 / start.f_px) / _ALLSKY_D2R;
+  const size = start.image_size, rect = _allskyFrameRect(start), crop = _allskyCropValid(start.crop_px) ? rect : null;
+  const center = start.center_px || [(rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2];
+  const diagDeg = 2 * Math.atan(Math.hypot(rect[2] - rect[0], rect[3] - rect[1]) / 2 / start.f_px) / _ALLSKY_D2R;
   const rollStarts = rollFixed !== null ? [null] : Number.isFinite(start._roll_up) ? [start._roll_up] : [0, 45, 90, 135, 180, 225, 270, 315];
   const east0 = start.east === 'right' ? 'right' : 'left';
   const easts = rollFixed === null && distinct >= 3 ? [east0, east0 === 'left' ? 'right' : 'left'] : [east0];
@@ -634,7 +654,7 @@ function _allskyFitFrame(pins, opts) {
     const cal = {
       kind: 'frame', image: opts.image || start.image, image_size: [size[0], size[1]],
       axis_radec: null, roll_deg: null, east: pb.east, projection, f_px: pb.p[iF], k1: ctx.k1,
-      center_px: [center[0], center[1]], span_min: span, rms_px: Math.sqrt(pb.cost / pins.length),
+      center_px: [center[0], center[1]], crop_px: crop ? crop.slice() : null, span_min: span, rms_px: Math.sqrt(pb.cost / pins.length),
       pins: pins.map((pin, i) => {
         const o = pin.hip !== undefined && pin.hip !== null ? { hip: pin.hip } : { obj: pin.obj };
         o.px = [pin.px[0], pin.px[1]];
@@ -646,6 +666,7 @@ function _allskyFitFrame(pins, opts) {
       _axis_az: ((pb.p[0] % 360) + 360) % 360, _axis_el: pb.p[1], _roll_up: _allskyAngle180(ctx.roll),
     };
     if (!cal.image) delete cal.image;
+    if (!cal.crop_px) delete cal.crop_px;
     const pub = _allskyFrameToRadec(cal, site);
     cal.axis_radec = pub.axis_radec;
     cal.roll_deg = rollFixed !== null ? rollFixed : pub.roll_deg;

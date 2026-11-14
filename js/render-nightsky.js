@@ -633,18 +633,11 @@ function _nightSkyAllskyEdgeAzEl(frame) {
   return out;
 }
 // A rectangular photo with a calibration (calib kind 'frame', resolved for the photo's place and
-// moment): its outline is the image's edge on the sky (_allskyFrameOutline), as apparent {az, el} at
-// time_utc. The number of points is a multiple of the perimeter's step that also divides both sides
-// (so the four corners are outline points exactly), the step at most 1/200 of the perimeter.
-function _nightSkyFrameOutlineN(cal) {
-  const w = Math.round(cal.image_size[0]), h = Math.round(cal.image_size[1]), per = 2 * (w + h);
-  if (w !== cal.image_size[0] || h !== cal.image_size[1] || !(w > 0 && h > 0)) return 400;
-  let a = w, b = h;
-  while (b) [a, b] = [b, a % b];
-  let step = 1;
-  for (let d = 1; d <= a; d++) if (a % d === 0 && d <= per / 200) step = d;
-  return per / step;
-}
+// moment): its outline is the edge of its usable rectangle (calib.crop_px, else the whole image;
+// _allskyFrameRect) on the sky (_allskyFrameOutline), as apparent {az, el} at time_utc: about 200
+// points for any side ratio, the four corners among them.
+const NIGHTSKY_FRAME_OUTLINE_N = 200;
+function _nightSkyFrameOutlineN() { return NIGHTSKY_FRAME_OUTLINE_N; }
 // The calibrated outline of the presented photo, apparent {az, el} (null where unmapped): the all-sky
 // circle (_nightSkyAllskyEdgeAzEl) or the framed photo's edge (computed once when it is presented);
 // none without a calibration.
@@ -843,6 +836,8 @@ function _nightSkyApplyCatalogTile(entry) {
   if (typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
   _nightSkyPlanet3D.roll = 0;
   _nightSkyTrackJD = null;   // tracking starts from the photo's instant, at the centred camera below
+  // a calibrated photo opens laid over the sky (render-nightsky-allsky.js); its button turns it off
+  if (_nightSkyFrameCalibrated(_nightSkyActiveFrame) && typeof _nsAllsky !== 'undefined') _nsAllsky.on = true;
 
   nightSkySubmode = 'planetarium'; _nightSkySubmodeIndex = NIGHTSKY_SUBMODE_VALUES.indexOf('planetarium');
   _nightSkySubmodeWheel.render();

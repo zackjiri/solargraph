@@ -12,7 +12,8 @@
 // the frame that point was shot in, so the stars line up and the landscape may move by up to ~1°.
 // That mapping is computed on a grid of nodes NS_ALLSKY_GRID output pixels apart and interpolated
 // between them (it changes slowly); the photo is sampled bilinearly. Outside circle_px (all-sky)
-// or the image rectangle (framed) the overlay is transparent, with a one-pixel soft edge. The result goes to an offscreen canvas at the canvas's own resolution at rest,
+// or the usable rectangle (framed: crop_px, else the whole image; _allskyFrameRect) the overlay is
+// transparent, with a one-pixel soft edge. The result goes to an offscreen canvas at the canvas's own resolution at rest,
 // NS_ALLSKY_MOVING_RES of it while the view is dragged, pinched or zoomed (_nsAllskyMove, called by
 // the Planetarium's interaction), and is kept until the view changes, so the opacity slider and
 // other redraws only blit it.
@@ -100,6 +101,7 @@ function _nsAllskyMove() {
 function _nsAllskyRender(f, ph, w, h, W, H) {
   if (ph.calFor !== f.calib) { ph.cal = _allskyScaled(f.calib, ph.w, ph.h); ph.calFor = f.calib; }
   const cal = ph.cal, rect = cal.kind === 'frame';
+  const [rx0, ry0, rx1, ry1] = rect ? _allskyFrameRect(cal) : [0, 0, ph.w, ph.h];
   const circle = cal.circle_px || [ph.w / 2, ph.h / 2, Math.min(ph.w, ph.h) / 2];
   const lat = f.latDeg, layout = _nightSkyPlanetLayout(w, h);
   const minEl = (Number.isFinite(cal.alt_edge) ? cal.alt_edge : -90) - 15;
@@ -135,8 +137,8 @@ function _nsAllskyRender(f, ph, w, h, W, H) {
       let u = u0, v = v0;
       for (let i = i0; i < i1; i++, u += du, v += dv) {
         let al;
-        if (rect) {   // distance inside the nearest image edge
-          const e = Math.min(u, pw - u, v, ph2 - v);
+        if (rect) {   // distance inside the nearest edge of the usable rectangle
+          const e = Math.min(u - rx0, rx1 - u, v - ry0, ry1 - v);
           if (e <= -0.5) continue;
           al = e >= 0.5 ? 255 : Math.round((e + 0.5) * 255);
         } else {
