@@ -3255,10 +3255,10 @@
     --catalog-filter-grey: #c0c0c0;   /* border + ALL's active fill, one shared value */
     border: 1px solid var(--catalog-filter-grey);   /* flipped to black in light theme, same as the ALL segment below */
   }
-  /* Night Sky's own 4 segments (ALL/LANDSCAPE/SOLAR SYSTEM/DEEP SKY) need more room than Eclipse's
-     260px default - "SOLAR SYSTEM" alone measured ~84px at this font/padding, clipped at the
-     shared floor's 65px-per-segment share. */
-  #nightSkyCatalogTypeFilter { min-width: 500px; }   /* five equal segments, wide enough for SOLAR SYSTEM */
+  /* Night Sky's six segments (ALL/LANDSCAPE/SOLAR SYSTEM/DEEP SKY/STAR TRAILS/ALL SKY) need more
+     room than Eclipse's 260px default: "SOLAR SYSTEM" needs ~92px at this font and padding, so six
+     equal segments take 600px. */
+  #nightSkyCatalogTypeFilter { min-width: 600px; }
   .catalog-type-filter .ns-btn {
     flex: 1 1 0;
     min-width: 0;      /* without this, flex:1 alone still yields content-driven widths (the longest
