@@ -3414,6 +3414,15 @@
      _eclipseRenderCatalogGrid) - a flat grey square stands in for it instead. */
   .eclipse-tile-blank { background: #1c1e22; }
   .catalog-tile.no-eclipse { opacity: 0.5; }
+  /* Night Sky's last tile under ALL, the link to Photo calibration: a picture not yet in place
+     leaves a plain dark square instead of the browser's broken-image mark */
+  .catalog-tile-thumb.missing { background: #1c1e22; }
+  /* The Photo calibration tile stands out from the photos by its frame: light on the dark theme,
+     dark on the light theme, its label in the other theme's accent so it keeps its contrast */
+  .catalog-tile.catalog-tile-calib { background: #dfe5ec; }
+  .catalog-tile-calib .catalog-tile-date { color: #8a4400; }
+  body.light .catalog-tile.catalog-tile-calib { background: #0f1318; }
+  body.light .catalog-tile-calib .catalog-tile-date { color: #e8a020; }
   .eclipse-tile-type {
     font-family: var(--mono);
     font-size: 11px;
