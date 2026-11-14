@@ -102,6 +102,7 @@
   .row { display: flex; gap: 6px; align-items: stretch; flex-wrap: wrap; }
   .row > button { flex: 1; min-width: 0; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
   .row.halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .row.quads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .field { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .field-label {
     font-family: var(--mono); font-size: 10px; line-height: 11px; letter-spacing: 0.15em;
@@ -266,16 +267,30 @@
       <div class="row allsky-only"><button id="btnDetect" disabled title="Find the photo circle again from the dark corners">Detect circle</button></div>
       <div class="file-line allsky-only" id="infoCircle">Circle: -</div>
       <div class="note allsky-only">Drag the green centre or edge handles on the photo to adjust it.</div>
+      <div class="field frame-only">
+        <span class="field-label" title="The usable picture of the photo (e.g. inside a print's black border and caption): its top-left (x0, y0) and bottom-right (x1, y1) corners in photo px. Field, shift and the projection centre refer to it; the Planetarium shows only it">Crop px</span>
+        <div class="row quads">
+          <input type="text" id="inCropX0" aria-label="Crop left x0" title="Left edge x0, photo px">
+          <input type="text" id="inCropY0" aria-label="Crop top y0" title="Top edge y0, photo px">
+          <input type="text" id="inCropX1" aria-label="Crop right x1" title="Right edge x1, photo px">
+          <input type="text" id="inCropY1" aria-label="Crop bottom y1" title="Bottom edge y1, photo px">
+        </div>
+      </div>
+      <div class="row frame-only">
+        <button id="btnDetectCrop" disabled title="Find the picture inside a dark print border (a thin light line around the picture and a caption below it are left out)">Detect crop</button>
+        <button id="btnCropWhole" disabled title="Use the whole image">Whole image</button>
+      </div>
+      <div class="file-line frame-only" id="infoCrop">Crop: -</div>
       <div class="slider frame-only" id="rollRow" title="Rotation of the frame: position angle of image-up, from north through east (the catalog's rotation_deg)">
         <span>Rotation</span><input type="range" id="rngRoll" min="-180" max="180" step="0.1" value="0"><input type="text" id="inRoll" value="0.0" aria-label="Rotation in degrees">
       </div>
-      <div class="slider frame-only" id="fovRow" title="Field of view across the photo's longer side, degrees">
+      <div class="slider frame-only" id="fovRow" title="Field of view across the longer side of the crop (the whole photo without a crop), degrees">
         <span>Field</span><input type="range" id="rngFov" min="0" max="1000" step="1" value="500"><input type="text" id="inFov" value="50.0" aria-label="Field of view in degrees">
       </div>
-      <div class="slider frame-only" id="shiftXRow" title="Moves the prediction to the right (+) or left (-) on the photo, degrees; the range reaches the photo's edge for the field set above">
+      <div class="slider frame-only" id="shiftXRow" title="Moves the prediction to the right (+) or left (-) on the photo, degrees; the range reaches the crop's edge for the field set above">
         <span>Shift x</span><input type="range" id="rngShiftX" min="-25" max="25" step="0.01" value="0"><input type="text" id="inShiftX" value="0.00" aria-label="Shift right in degrees">
       </div>
-      <div class="slider frame-only" id="shiftYRow" title="Moves the prediction down (+) or up (-) on the photo, degrees; the range reaches the photo's edge for the field set above">
+      <div class="slider frame-only" id="shiftYRow" title="Moves the prediction down (+) or up (-) on the photo, degrees; the range reaches the crop's edge for the field set above">
         <span>Shift y</span><input type="range" id="rngShiftY" min="-25" max="25" step="0.01" value="0"><input type="text" id="inShiftY" value="0.00" aria-label="Shift down in degrees">
       </div>
       <div class="field frame-only">
@@ -307,7 +322,7 @@
     <section class="sidebar-section">
       <div class="sidebar-title"><span><span class="step" style="--step:#a8c840">5</span>Pins and fit</span><button class="section-toggle" title="Collapse / expand">&#9660;</button></div>
       <div class="pin-hint" id="pinHint">Add a pin: drag an amber circle (a predicted star) onto that star's image in the photo. Pasting the photo's catalog entry in step 2 brings back its pins.</div>
-      <div class="row"><button id="btnFindStars" disabled title="Match the photo's bright points to the stars, starting from the prediction as it is now (frame of step 3, or circle and north): scans the rotation (a framed photo also the scale, 15 % either way), pins the stars it can tell apart and fits. Pins you placed stay">Find stars</button></div>
+      <div class="row"><button id="btnFindStars" disabled title="Match the photo's bright points to the stars, starting from the prediction as it is now (frame of step 3, or circle and north): without a fit it scans the rotation (a framed photo also the scale, 15 % either way), with an ok fit it goes straight to adding fainter stars; it pins the stars it can tell apart and fits. Pins you placed stay">Find stars</button></div>
       <div id="fitReason"></div>
       <table id="projTable" hidden title="Fit error of each projection: RMS of the pins' pixel residuals after each pin's own time shift (slightly smaller than the error between pins)"><tbody></tbody></table>
       <div id="fitSummary"></div>
@@ -334,7 +349,7 @@
       <div>Blue: pins. Drag to move, <kbd>Shift</kbd> moves at 1/4 speed; a disc pin's square handle sets its radius</div>
       <div>The fit runs after each pin change. All-sky: 6 pins at least (4 with span 0), 8 to 10 spread from the horizon to the zenith are best. Frame: 2 pins at least, 6 to 10 spread over the photo are best</div>
       <div>Drag the photo to pan, wheel or double-click to zoom; in a framed photo, Prediction (step 3) makes a drag shift the prediction instead</div>
-      <div>Find stars: line the prediction up roughly (rotation, field, shift, or north), then let it pin the stars; it scans the rotation and, in a framed photo, the scale 15 % either way</div>
+      <div>Find stars: line the prediction up roughly (rotation, field, shift, or north), then let it pin the stars; without a fit it scans the rotation and, in a framed photo, the scale 15 % either way, with an ok fit it only adds fainter stars to your pins</div>
       <div><kbd>Del</kbd> removes the selected pin, <kbd>F</kbd> fits the photo to the view</div>
       </div>
     </section>
@@ -342,8 +357,8 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug642"></script>
-<script src="js/allsky-model.js?perfdebug642"></script>
+<script src="js/sky-astro.js?perfdebug646"></script>
+<script src="js/allsky-model.js?perfdebug646"></script>
 <script>
 // Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
 // planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
@@ -354,7 +369,9 @@
 // "sunmoon" (a framed photo of the Sun or the Moon: disc pins, the rotation control is the roll).
 // A framed photo starts from a frame built from the setup (equipment field, object, time and place,
 // or the pasted entry's ra / dec / fov / rotation) and the step 3 controls; once a fit is ok the fit
-// drives the prediction and the controls follow it.
+// drives the prediction and the controls follow it. A framed photo has a usable rectangle (the crop,
+// e.g. the picture inside a print's border; else the whole image): the field is across its longer
+// side, the projection centre is its centre, predictions and Find stars stay inside it.
 (function () {
 'use strict';
 
@@ -389,6 +406,7 @@ function eqComputeImaging(s) {
 const S = {
   img: null, small: null, smallK: 1, name: '', W: 0, H: 0,
   circle: null,                  // [cx, cy, r] in photo px
+  crop: null,                    // framed photo: usable rectangle [x0, y0, x1, y1] in photo px; null = the whole image
   north: 0, east: 'left',        // initial guess, used until a fit is ok
   type: 'frame',                 // 'allsky' | 'frame' | 'sunmoon'
   pins: [],                      // [{ hip, px: [x, y] }] or [{ obj, px, r_px (discs) }]; auto: placed by Find stars
@@ -603,31 +621,43 @@ function baseAxis() {
   return [q.ra, q.dec];
 }
 function fovToF(fovDeg, longSide) { return longSide / 2 / Math.tan(fovDeg / 2 * D2R); }
-// How far the shift can go, degrees: the image centre's sky point moved to the photo's edge, i.e.
+// The usable rectangle of a framed photo [x0, y0, x1, y1] (the crop, else the whole image), its
+// longer side and its centre.
+function cropRect() { return S.crop ? S.crop.slice() : [0, 0, S.W, S.H]; }
+function cropLong() { const r = cropRect(); return Math.max(r[2] - r[0], r[3] - r[1]); }
+function cropCentre() { const r = cropRect(); return [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2]; }
+// A frame cal with the page's crop: center_px at its centre, crop_px (absent for the whole image).
+function withCrop(C) {
+  C.center_px = cropCentre();
+  if (S.crop) C.crop_px = S.crop.slice(); else delete C.crop_px;
+  return C;
+}
+// How far the shift can go, degrees: the crop centre's sky point moved to the crop's edge, i.e.
 // half the field across each side for the field set in step 3 (half the field both ways before a
 // photo is loaded).
 function shiftLimits() {
   const F = S.frame;
   if (!(S.W > 0 && S.H > 0)) return [F.fov / 2, F.fov / 2];
-  const f = fovToF(F.fov, Math.max(S.W, S.H));
-  return [Math.atan(S.W / 2 / f) / D2R, Math.atan(S.H / 2 / f) / D2R];
+  const r = cropRect(), f = fovToF(F.fov, cropLong());
+  return [Math.atan((r[2] - r[0]) / 2 / f) / D2R, Math.atan((r[3] - r[1]) / 2 / f) / D2R];
 }
-function fovOfCal(c) { return 2 * Math.atan(Math.max(c.image_size[0], c.image_size[1]) / 2 / c.f_px) / D2R; }
-// The starting frame (a resolved frame cal, rectilinear, k1 0, centre at the image centre) from the
-// step 3 controls: axis on baseAxis(), roll, the field across the longer side, then the prediction
-// shifted by (shiftX, shiftY) degrees on the photo: the new axis is the sky point that was at the
-// image centre minus the shift. null without a photo, a valid time and place, or an axis.
+// Field across the longer side of a frame cal's usable rectangle, degrees.
+function fovOfCal(c) { const r = _allskyFrameRect(c); return 2 * Math.atan(Math.max(r[2] - r[0], r[3] - r[1]) / 2 / c.f_px) / D2R; }
+// The starting frame (a resolved frame cal, rectilinear, k1 0, centre at the crop's centre) from the
+// step 3 controls: axis on baseAxis(), roll, the field across the crop's longer side, then the
+// prediction shifted by (shiftX, shiftY) degrees on the photo: the new axis is the sky point that
+// was at the crop's centre minus the shift. null without a photo, a valid time and place, or an axis.
 function startCal() {
   const p = place(), ax = baseAxis();
   if (!p || !S.img || !ax) return null;
-  const st = siteOf(p), F = S.frame, f = fovToF(F.fov, Math.max(S.W, S.H));
-  const base = {
+  const st = siteOf(p), F = S.frame, f = fovToF(F.fov, cropLong()), c = cropCentre();
+  const base = withCrop({
     kind: 'frame', image_size: [S.W, S.H], axis_radec: ax.slice(), roll_deg: F.roll, east: S.east,
-    projection: 'rectilinear', f_px: f, k1: 0, center_px: [S.W / 2, S.H / 2], span_min: 0, pins: [],
-  };
+    projection: 'rectilinear', f_px: f, k1: 0, center_px: null, span_min: 0, pins: [],
+  });
   let C = _allskyResolve(base, st);
   if (F.shiftX || F.shiftY) {
-    const q = _allskyInverse(C, S.W / 2 - f * Math.tan(F.shiftX * D2R), S.H / 2 - f * Math.tan(F.shiftY * D2R));
+    const q = _allskyInverse(C, c[0] - f * Math.tan(F.shiftX * D2R), c[1] - f * Math.tan(F.shiftY * D2R));
     if (q) { const r = _allskyAppToRadec(q.az, q.el, st); C = _allskyResolve(Object.assign(base, { axis_radec: [r.ra, r.dec] }), st); }
   }
   return C;
@@ -732,12 +762,13 @@ function pinsForFitFrame() {
   }
   return out;
 }
-// Options of a framed fit: the start is the last ok fit (re-resolved for the panel's moment) or the
-// step 3 frame; a Sun / Moon photo fixes the roll at the rotation control unless rollFree.
+// Options of a framed fit: the start is the last ok fit (re-resolved for the panel's moment, centred
+// on the crop as it is now) or the step 3 frame; a Sun / Moon photo fixes the roll at the rotation
+// control unless rollFree.
 function fitOptsFrame() {
   const p = place(), st = siteOf(p);
   const prev = fitOk() && S.fit.cal.kind === 'frame' && S.fit.cal.image_size[0] === S.W && S.fit.cal.image_size[1] === S.H ? S.fit.cal : null;
-  const start = prev ? _allskyResolve(prev, st) : startCal();
+  const start = prev ? withCrop(_allskyResolve(prev, st)) : startCal();
   return {
     kind: 'frame', site: st, start, latDeg: p.lat, spanMin: p.span,
     rollFixed: S.type === 'sunmoon' && !S.rollFree ? S.frame.roll : null,
@@ -844,8 +875,8 @@ function deletePin(key) {
 //    neighbourhood and lies clearly above the mean of the 21 x 21 around it (5 robust sigmas of
 //    that difference over the photo); its centroid from the 5 x 5 window and its flux in a 3 x 3
 //    aperture above that mean (a wider aperture ranks saturated bright stars in a dense field
-//    worse); sorted by flux. Points outside the image circle (all-sky) or within 12 px of the image
-//    edge (framed) are left out. "The brightest points" below are the first 10 per star predicted.
+//    worse); sorted by flux. Points outside the image circle (all-sky) or within 12 px of the crop's
+//    edge (framed; only the crop is searched) are left out. "The brightest points" below are the first 10 per star predicted.
 // 2. Scan: the stars to the scan magnitude (3, or 6 in a field under 10 degrees) predicted by the
 //    starting calibration, turned about the projection centre in 1 degree steps over 360 degrees and,
 //    for a framed photo, scaled 0.85 to 1.15 in 1 % steps; the score is the number of those stars
@@ -857,6 +888,8 @@ function deletePin(key) {
 //    in its own time shift). Then the scan stars are matched again within 12 px of the fit, which
 //    reaches the parts the turned start missed (an off-centre zenith, a wrong scale), until the set
 //    settles.
+//    With an ok fit at the start (pins already placed), steps 2 and 3 are skipped: the fit is the
+//    prediction and the ladder starts at once, so stars pinned by hand need not be found again.
 // 4. Ladder: from the scan magnitude in 0.5 mag steps to 8 (4.5 in a field over 30 degrees, and in
 //    every all-sky photo): each star predicted by the last fit is pinned on its nearest bright point
 //    only when that is unambiguous (within 3 px, the second nearest farther than max(6 px, 3 x the
@@ -866,7 +899,7 @@ function deletePin(key) {
 // Pins placed by hand (or brought by an entry) stay and are never pruned; Find stars adds and
 // removes only its own pins (marked auto internally, never written out; moving one by hand makes it
 // the user's). A run replaces the auto pins of an earlier run. The result counts as found when the
-// fit is ok, at least 8 of its own pins remain and at least max(5, 15 %) of the scan's stars lie
+// fit is ok, at least 8 of its own pins remain (from an ok fit: 8 pins with the hand-placed ones) and at least max(5, 15 %) of the scan's stars lie
 // within 3 px of one of the brightest points; otherwise its pins are removed again, the frame or
 // north is restored and the page says what to adjust.
 const FS_PEAK_BOX = 5, FS_BG_BOX = 21, FS_EDGE_PX = 12, FS_SCAN_PX = 12;
@@ -880,9 +913,11 @@ function fsTicker() {
   let last = performance.now();
   return async () => { if (performance.now() - last > 50) { await fsYield(); last = performance.now(); } };
 }
-// Bright points of the photo: [[x, y, flux]] in photo px, brightest first; cached per photo.
+// Bright points of the photo: [[x, y, flux]] in photo px, brightest first; a framed photo only inside
+// its crop less the edge margin; cached per photo and crop.
 async function detectPeaks() {
-  if (S.peaks && S.peaks.img === S.img) return S.peaks.list;
+  const R = isFrame() ? cropRect() : [0, 0, S.W, S.H], key = (isFrame() ? 'f' : 'a') + R.join(',');
+  if (S.peaks && S.peaks.img === S.img && S.peaks.key === key) return S.peaks.list;
   const im = S.small, w = im.width, h = im.height, k = S.smallK, tick = fsTicker();
   const cv = new OffscreenCanvas(w, h), g = cv.getContext('2d', { willReadFrequently: true });
   g.drawImage(im, 0, 0);
@@ -901,22 +936,25 @@ async function detectPeaks() {
   };
   const rb = FS_BG_BOX >> 1, rp = FS_PEAK_BOX >> 1;
   const m = Math.max(rp + 1, Math.ceil(FS_EDGE_PX * k));
+  // the searched area [X0, X1) x [Y0, Y1): the crop (or the image) less the edge margin
+  const X0 = Math.max(m, Math.ceil(R[0] * k - 1e-6) + m), X1 = Math.min(w - m, Math.floor(R[2] * k + 1e-6) - m);
+  const Y0 = Math.max(m, Math.ceil(R[1] * k - 1e-6) + m), Y1 = Math.min(h - m, Math.floor(R[3] * k + 1e-6) - m);
   // smoothed image and its excess over the background, inside the edge margin
   const S3 = new Float32Array(w * h), V = new Float32Array(w * h);
-  for (let y = m - rp - 1; y < h - m + rp + 1; y++) {
-    for (let x = m - rp - 1; x < w - m + rp + 1; x++) { const o = y * w + x; S3[o] = boxMean(x, y, 1); V[o] = S3[o] - boxMean(x, y, rb); }
+  for (let y = Y0 - rp - 1; y < Y1 + rp + 1; y++) {
+    for (let x = X0 - rp - 1; x < X1 + rp + 1; x++) { const o = y * w + x; S3[o] = boxMean(x, y, 1); V[o] = S3[o] - boxMean(x, y, rb); }
     if ((y & 31) === 0) await tick();
   }
-  // noise: robust sigma of the excess over a sample of the photo
+  // noise: robust sigma of the excess over a sample of the searched area
   const smp = [];
-  for (let y = m; y < h - m; y += 5) for (let x = m + (y % 3); x < w - m; x += 7) smp.push(V[y * w + x]);
+  for (let y = Y0; y < Y1; y += 5) for (let x = X0 + (y % 3); x < X1; x += 7) smp.push(V[y * w + x]);
   smp.sort((a, b) => a - b);
   const med = smp[smp.length >> 1] || 0;
   const dev = smp.map(v => Math.abs(v - med)).sort((a, b) => a - b);
   const sigma = 1.4826 * (dev[dev.length >> 1] || 0), thr = Math.max(1.5, med + 5 * sigma);
-  const list = [];
-  for (let y = m; y < h - m; y++) {
-    for (let x = m; x < w - m; x++) {
+  let list = [];
+  for (let y = Y0; y < Y1; y++) {
+    for (let x = X0; x < X1; x++) {
       const o = y * w + x, v = S3[o];
       if (V[o] <= thr) continue;
       // maximum of the 5 x 5 window; a tie goes to the first pixel in reading order
@@ -937,18 +975,20 @@ async function detectPeaks() {
     }
     if ((y & 31) === 0) await tick();
   }
+  if (isFrame()) list = list.filter(fsInside);   // a centroid pulled toward the margin
   list.sort((a, b) => b[2] - a[2]);
   if (list.length > FS_MAX_PEAKS) list.length = FS_MAX_PEAKS;
-  S.peaks = { img: S.img, list };
+  S.peaks = { img: S.img, key, list };
   return list;
 }
 // Where Find stars may place a point: inside the image circle less the margin (all-sky), inside the
-// image less the margin (framed).
+// crop (or the image) less the margin (framed).
 function fsInside(p) {
   if (!p) return false;
   const m = fsPx(FS_EDGE_PX);
   if (!isFrame()) { const c = S.circle || defaultCircle(); return Math.hypot(p[0] - c[0], p[1] - c[1]) <= c[2] - m; }
-  return p[0] >= m && p[0] <= S.W - m && p[1] >= m && p[1] <= S.H - m;
+  const r = cropRect();
+  return p[0] >= r[0] + m && p[0] <= r[2] - m && p[1] >= r[1] + m && p[1] <= r[3] - m;
 }
 // Grid of points for nearest-neighbour queries.
 function fsGrid(pts, cell) {
@@ -1062,84 +1102,12 @@ async function findStarsRun(opts, before) {
   const keptKeys = new Set(kept.map(keyOf)), keptPx = kept.map(q => q.px);
   const freePeaks = usable.filter(pk => !keptPx.some(q => Math.hypot(q[0] - pk[0], q[1] - pk[1]) <= fsPx(FS_MATCH_PX)));
   // the starting calibration and the magnitudes
-  const C0 = fitOk() ? S.fit.cal : currentCal();
+  const fromFit = fitOk(), C0 = fromFit ? S.fit.cal : currentCal();
   const field = frame ? fovOfCal(C0) : 180;
   const scanMag = field < DEEP_FIELD_DEG ? 6 : 3;
   const maxMag = Math.min(Number.isFinite(opts.maxMag) ? opts.maxMag : 8, field > 30 ? 4.5 : 8);
   if (maxMag > 6 || scanMag > 6) await ensureDeep();
   const stars = fsStars(Math.max(maxMag, scanMag), C0, st);
-  // 2. scan
-  const c = C0.center_px, scan = [];
-  for (const s of stars) {
-    if (s.mag > scanMag || keptKeys.has(s.hip)) continue;
-    const q = _allskySkyToPhoto(C0, s.az, s.el, p.lat, true);
-    if (!q || !Number.isFinite(q[0])) continue;
-    const dx = q[0] - c[0], dy = q[1] - c[1];
-    if (Math.hypot(dx, dy) > Math.hypot(S.W, S.H) / (1 - FS_SCALE)) continue;
-    scan.push({ s, dx, dy });
-  }
-  const nIn0 = scan.filter(o => fsInside([c[0] + o.dx, c[1] + o.dy])).length;
-  if (nIn0 < 3) return giveUp(`Find stars: fewer than 3 stars to mag ${scanMag} are predicted in the photo; ${adjust}`);
-  // the brightest points, 10 per star predicted in the photo
-  const bright = fsGrid(freePeaks.slice(0, Math.max(50, FS_PEAKS_PER_STAR * nIn0)), fsPx(FS_SCAN_PX));
-  const scales = [];
-  if (frame) for (let i = -Math.round(FS_SCALE * 100); i <= Math.round(FS_SCALE * 100); i++) scales.push(1 + i / 100);
-  else scales.push(1);
-  let best = null;
-  for (let a = 0; a < 360; a++) {
-    const ca = Math.cos(a * D2R), sa = Math.sin(a * D2R);
-    for (const k of scales) {
-      let score = 0;
-      for (const o of scan) {
-        // turned clockwise on the photo by a, scaled by k about the projection centre
-        const x = c[0] + k * (o.dx * ca - o.dy * sa), y = c[1] + k * (o.dx * sa + o.dy * ca);
-        if (!fsInside([x, y])) continue;
-        if (fsNearest(bright, x, y, fsPx(FS_SCAN_PX)).i >= 0) score++;
-      }
-      const off = Math.min(a, 360 - a) + Math.abs(k - 1) * 100;
-      if (!best || score > best.score || (score === best.score && off < best.off)) best = { a, k, score, off };
-    }
-    if (a % 10 === 0) { setStatus(`Find stars: scanning the rotation ${Math.round(a / 3.6)} %`, ''); await tick(); }
-  }
-  steps.push({ stage: 'scan', mag: scanMag, rotation: best.a > 180 ? best.a - 360 : best.a, scale: best.k, score: best.score, stars: nIn0 });
-  if (frame && Math.abs(best.k - 1) >= FS_SCALE - 1e-9) {
-    return giveUp(`Find stars: the best match lies at the end of the scale search (${best.k < 1 ? 'smaller' : 'larger'} by 15 %); adjust the frame scale (Field in step 3) so the markers lie near the photo's stars, then try again`);
-  }
-  if (best.score < 3) return giveUp(`Find stars: no rotation matches the stars; ${adjust}`);
-  // the starting calibration turned and scaled
-  if (frame) {
-    const base = r => _allskyResolve(Object.assign({}, C0, { roll_deg: _allskyAngle180(r), f_px: C0.f_px * best.k, pins: [] }), st);
-    let cal1 = base(C0.roll_deg);
-    if (best.a) {
-      // the sign of the roll that turns the photo clockwise: checked on a star off the centre
-      const ref = scan.slice().sort((u, v) => Math.abs(Math.hypot(u.dx, u.dy) - S.H / 3) - Math.abs(Math.hypot(v.dx, v.dy) - S.H / 3))[0];
-      const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
-      const want = [c[0] + best.k * (ref.dx * ca - ref.dy * sa), c[1] + best.k * (ref.dx * sa + ref.dy * ca)];
-      const err = C => { const q = _allskyForward(C, ref.s.az, ref.s.el); return q ? Math.hypot(q[0] - want[0], q[1] - want[1]) : Infinity; };
-      const plus = base(C0.roll_deg + best.a), minus = base(C0.roll_deg - best.a);
-      cal1 = err(plus) <= err(minus) ? plus : minus;
-    }
-    S.frame = { axis: cal1.axis_radec.slice(), roll: cal1.roll_deg, fov: fovOfCal(cal1), shiftX: 0, shiftY: 0 };
-    S.east = cal1.east;
-  } else {
-    S.north = ((C0.north_deg + best.a) % 360 + 360) % 360;
-  }
-  // 3. first pins: the scan stars' matches within 12 px (a point claimed by two stars goes to the
-  // nearer); xy(o) is the star's predicted pixel
-  const firstMatches = xy => {
-    const claim = new Map();
-    for (const o of scan) {
-      const q = xy(o);
-      if (!fsInside(q)) continue;
-      const n = fsNearest(bright, q[0], q[1], fsPx(FS_SCAN_PX));
-      if (n.i < 0) continue;
-      const pt = bright.pts[n.i], cur = claim.get(pt);
-      if (!cur || n.d1 < cur.d) claim.set(pt, { hip: o.s.hip, d: n.d1 });
-    }
-    return [...claim].map(([pt, m]) => ({ hip: m.hip, px: [pt[0], pt[1]], auto: true }));
-  };
-  const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
-  let auto = firstMatches(o => [c[0] + best.k * (o.dx * ca - o.dy * sa), c[1] + best.k * (o.dx * sa + o.dy * ca)]);
   // Fit with the hand-placed pins and list. quick: an all-sky refit from the last fit's projection,
   // east and north (one LM run instead of 48; the result is fitted in full at the end); rigid: an
   // all-sky fit without time shifts.
@@ -1152,34 +1120,113 @@ async function findStarsRun(opts, before) {
   };
   const resid = () => new Map(S.fit.perPin.map(r => [r.hip !== undefined && r.hip !== null ? r.hip : r.obj, r.residPx]));
   const prune = list => { const r = resid(); return list.filter(q => !(r.get(q.hip) > fsPx(FS_PRUNE_PX))); };
-  // The first matches may include wrong ones: the worst pin over the limit is dropped, one at a
-  // time. All-sky: first against a rigid fit without time shifts (a wrong match could hide in its
-  // own time shift), with the limit the time shifts themselves allow, then with them.
-  const dropWorst = async (limit, rigid) => {
-    if (!fitWith(auto, false, rigid)) return false;
-    for (let guard = auto.length; guard > 0; guard--) {
-      const r = resid();
-      let worst = null;
-      for (const q of auto) if (r.get(q.hip) > limit && (!worst || r.get(q.hip) > r.get(worst.hip))) worst = q;
-      if (!worst) break;
-      auto = auto.filter(q => q !== worst);
-      if (!fitWith(auto, true, rigid)) return false;
-      await tick();
+  let auto = [], nIn0 = 0;
+  if (fromFit) {
+    // an ok fit already puts the prediction on the stars: no scan, no first pins, straight to the ladder
+    nIn0 = stars.filter(s => s.mag <= scanMag && fsInside(_allskySkyToPhoto(C0, s.az, s.el, p.lat))).length;
+    steps.push({ stage: 'fit', pins: kept.length, rms: C0.rms_px });
+  } else {
+    // 2. scan
+    const c = C0.center_px, scan = [];
+    for (const s of stars) {
+      if (s.mag > scanMag || keptKeys.has(s.hip)) continue;
+      const q = _allskySkyToPhoto(C0, s.az, s.el, p.lat, true);
+      if (!q || !Number.isFinite(q[0])) continue;
+      const dx = q[0] - c[0], dy = q[1] - c[1];
+      if (Math.hypot(dx, dy) > Math.hypot(S.W, S.H) / (1 - FS_SCALE)) continue;
+      scan.push({ s, dx, dy });
     }
-    return true;
-  };
-  // the scan stars matched again within 12 px of the fit, which reaches parts of the photo the
-  // turned start missed (an off-centre zenith, a wrong scale), until the set settles
-  let firstKey = '';
-  for (let round = 0; round < FS_ITER_MAX; round++) {
-    if (round) { const cal = S.fit.cal; auto = firstMatches(o => _allskySkyToPhoto(cal, o.s.az, o.s.el, p.lat, true)); }
-    if (!frame && p.span > 0 && !await dropWorst(fsPx(FS_RIGID_PX), true)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
-    if (!await dropWorst(fsPx(FS_PRUNE_PX), false)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
-    const key = auto.map(q => q.hip).sort((u, v) => u - v).join(',');
-    if (key === firstKey) break;
-    firstKey = key;
+    nIn0 = scan.filter(o => fsInside([c[0] + o.dx, c[1] + o.dy])).length;
+    if (nIn0 < 3) return giveUp(`Find stars: fewer than 3 stars to mag ${scanMag} are predicted in the photo; ${adjust}`);
+    // the brightest points, 10 per star predicted in the photo
+    const bright = fsGrid(freePeaks.slice(0, Math.max(50, FS_PEAKS_PER_STAR * nIn0)), fsPx(FS_SCAN_PX));
+    const scales = [];
+    if (frame) for (let i = -Math.round(FS_SCALE * 100); i <= Math.round(FS_SCALE * 100); i++) scales.push(1 + i / 100);
+    else scales.push(1);
+    let best = null;
+    for (let a = 0; a < 360; a++) {
+      const ca = Math.cos(a * D2R), sa = Math.sin(a * D2R);
+      for (const k of scales) {
+        let score = 0;
+        for (const o of scan) {
+          // turned clockwise on the photo by a, scaled by k about the projection centre
+          const x = c[0] + k * (o.dx * ca - o.dy * sa), y = c[1] + k * (o.dx * sa + o.dy * ca);
+          if (!fsInside([x, y])) continue;
+          if (fsNearest(bright, x, y, fsPx(FS_SCAN_PX)).i >= 0) score++;
+        }
+        const off = Math.min(a, 360 - a) + Math.abs(k - 1) * 100;
+        if (!best || score > best.score || (score === best.score && off < best.off)) best = { a, k, score, off };
+      }
+      if (a % 10 === 0) { setStatus(`Find stars: scanning the rotation ${Math.round(a / 3.6)} %`, ''); await tick(); }
+    }
+    steps.push({ stage: 'scan', mag: scanMag, rotation: best.a > 180 ? best.a - 360 : best.a, scale: best.k, score: best.score, stars: nIn0 });
+    if (frame && Math.abs(best.k - 1) >= FS_SCALE - 1e-9) {
+      return giveUp(`Find stars: the best match lies at the end of the scale search (${best.k < 1 ? 'smaller' : 'larger'} by 15 %); adjust the frame scale (Field in step 3) so the markers lie near the photo's stars, then try again`);
+    }
+    if (best.score < 3) return giveUp(`Find stars: no rotation matches the stars; ${adjust}`);
+    // the starting calibration turned and scaled
+    if (frame) {
+      const base = r => _allskyResolve(Object.assign({}, C0, { roll_deg: _allskyAngle180(r), f_px: C0.f_px * best.k, pins: [] }), st);
+      let cal1 = base(C0.roll_deg);
+      if (best.a) {
+        // the sign of the roll that turns the photo clockwise: checked on a star off the centre
+        const ref = scan.slice().sort((u, v) => Math.abs(Math.hypot(u.dx, u.dy) - S.H / 3) - Math.abs(Math.hypot(v.dx, v.dy) - S.H / 3))[0];
+        const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
+        const want = [c[0] + best.k * (ref.dx * ca - ref.dy * sa), c[1] + best.k * (ref.dx * sa + ref.dy * ca)];
+        const err = C => { const q = _allskyForward(C, ref.s.az, ref.s.el); return q ? Math.hypot(q[0] - want[0], q[1] - want[1]) : Infinity; };
+        const plus = base(C0.roll_deg + best.a), minus = base(C0.roll_deg - best.a);
+        cal1 = err(plus) <= err(minus) ? plus : minus;
+      }
+      S.frame = { axis: cal1.axis_radec.slice(), roll: cal1.roll_deg, fov: fovOfCal(cal1), shiftX: 0, shiftY: 0 };
+      S.east = cal1.east;
+    } else {
+      S.north = ((C0.north_deg + best.a) % 360 + 360) % 360;
+    }
+    // 3. first pins: the scan stars' matches within 12 px (a point claimed by two stars goes to the
+    // nearer); xy(o) is the star's predicted pixel
+    const firstMatches = xy => {
+      const claim = new Map();
+      for (const o of scan) {
+        const q = xy(o);
+        if (!fsInside(q)) continue;
+        const n = fsNearest(bright, q[0], q[1], fsPx(FS_SCAN_PX));
+        if (n.i < 0) continue;
+        const pt = bright.pts[n.i], cur = claim.get(pt);
+        if (!cur || n.d1 < cur.d) claim.set(pt, { hip: o.s.hip, d: n.d1 });
+      }
+      return [...claim].map(([pt, m]) => ({ hip: m.hip, px: [pt[0], pt[1]], auto: true }));
+    };
+    const ca = Math.cos(best.a * D2R), sa = Math.sin(best.a * D2R);
+    auto = firstMatches(o => [c[0] + best.k * (o.dx * ca - o.dy * sa), c[1] + best.k * (o.dx * sa + o.dy * ca)]);
+    // The first matches may include wrong ones: the worst pin over the limit is dropped, one at a
+    // time. All-sky: first against a rigid fit without time shifts (a wrong match could hide in its
+    // own time shift), with the limit the time shifts themselves allow, then with them.
+    const dropWorst = async (limit, rigid) => {
+      if (!fitWith(auto, false, rigid)) return false;
+      for (let guard = auto.length; guard > 0; guard--) {
+        const r = resid();
+        let worst = null;
+        for (const q of auto) if (r.get(q.hip) > limit && (!worst || r.get(q.hip) > r.get(worst.hip))) worst = q;
+        if (!worst) break;
+        auto = auto.filter(q => q !== worst);
+        if (!fitWith(auto, true, rigid)) return false;
+        await tick();
+      }
+      return true;
+    };
+    // the scan stars matched again within 12 px of the fit, which reaches parts of the photo the
+    // turned start missed (an off-centre zenith, a wrong scale), until the set settles
+    let firstKey = '';
+    for (let round = 0; round < FS_ITER_MAX; round++) {
+      if (round) { const cal = S.fit.cal; auto = firstMatches(o => _allskySkyToPhoto(cal, o.s.az, o.s.el, p.lat, true)); }
+      if (!frame && p.span > 0 && !await dropWorst(fsPx(FS_RIGID_PX), true)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
+      if (!await dropWorst(fsPx(FS_PRUNE_PX), false)) return giveUp(`Find stars: the first ${auto.length} matches do not fit (${S.fit && S.fit.reason}); ${adjust}`);
+      const key = auto.map(q => q.hip).sort((u, v) => u - v).join(',');
+      if (key === firstKey) break;
+      firstKey = key;
+    }
+    steps.push({ stage: 'first', mag: scanMag, pins: auto.length, rms: S.fit.cal.rms_px });
   }
-  steps.push({ stage: 'first', mag: scanMag, pins: auto.length, rms: S.fit.cal.rms_px });
   // 4. ladder of fainter stars
   for (let mag = scanMag; mag <= maxMag + 1e-9; mag += 0.5) {
     let prevKey = '';
@@ -1234,10 +1281,12 @@ async function findStarsRun(opts, before) {
     }
     steps.push({ stage: 'check', mag: scanMag, bright: mB, of: nB });
   }
-  if (fitOk() && auto.length >= FS_MIN_PINS && mB < Math.max(FS_MIN_BRIGHT, FS_BRIGHT_SHARE * nB)) {
+  // from an ok fit the hand pins count toward the minimum too (the ladder adds only unambiguous stars)
+  const enough = (fromFit ? kept.length : 0) + auto.length >= FS_MIN_PINS;
+  if (fitOk() && enough && mB < Math.max(FS_MIN_BRIGHT, FS_BRIGHT_SHARE * nB)) {
     return giveUp(`Find stars: the match is not convincing (${mB} of ${nB} stars to mag ${scanMag} on bright points); ${adjust}, or pin a few stars by hand`);
   }
-  if (!fitOk() || auto.length < FS_MIN_PINS) {
+  if (!fitOk() || !enough) {
     return giveUp(`Find stars: only ${auto.length} star${auto.length === 1 ? '' : 's'} could be told apart, too few to trust; ${adjust}, or pin a few stars by hand`);
   }
   const u = await unpinnedStats(-Infinity, Math.min(8, maxMag + 1.5));
@@ -1283,6 +1332,7 @@ function outputFrame() {
     f_px: rnd(c.f_px, 2),
     k1: rnd(c.k1 || 0, 5),
     center_px: [rnd(c.center_px[0], 2), rnd(c.center_px[1], 2)],
+    ...(c.crop_px ? { crop_px: c.crop_px.map(v => rnd(v, 1)) } : {}),
     span_min: c.span_min,
     rms_px: rnd(c.rms_px, 2),
     pins: c.pins.map(q => {
@@ -1304,14 +1354,16 @@ function fmtDec(deg) {
   return `${deg < 0 && t > 0 ? '-' : ''}${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
 }
 // The entry's older fields derived from a framed calibration: axis as ra / dec, the fields of view
-// across the image centre (from f, projection and k1), rotation_deg = roll_deg. null otherwise.
+// across the crop's width and height through its centre (from f, projection and k1), rotation_deg =
+// roll_deg. null otherwise.
 function outputFields() {
   const o = output();
   if (!o || o.kind !== 'frame') return null;
   const across = half => { const r = _allskyUndistort(half, o.f_px, o.k1); const t = r === null ? null : _allskyTheta(o.projection, o.f_px, r); return t === null ? null : rnd(2 * t / D2R, 1); };
+  const R = _allskyFrameRect(o);
   return {
     ra: fmtRa(o.axis_radec[0]), dec: fmtDec(o.axis_radec[1]),
-    fov_w_deg: across(o.center_px[0]), fov_h_deg: across(o.center_px[1]),
+    fov_w_deg: across((R[2] - R[0]) / 2), fov_h_deg: across((R[3] - R[1]) / 2),
     rotation_deg: rnd(o.roll_deg, 1),
   };
 }
@@ -1444,17 +1496,19 @@ function parseDec(t) {
   return m[1] === '-' ? -v : v;
 }
 // Brings back the circle, orientation and pins of a pasted calib block, scaled to the loaded photo;
-// a frame block: its axis, roll, field and east as the starting frame, and its star, object and
-// disc pins.
+// a frame block: its crop (crop_px, or the whole image without it), its axis, roll, field and east
+// as the starting frame, and its star, object and disc pins.
 function applyPendingAllsky() {
   const a = S.pendingAllsky; S.pendingAllsky = null;
   if (!a || !a.image_size) return;
   const sx = S.W / a.image_size[0], sy = S.H / a.image_size[1];
   if (a.kind === 'frame') {
+    const c = _allskyCropValid(a.crop_px) ? normCrop([a.crop_px[0] * sx, a.crop_px[1] * sy, a.crop_px[2] * sx, a.crop_px[3] * sy]) : null;
+    S.crop = c === undefined ? null : c;
     if (Array.isArray(a.axis_radec) && a.f_px > 0) {
       S.object = null;
       S.frame = { axis: a.axis_radec.slice(), roll: Number.isFinite(a.roll_deg) ? a.roll_deg : 0,
-        fov: 2 * Math.atan(Math.max(S.W, S.H) / 2 / (a.f_px * sx)) / D2R, shiftX: 0, shiftY: 0 };
+        fov: 2 * Math.atan(cropLong() / 2 / (a.f_px * sx)) / D2R, shiftX: 0, shiftY: 0 };
     }
     if (a.east === 'left' || a.east === 'right') S.east = a.east;
     if (Array.isArray(a.pins)) {
@@ -1496,6 +1550,7 @@ async function loadImage(src, name) {
   S.img = bmp; S.W = bmp.width; S.H = bmp.height; S.name = name || (blob && blob.name) || 'photo';
   S.pins = []; S.selected = null; S.fit = null; S.preview = null;
   S.circle = S.type === 'allsky' ? detectCircle() || defaultCircle() : null;
+  S.crop = isFrame() ? detectCrop() : null;
   if ($('selEquip').value === 'lens') applyLens();
   // the photo loaded again after its entry was applied: the entry's pins come back too
   if (!S.pendingAllsky && S.entry && S.entry.calib) {
@@ -1506,7 +1561,7 @@ async function loadImage(src, name) {
   $('tagName').textContent = '· ' + S.name;
   $('btnDetect').disabled = false;
   invalidate(); view.fit(); runFit();
-  setStatus('Photo loaded', 'ok');
+  setStatus(S.crop ? 'Photo loaded; crop detected inside its border' : 'Photo loaded', 'ok');
 }
 function escapeHtml(t) { return String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
@@ -1602,6 +1657,102 @@ function circleFit(pts) {
 }
 function setCircle(c) { if (busy()) return false; S.circle = c.slice(); renderCircleInfo(); scheduleFit(); view.draw(); }
 
+/* ---------- crop of a framed photo ---------- */
+// The picture inside a dark print border: [x0, y0, x1, y1] in photo px, or null when there is no
+// clear border. On the copy of at most 2048 px:
+// 1. The four corner patches must be dark and even (the border); T is their level plus a margin.
+// 2. Per side, the 10th percentile of the brightness of each column (left, right) or row (top,
+//    bottom) across the middle 40 % of the other axis; from the image edge inward, the first line
+//    where it is above T (90 % of the line is brighter than the border) is the picture's outer edge.
+//    A caption on the border leaves gaps between its letters and stays below. Every side needs a
+//    border of at least 1 % of the shorter side within a third of the image.
+// 3. The same across the found picture less 10 % at each end; both must agree within 3 px. The
+//    picture's level (median of the lines 10 to 30 px inside) must be above T and half of it must be
+//    reached within 3 px of the outer edge (a sharp step, not a dark sky fading out).
+// 4. Inward from the outer edge, on the lines' medians: the brightest line within 6 px (a thin light
+//    line around the picture, or the picture's own edge); the crop edge lies one line past the first
+//    line whose brightness has come back to within half the way from the picture's level to that
+//    peak.
+function detectCrop() {
+  if (!S.small) return null;
+  const im = S.small, w = im.width, h = im.height, k = S.smallK;
+  const cv = new OffscreenCanvas(w, h), g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, w, h).data, L = new Float32Array(w * h);
+  for (let i = 0, j = 0; j < L.length; i += 4, j++) L[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  const n = Math.max(4, Math.round(0.01 * Math.min(w, h)));
+  const patch = (x0, y0) => {
+    let s = 0, s2 = 0, c = 0;
+    for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) { const v = L[y * w + x]; s += v; s2 += v * v; c++; }
+    const m = s / c; return { m, sd: Math.sqrt(Math.max(0, s2 / c - m * m)) };
+  };
+  const corners = [patch(0, 0), patch(w - n, 0), patch(0, h - n), patch(w - n, h - n)];
+  const dark = Math.max(...corners.map(c => c.m)), noise = Math.max(...corners.map(c => c.sd));
+  if (dark > 40 || noise > 12) return null;
+  const T = dark + Math.max(3 * noise + 6, 16);
+  // quantile f of a line (col: a column, else a row) over [a, b) of the other axis, every 2nd pixel
+  const quant = (col, i, a, b, f) => {
+    const v = [];
+    for (let t = a; t < b; t += 2) v.push(col ? L[t * w + i] : L[i * w + t]);
+    v.sort((p, q) => p - q);
+    return v[Math.floor(f * v.length)];
+  };
+  // left, top, right, bottom; a line s from the outside is start + dir * s
+  const sides = [{ col: true, start: 0, dir: 1, size: w }, { col: false, start: 0, dir: 1, size: h },
+    { col: true, start: w - 1, dir: -1, size: w }, { col: false, start: h - 1, dir: -1, size: h }];
+  const prof = (sd, s, band, f) => quant(sd.col, sd.start + sd.dir * s, band[0], band[1], f === undefined ? 0.5 : f);
+  // a border is at most a fifth of the side: a dark photo never gets cropped deep inside
+  const outer = (sd, band) => { for (let s = 0; s < sd.size / 5; s++) if (prof(sd, s, band, 0.1) > T) return s; return -1; };
+  const minB = Math.max(2, Math.round(0.01 * Math.min(w, h)));
+  const band1 = sd => sd.col ? [Math.round(0.3 * h), Math.round(0.7 * h)] : [Math.round(0.3 * w), Math.round(0.7 * w)];
+  const e1 = sides.map(sd => outer(sd, band1(sd)));
+  if (e1.some(e => e < minB)) return null;
+  const px = [e1[0], w - 1 - e1[2]], py = [e1[1], h - 1 - e1[3]];
+  const inset = (lo, hi) => [Math.round(lo + 0.1 * (hi - lo)), Math.round(hi - 0.1 * (hi - lo))];
+  const band2 = sd => sd.col ? inset(py[0], py[1]) : inset(px[0], px[1]);
+  const cut = [];
+  for (let i = 0; i < 4; i++) {
+    const sd = sides[i], band = band2(sd), e = outer(sd, band);
+    if (e < 0 || Math.abs(e - e1[i]) > 3) return null;
+    const lv = [];
+    for (let q = 10; q <= 30; q++) lv.push(prof(sd, e + q, band));
+    lv.sort((p, q) => p - q);
+    const level = lv[lv.length >> 1];
+    if (!(level > T) || !(prof(sd, e + 3, band) >= dark + 0.5 * (level - dark))) return null;
+    let sp = e, peak = -Infinity;
+    for (let s = e; s <= e + 6; s++) { const v = prof(sd, s, band); if (v > peak) { peak = v; sp = s; } }
+    const thr = level + 0.5 * Math.max(0, peak - level);
+    let s = sp;
+    while (s < e + 15 && prof(sd, s, band) > thr) s++;
+    cut.push(s + 1);
+  }
+  const r1 = v => Math.round(v * 10) / 10;
+  const c = [cut[0] / k, cut[1] / k, (w - cut[2]) / k, (h - cut[3]) / k].map(r1);
+  return normCrop(c) || null;
+}
+// A crop clamped to the photo and rounded to 0.1 px; null for the whole image, undefined when it is
+// not a usable rectangle (a side under 16 px, or not finite).
+function normCrop(c) {
+  if (!Array.isArray(c) || c.length < 4 || !c.slice(0, 4).every(Number.isFinite)) return undefined;
+  const r1 = v => Math.round(v * 10) / 10, cx = v => r1(Math.max(0, Math.min(S.W, v))), cy = v => r1(Math.max(0, Math.min(S.H, v)));
+  const x0 = cx(Math.min(c[0], c[2])), x1 = cx(Math.max(c[0], c[2])), y0 = cy(Math.min(c[1], c[3])), y1 = cy(Math.max(c[1], c[3]));
+  if (x1 - x0 < 16 || y1 - y0 < 16) return undefined;
+  if (x0 <= 0 && y0 <= 0 && x1 >= S.W && y1 >= S.H) return null;
+  return [x0, y0, x1, y1];
+}
+// Sets the crop of a framed photo ([x0, y0, x1, y1] in photo px, or null for the whole image). The
+// projection centre moves with it: the prediction is redrawn and, with pins, the fit runs again.
+// Returns the crop now in use (null = the whole image), or false when nothing changed.
+function setCrop(c) {
+  if (busy() || !S.img) return false;
+  const v = c === null ? null : normCrop(c);
+  if (v === undefined) { renderCropInfo(); return false; }
+  S.crop = v;
+  if ($('selEquip').value === 'lens') applyLens();   // the lens field follows the crop's shape
+  invalidate(); if (S.pins.length) scheduleFit(); renderPanel(); view.draw();
+  return v && v.slice();
+}
+
 /* ---------- view (zoom/pan canvas, as in the warp tool) ---------- */
 class View {
   constructor(el) {
@@ -1631,14 +1782,23 @@ class View {
     return [{ kind: 'centre', p: [c[0], c[1]] }].concat([0, 90, 180, 270].map(a => ({
       kind: 'edge', p: [c[0] + c[2] * Math.sin(a * D2R), c[1] - c[2] * Math.cos(a * D2R)] })));
   }
-  // What lies under a screen point: a disc pin's radius handle, a pin, a predicted marker (a disc
-  // anywhere inside it), a circle handle, or nothing.
+  // corners of a framed photo's crop (the image corners without one): top-left, top-right,
+  // bottom-right, bottom-left
+  cropHandles() {
+    if (!isFrame() || !S.img) return [];
+    const r = cropRect();
+    return [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].map((p, corner) => ({ corner, p }));
+  }
+  // What lies under a screen point: a disc pin's radius handle, a pin, a crop corner, a predicted
+  // marker (a disc anywhere inside it), a circle handle, or nothing.
   hit(sx, sy) {
     let best = null, bd = 12;
     const near = (p, what, lim) => { const s = this.toScr(p), d = Math.hypot(s[0] - sx, s[1] - sy); if (d < Math.min(bd, lim)) { bd = d; best = what; } };
     for (const q of S.pins) if (q.r_px > 0) near(radiusHandle(q), { kind: 'radius', key: keyOf(q) }, 9);
     if (best) return best;
     for (const q of S.pins) near(q.px, { kind: 'pin', key: keyOf(q) }, 12);
+    if (best) return best;
+    for (const hd of this.cropHandles()) near(hd.p, { kind: 'crop', corner: hd.corner }, 9);
     if (best) return best;
     const pred = predicted();
     for (const s of pred) if (!s.pinned && s.px && !s.disc) near(s.px, { kind: 'star', key: s.key }, 10);
@@ -1667,7 +1827,7 @@ class View {
       cv.setPointerCapture(e.pointerId);
       if (shifting) {
         const C = startCal();
-        this.drag = C ? { kind: 'shift', start: m, f: fovToF(S.frame.fov, Math.max(S.W, S.H)), sx: S.frame.shiftX, sy: S.frame.shiftY, moved: false }
+        this.drag = C ? { kind: 'shift', start: m, f: fovToF(S.frame.fov, cropLong()), sx: S.frame.shiftX, sy: S.frame.shiftY, moved: false }
           : { kind: 'pan', start: m, ox: this.ox, oy: this.oy, moved: false };
       } else if (h && h.kind === 'radius') {
         S.selected = h.key; renderPanel();
@@ -1681,6 +1841,8 @@ class View {
         this.drag = { kind: 'star', key: h.key, start: m, orig: s.px.slice(), px: s.px.slice(), rPx: s.rPx, moved: false };
       } else if (h && h.kind === 'circle') {
         this.drag = { kind: 'circle', handle: h.handle, start: m, orig: S.circle.slice(), moved: false };
+      } else if (h && h.kind === 'crop') {
+        this.drag = { kind: 'crop', corner: h.corner, start: m, orig: cropRect(), moved: false };
       } else {
         this.drag = { kind: 'pan', start: m, ox: this.ox, oy: this.oy, moved: false };
         cv.style.cursor = 'grabbing';
@@ -1714,12 +1876,20 @@ class View {
           else { const p = this.toImg(m[0], m[1]); S.circle = [o[0], o[1], Math.max(10, Math.hypot(p[0] - o[0], p[1] - o[1]))]; }
           renderCircleInfo(); invalidate();
         }
+        else if (d.kind === 'crop') {
+          // the dragged corner follows the pointer, the opposite one stays
+          const o = d.orig.slice(), xi = d.corner === 0 || d.corner === 3 ? 0 : 2, yi = d.corner < 2 ? 1 : 3;
+          o[xi] += ix; o[yi] += iy;
+          const c = normCrop(o);
+          if (c !== undefined) S.crop = c;
+          renderCropInfo(); invalidate();
+        }
       } else {
         const shifting = isFrame() && S.dragMode === 'frame' && !fitOk();
         const h = shifting ? null : this.hit(m[0], m[1]);
         const hov = h && (h.kind === 'pin' || h.kind === 'star' || h.kind === 'radius') ? h.key : null;
         if (hov !== S.hover) { S.hover = hov; renderPanel(); }
-        cv.style.cursor = shifting ? 'move' : h ? (h.kind === 'circle' ? (h.handle === 'centre' ? 'move' : 'nwse-resize') : h.kind === 'radius' ? 'ew-resize' : 'move') : 'grab';
+        cv.style.cursor = shifting ? 'move' : h ? (h.kind === 'circle' ? (h.handle === 'centre' ? 'move' : 'nwse-resize') : h.kind === 'crop' ? (h.corner % 2 ? 'nesw-resize' : 'nwse-resize') : h.kind === 'radius' ? 'ew-resize' : 'move') : 'grab';
       }
       this.draw();
     });
@@ -1730,6 +1900,7 @@ class View {
         if (d.kind === 'pin' || d.kind === 'radius') scheduleFit();
         else if (d.kind === 'star') addPin(d.key, d.px, d.rPx);
         else if (d.kind === 'circle') scheduleFit();
+        else if (d.kind === 'crop') { if (S.pins.length) scheduleFit(); renderPanel(); }
         else if (d.kind === 'shift') { renderPanel(); if (S.pins.length) scheduleFit(); }
       } else if (d && (d.kind === 'pin' || d.kind === 'star' || d.kind === 'radius')) { S.selected = d.key; renderPanel(); }
       else if (d && d.kind === 'pan') { S.selected = null; renderPanel(); }
@@ -1763,7 +1934,7 @@ class View {
     if (!S.img) return;
     ctx.setTransform(d, 0, 0, d, 0, 0);
     this.drawPhoto(ctx, this.scale, this.ox, this.oy, false);
-    if (isFrame()) this.drawFrameGrid(ctx);
+    if (isFrame()) { this.drawFrameGrid(ctx); this.drawCrop(ctx); }
     else { this.drawSkyGrid(ctx); this.drawCircle(ctx); }
     this.drawStars(ctx);
     const dr = this.drag;
@@ -1839,6 +2010,23 @@ class View {
     }
     ctx.restore();
   }
+  // framed photo: the crop as a dashed rectangle (none for the whole image) and its corner handles
+  drawCrop(ctx) {
+    const hs = this.cropHandles();
+    if (!hs.length) return;
+    ctx.save();
+    if (S.crop) {
+      const a = this.toScr(hs[0].p), b = this.toScr(hs[2].p);
+      ctx.strokeStyle = COLOR.circle; ctx.lineWidth = 1.2; ctx.setLineDash([6, 4]);
+      ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.setLineDash([]);
+    }
+    for (const hd of hs) {
+      const s = this.toScr(hd.p);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.strokeStyle = COLOR.circle; ctx.lineWidth = 1.5;
+      ctx.fillRect(s[0] - 4.5, s[1] - 4.5, 9, 9); ctx.strokeRect(s[0] - 4.5, s[1] - 4.5, 9, 9);
+    }
+    ctx.restore();
+  }
   drawStars(ctx) {
     const pred = predicted(), dr = this.drag, frame = isFrame();
     ctx.save();
@@ -1908,10 +2096,10 @@ class View {
     ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy - 5); ctx.moveTo(cx, cy + 5); ctx.lineTo(cx, cy + R);
     ctx.stroke();
     ctx.restore();
-    ctx.lineWidth = 2; ctx.strokeStyle = dr.kind === 'circle' ? COLOR.circle : COLOR.pin;
+    ctx.lineWidth = 2; ctx.strokeStyle = dr.kind === 'circle' || dr.kind === 'crop' ? COLOR.circle : COLOR.pin;
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
     ctx.font = '11px "Share Tech Mono", monospace'; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.textAlign = 'center';
-    const label = dr.kind === 'circle' ? 'circle' : dr.kind === 'radius' ? nameOfKey(dr.key) + ' r ' + pinOf(dr.key).r_px.toFixed(1) : nameOfKey(dr.key);
+    const label = dr.kind === 'circle' ? 'circle' : dr.kind === 'crop' ? 'crop' : dr.kind === 'radius' ? nameOfKey(dr.key) + ' r ' + pinOf(dr.key).r_px.toFixed(1) : nameOfKey(dr.key);
     ctx.fillText(`${label} ${ip[0].toFixed(1)}, ${ip[1].toFixed(1)}`, cx, cy + R + 14);
   }
 }
@@ -1949,8 +2137,16 @@ function renderCircleInfo() {
   const c = S.circle;
   $('infoCircle').innerHTML = c ? `Circle: centre <b>${c[0].toFixed(1)}, ${c[1].toFixed(1)}</b> radius <b>${c[2].toFixed(1)}</b> px` : 'Circle: -';
 }
+// Step 3 crop fields (an input being edited is left alone), info line and buttons.
+function renderCropInfo() {
+  const r = S.img ? cropRect() : null, ids = ['inCropX0', 'inCropY0', 'inCropX1', 'inCropY1'];
+  ids.forEach((id, i) => { if (document.activeElement !== $(id)) { $(id).value = r ? String(rnd(r[i], 1)) : ''; $(id).classList.remove('bad'); } $(id).disabled = !S.img; });
+  $('infoCrop').innerHTML = !r ? 'Crop: -' : S.crop ? `Crop: <b>${rnd(r[2] - r[0], 1)} &times; ${rnd(r[3] - r[1], 1)}</b> px, centre <b>${rnd((r[0] + r[2]) / 2, 2)}, ${rnd((r[1] + r[3]) / 2, 2)}</b>` : 'Crop: whole image';
+  $('btnDetectCrop').disabled = $('btnCropWhole').disabled = !S.img;
+}
 function renderPanel() {
   renderCircleInfo();
+  renderCropInfo();
   renderSetup();
   renderFrameControls();
   const fit = S.fit, ok = fitOk(), frameFit = ok && fit.cal.kind === 'frame';
@@ -2100,6 +2296,18 @@ $('btnDetect').addEventListener('click', () => {
   const c = detectCircle();
   if (c) { setCircle(c); setStatus('Circle detected', 'ok'); } else setStatus('No circle found; drag the handles instead', 'err');
 });
+$('btnDetectCrop').addEventListener('click', () => {
+  if (!S.img || busy()) return;
+  const c = detectCrop();
+  if (c) { setCrop(c); setStatus('Crop detected', 'ok'); } else setStatus('No clear dark border found; set the crop by hand or drag its corners', 'err');
+});
+$('btnCropWhole').addEventListener('click', () => { if (setCrop(null) !== false) setStatus('Crop: whole image', 'ok'); });
+// the four fields together: a crop when they form a rectangle of at least 16 px, else marked bad
+for (const id of ['inCropX0', 'inCropY0', 'inCropX1', 'inCropY1']) $(id).addEventListener('change', () => {
+  const v = ['inCropX0', 'inCropY0', 'inCropX1', 'inCropY1'].map(numIn);
+  if (v.some(x => !Number.isFinite(x)) || !(v[0] < v[2]) || !(v[1] < v[3]) || normCrop(v) === undefined) { $(id).classList.add('bad'); return; }
+  $(id).blur(); setCrop(v);
+});
 $('rngNorth').addEventListener('input', e => { setNorth(+e.target.value); });
 for (const b of document.querySelectorAll('#typeToggle button')) b.addEventListener('click', () => setType(b.dataset.type));
 for (const b of document.querySelectorAll('#dragToggle button')) b.addEventListener('click', () => setDragMode(b.dataset.drag));
@@ -2153,7 +2361,8 @@ function setType(kind) {
   if (kind === 'allsky') {
     S.pins = S.pins.filter(q => q.hip !== undefined);
     if (S.img && !S.circle) S.circle = detectCircle() || defaultCircle();
-  }
+    S.crop = null;
+  } else if (wasAllsky && S.img) S.crop = detectCrop();
   if (wasAllsky !== (kind === 'allsky')) $('inSpan').value = kind === 'allsky' ? '10' : '0';
   if (kind !== 'sunmoon') S.rollFree = false;
   S.skyKey = ''; invalidate(); scheduleFit(); renderPanel(); view.draw();
@@ -2185,7 +2394,8 @@ function setEquipment(x) {
   invalidate(); if (S.pins.length && !fitOk()) scheduleFit(); renderPanel(); view.draw();
   return { fovW: w, fovH: h, fovLong: S.equip.fovL };
 }
-// Lens mode: focal length and crop factor, the sensor in the photo's aspect (3:2 before a photo).
+// Lens mode: focal length and crop factor, the sensor in the aspect of the photo's crop (3:2 before
+// a photo).
 function applyLens() {
   if (busy()) return null;
   const num = id => { const t = $(id).value.trim().replace(',', '.'); return t === '' ? NaN : Number(t); };
@@ -2193,7 +2403,7 @@ function applyLens() {
   const ok = { inFocal: focal > 0, inCrop: crop > 0 };
   for (const id in ok) $(id).classList.toggle('bad', !ok[id] && $(id).value.trim() !== '');
   if (!ok.inFocal || !ok.inCrop) return null;
-  const W = S.W || 3, H = S.H || 2;
+  const R = S.img ? cropRect() : [0, 0, 3, 2], W = R[2] - R[0], H = R[3] - R[1];
   return setEquipment({ mode: 'imaging', name: '', telescopeFocal: focal, aperture: 1, accessory: 1, sensorW: Math.max(W, H), sensorH: Math.min(W, H), crop });
 }
 // Object the frame is centred on (step 2); null when the name is not known.
@@ -2256,7 +2466,7 @@ const api = {
   reset() {
     if (busy()) return false;
     clearTimeout(S.fitTimer);
-    S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; $('btnDetect').disabled = true;
+    S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; S.crop = null; $('btnDetect').disabled = true;
     $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
     S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null;
     $('inSpan').value = '0';
@@ -2269,6 +2479,8 @@ const api = {
   setEntry, setFields, fields() { const f = fields(); return f; },
   detectCircle() { const c = detectCircle(); if (c) setCircle(c); return c; },
   setCircle, setNorth, setEast,
+  detectCrop() { const c = detectCrop(); if (c) setCrop(c); return c; },
+  setCrop,
   setType, setEquipment, setObject, setFrame, addDiscPin, setRollFixed, setDragMode, reloadEquipment,
   deepStars: () => ensureDeep(),
   startCal: () => { const c = startCal(); return c && JSON.parse(JSON.stringify(c)); },
@@ -2285,7 +2497,7 @@ const api = {
   fitView: () => view.fit(),
   pinsForFit, fitOpts, output, outputEntry,
   get state() {
-    return { circle: S.circle && S.circle.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag,
+    return { circle: S.circle && S.circle.slice(), crop: S.crop && S.crop.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag,
       type: S.type, frame: Object.assign({}, S.frame), object: S.object && Object.assign({}, S.object), rollFree: S.rollFree };
   },
 };
