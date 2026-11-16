@@ -15,6 +15,7 @@
     --pin: #20a0e8;
     --err: #e84040;
     --accent-green: #50dc78;
+    --hilite: #ffd23c;
     --text: #c8d4e0;
     --dim: #6a7a8a;
     --mono: 'Share Tech Mono', monospace;
@@ -92,6 +93,25 @@
     color: #0a0c0f; background: var(--step);
   }
   .step.info { background: var(--dim); color: var(--panel); font-family: var(--sans); font-size: 13px; font-weight: 700; }
+  /* step guidance: a ring round the step number, green when the step is done, yellow and pulsing on
+     the current step (the first one not done), none while pending */
+  /* a dark 2 px gap between the number and the ring keeps the ring readable on every step colour */
+  .step.done { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4.5px var(--accent-green); }
+  .step.current { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4.5px var(--hilite); animation: step-pulse 1.6s ease-in-out infinite; }
+  @keyframes step-pulse {
+    50% { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4.5px var(--hilite), 0 0 0 8.5px rgba(255,210,60,0.3); }
+  }
+  @media (prefers-reduced-motion: reduce) { .step.current { animation: none; } }
+  .view .hint {
+    position: absolute; right: 10px; top: 8px; z-index: 3; max-width: min(280px, calc(100% - 20px));
+    font-family: var(--mono); font-size: 12px; line-height: 1.4; color: var(--text);
+    padding: 6px 9px; border: 1px solid var(--accent); border-radius: var(--radius-sm);
+    background: rgba(10,12,15,0.85); pointer-events: none;
+  }
+  .view .hint:empty { display: none; }
+  /* a narrow view: under the photo tag instead of over it */
+  .view { container-type: inline-size; }
+  @container (max-width: 700px) { .view .hint { top: 40px; } }
   button, select {
     font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--text);
     background: var(--control-fill); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -210,6 +230,7 @@
   <div class="view" id="view">
     <canvas></canvas>
     <div class="tag"><b>&#9679;</b> <span id="tagType">ALL-SKY PHOTO</span> <span class="name" id="tagName"></span></div>
+    <div class="hint" id="stepHint" role="status" aria-live="polite"></div>
     <div class="empty"><div class="zone" data-load title="Load the photo (the full-size image the catalog entry points to)">
       <p>Drop photo here or <span>click to select file</span></p>
     </div></div>
@@ -357,8 +378,8 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug646"></script>
-<script src="js/allsky-model.js?perfdebug646"></script>
+<script src="js/sky-astro.js?perfdebug649"></script>
+<script src="js/allsky-model.js?perfdebug649"></script>
 <script>
 // Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
 // planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
@@ -432,7 +453,10 @@ const S = {
   fitTimer: 0, fitRuns: 0,
   peaks: null,                   // bright points of the photo for Find stars { img, list }, made once per photo
   finding: false,                // Find stars is running
+  copied: '',                    // the calib block (JSON) last copied by Copy JSON or Copy full entry
+  touched: 0,                    // counts the user's photos, entries and resets: the default photo yields to them
 };
+const DEFAULT_ENTRY = 'A2021-08-12_PER01', DEFAULT_PHOTO = 'img/astro/A2021-08-12_PER01_C.jpg';
 
 /* ---------- page height (as in the warp tool) ---------- */
 function fitToViewport() {
@@ -1397,9 +1421,10 @@ function formatJSON(o) {
     .replace(/\[\s+([^\[\]{}"]*?)\s+\]/g, (m, inner) => '[' + inner.split(/,\s*/).join(', ') + ']')
     .replace(/\{\s+("hip"[^{}]*?|"obj"[^{}]*?)\s+\}/g, (m, inner) => '{ ' + inner.replace(/\s*\n\s*/g, ' ') + ' }');
 }
-function copyText(text, what) {
+// onDone runs once the text is on the clipboard.
+function copyText(text, what, onDone) {
   api.lastCopied = text;
-  const done = () => setStatus(`Copied ${what} to the clipboard`, 'ok');
+  const done = () => { setStatus(`Copied ${what} to the clipboard`, 'ok'); if (onDone) onDone(); };
   const fallback = () => {
     const t = document.createElement('textarea');
     t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
@@ -1434,8 +1459,9 @@ function legacyCalib(o) {
 // From a pasted list (e.g. the whole filelist_astro.json): the entry of the loaded photo, matched
 // by its file name (A2021-08-12_PER01_C.jpg -> id A2021-08-12_PER01, or the entry's calib.image);
 // a one-entry list is that entry. Throws when the photo does not say which entry is meant.
-function entryMatchesPhoto(x) {
-  const file = (S.name || '').split('/').pop();
+// name: the photo's file name (default: the loaded photo's).
+function entryMatchesPhoto(x, name) {
+  const file = (typeof name === 'string' ? name : S.name || '').split('/').pop();
   return !!(file && x && ((x.calib && x.calib.image && x.calib.image.split('/').pop() === file)
     || (x.id && file.replace(/\.[^.]+$/, '').replace(/_[A-Z]$/, '') === x.id)));
 }
@@ -1451,6 +1477,47 @@ function setEntry(src) {
   let e;
   try { e = parseEntry(src); } catch (err) { setStatus(err instanceof SyntaxError ? 'The pasted text is not valid JSON' : err.message, 'err'); return false; }
   if (!e || typeof e !== 'object') { setStatus('The pasted text is not a catalog entry', 'err'); return false; }
+  // the entry of another photo than the one shown: its own photo is loaded first (a promise)
+  const own = entryImage(e);
+  if (S.img && own && !entryMatchesPhoto(e)) return loadEntryPhoto(e, own, typeof src === 'string' ? src : JSON.stringify(src));
+  return applyEntry(e);
+}
+// The photo an entry names: calib.image, else full (paths as the app uses them); null without one.
+function entryImage(e) {
+  const c = e && e.calib && typeof e.calib === 'object' ? e.calib : null, f = (c && c.image) || e.full;
+  return typeof f === 'string' && f.trim() ? f.trim() : null;
+}
+// Loads the entry's own photo from the server, then applies the entry as if that photo had been
+// loaded first. When it cannot be loaded the entry waits: its date, time and place are filled, its
+// calib is kept for the matching photo and the shown photo is left without pins. Resolves to true
+// when the entry was applied with its photo.
+// A newer action of the user's (photo, entry, reset) supersedes it: the last one wins.
+async function loadEntryPhoto(e, path, text) {
+  const t0 = ++S.touched, stale = () => S.touched !== t0;
+  setStatus('Loading the entry\'s photo ' + path + '...', '');
+  let blob = null;
+  try { const r = await fetch(path); if (r.ok) blob = await r.blob(); } catch (err) { blob = null; }
+  if (stale()) return false;
+  if (blob) {
+    try {
+      await loadImage(blob, path.split('/').pop(), stale);
+      if (stale()) return false;
+      if (!S.img || !entryMatchesPhoto(e)) blob = null;
+    } catch (err) { blob = null; }
+  }
+  if (stale()) return false;
+  if (blob) {
+    $('inEntry').value = text;
+    return applyEntry(e);
+  }
+  S.pins = []; S.selected = null; S.fit = null; S.preview = null;
+  applyEntry(e, true);
+  setStatus('Entry waiting for its photo: load ' + path.split('/').pop(), 'err');
+  return false;
+}
+// Applies a parsed entry: time, place, type, frame; its calib block goes onto the loaded photo (or
+// waits for one), unless hold (it then waits for the matching photo).
+function applyEntry(e, hold) {
   S.entry = e;
   const signed = (v, hemi, neg) => { const n = parseFloat(v); return Number.isFinite(n) ? (String(hemi).toUpperCase() === neg ? -Math.abs(n) : n) : NaN; };
   const set = {};
@@ -1478,7 +1545,7 @@ function setEntry(src) {
   }
   if (c && Number.isFinite(+c.span_min)) set.span = +c.span_min;
   setFields(set);
-  if (c) { S.pendingAllsky = c; if (S.img) applyPendingAllsky(); }
+  if (c) { S.pendingAllsky = c; if (S.img && !hold) applyPendingAllsky(); }
   renderPanel();
   if (!framed && c) document.getElementById('pinHint').scrollIntoView({ block: 'nearest' });
   setStatus('Entry applied' + (c ? ' with its calibration' : framed && S.frame.axis ? ' with its ra, dec, field and rotation' : ''), 'ok');
@@ -1537,7 +1604,26 @@ function setFields(o) {
 }
 
 /* ---------- photo and circle ---------- */
-async function loadImage(src, name) {
+// Everything of a calibration back to the page's defaults (the photo itself stays): pasted entry and
+// its text, pins, fit, frame, crop, circle, orientation, object, equipment, the step 2 fields, photo
+// type Frame, rotation by hand, dragging the photo.
+function clearSetup() {
+  clearTimeout(S.fitTimer); S.fitTimer = 0;
+  S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null; S.copied = '';
+  S.circle = null; S.crop = null;
+  S.type = 'frame'; S.object = null; S.equip = null; S.rollFree = false; S.dragMode = 'photo';
+  S.frame = { axis: null, roll: 0, fov: FRAME_FOV_DEFAULT, shiftX: 0, shiftY: 0 };
+  S.north = 0; S.east = 'left'; S.selected = null; S.hover = null; S.skyKey = '';
+  const vals = { inEntry: '', inDate: '', inTime: '', inLat: '', inLon: '', inSpan: '0', inTz: '0', inObject: '', inFocal: '', inCrop: '1' };
+  for (const id in vals) { $(id).value = vals[id]; $(id).classList.remove('bad'); }
+  $('selEquip').value = '';
+  $('infoObject').classList.remove('err');
+  invalidate();
+}
+// A photo replacing another one starts from the page's defaults, unless it is the photo of the pasted
+// entry (that entry's calibration comes back). The first photo keeps what was set up before it.
+// stale: optional predicate; true after the decode drops this photo (a newer action of the user's).
+async function loadImage(src, name, stale) {
   if (busy()) return false;
   await ready;
   let blob = src;
@@ -1545,9 +1631,12 @@ async function loadImage(src, name) {
   const bmp = await createImageBitmap(blob);
   // a copy of at most 2048 px for the overview and the circle detection
   const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
-  S.small = k < 1 ? await createImageBitmap(bmp, { resizeWidth: Math.round(bmp.width * k), resizeHeight: Math.round(bmp.height * k), resizeQuality: 'high' }) : bmp;
-  S.smallK = S.small.width / bmp.width;
-  S.img = bmp; S.W = bmp.width; S.H = bmp.height; S.name = name || (blob && blob.name) || 'photo';
+  const small = k < 1 ? await createImageBitmap(bmp, { resizeWidth: Math.round(bmp.width * k), resizeHeight: Math.round(bmp.height * k), resizeQuality: 'high' }) : bmp;
+  if (busy() || (stale && stale())) return false;
+  const newName = name || (blob && blob.name) || 'photo';
+  if (S.img && !(S.entry && entryMatchesPhoto(S.entry, newName))) clearSetup();
+  S.small = small; S.smallK = S.small.width / bmp.width;
+  S.img = bmp; S.W = bmp.width; S.H = bmp.height; S.name = newName;
   S.pins = []; S.selected = null; S.fit = null; S.preview = null;
   S.circle = S.type === 'allsky' ? detectCircle() || defaultCircle() : null;
   S.crop = isFrame() ? detectCrop() : null;
@@ -1667,12 +1756,20 @@ function setCircle(c) { if (busy()) return false; S.circle = c.slice(); renderCi
 //    A caption on the border leaves gaps between its letters and stays below. Every side needs a
 //    border of at least 1 % of the shorter side within a third of the image.
 // 3. The same across the found picture less 10 % at each end; both must agree within 3 px. The
-//    picture's level (median of the lines 10 to 30 px inside) must be above T and half of it must be
-//    reached within 3 px of the outer edge (a sharp step, not a dark sky fading out).
-// 4. Inward from the outer edge, on the lines' medians: the brightest line within 6 px (a thin light
-//    line around the picture, or the picture's own edge); the crop edge lies one line past the first
-//    line whose brightness has come back to within half the way from the picture's level to that
-//    peak.
+//    picture's level is the median of the lines 10 to 30 px inside.
+// 4. A thin light frame line around the picture: within 6 px of the outer edge, the brightest line
+//    that is even along the side (10th to 90th percentile within max(10, 15 %) of its median, the
+//    10th percentile above T) and that differs from the picture inside it (at least 10 brighter than
+//    the picture's level, or the next line in is uneven). Picture content is uneven, so the line separates the picture from the
+//    border also where the picture is as dark as the border (a silhouette touching it). The crop edge
+//    lies one line past the first line inside it whose median has come back to within half the way
+//    from the picture's level to the brightest median of the line and the next two (at most 4 lines
+//    in).
+// 5. A side without such a line: the picture's level must be above T and half of it must be reached
+//    within 3 px of the outer edge (a sharp step, not a dark sky fading out); on the lines' medians,
+//    the brightest line within 6 px of the outer edge (the picture's own edge) is the peak, and the
+//    crop edge lies one line past the first line whose brightness has come back to within half the
+//    way from the picture's level to that peak.
 function detectCrop() {
   if (!S.small) return null;
   const im = S.small, w = im.width, h = im.height, k = S.smallK;
@@ -1710,6 +1807,12 @@ function detectCrop() {
   const px = [e1[0], w - 1 - e1[2]], py = [e1[1], h - 1 - e1[3]];
   const inset = (lo, hi) => [Math.round(lo + 0.1 * (hi - lo)), Math.round(hi - 0.1 * (hi - lo))];
   const band2 = sd => sd.col ? inset(py[0], py[1]) : inset(px[0], px[1]);
+  // a frame line: a line of the band that is even (10th to 90th percentile within max(10, 15 %) of
+  // its median) and brighter than T
+  const even = (sd, s, band) => {
+    const lo = prof(sd, s, band, 0.1), hi = prof(sd, s, band, 0.9), md = prof(sd, s, band);
+    return lo > T && hi - lo <= Math.max(10, 0.15 * md);
+  };
   const cut = [];
   for (let i = 0; i < 4; i++) {
     const sd = sides[i], band = band2(sd), e = outer(sd, band);
@@ -1718,6 +1821,25 @@ function detectCrop() {
     for (let q = 10; q <= 30; q++) lv.push(prof(sd, e + q, band));
     lv.sort((p, q) => p - q);
     const level = lv[lv.length >> 1];
+    // the frame line: the brightest even line within 6 px of the outer edge
+    let ln = -1, lnV = -Infinity;
+    for (let s = e; s <= e + 6; s++) { if (!even(sd, s, band)) continue; const v = prof(sd, s, band); if (v > lnV) { lnV = v; ln = s; } }
+    // a line differs from the picture inside it: clearly brighter than its level, or the next line
+    // in is uneven (picture content); a smooth even picture edge is no line
+    if (ln >= 0 && !(lnV - level >= 10 || !even(sd, ln + 1, band))) ln = -1;
+    if (ln >= 0) {
+      // inward from the line: the crop edge lies one line past the first line whose brightness has
+      // come back to within half the way from the picture's level to the brightest of the line and
+      // the next two
+      let peak = -Infinity;
+      for (let s = ln; s <= ln + 2; s++) peak = Math.max(peak, prof(sd, s, band));
+      const thr = level + 0.5 * Math.max(0, peak - level);
+      let s = ln + 1;
+      while (s < ln + 5 && prof(sd, s, band) > thr) s++;
+      cut.push(s + 1);
+      continue;
+    }
+    // no line: the step from the border to the picture
     if (!(level > T) || !(prof(sd, e + 3, band) >= dark + 0.5 * (level - dark))) return null;
     let sp = e, peak = -Infinity;
     for (let s = e; s <= e + 6; s++) { const v = prof(sd, s, band); if (v > peak) { peak = v; sp = s; } }
@@ -2209,6 +2331,58 @@ function renderPanel() {
   $('orientNote').textContent = isFrame()
     ? (fitted ? 'Set by the fit.' : 'East left is an ordinary photo, right a mirrored one; with 3 or more objects pinned the fit tries both.')
     : fitted ? 'Set by the fit.' : 'Before pinning, turn the prediction roughly onto the stars, then drag star markers onto their images.';
+  renderSteps();
+}
+// Step guidance: whether each of the six steps is done.
+//   1 Photo: a photo is loaded.
+//   2 Setup: date, time, latitude, longitude and span are valid; a framed or Sun / Moon photo also
+//     needs its axis (an object, an entry's ra / dec, or a restored calib).
+//   3 Image circle (all-sky): a circle is set. Frame: a pin exists or the fit is ok.
+//   4 Orientation: step 3 is done and a pin exists or the fit is ok.
+//   5 Pins and fit: the fit is ok.
+//   6 Output: the current fit's calib block was copied (Copy JSON or Copy full entry).
+function stepsDone() {
+  const ok = fitOk(), pinned = S.pins.length > 0 || ok;
+  const d3 = S.type === 'allsky' ? !!(S.img && S.circle) : !!S.img && pinned;
+  return [
+    !!S.img,
+    !!place() && (S.type === 'allsky' || !!S.object || !!S.frame.axis),
+    d3,
+    d3 && pinned,
+    ok,
+    ok && S.copied !== '' && S.copied === JSON.stringify(output()),
+  ];
+}
+// 'done' | 'current' | 'pending' per step; current is the first step not done.
+function stepStates() {
+  const d = stepsDone(), cur = d.indexOf(false);
+  return d.map((v, i) => v ? 'done' : i === cur ? 'current' : 'pending');
+}
+// The instruction for the current step, by photo type.
+function stepHint(states) {
+  if (S.finding) return 'Finding stars...';
+  const i = states.indexOf('current'), t = S.type;
+  const entry = 'Set date, time UTC and place, or paste the catalog entry and press Apply entry.';
+  switch (i) {
+    case -1: return 'Copied. Paste it into the photo\'s entry in filelist_astro.json.';
+    case 0: return 'Load a photo: drop it here or use Load photo.';
+    case 1: return t === 'allsky' ? entry : place() ? 'Choose the object the photo is centred on (step 2).'
+      : entry + ' Then choose the object the photo is centred on.';
+    case 2: return t === 'allsky' ? 'Check the image circle; drag its handles if it is off.'
+      : t === 'sunmoon' ? 'Check the crop and set the rotation by hand, then drag the dashed disc onto the Sun or the Moon.'
+        : 'Check the crop, then turn, scale and shift the amber prediction roughly onto the photo and drag a marker onto its star.';
+    case 3: return t === 'allsky' ? 'Set north and the east side so the prediction matches the photo, then drag a marker onto its star.'
+      : 'Set the east side so the prediction matches the photo.';
+    case 4: return t === 'sunmoon' ? 'Drag the dashed disc onto the Sun or the Moon and its square handle onto the limb.'
+      : 'Press Find stars or drag amber markers onto their stars; 6 or more pins spread over the photo.';
+    default: return 'The fit is ok: Copy JSON for the calib block, or Copy full entry.';
+  }
+}
+function renderSteps() {
+  const st = stepStates(), els = document.querySelectorAll('.sidebar-title .step:not(.info)');
+  els.forEach((el, i) => { el.classList.toggle('done', st[i] === 'done'); el.classList.toggle('current', st[i] === 'current'); });
+  const h = stepHint(st);
+  if ($('stepHint').textContent !== h) $('stepHint').textContent = h;
 }
 // Step 2: type, equipment and object lines.
 function renderSetup() {
@@ -2278,7 +2452,7 @@ function centreOn(p) {
 for (const el of document.querySelectorAll('[data-load]')) el.addEventListener('click', () => $('fileImg').click());
 $('fileImg').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = '';
-  if (f) loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err'));
+  if (f) { S.touched++; loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err')); }
 });
 const ve = $('view');
 ve.addEventListener('dragover', e => { e.preventDefault(); ve.classList.add('drop'); });
@@ -2286,9 +2460,9 @@ ve.addEventListener('dragleave', () => ve.classList.remove('drop'));
 ve.addEventListener('drop', e => {
   e.preventDefault(); ve.classList.remove('drop');
   const f = e.dataTransfer.files[0];
-  if (f) loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err'));
+  if (f) { S.touched++; loadImage(f, f.name).catch(err => setStatus('Could not read the photo: ' + err.message, 'err')); }
 });
-$('btnEntry').addEventListener('click', () => setEntry($('inEntry').value));
+$('btnEntry').addEventListener('click', () => { S.touched++; setEntry($('inEntry').value); });
 $('btnFindStars').addEventListener('click', () => { findStars(); });
 for (const id of ['inDate', 'inTime', 'inLat', 'inLon', 'inSpan', 'inTz']) $(id).addEventListener('input', () => { place(); scheduleFit(); view.draw(); });
 $('btnDetect').addEventListener('click', () => {
@@ -2340,12 +2514,17 @@ $('btnClearPins').addEventListener('click', () => {
 $('btnCopy').addEventListener('click', () => {
   const o = output();
   if (!o) return;
-  if (o.kind !== 'frame') { copyText(formatJSON(o), 'the calib block'); return; }
+  const mark = () => { S.copied = JSON.stringify(o); renderPanel(); };
+  if (o.kind !== 'frame') { copyText(formatJSON(o), 'the calib block', mark); return; }
   // framed: the derived fields and the calib block, as lines to paste into the entry
   const t = formatJSON(Object.assign({}, outputFields(), { calib: o })).split('\n').slice(1, -1).map(l => l.replace(/^ {2}/, '')).join('\n');
-  copyText(t, 'ra, dec, fov, rotation and the calib block');
+  copyText(t, 'ra, dec, fov, rotation and the calib block', mark);
 });
-$('btnCopyEntry').addEventListener('click', () => { const o = outputEntry(); if (o) copyText(formatJSON(o), 'the full entry'); });
+$('btnCopyEntry').addEventListener('click', () => {
+  const o = outputEntry();
+  if (!o) return;
+  copyText(formatJSON(o), 'the full entry', () => { S.copied = JSON.stringify(o.calib); renderPanel(); });
+});
 function setNorth(v) { if (busy()) return; S.north = ((v % 360) + 360) % 360; invalidate(); renderPanel(); view.draw(); }
 function setEast(v) { if (busy()) return; S.east = v === 'right' ? 'right' : 'left'; invalidate(); renderPanel(); view.draw(); }
 
@@ -2459,24 +2638,53 @@ document.addEventListener('keydown', e => {
 });
 renderPanel();
 
+/* ---------- default photo ---------- */
+// The empty page: no photo, every setting at its default.
+function clearPage() {
+  S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; $('btnDetect').disabled = true;
+  $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
+  clearSetup(); setStatus('', ''); renderPanel(); view.draw();
+}
+// The page opens with PER01 and its catalog entry applied as if pasted (Apply entry): its calib block
+// brings back the circle and pins and the fit runs. ?blank opens the empty page. A missing photo or
+// entry leaves the page empty; a photo, entry or reset of the user's meanwhile wins.
+async function loadDefault() {
+  await ready;
+  if (new URLSearchParams(location.search).has('blank')) return;
+  const t0 = S.touched, mine = () => S.touched === t0 && !S.finding;
+  try {
+    const list = await fetch('filelist_astro.json').then(r => r.ok ? r.json() : null);
+    const e = Array.isArray(list) ? list.find(x => x && x.id === DEFAULT_ENTRY) : null;
+    if (!e) return;
+    const r = await fetch(DEFAULT_PHOTO);
+    if (!r.ok || !mine()) return;
+    const blob = await r.blob();
+    if (!mine() || S.img) return;
+    await loadImage(blob, DEFAULT_PHOTO.split('/').pop(), () => !mine());
+    if (!mine()) return;
+    $('inEntry').value = formatJSON(e);
+    if (setEntry($('inEntry').value)) runFit();
+  } catch (err) {
+    console.warn('Default photo not loaded:', err);
+    if (mine()) clearPage();
+  }
+}
+const readyAll = (async () => { await ready; await loadDefault(); })();
+
 /* ---------- test and automation interface ---------- */
 const api = {
-  ready,
+  ready: readyAll,
   lastCopied: '',
+  // the empty page: no photo, every setting at its default
   reset() {
     if (busy()) return false;
-    clearTimeout(S.fitTimer);
-    S.img = null; S.small = null; S.W = S.H = 0; S.name = ''; S.circle = null; S.crop = null; $('btnDetect').disabled = true;
-    $('infoImg').textContent = 'Photo: -'; $('tagName').textContent = '';
-    S.pins = []; S.fit = null; S.preview = null; S.entry = null; S.pendingAllsky = null;
-    $('inSpan').value = '0';
-    S.type = 'frame'; S.object = null; S.equip = null; S.rollFree = false; S.dragMode = 'photo';
-    S.frame = { axis: null, roll: 0, fov: FRAME_FOV_DEFAULT, shiftX: 0, shiftY: 0 };
-    $('inObject').value = ''; $('selEquip').value = '';
-    S.north = 0; S.east = 'left'; S.selected = null; S.hover = null; invalidate(); renderPanel(); view.draw();
+    S.touched++;
+    clearPage();
   },
-  loadImage: (src, name) => loadImage(src, name),
-  setEntry, setFields, fields() { const f = fields(); return f; },
+  loadImage: (src, name) => { S.touched++; return loadImage(src, name); },
+  setEntry: src => { S.touched++; return setEntry(src); },
+  setFields, fields() { const f = fields(); return f; },
+  steps: () => stepStates(),
   detectCircle() { const c = detectCircle(); if (c) setCircle(c); return c; },
   setCircle, setNorth, setEast,
   detectCrop() { const c = detectCrop(); if (c) setCrop(c); return c; },
@@ -2498,7 +2706,8 @@ const api = {
   pinsForFit, fitOpts, output, outputEntry,
   get state() {
     return { circle: S.circle && S.circle.slice(), crop: S.crop && S.crop.slice(), W: S.W, H: S.H, north: S.north, east: S.east, name: S.name, fitRuns: S.fitRuns, dragging: !!view.drag,
-      type: S.type, frame: Object.assign({}, S.frame), object: S.object && Object.assign({}, S.object), rollFree: S.rollFree };
+      type: S.type, frame: Object.assign({}, S.frame), object: S.object && Object.assign({}, S.object), rollFree: S.rollFree,
+      entry: !!S.entry, dragMode: S.dragMode, equip: S.equip && Object.assign({}, S.equip) };
   },
 };
 window.ast = api;
