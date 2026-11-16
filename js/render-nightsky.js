@@ -587,7 +587,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // of Date.now()), stores its frame definition for _nightSkyDrawCatalogFrame, and centers the
 // Planetarium camera on the frame's own target Az/El - the only "center camera on Az/El" logic
 // anywhere in this file (the existing camera is otherwise only ever moved by the drag handler).
-// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 8x, below the slider's own 20x) that frames the photo's
+// Chooses a zoom (up to NIGHTSKY_FRAME_ZOOM_CAP = 20x, the slider's own maximum) that frames the photo's
 // own boundary with a comfortable reserve, rather than leaving zoom at whatever it was before this
 // tile was picked - zoom in as far as the cap allows, as long as the frame's own boundary still fits
 // in view with margin to spare. The equidistant fisheye's screen radius from the view direction is
@@ -598,7 +598,7 @@ document.getElementById('nightSkyCatalogTypeFilter').addEventListener('click', (
 // search needed - and layout.scale itself cancels out of the formula entirely, so this doesn't
 // even need to know the canvas's current on-screen size.
 const NIGHTSKY_FRAME_ZOOM_MARGIN = 0.85;   // corners land 85% of the way to the visible edge - reserve, not flush against it
-const NIGHTSKY_FRAME_ZOOM_CAP = 8;         // auto-framing stops at 8x; the slider itself reaches 20x
+const NIGHTSKY_FRAME_ZOOM_CAP = 20;        // auto-framing reaches the slider's own 20x (a narrow solar or lunar frame needs it)
 function _nightSkyFitZoomForFrame(fovWDeg, fovHDeg) {
   const D2R = Math.PI / 180;
   const halfW = Math.tan(fovWDeg / 2 * D2R), halfH = Math.tan(fovHDeg / 2 * D2R);
