@@ -56,6 +56,9 @@ function _routeViewParts() {
   return ['analyzer', 'image'];
 }
 function _routeSync() {
+  // Gallery computes nothing for the cursor, so the readout row under the title (#readout) is hidden
+  // there (css: body.view-gallery #readout); every view change passes through here
+  document.body.classList.toggle('view-gallery', _routeParts()[0] === 'gallery');
   // an address changed from outside (typed, a link in the same tab) waits for its hashchange,
   // so it is not written over with the old view before it is applied
   if (_routeBusy || (_routeLast !== null && location.hash !== _routeLast)) return;
