@@ -283,6 +283,7 @@
   /* Gaps, separator size and every min-width below are cut as tight as the widest real value of
      each field allows (measured, not guessed), so the whole bar still fits on one line at tablet
      width instead of wrapping to a second row. */
+  body.view-gallery #readout { display: none; }   /* Gallery: nothing to read out (render-route.js) */
   .readout {
     display: flex;
     gap: 3px;
