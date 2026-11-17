@@ -9,6 +9,6 @@
   { "name": "Full frame, 210 mm f/4.5", "mode": "imaging", "telescopeFocal": 210, "aperture": 46.67, "accessory": 1, "sensorW": 5472, "sensorH": 3648, "crop": 1 },
   { "name": "Full frame, 70/420 refractor", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 1, "sensorW": 5472, "sensorH": 3648, "crop": 1 },
   { "name": "Full frame, 70/420 refractor, 0.8x reducer", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 0.8, "sensorW": 5472, "sensorH": 3648, "crop": 1 },
-  { "name": "APS-C 1.6x, 70/420 refractor", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 1, "sensorW": 5472, "sensorH": 3648, "crop": 1.6 },
-  { "name": "APS-C 1.6x, 70/420 refractor, 0.8x reducer", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 0.8, "sensorW": 5472, "sensorH": 3648, "crop": 1.6 }  
+  { "name": "APS-C 1.6x, 70/420 refractor", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 1, "sensorW": 4272, "sensorH": 2848, "crop": 1.6 },
+  { "name": "APS-C 1.6x, 70/420 refractor, 0.8x reducer", "mode": "imaging", "telescopeFocal": 420, "aperture": 70, "accessory": 0.8, "sensorW": 4272, "sensorH": 2848, "crop": 1.6 }  
 ]
