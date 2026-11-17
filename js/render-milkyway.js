@@ -303,14 +303,16 @@ function _mwDrawSkyMap(ctx, w, h, layout) {
   }, true);
 }
 // Planetarium: the inverse fisheye of _nightSkyPlanetPixelToAzEl, above the horizon only, fading
-// towards the rim as the stars do (_nightSkyPlanetProjectRaw). In Equipment's field (render-nightsky.js,
-// _nightSkyFieldBox) only inside the field's box.
+// towards the rim as the stars do (_nightSkyPlanetProjectRaw). In a field's pass (render-nightsky.js,
+// _nightSkyFieldBox) only inside the field's box; each of a photo field's two passes skips what
+// lies wholly on the other side (_nightSkyFieldSkip).
 function _mwDrawPlanetarium(ctx, w, h, layout) {
   const C = _nightSkyPlanet3D, Rt = C.RIGHT, U = C.UP, F = C.FWD;
   const kInv = 1 / (layout.scale * C.FOCAL);
-  const B = _nightSkyFieldLimit !== null ? _nightSkyFieldBox : null, pad = MW_BUF_PX;
+  const B = _nightSkyFieldLimit !== null ? _nightSkyFieldBox : null, pad = MW_BUF_PX, split = !!_nightSkyFieldPass;
   _mwDraw(ctx, w, h, _mwHorizonToJ2000(), (px, py, out) => {
     if (B && (px < B[0] - pad || px > B[2] + pad || py < B[1] - pad || py > B[3] + pad)) return 0;
+    if (split && _nightSkyFieldSkip(px, py, 2 * pad)) return 0;   // the other pass of a photo's field draws it
     const sx = (px - layout.cx) * kInv, sy = -(py - layout.cy) * kInv;
     const theta = Math.hypot(sx, sy);
     if (theta >= NIGHTSKY_PLANET_FADE_OUTER) return 0;

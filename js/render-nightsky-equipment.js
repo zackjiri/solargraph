@@ -15,7 +15,7 @@
 //    limiting magnitude ≈ 7.5 + 5 log10(aperture in cm).
 // Warned: an exit pupil over 7 mm (wider than the eye's), a magnification over the useful highest.
 // The limiting magnitude is shown for information: inside the field the Mag ≤ slider sets the limit
-// (0..8, the catalogues' end; _nsEqMagSync and the field's pass below).
+// (0..8, the catalogues' end; _nightSkyMagHoldSync, render-nightsky.js, and the field's pass below).
 
 const NS_EQ_DEFAULT = { name: '', mode: 'visual', telescopeFocal: 420, aperture: 72, eyepieceFocal: 25, eyepieceFov: 65, accessory: 1 };
 const NS_EQ_FIELDS = ['telescopeFocal', 'aperture', 'eyepieceFocal', 'eyepieceFov', 'accessory'];
@@ -168,7 +168,7 @@ function _nsEqFitZoom() {
 // After any change of the setups shown: the button, the chips (when their parts exist) and the sky
 function _nsEqChanged() {
   _nsEq.ver++;
-  _nsEqMagSync();   // the Mag ≤ slider held or given back
+  _nightSkyMagHoldSync();   // the Mag ≤ slider held or given back (render-nightsky.js)
   if (typeof _nsTrSync === 'function') _nsTrSync();   // star trails: a changed frame clears its exposure
   if (typeof _nsEqMountSync === 'function') _nsEqMountSync();   // render-nightsky-equipment-mount.js
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();
@@ -239,13 +239,14 @@ function _nsEqInShape(sh, x, y) {
 
 // ── The field's limit ───────────────────────────────────────────────────────────────────────────
 // While the eyepiece view is on (_nsEqViewOn) Equipment holds the Mag ≤ slider (_nightSkyMagHold,
-// render-nightsky.js): on taking it, the slider's value goes to the sky outside the field, frozen,
+// by 'eq', _nightSkyMagHoldSync in render-nightsky.js; a presented Catalog photo is the other
+// holder, never at the same time as Equipment is drawn): on taking it, the slider's value goes to the sky outside the field, frozen,
 // the slider turns red with a range of 0..8 and sets the limit inside the setups' shapes; giving it
 // back (the view off, no setup, a Catalog photo, another sub-mode) restores the value and range.
 // The field's value starts at the largest shown setup's limiting magnitude (7.5 + 5·log10(D / 10 mm),
-// to the next 0.5 below, at most 8) and is kept while setups are shown.
+// to the next 0.5 below, at most 8; _nsEqFieldStart) and is kept while setups are shown.
 // Inside the shapes the Planetarium is drawn a second time (_nsEqDraw) with _nightSkyFieldLimit
-// set: stars (the base catalogue and data/celestial/stars.6-8.json, 36,367 stars of mag 6.01 to 8.0
+// set: stars (the base catalogue and, within _nsEqFieldCap, data/celestial/stars.6-8.json, 36,367 stars of mag 6.01 to 8.0
 // sorted by Dec, tools/stars-deep.py, fetched the first time it is needed), deep sky, planets, the
 // Milky Way's levels, all by the slider alone, without the Atmosphere's limit (its colour and the
 // dimming near the horizon stay).
@@ -262,53 +263,24 @@ function _nsEqDeepLoad() {
 function _nsEqApertureGain(s) {
   return 7.5 + 5 * Math.log10(s.aperture / 10) - NIGHTSKY_MAG_LIMIT_OFF;
 }
-function _nsEqMagSync() {
-  const H = _nightSkyMagHold, on = _nsEqViewOn(), el = document.getElementById('nightSkyMagLimit');
-  if (!_nsEq.shown.length) H.field = null;
-  if (on === H.on) return;
-  if (on) {
-    H.sky = parseFloat(el.value);
-    if (H.field === null) {
-      const lim = Math.max(..._nsEq.shown.map(e => _nsEqApertureGain(e.setup) + NIGHTSKY_MAG_LIMIT_OFF));
-      H.field = Math.max(0, Math.min(NIGHTSKY_MAG_FIELD_MAX, Math.floor(lim * 2) / 2));
-    }
-    H.on = true;
-    _nightSkyMagRangeSync();
-    el.value = String(H.field);
-  } else {
-    H.on = false;
-    _nightSkyMagRangeSync();
-    el.value = String(H.sky);
-  }
-  document.getElementById('nightSkyMagRow').classList.toggle('ns-mag-field', on);
-  _nightSkyUpdateMagReadout();
+// The field's first value: the largest shown setup's limiting magnitude to the next 0.5 below, at
+// most 8 (_nightSkyMagHoldSync, render-nightsky.js)
+function _nsEqFieldStart() {
+  if (!_nsEq.shown.length) return NIGHTSKY_MAG_FIELD_MAX;
+  const lim = Math.max(..._nsEq.shown.map(e => _nsEqApertureGain(e.setup) + NIGHTSKY_MAG_LIMIT_OFF));
+  return Math.max(0, Math.min(NIGHTSKY_MAG_FIELD_MAX, Math.floor(lim * 2) / 2));
 }
 // The view's centre in J2000 RA (-180..180, the catalogues') and Dec [°]
 function _nsEqCentreJ2000() {
-  const C = _nightSkyPlanet3D, eq = _skyAzElToRaDec(C.camAz * 180 / Math.PI, C.camEl * 180 / Math.PI, _nightSkyLstNow(), _nightSkyLatSigned());
-  const m = _skyPrecessionMatrix(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)), v = _skyDomeUnitVecRaDec(eq);
-  const x = m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2], y = m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2], z = m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2];
-  return { ra: Math.atan2(y, x) * 180 / Math.PI, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
+  const C = _nightSkyPlanet3D;
+  return _nightSkyJ2000Of(C.camAz * 180 / Math.PI, C.camEl * 180 / Math.PI);   // render-nightsky.js
 }
-// The deep catalogue's rows to limit near the field (for _nightSkyDeepForSky in the field's pass):
-// found by the view's centre in J2000 (the catalogue's frame; precession undone) and a band of Dec
-// half the widest shape plus 1° wide (the frame's turn, the projection); the shapes clip the rest.
-function _nsEqDeepInField(limit) {
-  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
-  const D = _nsEqDeep.data;
-  if (!D || !_nsEq.shown.length) return [];
-  const half = Math.max(..._nsEq.shown.map(e => _nsEqSpanDeg(e.setup))) / 2 + 1, c = _nsEqCentreJ2000();
-  const polar = Math.abs(c.dec) + half >= 89, dRa = polar ? 180 : half / Math.cos((Math.abs(c.dec) + half) * Math.PI / 180);
-  let lo = 0, hi = D.length;   // the first star at or above the band's south edge
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (D[mid][4] < c.dec - half) lo = mid + 1; else hi = mid; }
-  const out = [];
-  for (let i = lo; i < D.length && D[i][4] <= c.dec + half; i++) {
-    const r = D[i];
-    if (r[1] > limit || !(polar || Math.abs(((r[3] - c.ra) % 360 + 540) % 360 - 180) <= dRa)) continue;
-    if (!r.v) r.v = _skyDomeUnitVecRaDec({ ra: r[3], dec: r[4] });
-    out.push(r);
-  }
-  return out;
+// The sky round the field for the deep catalogue (_nightSkyDeepInCap in the field's pass): the
+// view's centre in J2000 and half the widest shape plus 1° (the frame's turn, the projection)
+function _nsEqFieldCap() {
+  if (!_nsEq.shown.length) return null;
+  const c = _nsEqCentreJ2000();
+  return { ra: c.ra, dec: c.dec, half: Math.max(..._nsEq.shown.map(e => _nsEqSpanDeg(e.setup))) / 2 + 1 };
 }
 // The shapes' bounding box [x0, y0, x1, y1]
 function _nsEqShapesBox(shapes) {
@@ -336,13 +308,14 @@ function _nsEqDraw(ctx, w, h) {
   const L = _nightSkyPlanetLayout(w, h);
   if (typeof _nsTrPlace === 'function') _nsTrPlace(L);   // star trails' button at the frame's corner
   const shapes = _nsEqShapes(L);
-  if (_nightSkyMagHold.on) {   // the field: the Planetarium again inside the shapes, at the slider's limit
+  if (_nightSkyMagHold.by === 'eq') {   // the field: the Planetarium again inside the shapes, at the slider's limit
     ctx.save();
     _nsEqClipShapes(ctx, shapes);
     ctx.clearRect(0, 0, w, h);
     _nightSkyFieldLimit = _nightSkyMagHold.field;
     _nightSkyFieldBox = _nsEqShapesBox(shapes);
-    try { _nightSkyDrawPlanetarium(ctx, w, h, true); } finally { _nightSkyFieldLimit = null; _nightSkyFieldBox = null; }
+    _nightSkyFieldCap = _nsEqFieldCap();
+    try { _nightSkyDrawPlanetarium(ctx, w, h, true); } finally { _nightSkyFieldLimit = null; _nightSkyFieldBox = null; _nightSkyFieldCap = null; }
     ctx.restore();
   }
   if (typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, L);   // star trails (render-nightsky-trails.js)

@@ -116,6 +116,10 @@ function _planetDrawLabel(ctx, x, y, r, planet, alpha) {
 function _planetLabelsFlush(ctx) {
   const list = _planetLabelsDeferred || [];
   _planetLabelsDeferred = null;
+  _planetLabelsDraw(ctx, list);
+}
+// Draws collected labels (_planetLabelsDeferred is null then)
+function _planetLabelsDraw(ctx, list) {
   for (const a of list) _planetDrawLabel(ctx, ...a);
 }
 // ─── Depth order and transits ───────────────────────────────────────────────────────────────────

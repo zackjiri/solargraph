@@ -308,6 +308,7 @@ function exitNightSky() {
   document.getElementById('headerFormula').style.display = '';
   document.getElementById('btnTimeMode').style.visibility = '';
   nightSkyActive = false;
+  _nightSkyMagHoldSync();   // no field holds the Mag ≤ slider outside Night Sky
   if (typeof _appFsSync === 'function') _appFsSync();   // fullscreen button (render-fullscreen.js)
 
   document.getElementById('can3dPanel').classList.add('visible');
@@ -1994,19 +1995,79 @@ function _nightSkyMagControlsOn() {
 // eye's dark-sky limit then rules); with Atmosphere off 0..8, the stars past 6 from the deep
 // catalogue (_nightSkyDeepForSky), and a last step, 8+, of no limit (the star catalogues end at mag
 // 8, deep sky objects go on to 11.5). The Sun, the Moon and a planet in transit are never hidden.
-// While Equipment shows a setup in the Planetarium the slider is the field's (_nightSkyMagHold).
+// While Equipment shows a setup, or a Catalog photo is presented, in the Planetarium the slider is
+// the field's (_nightSkyMagHold).
 const NIGHTSKY_MAG_LIMIT_OFF = 6.5;   // the slider value shown as "6+" (Atmosphere on)
 const NIGHTSKY_MAG_TOP_ATM_OFF = 8.5;   // the slider value shown as "8+" (Atmosphere off)
-const NIGHTSKY_MAG_FIELD_MAX = 8;   // the slider's end for Equipment's field
-// Equipment's hold of the slider (render-nightsky-equipment.js, _nsEqMagSync): while it shows a
-// setup in the Planetarium (on) the slider, 0..8 and red, sets the limit inside the setups' shapes
-// (field), in place of the instrument's computed limit, and the sky outside keeps the value the
-// slider had when it turned on (sky), whatever the slider does; turned off, the slider gets that
-// value back. _nightSkyFieldLimit is the field's limit while the field is drawn (_nsEqDraw), else
-// null; _nightSkyFieldBox the shapes' bounding box then ([x0, y0, x1, y1], CSS px), where the Milky
-// Way is worked out (render-milkyway.js).
-const _nightSkyMagHold = { on: false, sky: 6, field: null };
-let _nightSkyFieldLimit = null, _nightSkyFieldBox = null;
+const NIGHTSKY_MAG_FIELD_MAX = 8;   // the slider's end in a field
+const NIGHTSKY_FRAME_FIELD_START = 8;   // a presented photo's field starts here (the photo shows more than the eye)
+// The hold of the slider by a field (_nightSkyMagHoldSync): while one is on in the Planetarium
+// (on), by Equipment's setups (by 'eq', render-nightsky-equipment.js: their shapes) or by a
+// presented Catalog photo with an outline on the sky (by 'frame': its outline, _nightSkyFrameField),
+// the slider, 0..8 and red, sets the limit inside the field (field) and the sky outside keeps the
+// value the slider had when the hold began (sky), whatever the slider does; when no field is on,
+// the slider gets that value and its range back. The field's value starts at Equipment's computed
+// limit (_nsEqFieldStart; kept while setups are shown, eqField) or at NIGHTSKY_FRAME_FIELD_START
+// for a photo (kept while that presentation lasts, key: the presented frame).
+// _nightSkyFieldLimit is the field's limit while the field is drawn, else null; _nightSkyFieldBox
+// the field's bounding box then ([x0, y0, x1, y1], CSS px), where the Milky Way is worked out
+// (render-milkyway.js); _nightSkyFieldCap the sky round the field, {ra, dec, half} (J2000, °), where
+// the deep catalogue's stars are looked for (_nightSkyDeepInCap).
+const _nightSkyMagHold = { on: false, sky: 6, field: null, by: null, key: null, eqField: null };
+let _nightSkyFieldLimit = null, _nightSkyFieldBox = null, _nightSkyFieldCap = null;
+// A photo's field split in two passes (_nightSkyDrawPlanetarium): {side 'out' | 'in', mask} while
+// one runs, else null. Each pass skips what lies wholly on the other side (_nightSkyFieldSkip).
+let _nightSkyFieldPass = null;
+// The field's mask: its clip filled at NIGHTSKY_FIELD_MASK_PX CSS px a cell, alpha 0 (outside) to
+// 255 (inside), made once per frame
+const NIGHTSKY_FIELD_MASK_PX = 3;
+let _nsFieldMaskCtx = null;
+function _nightSkyFieldMaskOf(F, w, h) {
+  const s = NIGHTSKY_FIELD_MASK_PX, mw = Math.max(1, Math.ceil(w / s)), mh = Math.max(1, Math.ceil(h / s));
+  if (!_nsFieldMaskCtx) _nsFieldMaskCtx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  const g = _nsFieldMaskCtx;
+  if (g.canvas.width !== mw || g.canvas.height !== mh) { g.canvas.width = mw; g.canvas.height = mh; }
+  g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, mw, mh);
+  g.setTransform(1 / s, 0, 0, 1 / s, 0, 0); g.fillStyle = '#000'; g.fill(F.path, F.rule);
+  const px = g.getImageData(0, 0, mw, mh).data, data = new Uint8Array(mw * mh);
+  for (let i = 0; i < data.length; i++) data[i] = px[i * 4 + 3];
+  return { data, w: mw, h: mh, s };
+}
+// Whether the pass running may leave out something at (x, y) reaching r px: the mask wholly on the
+// other side at its centre and at the corners of its box grown by one cell
+function _nightSkyFieldSkip(x, y, r) {
+  const P = _nightSkyFieldPass;
+  if (!P) return false;
+  const M = P.mask, want = P.side === 'out' ? 255 : 0, m = r + M.s;
+  const at = (px, py) => { const i = Math.floor(px / M.s), j = Math.floor(py / M.s); return i < 0 || j < 0 || i >= M.w || j >= M.h ? 0 : M.data[j * M.w + i]; };
+  return at(x, y) === want && at(x - m, y - m) === want && at(x + m, y - m) === want && at(x - m, y + m) === want && at(x + m, y + m) === want;
+}
+// The field that holds the slider now: {by, key} or null
+function _nightSkyMagHolder() {
+  if (typeof _nsEqViewOn === 'function' && _nsEqViewOn()) return { by: 'eq', key: 'eq' };
+  const f = _nightSkyFieldFrame();
+  return f ? { by: 'frame', key: f } : null;
+}
+function _nightSkyMagHoldSync() {
+  const H = _nightSkyMagHold, want = _nightSkyMagHolder(), el = document.getElementById('nightSkyMagLimit');
+  if (H.on && H.by === 'eq') H.eqField = H.field;
+  if (typeof _nsEq !== 'undefined' && !_nsEq.shown.length) H.eqField = null;
+  if ((want ? want.key : null) === (H.on ? H.key : null)) return;
+  if (want) {
+    if (!H.on) H.sky = parseFloat(el.value);
+    H.on = true; H.by = want.by; H.key = want.key;
+    if (want.by === 'eq') { if (H.eqField === null) H.eqField = _nsEqFieldStart(); H.field = H.eqField; }
+    else H.field = NIGHTSKY_FRAME_FIELD_START;
+    _nightSkyMagRangeSync();
+    el.value = String(H.field);
+  } else {
+    H.on = false; H.by = H.key = null;
+    _nightSkyMagRangeSync();
+    el.value = String(H.sky);
+  }
+  document.getElementById('nightSkyMagRow').classList.toggle('ns-mag-field', !!want);
+  _nightSkyUpdateMagReadout();
+}
 // The value of the slider's last step (no limit)
 function _nightSkyMagTop() {
   return nightSkyAtmosphereOn ? NIGHTSKY_MAG_LIMIT_OFF : NIGHTSKY_MAG_TOP_ATM_OFF;
@@ -3136,6 +3197,7 @@ function _nightSkyUpdatePresentationLock() {
     : blocked ? 'Search unavailable while a Catalog photo is shown' : 'Find an object and lock the view on it';
   if (blocked && typeof _nsSearchSetOpen === 'function') _nsSearchSetOpen(false);
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();   // Equipment: disabled the same way
+  _nightSkyMagHoldSync();   // the photo's field takes or gives back the Mag ≤ slider
 }
 
 // Fisheye (equidistant) projection - screen radius proportional to the angle theta from the view
@@ -3546,13 +3608,13 @@ function _nightSkyDrawPlanetHorizon(ctx, layout) {
 // shows what the eye does (class 1: ~6.6, about 4,500 stars more); with Atmosphere off the slider's,
 // up to 8 (8+: all 36,367). None at a limit of 6 or less. Drawn as the others, fainter by
 // _nightSkyDeepDim. Kept per limit (_nsDeepSky). In Equipment's field only the rows near it
-// (_nsEqDeepInField). Each kept row carries its J2000 unit vector (r.v) for _skyJ2000HorizonMatrix.
+// (_nightSkyDeepInCap). Each kept row carries its J2000 unit vector (r.v) for _skyJ2000HorizonMatrix.
 let _nsDeepSky = { limit: null, data: null, rows: [] };
 function _nightSkyDeepForSky() {
   if (!_nightSkyMagControlsOn() || typeof _nsEqDeep === 'undefined') return [];
   const limit = _nightSkyMagLimit();
   if (!(limit > 6)) return [];
-  if (_nightSkyFieldLimit !== null) return _nsEqDeepInField(limit);
+  if (_nightSkyFieldLimit !== null) return _nightSkyFieldCap ? _nightSkyDeepInCap(limit, _nightSkyFieldCap) : [];
   if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
   const D = _nsEqDeep.data;
   if (!D) return [];
@@ -3563,9 +3625,67 @@ function _nightSkyDeepForSky() {
   }
   return _nsDeepSky.rows;
 }
+// The deep catalogue's rows to limit within a cap {ra, dec, half} (J2000, °; the field's, for its
+// pass): the rows are sorted by Dec, so a band of Dec found by halving, then the RA span; the field's
+// clip takes off the rest. Loads the catalogue on first need.
+function _nightSkyDeepInCap(limit, cap) {
+  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
+  const D = _nsEqDeep.data;
+  if (!D) return [];
+  const half = cap.half, polar = Math.abs(cap.dec) + half >= 89;
+  const dRa = polar ? 180 : half / Math.cos((Math.abs(cap.dec) + half) * Math.PI / 180);
+  let lo = 0, hi = D.length;   // the first star at or above the band's south edge
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (D[mid][4] < cap.dec - half) lo = mid + 1; else hi = mid; }
+  const out = [];
+  for (let i = lo; i < D.length && D[i][4] <= cap.dec + half; i++) {
+    const r = D[i];
+    if (r[1] > limit || !(polar || Math.abs(((r[3] - cap.ra) % 360 + 540) % 360 - 180) <= dRa)) continue;
+    if (!r.v) r.v = _skyDomeUnitVecRaDec({ ra: r[3], dec: r[4] });
+    out.push(r);
+  }
+  return out;
+}
+// A horizon direction (az, el °) now in J2000 RA (-180..180, the catalogues') and Dec (°)
+function _nightSkyJ2000Of(azDeg, elDeg) {
+  const eq = _skyAzElToRaDec(azDeg, elDeg, _nightSkyLstNow(), _nightSkyLatSigned());
+  const m = _skyPrecessionMatrix(_moonJDE(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT)), v = _skyDomeUnitVecRaDec(eq);
+  const x = m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2], y = m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2], z = m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2];
+  return { ra: Math.atan2(y, x) * 180 / Math.PI, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
+}
 // The base style's sizes and opacities end at mag 6; fainter stars are drawn fainter still
 function _nightSkyDeepDim(mag) {
   return mag > 6 ? Math.max(0.4, 1 - 0.3 * (mag - 6)) : 1;
+}
+// A test for J2000 unit vectors: can the direction land within 12 px (plus the refraction's lift)
+// of box [x0, y0, x1, y1] on the Planetarium's canvas
+function _nightSkyNearBox(layout, B) {
+  const m = _skyJ2000HorizonMatrix(), C = _nightSkyPlanet3D, Fw = C.FWD, Rt = C.RIGHT, Up = C.UP, k = C.FOCAL * layout.scale;
+  const lift = 0.7 * Math.PI / 180 * k, pad = lift + 12, bx0 = B[0] - pad, by0 = B[1] - pad, bx1 = B[2] + pad, by1 = B[3] + pad;
+  const cosOut = Math.cos(NIGHTSKY_PLANET_FADE_OUTER) - 0.02;
+  return (v) => {
+    const u0 = m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], u1 = m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2], u2 = m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2];
+    if (u2 < -0.02) return false;
+    const ct = u0 * Fw[0] + u1 * Fw[1] + u2 * Fw[2];
+    if (ct < cosOut) return false;
+    const lx = u0 * Rt[0] + u1 * Rt[1] + u2 * Rt[2], ly = u0 * Up[0] + u1 * Up[1] + u2 * Up[2], rho = Math.hypot(lx, ly);
+    const q = (rho > 1e-9 ? Math.acos(Math.max(-1, Math.min(1, ct))) / rho : 0) * k, x = layout.cx + lx * q, y = layout.cy - ly * q;
+    return x >= bx0 && x <= bx1 && y >= by0 && y <= by1;
+  };
+}
+// A J2000 unit vector's unrefracted place on the Planetarium's canvas [x, y], or null below the
+// horizon (by more than ~1°) or behind the view
+function _nightSkyQuickXY(layout) {
+  const m = _skyJ2000HorizonMatrix(), C = _nightSkyPlanet3D, Fw = C.FWD, Rt = C.RIGHT, Up = C.UP, k = C.FOCAL * layout.scale;
+  const cosOut = Math.cos(NIGHTSKY_PLANET_FADE_OUTER) - 0.02;
+  return (v) => {
+    const u0 = m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], u1 = m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2], u2 = m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2];
+    if (u2 < -0.02) return null;
+    const ct = u0 * Fw[0] + u1 * Fw[1] + u2 * Fw[2];
+    if (ct < cosOut) return null;
+    const lx = u0 * Rt[0] + u1 * Rt[1] + u2 * Rt[2], ly = u0 * Up[0] + u1 * Up[1] + u2 * Up[2], rho = Math.hypot(lx, ly);
+    const q = (rho > 1e-9 ? Math.acos(Math.max(-1, Math.min(1, ct))) / rho : 0) * k;
+    return [layout.cx + lx * q, layout.cy - ly * q];
+  };
 }
 function _nightSkyDrawPlanetStars(ctx, layout) {
   ctx.fillStyle = _nightSkyStarColor();
@@ -3584,9 +3704,65 @@ function _nightSkyDrawPlanetStars(ctx, layout) {
     ctx.fill();
   };
   const Y = nightSkyYear, Mo = nightSkyMonth, D = nightSkyDay, H = nightSkyHourUT;
-  for (const s of _skyStars) if (!(s.mag > limit)) star(s.mag, _skyStarAzEl(s.raDeg, s.decDeg, Y, Mo, D, H));
-  const deep = _nightSkyDeepForSky(), m = deep.length ? _skyJ2000HorizonMatrix() : null;
-  for (const r of deep) star(r[1], _skyHorizonAzEl(m, r.v[0], r.v[1], r.v[2]));
+  // in a field's pass a star far off its box is left out first by its horizon vector (_skyJ2000HorizonMatrix,
+  // within 0.001° of _skyStarAzEl; 12 px margin), the rest placed as always
+  // and in a photo's two passes one wholly on the other side (_nightSkyFieldSkip, its unrefracted
+  // place, the refraction's lift and the largest star added to the reach)
+  const FB = _nightSkyFieldLimit !== null ? _nightSkyFieldBox : null;
+  const near = FB ? _nightSkyNearBox(layout, FB) : null, quick = _nightSkyFieldPass ? _nightSkyQuickXY(layout) : null;
+  const reach = quick ? 0.7 * Math.PI / 180 * _nightSkyPlanet3D.FOCAL * layout.scale + NIGHTSKY_STAR_CAP_MAX_PX + 2 : 0;
+  for (const s of _skyStars) {
+    if (s.mag > limit) continue;
+    if (near && !near(s.v || (s.v = _skyDomeUnitVecRaDec({ ra: s.raDeg, dec: s.decDeg })))) continue;
+    if (quick) { const q = quick(s.v || (s.v = _skyDomeUnitVecRaDec({ ra: s.raDeg, dec: s.decDeg }))); if (q && _nightSkyFieldSkip(q[0], q[1], reach)) continue; }
+    star(s.mag, _skyStarAzEl(s.raDeg, s.decDeg, Y, Mo, D, H));
+  }
+  // The deep catalogue's stars (up to 36,367), placed from their horizon vector (the same apparent
+  // place as _skyHorizonAzEl and _nightSkyPlanetProject, without the angles in between): culled
+  // below the horizon, behind the view and off the canvas (or a field's box, with a margin); size
+  // and opacity by 0.01 mag; drawn in one path per opacity step (1/64), discs under 1 px as squares
+// of the same area,
+  // as they are small and seldom touch.
+  const deep = _nightSkyDeepForSky();
+  if (deep.length) {
+    const m = _skyJ2000HorizonMatrix(), C = _nightSkyPlanet3D, Fw = C.FWD, Rt = C.RIGHT, Up = C.UP;
+    const k = C.FOCAL * layout.scale, R2D = 180 / Math.PI, D2R = Math.PI / 180;
+    const B = _nightSkyFieldLimit !== null && _nightSkyFieldBox ? _nightSkyFieldBox : [0, 0, layout.cx * 2, layout.cy * 2];
+    const pad = 12, bx0 = B[0] - pad, by0 = B[1] - pad, bx1 = B[2] + pad, by1 = B[3] + pad;
+    const cosOut = Math.cos(NIGHTSKY_PLANET_FADE_OUTER), IN = NIGHTSKY_PLANET_FADE_INNER, OUT = NIGHTSKY_PLANET_FADE_OUTER;
+    const look = new Map(), buckets = new Map();
+    for (const r of deep) {
+      const v = r.v;
+      const u2 = m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2];
+      if (u2 < -0.02) continue;
+      const elT = Math.asin(Math.max(-1, Math.min(1, u2))) * R2D, el = elT + _skyRefractionDeg(elT);
+      if (el < 0) continue;
+      const u0 = m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], u1 = m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2];
+      const hh = Math.hypot(u0, u1), f = hh > 1e-12 ? Math.cos(el * D2R) / hh : 0;
+      const w0 = u0 * f, w1 = u1 * f, w2 = Math.sin(el * D2R);
+      const ct = w0 * Fw[0] + w1 * Fw[1] + w2 * Fw[2];
+      if (ct <= cosOut) continue;
+      const th = Math.acos(Math.min(1, ct));
+      const lx = w0 * Rt[0] + w1 * Rt[1] + w2 * Rt[2], ly = w0 * Up[0] + w1 * Up[1] + w2 * Up[2], rho = Math.hypot(lx, ly);
+      const q = (rho > 1e-6 ? th / rho : 1) * k, x = layout.cx + lx * q, y = layout.cy - ly * q;
+      if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+      if (_nightSkyFieldPass && _nightSkyFieldSkip(x, y, 2)) continue;   // wholly on the other side of a photo's field
+      const pa = th <= IN ? 1 : 1 - (th - IN) / (OUT - IN);
+      const em = r[1] + _nightSkyExtinctionMag(el);
+      const vis = vq.s ? _nightSkyVisWith(vq, em, (Math.atan2(u0, u1) * R2D + 360) % 360, el) : (em > vq.slider ? 0 : 1);
+      if (!vis) continue;
+      const key = Math.round(em * 100);
+      let L = look.get(key);
+      if (!L) look.set(key, (L = { r: _nightSkyStarSize(em), a: _nightSkyStarAlpha(em) }));
+      const a = Math.round(L.a * _nightSkyDeepDim(r[1]) * vis * pa * 64);
+      if (a <= 0) continue;
+      let path = buckets.get(a);
+      if (!path) buckets.set(a, (path = new Path2D()));
+      if (L.r < 1) { const q2 = L.r * Math.sqrt(Math.PI); path.rect(x - q2 / 2, y - q2 / 2, q2, q2); }   // the disc's area
+      else { path.moveTo(x + L.r, y); path.arc(x, y, L.r, 0, 2 * Math.PI); }
+    }
+    for (const [a, path] of buckets) { ctx.globalAlpha = Math.min(1, a / 64); ctx.fill(path); }
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -3708,6 +3884,106 @@ function _nightSkyCalibOutlineScreen(layout) {
     const q = _nightSkyPlanetProject(layout, p.az, p.el);
     return q.visible ? q : null;
   });
+}
+// ── A presented photo's field ──────────────────────────────────────────────────────────────────
+// The presented photo whose outline is on the sky holds the Mag ≤ slider (_nightSkyMagHoldSync):
+// a calibrated photo (all-sky circle or framed edge, _nightSkyCalibOutlineAzEl) or an uncalibrated
+// framed one (its rectangle, _nightSkyFrameCorners); not an uncalibrated all-sky photo (no outline).
+function _nightSkyFieldFrame() {
+  const f = _nightSkyActiveFrame;
+  if (!f || !nightSkyActive || nightSkyTopView !== 'visualization' || nightSkySubmode !== 'planetarium') return null;
+  if (document.getElementById('nightSkyCanvas').style.display === 'none') return null;
+  return _nightSkyFrameCalibrated(f) || f.kind === 'rect' ? f : null;
+}
+// The outline as horizon unit vectors at the frame's time, kept per frame and time: the calibrated
+// edge's mapped points, or an uncalibrated frame's rectangle, NIGHTSKY_FIELD_EDGE_N points a side
+// in its own tangent plane (as _nightSkyFrameCorners)
+const NIGHTSKY_FIELD_EDGE_N = 24;
+let _nsFieldOutline = { key: null, vs: null };
+function _nightSkyFieldOutlineVecs(f) {
+  const t = f.kind === 'allsky' || _nightSkyFrameCalibrated(f) ? null : _nightSkyFrameTime();
+  const key = [f.id, t ? t.join(',') : 'cal'];
+  if (_nsFieldOutline.f === f && _nsFieldOutline.key === key.join('|')) return _nsFieldOutline.vs;
+  let azel;
+  if (!t) azel = _nightSkyCalibOutlineAzEl(f).filter(Boolean);
+  else {
+    const D2R = Math.PI / 180, hw = Math.tan(f.fovWDeg / 2 * D2R), hh = Math.tan(f.fovHDeg / 2 * D2R), rot = f.rotationDeg * D2R;
+    const upE = Math.sin(rot), upN = Math.cos(rot), rightE = Math.cos(rot), rightN = -Math.sin(rot);
+    const cs = [[-hw, hh], [hw, hh], [hw, -hh], [-hw, -hh]];
+    azel = [];
+    for (let i = 0; i < 4; i++) {
+      const a = cs[i], b = cs[(i + 1) % 4];
+      for (let k = 0; k < NIGHTSKY_FIELD_EDGE_N; k++) {
+        const u = k / NIGHTSKY_FIELD_EDGE_N, rx = a[0] + (b[0] - a[0]) * u, ry = a[1] + (b[1] - a[1]) * u;
+        const q = _skyOffsetRaDec(f.raDeg, f.decDeg, rx * rightE + ry * upE, rx * rightN + ry * upN);
+        azel.push(_skyStarAzEl(q.raDeg, q.decDeg, ...t));
+      }
+    }
+  }
+  const vs = azel.map(p => _skyDomeUnitVec(p.az, p.el));
+  _nsFieldOutline = { f, key: key.join('|'), vs };
+  return vs;
+}
+// Is the horizon direction v inside the presented photo's field (used for the view's back point)
+function _nightSkyFieldContains(f, v) {
+  const az = (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360, el = Math.asin(Math.max(-1, Math.min(1, v[2]))) * 180 / Math.PI;
+  if (_nightSkyFrameCalibrated(f)) return !!_allskySkyToPhoto(f.calib, az, el, f.latDeg, false);
+  return false;   // a framed photo is narrower than a hemisphere: never round the back of the view
+}
+// The field on the canvas while it holds the slider, else null: {path, rule} the clip of its inside,
+// {outPath, outRule} of the rest, box (its bounding box on the canvas), cap (the sky round it, J2000,
+// for the deep catalogue). The outline is projected with the Planetarium's equidistant law without
+// its rim cut (points behind the view land far out), so it stays one closed curve; when the field
+// holds the point right behind the view, its inside is the canvas outside that curve.
+function _nightSkyFrameField(layout, w, h) {
+  const H = _nightSkyMagHold, f = _nightSkyActiveFrame;
+  if (!H.on || H.by !== 'frame' || H.key !== f || !f) return null;
+  const vs = _nightSkyFieldOutlineVecs(f);
+  if (vs.length < 3) return null;
+  const C = _nightSkyPlanet3D, k = C.FOCAL * layout.scale;
+  const back = _nightSkyFieldContains(f, [-C.FWD[0], -C.FWD[1], -C.FWD[2]]);
+  // with the back point outside the field, points past the rim are pulled in to just beyond it
+  // (their bearing kept) and neighbours there are joined along the rim, not by a chord
+  const rimR = (NIGHTSKY_PLANET_FADE_OUTER + 0.01) * k;
+  const poly = new Path2D();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, sx = 0, sy = 0, sz = 0, prevAng = null;
+  vs.forEach((v, i) => {
+    const th = Math.acos(Math.max(-1, Math.min(1, _sd3Dot(v, C.FWD))));
+    const lx = _sd3Dot(v, C.RIGHT), ly = _sd3Dot(v, C.UP), rho = Math.hypot(lx, ly), m = rho > 1e-9 ? th / rho : 0;
+    let x = layout.cx + lx * m * k, y = layout.cy - ly * m * k;
+    const clamp = !back && th > NIGHTSKY_PLANET_FADE_OUTER + 0.01;
+    const ang = Math.atan2(-ly, lx);
+    if (clamp) { x = layout.cx + rimR * Math.cos(ang); y = layout.cy + rimR * Math.sin(ang); }
+    if (!i) poly.moveTo(x, y);
+    else if (clamp && prevAng !== null) {
+      let d = ang - prevAng;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      poly.arc(layout.cx, layout.cy, rimR, prevAng, prevAng + d, d < 0);
+    } else poly.lineTo(x, y);
+    prevAng = clamp ? ang : null;
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    sx += v[0]; sy += v[1]; sz += v[2];
+  });
+  poly.closePath();
+  const rest = new Path2D();
+  rest.rect(0, 0, w, h);
+  rest.addPath(poly);
+  // the sky round the field: the outline's mean direction (or the back point's opposite) and the
+  // largest angle to the outline, plus 1°
+  let c = Math.hypot(sx, sy, sz) > 1e-6 ? [sx, sy, sz] : C.FWD.slice();
+  const n = Math.hypot(...c); c = c.map(q => q / n);
+  let half = 0;
+  for (const v of vs) half = Math.max(half, Math.acos(Math.max(-1, Math.min(1, _sd3Dot(v, c)))) * 180 / Math.PI);
+  if (back) half = 180;
+  const cel = Math.asin(Math.max(-1, Math.min(1, c[2]))) * 180 / Math.PI, caz = (Math.atan2(c[0], c[1]) * 180 / Math.PI + 360) % 360;
+  const j = _nightSkyJ2000Of(caz, cel);
+  const F = back
+    ? { path: rest, rule: 'evenodd', outPath: poly, outRule: 'nonzero', box: [0, 0, w, h], cap: { ra: j.ra, dec: j.dec, half: 180 } }
+    : { path: poly, rule: 'nonzero', outPath: rest, outRule: 'evenodd',
+      box: [Math.max(0, x0), Math.max(0, y0), Math.min(w, x1), Math.min(h, y1)], cap: { ra: j.ra, dec: j.dec, half: Math.min(180, half + 1) } };
+  F.mask = _nightSkyFieldMaskOf(F, w, h);
+  return F;
 }
 // A star trails photo's trails (render-nightsky-trails.js): under the frame's outline, or with
 // the sky objects under a photo overlay (_nightSkyDrawPlanetarium; trailsDone then)
@@ -4014,6 +4290,10 @@ document.addEventListener('keydown', (e) => {
 
 // fieldPass: Equipment's field drawn again inside its shapes (render-nightsky-equipment.js): only
 // the drawing, without the picker's lock, the photo thumbnail or the photo overlay.
+// A presented Catalog photo's field (_nightSkyFrameField, while it holds the Mag ≤ slider): what
+// reads the limit is drawn at the sky's limit outside the field's outline and at the field's limit
+// inside it (two complementary clips; the ground and the sky's colour once, unclipped), before the
+// overlay and the lines, names and marks, so nothing is drawn twice; no mask outside.
 function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
   if (!_skyDataLoaded) {
     if (fieldPass) return;
@@ -4029,8 +4309,6 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
   if (!fieldPass) _nightSkyPickerApplyLock();
   _nightSkyUpdatePlanetCamera();
   const layout = _nightSkyPlanetLayout(w, h);
-  _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
-  if (_glowShown()) _glowDrawPlanetarium(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
 
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
@@ -4054,35 +4332,69 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
     // Constellation names (Labels) only together with their lines.
     if (showLines) _nightSkyDrawPlanetConstellations(ctx, layout, true, showNames);
   };
-  if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout);   // render-milkyway.js
-  if (!overlay) lines();
-  if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
-  if (showDso) _dsoDrawPlanetarium(ctx, layout, overlay ? 'symbols' : undefined);
   const paths = () => {
     if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
     if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
   };
-  if (!overlay) paths();
-  // farthest first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon;
-  // the planets' names wait for the overlay (render-planets.js)
-  _planetLabelsDeferred = overlay ? [] : null;
+  const field = fieldPass ? null : _nightSkyFrameField(layout, w, h);
+  // What reads the limit, f(), drawn at the sky's limit outside a photo's field and at the field's
+  // inside it (two complementary clips; each skips what lies wholly on the other side,
+  // _nightSkyFieldPass), or once without a field. The names of each side are collected on that
+  // side (planets: render-planets.js; deep sky: render-deepsky.js) and drawn once, by the side
+  // their object lies on (_nightSkyFieldNames).
+  const outNames = { pl: [], dso: [] }, inNames = { pl: [], dso: [] };
+  const defer = overlay || !!field;   // the names wait: for the overlay, or to be drawn once with a field
+  const limited = (f) => {
+    if (!field) {
+      _planetLabelsDeferred = defer ? outNames.pl : null; _dsoLabelsDeferred = defer ? outNames.dso : null;
+      try { f(); } finally { _planetLabelsDeferred = null; _dsoLabelsDeferred = null; }
+      return;
+    }
+    ctx.save();
+    ctx.clip(field.outPath, field.outRule);
+    _nightSkyFieldPass = { side: 'out', mask: field.mask }; _planetLabelsDeferred = outNames.pl; _dsoLabelsDeferred = outNames.dso;
+    try { f(); } finally { _nightSkyFieldPass = null; _planetLabelsDeferred = null; _dsoLabelsDeferred = null; ctx.restore(); }
+    ctx.save();
+    ctx.clip(field.path, field.rule);
+    _nightSkyFieldLimit = _nightSkyMagHold.field; _nightSkyFieldBox = field.box; _nightSkyFieldCap = field.cap;
+    _planetLabelsDeferred = inNames.pl; _dsoLabelsDeferred = inNames.dso; _nightSkyFieldPass = { side: 'in', mask: field.mask };
+    try { f(); } finally {
+      _nightSkyFieldLimit = null; _nightSkyFieldBox = null; _nightSkyFieldCap = null; _nightSkyFieldPass = null;
+      _planetLabelsDeferred = null; _dsoLabelsDeferred = null; ctx.restore();
+    }
+  };
+  const names = () => {
+    if (!defer) return;
+    const d = ctx.getTransform().a, inside = field ? (x, y) => ctx.isPointInPath(field.path, x * d, y * d, field.rule) : () => false;
+    _planetLabelsDraw(ctx, outNames.pl.filter(a => !inside(a[0], a[1])).concat(inNames.pl.filter(a => inside(a[0], a[1]))));
+    if (typeof _dsoLabelsDraw === 'function') _dsoLabelsDraw(ctx, outNames.dso.filter(a => !inside(a[5], a[6])).concat(inNames.dso.filter(a => inside(a[5], a[6]))));
+  };
+  // The sky's ground and colour once (they do not read the limit), then the objects, farthest
+  // first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon
   try {
-    _nightSkyDrawPlanetPlanets(ctx, layout, 'behind');
+    _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
+    if (_glowShown()) _glowDrawPlanetarium(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
+    limited(() => { if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout); });   // render-milkyway.js
+    if (!overlay) lines();
+    limited(() => {
+      if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
+      if (showDso) _dsoDrawPlanetarium(ctx, layout, overlay ? 'symbols' : undefined);
+    });
+    if (!overlay) paths();
+    limited(() => _nightSkyDrawPlanetPlanets(ctx, layout, 'behind'));
     if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
-    _nightSkyDrawPlanetPlanets(ctx, layout, 'front');
+    limited(() => _nightSkyDrawPlanetPlanets(ctx, layout, 'front'));
     if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
     if (overlay) {
       _nightSkyDrawCatalogTrails(ctx, layout);   // with the objects, under the photo
       _nsAllskyDraw(ctx, w, h, _nsAllsky.moving);
       lines();
+      if (showDso) limited(() => _dsoDrawPlanetarium(ctx, layout, 'labels'));
     }
-  } finally {
-    if (_planetLabelsDeferred) _planetLabelsFlush(ctx);   // also after a throw: the names never stay held
+  } finally {   // also after a throw: the names never stay held
+    names();
   }
-  if (overlay) {
-    if (showDso) _dsoDrawPlanetarium(ctx, layout, 'labels');
-    paths();
-  }
+  if (overlay) paths();
   _nightSkyDrawPlanetHorizon(ctx, layout);   // always (no Display switch since build 46_1)
   _nightSkyDrawPlanetGridLabels(ctx, layout);
   _nightSkyDrawPlanetBodyLabels(ctx, layout);
@@ -4434,7 +4746,7 @@ function _nightSkyClearReadout() {
 
 function drawNightSky() {
   _nightSkyAtmHintSync();
-  if (typeof _nsEqMagSync === 'function') _nsEqMagSync();   // Equipment takes or gives back the Mag ≤ slider
+  _nightSkyMagHoldSync();   // a field (Equipment, a presented photo) takes or gives back the Mag ≤ slider
   _nightSkyBortleSyncIfChanged();   // a new Location or its map tile come in: the Bortle scale row follows
   if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); if (typeof _nsEqChips === 'function') _nsEqChips(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
@@ -4491,7 +4803,8 @@ function _nightSkyUpdateMagReadout() {
   if (held) {
     el.textContent = slider;
     const sky = _nightSkyMagHold.sky;
-    el.title = 'Limiting magnitude inside the Equipment field; the sky outside stays at ' + (sky >= top ? (top - 0.5) + '+' : sky.toFixed(1));
+    el.title = 'Limiting magnitude inside the ' + (_nightSkyMagHold.by === 'frame' ? "photo's field" : 'Equipment field')
+      + '; the sky outside stays at ' + (sky >= top ? (top - 0.5) + '+' : sky.toFixed(1));
   } else if (Number.isFinite(atm) && (v >= top || atm < v)) {   // at 6+ always: what the eye sees
     el.innerHTML = slider + '<span class="nightsky-mag-atm">· ' + atm.toFixed(1) + '</span>';
     el.title = 'Slider limit · limiting magnitude of the sky at the zenith now (twilight and moonlight)';

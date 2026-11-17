@@ -111,6 +111,15 @@ function _dsoSymbol(ctx, o, x, y, r) {
 
 // Draws every object place(o) returns a screen position for ({x, y, r, alpha} or null). part:
 // 'symbols' or 'labels' alone (the Planetarium under a photo overlay: the labels over it), else both.
+// While _dsoLabelsDeferred is a list (the Planetarium with a photo's field, render-nightsky.js) the
+// labels are collected there [text, x, y, colour, alpha, object's x, object's y] and drawn later by _dsoLabelsDraw.
+let _dsoLabelsDeferred = null;
+function _dsoLabelsDraw(ctx, list) {
+  ctx.save();
+  ctx.font = "10px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  for (const [t, x, y, col, a] of list) { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.fillText(t, x, y); }
+  ctx.restore();
+}
 function _dsoDraw(ctx, place, part) {
   const labels = document.getElementById('chkNightSkyNames').checked && part !== 'symbols';
   const symbols = part !== 'labels';
@@ -126,7 +135,8 @@ function _dsoDraw(ctx, place, part) {
     ctx.globalAlpha = p.alpha;
     ctx.strokeStyle = col;
     if (symbols) _dsoSymbol(ctx, o, p.x, p.y, p.r);
-    if (labels) { ctx.fillStyle = col; ctx.fillText(o.label, p.x + p.r + 3, p.y); }
+    if (labels && _dsoLabelsDeferred) _dsoLabelsDeferred.push([o.label, p.x + p.r + 3, p.y, col, p.alpha, p.x, p.y]);
+    else if (labels) { ctx.fillStyle = col; ctx.fillText(o.label, p.x + p.r + 3, p.y); }
   }
   ctx.restore();
 }
