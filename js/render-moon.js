@@ -213,7 +213,8 @@ function _moonSunElevAtJD(jd) {
 // 12x so the phase reads - at 12x a semi-diameter of ~0.27 deg is 18-27 px on a typical canvas),
 // but never smaller than _nightSkyBodyMinR(): the same artificial factor for both bodies times the
 // largest planet dot (Venus's, PLANET_DOT_MAX_R in render-planets.js), so the two always look a
-// little bigger than the brightest planet. Sky Map has no zoom and shows the whole hemisphere at
+// little bigger than the brightest planet (not while Equipment shows a setup or a Catalog photo is
+// presented: _nightSkyPlanetDiscRadiusPx below). Sky Map has no zoom and shows the whole hemisphere at
 // ~3 px/deg, where the true disc would be under a pixel - it draws both at that minimum. In the
 // Planetarium the minimum grows with the zoom like the stars and planets (_nightSkyStarZoomGain,
 // render-nightsky.js; 1 everywhere else), so the Sun and the Moon stay larger than any of them.
@@ -234,11 +235,12 @@ function _nightSkyDiscAboveHorizon(el, semiDeg) {
 // radial scale, FOCAL*scale px per radian (exact at the view centre; towards the rim the tangential
 // scale grows, which a circle cannot show - negligible at the zooms where the disc is big enough to
 // matter, since the field there is narrow). While Equipment shows a setup (Visual or Imaging,
-// render-nightsky-equipment.js) the discs keep their true size, without the minimum, so they
-// compare honestly with the eyepiece's or the sensor's field.
+// render-nightsky-equipment.js) or a Catalog photo is presented (any: framed, calibrated, all-sky)
+// the discs keep their true size, without the minimum, so they compare honestly with the
+// eyepiece's or the sensor's field and match the photo.
 function _nightSkyPlanetDiscRadiusPx(layout, semiDeg) {
   const truePx = _nightSkyPlanet3D.FOCAL * layout.scale * semiDeg * _MOON_D2R;
-  if (typeof _nsEq !== 'undefined' && _nsEq.shown.length && !_nightSkyActiveFrame) return truePx;
+  if (_nightSkyActiveFrame || (typeof _nsEq !== 'undefined' && _nsEq.shown.length)) return truePx;
   return Math.max(_nightSkyBodyMinR(), truePx);
 }
 const MOON_PATH_COLOR_OUTLINE = 'rgba(0,0,0,0.85)';

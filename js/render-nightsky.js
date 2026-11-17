@@ -1990,13 +1990,38 @@ function _nightSkyMagControlsOn() {
     && (nightSkySubmode === 'planetarium' || nightSkySubmode === 'skymap');
 }
 // Display "Mag ≤" (#nightSkyMagLimit): stars, planets and deep sky objects fainter than the limit
-// are not drawn. 0..6 in steps of 0.5; its last step, 6+, is no limit (the star catalogue ends at
-// mag 6, deep sky objects go on to 11.5). The Sun, the Moon and a planet in transit are never hidden.
-const NIGHTSKY_MAG_LIMIT_OFF = 6.5;   // the slider value shown as "6+"
+// are not drawn. In steps of 0.5: with Atmosphere on 0..6 and a last step, 6+, of no limit (the
+// eye's dark-sky limit then rules); with Atmosphere off 0..8, the stars past 6 from the deep
+// catalogue (_nightSkyDeepForSky), and a last step, 8+, of no limit (the star catalogues end at mag
+// 8, deep sky objects go on to 11.5). The Sun, the Moon and a planet in transit are never hidden.
+// While Equipment shows a setup in the Planetarium the slider is the field's (_nightSkyMagHold).
+const NIGHTSKY_MAG_LIMIT_OFF = 6.5;   // the slider value shown as "6+" (Atmosphere on)
+const NIGHTSKY_MAG_TOP_ATM_OFF = 8.5;   // the slider value shown as "8+" (Atmosphere off)
+const NIGHTSKY_MAG_FIELD_MAX = 8;   // the slider's end for Equipment's field
+// Equipment's hold of the slider (render-nightsky-equipment.js, _nsEqMagSync): while it shows a
+// setup in the Planetarium (on) the slider, 0..8 and red, sets the limit inside the setups' shapes
+// (field), in place of the instrument's computed limit, and the sky outside keeps the value the
+// slider had when it turned on (sky), whatever the slider does; turned off, the slider gets that
+// value back. _nightSkyFieldLimit is the field's limit while the field is drawn (_nsEqDraw), else
+// null; _nightSkyFieldBox the shapes' bounding box then ([x0, y0, x1, y1], CSS px), where the Milky
+// Way is worked out (render-milkyway.js).
+const _nightSkyMagHold = { on: false, sky: 6, field: null };
+let _nightSkyFieldLimit = null, _nightSkyFieldBox = null;
+// The value of the slider's last step (no limit)
+function _nightSkyMagTop() {
+  return nightSkyAtmosphereOn ? NIGHTSKY_MAG_LIMIT_OFF : NIGHTSKY_MAG_TOP_ATM_OFF;
+}
+// The slider's range: the field's, or the last step by Atmosphere
+function _nightSkyMagRangeSync() {
+  const el = document.getElementById('nightSkyMagLimit');
+  const max = String(_nightSkyMagHold.on ? NIGHTSKY_MAG_FIELD_MAX : _nightSkyMagTop());
+  if (el.max !== max) el.max = max;
+}
 function _nightSkySliderLimit() {
+  if (_nightSkyFieldLimit !== null) return _nightSkyFieldLimit;
   if (!_nightSkyMagControlsOn()) return Infinity;
-  const v = parseFloat(document.getElementById('nightSkyMagLimit').value);
-  return v >= NIGHTSKY_MAG_LIMIT_OFF ? Infinity : v;
+  const v = _nightSkyMagHold.on ? _nightSkyMagHold.sky : parseFloat(document.getElementById('nightSkyMagLimit').value);
+  return v >= _nightSkyMagTop() ? Infinity : v;
 }
 // Display "Atmosphere" (#btnNightSkyAtmosphere, off by default; Planetarium and the flat Sky Map
 // only): the naked-eye limiting magnitude of the sky from the Sun's true altitude. Daylight shows
@@ -2172,12 +2197,14 @@ function _nightSkyArtDir(az, el, s) {
 }
 // The sky's limit (the Milky Way's levels, the readout beside the slider).
 function _nightSkySkyLimit() {
+  if (_nightSkyFieldLimit !== null) return _nightSkyFieldLimit;   // Equipment's field: the slider alone
   return Math.min(_nightSkySliderLimit(), _nightSkyAtmLimit());
 }
 // The cut for stars, planets and deep sky objects before their position is known: the slider's
 // limit as set, the twilight's NIGHTSKY_ATM_FADE fainter (moonlight only lowers it further, per
 // object in _nightSkyVisFactor).
 function _nightSkyMagLimit() {
+  if (_nightSkyFieldLimit !== null) return _nightSkyFieldLimit;
   return Math.min(_nightSkySliderLimit(), _nightSkyAtmLimit() + NIGHTSKY_ATM_FADE);
 }
 function _nightSkyMagVisible(mag) {
@@ -2424,6 +2451,7 @@ function _nightSkyAtmLimitByDir(s, az, el) {
 // The azimuth (°) of a horizon-frame direction (inverse of _skyDomeUnitVec)
 function _nightSkyAzOf(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
 function _nightSkyAtmLimitAt(v) {
+  if (_nightSkyFieldLimit !== null) return Infinity;   // Equipment's field: the slider alone
   const s = _nightSkyAtmState();
   if (!s) return Infinity;
   if (!s.moon && !s.ecl && !s.artNL && !s.twiEx) return s.twiLM;
@@ -2468,9 +2496,9 @@ function _nightSkyVisFactor(mag, az, el, baseMag) {
 }
 // The same for a whole pass of stars: the slider and the sky's state read once (_nightSkyVisPrep;
 // each read alone costs more than the rest), and on a night with the limit by altitude alone
-// (_nightSkyAtmLimitByDir) no direction vector either.
+// (_nightSkyAtmLimitByDir) no direction vector either. In Equipment's field the slider alone.
 function _nightSkyVisPrep() {
-  const s = _nightSkyAtmState();
+  const s = _nightSkyFieldLimit !== null ? null : _nightSkyAtmState();
   return { slider: _nightSkySliderLimit(), s, byEl: !!s && !s.moon && !s.ecl && !s.twiEx && !!s.artNL };
 }
 function _nightSkyVisWith(q, mag, az, el) {
@@ -3511,18 +3539,20 @@ function _nightSkyDrawPlanetHorizon(ctx, layout) {
   ctx.restore();
 }
 
-// Stars past the base catalogue's 6.0 on the whole sky (Planetarium, flat Sky Map): with Atmosphere
-// on and the limit (the slider's, the sky's + NIGHTSKY_ATM_FADE) past 6, the rows of
-// data/celestial/stars.6-8.json ([HIP, mag, B-V, RA, Dec]; _nsEqDeep, render-nightsky-equipment.js,
-// fetched here on first need) down to it, so at 6+ under a dark class the sky shows what the eye
-// does (class 1: ~6.6, about 4,500 stars more); none at a slider of 6 or less or with Atmosphere
-// off. Drawn as the others, fainter by _nightSkyDeepDim. Kept per limit (_nsDeepSky).
-// Each kept row carries its J2000 unit vector (r.v) for _skyJ2000HorizonMatrix.
+// Stars past the base catalogue's 6.0 on the whole sky (Planetarium, flat Sky Map): with the limit
+// past 6 the rows of data/celestial/stars.6-8.json ([HIP, mag, B-V, RA, Dec]; _nsEqDeep,
+// render-nightsky-equipment.js, fetched here on first need) down to it. With Atmosphere on the
+// limit is the slider's and the sky's + NIGHTSKY_ATM_FADE, so at 6+ under a dark class the sky
+// shows what the eye does (class 1: ~6.6, about 4,500 stars more); with Atmosphere off the slider's,
+// up to 8 (8+: all 36,367). None at a limit of 6 or less. Drawn as the others, fainter by
+// _nightSkyDeepDim. Kept per limit (_nsDeepSky). In Equipment's field only the rows near it
+// (_nsEqDeepInField). Each kept row carries its J2000 unit vector (r.v) for _skyJ2000HorizonMatrix.
 let _nsDeepSky = { limit: null, data: null, rows: [] };
 function _nightSkyDeepForSky() {
-  if (!_nightSkyAtmState() || typeof _nsEqDeep === 'undefined') return [];
+  if (!_nightSkyMagControlsOn() || typeof _nsEqDeep === 'undefined') return [];
   const limit = _nightSkyMagLimit();
   if (!(limit > 6)) return [];
+  if (_nightSkyFieldLimit !== null) return _nsEqDeepInField(limit);
   if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
   const D = _nsEqDeep.data;
   if (!D) return [];
@@ -3679,10 +3709,16 @@ function _nightSkyCalibOutlineScreen(layout) {
     return q.visible ? q : null;
   });
 }
-function _nightSkyDrawCatalogFrame(ctx, layout) {
+// A star trails photo's trails (render-nightsky-trails.js): under the frame's outline, or with
+// the sky objects under a photo overlay (_nightSkyDrawPlanetarium; trailsDone then)
+function _nightSkyDrawCatalogTrails(ctx, layout) {
+  const f = _nightSkyActiveFrame;
+  if (f && f.kind === 'rect' && f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);
+}
+function _nightSkyDrawCatalogFrame(ctx, layout, trailsDone) {
   if (!_nightSkyActiveFrame) return;
   const f = _nightSkyActiveFrame;
-  if (f.kind === 'rect' && f.trails && typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, layout);   // star trails photo, under the frame
+  if (!trailsDone) _nightSkyDrawCatalogTrails(ctx, layout);
   if (f.kind === 'allsky' || _nightSkyFrameCalibrated(f)) {
     if (!f.calib) return;   // not calibrated: nothing to outline
     // The photo's calibrated edge as one closed curve, in the brackets' own line (colour, width, the
@@ -3976,8 +4012,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && document.getElementById('nightSkyGalleryModal').classList.contains('visible')) _nightSkyClosePhotoModal();
 });
 
-function _nightSkyDrawPlanetarium(ctx, w, h) {
+// fieldPass: Equipment's field drawn again inside its shapes (render-nightsky-equipment.js): only
+// the drawing, without the picker's lock, the photo thumbnail or the photo overlay.
+function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
   if (!_skyDataLoaded) {
+    if (fieldPass) return;
     ctx.fillStyle = '#8899aa';
     ctx.font = '14px Helvetica, Arial, sans-serif';
     ctx.textAlign = 'center';
@@ -3987,14 +4026,11 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
     return;
   }
 
-  _nightSkyPickerApplyLock();
+  if (!fieldPass) _nightSkyPickerApplyLock();
   _nightSkyUpdatePlanetCamera();
   const layout = _nightSkyPlanetLayout(w, h);
   _nightSkyDrawPlanetSkyGround(ctx, layout, w, h);
   if (_glowShown()) _glowDrawPlanetarium(ctx, w, h, layout);   // the sky's colour under Atmosphere, render-skyglow.js
-  if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout);   // render-milkyway.js
-  // the presented all-sky photo over the sky, under the grid, stars and labels (render-nightsky-allsky.js)
-  if (typeof _nsAllskyDraw === 'function') _nsAllskyDraw(ctx, w, h, _nsAllsky.moving);
 
   const showGrid = document.getElementById('chkNightSkyGrid').checked;
   const showEquatorial = document.getElementById('chkNightSkyEquatorial').checked;
@@ -4003,28 +4039,56 @@ function _nightSkyDrawPlanetarium(ctx, w, h) {
   const showNames = document.getElementById('chkNightSkyNames').checked;
   const showStars = document.getElementById('chkNightSkyStars').checked;
   const showSun = document.getElementById('chkNightSkySun').checked;
-
-  if (showGrid) _nightSkyDrawPlanetGrid(ctx, layout);
-  if (showEquatorial) _nightSkyDrawPlanetEquatorialGrid(ctx, layout);
-  if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
-  // Constellation names (Labels) only together with their lines.
-  if (showLines) _nightSkyDrawPlanetConstellations(ctx, layout, true, showNames);
-  if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
-  if (_dsoShown()) _dsoDrawPlanetarium(ctx, layout);   // render-deepsky.js
   const showMoon = document.getElementById('chkNightSkyMoon').checked;
-  if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
-  if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
-  // farthest first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon
-  _nightSkyDrawPlanetPlanets(ctx, layout, 'behind');
-  if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
-  _nightSkyDrawPlanetPlanets(ctx, layout, 'front');
-  if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
+  const showDso = _dsoShown();   // render-deepsky.js
+
+  // A calibrated photo laid over the sky (render-nightsky-allsky.js) covers the sky objects (Milky
+  // Way, stars, deep sky symbols, planets, Sun, Moon, star trails); the grids, the constellation
+  // lines, the paths, the horizon, the names and the marks are drawn over it. Without it the
+  // grids and lines lie under the stars.
+  const overlay = !fieldPass && typeof _nsAllskyWillDraw === 'function' && _nsAllskyWillDraw();
+  const lines = () => {
+    if (showGrid) _nightSkyDrawPlanetGrid(ctx, layout);
+    if (showEquatorial) _nightSkyDrawPlanetEquatorialGrid(ctx, layout);
+    if (showEcliptic) _nightSkyDrawPlanetEcliptic(ctx, layout);
+    // Constellation names (Labels) only together with their lines.
+    if (showLines) _nightSkyDrawPlanetConstellations(ctx, layout, true, showNames);
+  };
+  if (_mwShown()) _mwDrawPlanetarium(ctx, w, h, layout);   // render-milkyway.js
+  if (!overlay) lines();
+  if (showStars) _nightSkyDrawPlanetStars(ctx, layout);
+  if (showDso) _dsoDrawPlanetarium(ctx, layout, overlay ? 'symbols' : undefined);
+  const paths = () => {
+    if (showSun && showNightSkySunPath) _nightSkyDrawPlanetSunPath(ctx, layout);
+    if (showMoon && showNightSkyMoonPath) _nightSkyDrawPlanetMoonPath(ctx, layout);
+  };
+  if (!overlay) paths();
+  // farthest first: planets beyond the Sun, the Sun, planets nearer than it (a transit), the Moon;
+  // the planets' names wait for the overlay (render-planets.js)
+  _planetLabelsDeferred = overlay ? [] : null;
+  try {
+    _nightSkyDrawPlanetPlanets(ctx, layout, 'behind');
+    if (showSun) _nightSkyDrawPlanetSun(ctx, layout);
+    _nightSkyDrawPlanetPlanets(ctx, layout, 'front');
+    if (showMoon) _nightSkyDrawPlanetMoon(ctx, layout);   // after the Sun, so it covers it in an eclipse
+    if (overlay) {
+      _nightSkyDrawCatalogTrails(ctx, layout);   // with the objects, under the photo
+      _nsAllskyDraw(ctx, w, h, _nsAllsky.moving);
+      lines();
+    }
+  } finally {
+    if (_planetLabelsDeferred) _planetLabelsFlush(ctx);   // also after a throw: the names never stay held
+  }
+  if (overlay) {
+    if (showDso) _dsoDrawPlanetarium(ctx, layout, 'labels');
+    paths();
+  }
   _nightSkyDrawPlanetHorizon(ctx, layout);   // always (no Display switch since build 46_1)
   _nightSkyDrawPlanetGridLabels(ctx, layout);
   _nightSkyDrawPlanetBodyLabels(ctx, layout);
   _nightSkyPickerDrawMarker(ctx, layout);
-  _nightSkyDrawCatalogFrame(ctx, layout);
-  _nightSkyUpdateFrameThumb(layout, w, h);
+  _nightSkyDrawCatalogFrame(ctx, layout, overlay);
+  if (!fieldPass) _nightSkyUpdateFrameThumb(layout, w, h);
 }
 
 // Drag-to-look-around (mouse + touch, via Pointer Events - same setPointerCapture pattern as the
@@ -4370,6 +4434,7 @@ function _nightSkyClearReadout() {
 
 function drawNightSky() {
   _nightSkyAtmHintSync();
+  if (typeof _nsEqMagSync === 'function') _nsEqMagSync();   // Equipment takes or gives back the Mag ≤ slider
   _nightSkyBortleSyncIfChanged();   // a new Location or its map tile come in: the Bortle scale row follows
   if (nightSkySubmode === 'sungraph') { if (_nsSgActive()) _nsSgDraw(); if (typeof _nsEqChips === 'function') _nsEqChips(); return; }   // render-nightsky-sungraph.js
   const cv = document.getElementById('nightSkyCanvas');
@@ -4414,14 +4479,20 @@ document.getElementById('btnModeNightSky').addEventListener('click', () => {
   enterNightSky();
 });
 
-// Mag ≤ slider: the value beside it, "6+" at its last step (no limit); star size: three buttons.
-// With Atmosphere on and the sky's limit stricter than the slider, the readout adds it (6+ · 2.5).
+// Mag ≤ slider: the value beside it, "6+" or "8+" at its last step (no limit); star size: three
+// buttons. With Atmosphere on and the sky's limit stricter than the slider, the readout adds it
+// (6+ · 2.5). Held by Equipment: the field's value alone.
 function _nightSkyUpdateMagReadout() {
   const v = parseFloat(document.getElementById('nightSkyMagLimit').value);
-  const slider = v >= NIGHTSKY_MAG_LIMIT_OFF ? '6+' : v.toFixed(1);
-  const atm = _nightSkyAtmLimitAt([0, 0, 1]);   // at the zenith, twilight and moonlight
+  const held = _nightSkyMagHold.on, top = _nightSkyMagTop();
+  const slider = !held && v >= top ? (top - 0.5) + '+' : v.toFixed(1);
+  const atm = held ? Infinity : _nightSkyAtmLimitAt([0, 0, 1]);   // at the zenith, twilight and moonlight
   const el = document.getElementById('nightSkyMagLimitVal');
-  if (Number.isFinite(atm) && (v >= NIGHTSKY_MAG_LIMIT_OFF || atm < v)) {   // at 6+ always: what the eye sees
+  if (held) {
+    el.textContent = slider;
+    const sky = _nightSkyMagHold.sky;
+    el.title = 'Limiting magnitude inside the Equipment field; the sky outside stays at ' + (sky >= top ? (top - 0.5) + '+' : sky.toFixed(1));
+  } else if (Number.isFinite(atm) && (v >= top || atm < v)) {   // at 6+ always: what the eye sees
     el.innerHTML = slider + '<span class="nightsky-mag-atm">· ' + atm.toFixed(1) + '</span>';
     el.title = 'Slider limit · limiting magnitude of the sky at the zenith now (twilight and moonlight)';
   } else {
@@ -4434,7 +4505,8 @@ function _nightSkyUpdateMagReadout() {
   const frac = (v - parseFloat(input.min)) / (parseFloat(input.max) - parseFloat(input.min));
   el.style.left = (frac * Math.max(0, input.clientWidth - el.offsetWidth)) + 'px';
 }
-document.getElementById('nightSkyMagLimit').addEventListener('input', () => {
+document.getElementById('nightSkyMagLimit').addEventListener('input', (e) => {
+  if (_nightSkyMagHold.on) _nightSkyMagHold.field = parseFloat(e.target.value);   // Equipment's field
   _nightSkyUpdateMagReadout();
   if (nightSkyActive) drawNightSky();
 });
@@ -4447,11 +4519,15 @@ const NIGHTSKY_BORTLE_KEY = 'solargraphyBortle', NIGHTSKY_BORTLE_ON_KEY = 'solar
 try { const v = parseInt(localStorage.getItem(NIGHTSKY_BORTLE_KEY), 10); if (v >= 1 && v <= 9) _nightSkyBortle.manual = v; } catch (e) { /* blocked: the default */ }
 try { _nightSkyBortle.on = localStorage.getItem(NIGHTSKY_BORTLE_ON_KEY) === '1'; } catch (e) { /* blocked: off */ }
 // The Mag ≤ slider follows the checkbox and Atmosphere: with both on 6+ (the scale's limit rules,
-// the slider can still lower it), else 6 (NIGHTSKY_MAG_DEFAULT; 6+ can still be chosen by hand); set
-// on loading and whenever either is switched.
+// the slider can still lower it), else 6 (NIGHTSKY_MAG_DEFAULT; the last step can still be chosen
+// by hand); set on loading and whenever either is switched, its range with it. Held by Equipment,
+// the value goes to the sky outside the field (_nightSkyMagHold.sky) and the slider stays the field's.
 const NIGHTSKY_MAG_DEFAULT = 6;
 function _nightSkyMagSliderReset() {
-  document.getElementById('nightSkyMagLimit').value = String(nightSkyAtmosphereOn && _nightSkyBortle.on ? NIGHTSKY_MAG_LIMIT_OFF : NIGHTSKY_MAG_DEFAULT);
+  const v = nightSkyAtmosphereOn && _nightSkyBortle.on ? NIGHTSKY_MAG_LIMIT_OFF : NIGHTSKY_MAG_DEFAULT;
+  _nightSkyMagRangeSync();
+  if (_nightSkyMagHold.on) _nightSkyMagHold.sky = v;
+  else document.getElementById('nightSkyMagLimit').value = String(v);
   try { _nightSkyUpdateMagReadout(); } catch (e) { /* before Night Sky is set up: the readout follows on its first drawing */ }
 }
 _nightSkyMagSliderReset();

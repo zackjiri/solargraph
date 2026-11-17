@@ -99,8 +99,12 @@ function _planetDrawDot(ctx, x, y, planet, alpha) {
 }
 // Labels follow Display "Labels" like the Sun's and the Moon's, to the right of the dot, in the
 // planet's own tint on the dark sky and a neutral dark grey on the white light-theme sky.
+// While _planetLabelsDeferred is a list (the Planetarium under a photo overlay), the labels are
+// collected there and drawn over the photo by _planetLabelsFlush.
+let _planetLabelsDeferred = null;
 function _planetDrawLabel(ctx, x, y, r, planet, alpha) {
   if (!_nightSkyLabelsWanted()) return;
+  if (_planetLabelsDeferred) { _planetLabelsDeferred.push([x, y, r, planet, alpha]); return; }
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.font = '10px Helvetica, Arial, sans-serif';
@@ -108,6 +112,11 @@ function _planetDrawLabel(ctx, x, y, r, planet, alpha) {
   ctx.fillStyle = document.body.classList.contains('light') ? '#4a4a4a' : planet.color;
   ctx.fillText(planet.name, x + r + NIGHTSKY_LABEL_GAP, y);
   ctx.restore();
+}
+function _planetLabelsFlush(ctx) {
+  const list = _planetLabelsDeferred || [];
+  _planetLabelsDeferred = null;
+  for (const a of list) _planetDrawLabel(ctx, ...a);
 }
 // ─── Depth order and transits ───────────────────────────────────────────────────────────────────
 // The Sun, the Moon and the planets are drawn farthest first, so whatever is nearer covers what is

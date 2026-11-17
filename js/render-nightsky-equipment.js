@@ -14,8 +14,8 @@
 //  - f-ratio = effective focal length / aperture; highest useful magnification = 2 × aperture (mm);
 //    limiting magnitude ≈ 7.5 + 5 log10(aperture in cm).
 // Warned: an exit pupil over 7 mm (wider than the eye's), a magnification over the useful highest.
-// Inside the field the stars go on to the instrument's limit, as far as the catalogues reach (mag 8;
-// _nsEqFieldStars below), so beyond 8 the limiting magnitude only tells how much more it will show.
+// The limiting magnitude is shown for information: inside the field the Mag ≤ slider sets the limit
+// (0..8, the catalogues' end; _nsEqMagSync and the field's pass below).
 
 const NS_EQ_DEFAULT = { name: '', mode: 'visual', telescopeFocal: 420, aperture: 72, eyepieceFocal: 25, eyepieceFov: 65, accessory: 1 };
 const NS_EQ_FIELDS = ['telescopeFocal', 'aperture', 'eyepieceFocal', 'eyepieceFov', 'accessory'];
@@ -85,9 +85,11 @@ function _nsEqStoredRaw() {
 function _nsEqUsable(s) {
   return typeof s.name === 'string' && s.name && (s.mode === undefined || s.mode === 'visual' || s.mode === 'imaging') && _nsEqValid(s);
 }
+function _nsEqNormalize(s) {
+  return _nsEqIsImaging(s) ? Object.assign({}, NS_EQ_IMG_DEFAULT, s) : Object.assign({}, NS_EQ_DEFAULT, s, { mode: 'visual' });
+}
 function _nsEqSetups() {
-  return _nsEqStoredRaw().filter(_nsEqUsable)
-    .map(s => _nsEqIsImaging(s) ? Object.assign({}, NS_EQ_IMG_DEFAULT, s) : Object.assign({}, NS_EQ_DEFAULT, s, { mode: 'visual' }));
+  return _nsEqStoredRaw().filter(_nsEqUsable).map(_nsEqNormalize);
 }
 function _nsEqStoreSetups(list) {
   const others = _nsEqStoredRaw().filter(s => !_nsEqUsable(s));
@@ -107,6 +109,34 @@ function _nsEqLast() {
 function _nsEqSetLast(name) {
   _nsEqMemLast = name || '';
   try { localStorage.setItem(NS_EQ_LAST_KEY, _nsEqMemLast); } catch (e) { _nsEqStoreBroken = true; }
+}
+
+// ── Built-in setups ─────────────────────────────────────────────────────────────────────────────
+// data/equipment-presets.json (NS_EQ_PRESETS_FILE): a JSON list of setups in the saved ones' format
+// ({name, mode 'visual': telescopeFocal, aperture, eyepieceFocal, eyepieceFov, accessory; mode
+// 'imaging': telescopeFocal, aperture, accessory, sensorW, sensorH, crop}), edited by hand. Loaded
+// once with the page; entries this version cannot use are left out, a name repeated within a mode
+// counts once, a missing or unreadable file gives none. Listed after the saved setups of the mode
+// under "Built-in" (option values NS_EQ_PRESET_PREFIX + name), they cannot be deleted or
+// overwritten: Save asks for a new name, and a built-in name is refused for a saved setup.
+// allsky_tool.html reads the same file for its Imaging ones.
+const NS_EQ_PRESETS_FILE = 'data/equipment-presets.json', NS_EQ_PRESET_PREFIX = 'preset:';
+let _nsEqPresets = [], _nsEqPresetsP = null;
+function _nsEqLoadPresets(url) {
+  return (_nsEqPresetsP = fetch(url || NS_EQ_PRESETS_FILE, { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []).then((j) => {
+    const seen = new Set();
+    _nsEqPresets = (Array.isArray(j) ? j : []).filter(s => s && typeof s === 'object' && _nsEqUsable(s)).map(_nsEqNormalize)
+      .filter(s => { const k = s.mode + '|' + s.name; if (seen.has(k)) return false; seen.add(k); return true; });
+    if (_nsEq.open) { _nsEqFillList(document.getElementById('nightSkyEquipmentSetup').value); _nsEqRefreshPanel(); }
+  }));
+}
+function _nsEqPresetsReady() { return _nsEqPresetsP || _nsEqLoadPresets(); }
+function _nsEqIsPresetKey(v) { return typeof v === 'string' && v.startsWith(NS_EQ_PRESET_PREFIX); }
+// The setup behind a list value: a built-in one of the panel's mode or a saved one; undefined if none
+function _nsEqEntry(v) {
+  if (!v) return undefined;
+  if (_nsEqIsPresetKey(v)) { const n = v.slice(NS_EQ_PRESET_PREFIX.length); return _nsEqPresets.find(x => x.name === n && x.mode === _nsEq.mode); }
+  return _nsEqSetups().find(x => x.name === v);
 }
 
 // ── The setups shown ────────────────────────────────────────────────────────────────────────────
@@ -138,6 +168,7 @@ function _nsEqFitZoom() {
 // After any change of the setups shown: the button, the chips (when their parts exist) and the sky
 function _nsEqChanged() {
   _nsEq.ver++;
+  _nsEqMagSync();   // the Mag ≤ slider held or given back
   if (typeof _nsTrSync === 'function') _nsTrSync();   // star trails: a changed frame clears its exposure
   if (typeof _nsEqMountSync === 'function') _nsEqMountSync();   // render-nightsky-equipment-mount.js
   if (typeof _nsEqSyncButton === 'function') _nsEqSyncButton();
@@ -174,7 +205,8 @@ function _nsEqOff() {
 }
 
 // ── The eyepiece view ───────────────────────────────────────────────────────────────────────────
-// The Planetarium's last layer (drawNightSky): black at 50 % over the whole canvas with a hole in the
+// The Planetarium's last layer (drawNightSky): the field drawn again at its own limit (above),
+// black at 50 % over the whole canvas with a hole in the
 // shape of every setup shown, the eyepieces' circles and the cameras' frames together (their union),
 // centred on the view, so the sky outside stays readable and a drag reaches objects beyond the
 // field; every shape's edge in its setup's colour. With a camera's frame the mask is drawn on a
@@ -205,22 +237,18 @@ function _nsEqInShape(sh, x, y) {
   return inside;
 }
 
-// ── Fainter stars in the field ──────────────────────────────────────────────────────────────────
-// What the telescope shows beyond the eye, inside the shapes of the setups shown (their union, the
-// mask's hole): the stars down to the instrument's limit from the base catalogue (those the eye
-// misses there) and from data/celestial/stars.6-8.json (36,367 stars of mag 6.01 to 8.0, sorted by
-// Dec; tools/stars-deep.py), fetched the first time a setup is shown (_nsEqDeepLoad), redrawn on
-// arrival. The instrument's limit in a direction is the eye's there (Atmosphere: twilight, Moon,
-// light pollution, at most the dark night's NIGHTSKY_MAG_LIMIT_OFF) plus the aperture's gain over
-// the eye, the panel's limiting magnitude 7.5 + 5·log10(D / 10 mm) less the eye's 6.5 (72 mm: +5.3),
-// the largest aperture shown counting; with Atmosphere off there is no limit. The Mag ≤ slider is the
-// naked eye's and does not apply in the field. A star the sky drew already at opacity a_eye (a base
-// one, or a deep one where the sky shows them at 6+, _nightSkyDeepForSky) gets only the rest,
-// (a − a_eye) / (1 − a_eye) laid over it, so it ends at a. Stars fainter than 6 are drawn fainter
-// still (_nightSkyDeepDim), as the base catalogue's sizes end at 6.
-// Found by the view's centre in J2000 (the base catalogue's frame; precession undone) and a band of
-// Dec half the widest shape plus 1° wide (the frame's turn, the projection), then each star's own
-// place on the canvas against the shapes.
+// ── The field's limit ───────────────────────────────────────────────────────────────────────────
+// While the eyepiece view is on (_nsEqViewOn) Equipment holds the Mag ≤ slider (_nightSkyMagHold,
+// render-nightsky.js): on taking it, the slider's value goes to the sky outside the field, frozen,
+// the slider turns red with a range of 0..8 and sets the limit inside the setups' shapes; giving it
+// back (the view off, no setup, a Catalog photo, another sub-mode) restores the value and range.
+// The field's value starts at the largest shown setup's limiting magnitude (7.5 + 5·log10(D / 10 mm),
+// to the next 0.5 below, at most 8) and is kept while setups are shown.
+// Inside the shapes the Planetarium is drawn a second time (_nsEqDraw) with _nightSkyFieldLimit
+// set: stars (the base catalogue and data/celestial/stars.6-8.json, 36,367 stars of mag 6.01 to 8.0
+// sorted by Dec, tools/stars-deep.py, fetched the first time it is needed), deep sky, planets, the
+// Milky Way's levels, all by the slider alone, without the Atmosphere's limit (its colour and the
+// dimming near the horizon stay).
 const _nsEqDeep = { state: 'idle', data: null, p: null };   // state: idle | loading | ready | failed
 const NS_EQ_DEEP_FILE = 'data/celestial/stars.6-8.json';
 function _nsEqDeepLoad() {
@@ -234,6 +262,27 @@ function _nsEqDeepLoad() {
 function _nsEqApertureGain(s) {
   return 7.5 + 5 * Math.log10(s.aperture / 10) - NIGHTSKY_MAG_LIMIT_OFF;
 }
+function _nsEqMagSync() {
+  const H = _nightSkyMagHold, on = _nsEqViewOn(), el = document.getElementById('nightSkyMagLimit');
+  if (!_nsEq.shown.length) H.field = null;
+  if (on === H.on) return;
+  if (on) {
+    H.sky = parseFloat(el.value);
+    if (H.field === null) {
+      const lim = Math.max(..._nsEq.shown.map(e => _nsEqApertureGain(e.setup) + NIGHTSKY_MAG_LIMIT_OFF));
+      H.field = Math.max(0, Math.min(NIGHTSKY_MAG_FIELD_MAX, Math.floor(lim * 2) / 2));
+    }
+    H.on = true;
+    _nightSkyMagRangeSync();
+    el.value = String(H.field);
+  } else {
+    H.on = false;
+    _nightSkyMagRangeSync();
+    el.value = String(H.sky);
+  }
+  document.getElementById('nightSkyMagRow').classList.toggle('ns-mag-field', on);
+  _nightSkyUpdateMagReadout();
+}
 // The view's centre in J2000 RA (-180..180, the catalogues') and Dec [°]
 function _nsEqCentreJ2000() {
   const C = _nightSkyPlanet3D, eq = _skyAzElToRaDec(C.camAz * 180 / Math.PI, C.camEl * 180 / Math.PI, _nightSkyLstNow(), _nightSkyLatSigned());
@@ -241,61 +290,44 @@ function _nsEqCentreJ2000() {
   const x = m[0][0] * v[0] + m[1][0] * v[1] + m[2][0] * v[2], y = m[0][1] * v[0] + m[1][1] * v[1] + m[2][1] * v[2], z = m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2];
   return { ra: Math.atan2(y, x) * 180 / Math.PI, dec: Math.asin(Math.max(-1, Math.min(1, z))) * 180 / Math.PI };
 }
-// The stars to lay over the field: [{x, y, r, alpha, mag}], alpha the share still to add
-function _nsEqFieldStars(L, w, h, shapes) {
-  if (!_nsEq.shown.length || !_skyDataLoaded) return [];
-  shapes = shapes || _nsEqShapes(L);
-  const atm = !!_nightSkyAtmState(), gain = Math.max(..._nsEq.shown.map(e => _nsEqApertureGain(e.setup)));
+// The deep catalogue's rows to limit near the field (for _nightSkyDeepForSky in the field's pass):
+// found by the view's centre in J2000 (the catalogue's frame; precession undone) and a band of Dec
+// half the widest shape plus 1° wide (the frame's turn, the projection); the shapes clip the rest.
+function _nsEqDeepInField(limit) {
+  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
+  const D = _nsEqDeep.data;
+  if (!D || !_nsEq.shown.length) return [];
   const half = Math.max(..._nsEq.shown.map(e => _nsEqSpanDeg(e.setup))) / 2 + 1, c = _nsEqCentreJ2000();
   const polar = Math.abs(c.dec) + half >= 89, dRa = polar ? 180 : half / Math.cos((Math.abs(c.dec) + half) * Math.PI / 180);
-  const near = (ra, dec) => Math.abs(dec - c.dec) <= half && (polar || Math.abs(((ra - c.ra) % 360 + 540) % 360 - 180) <= dRa);
-  const out = [], skyLimit = _nightSkyDeepForSky().length ? _nightSkyMagLimit() : 6;   // what the sky pass drew
-  const add = (mag, ra, dec, base) => {
-    const p = _skyStarAzEl(ra, dec, nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
-    if (p.el < 0) return;
-    const pr = _nightSkyPlanetProject(L, p.az, p.el);
-    if (!pr.visible || !shapes.some(sh => _nsEqInShape(sh, pr.x, pr.y))) return;
-    const em = mag + _nightSkyExtinctionMag(p.el);
-    let a = 1;
-    if (atm) {
-      const lim = Math.min(NIGHTSKY_MAG_LIMIT_OFF, _nightSkyAtmLimitAt(_skyDomeUnitVec(p.az, p.el))) + gain;
-      a = em <= lim ? 1 : Math.max(0, 1 - (em - lim) / NIGHTSKY_ATM_FADE);
-    }
-    if (a <= 0) return;
-    const look = _nightSkyStarAlpha(em) * _nightSkyDeepDim(mag) * pr.alpha;
-    const total = look * a, eye = base || mag <= skyLimit ? look * _nightSkyVisFactor(em, p.az, p.el) : 0;
-    if (total <= eye + 1e-3) return;
-    out.push({ x: pr.x, y: pr.y, r: _nightSkyStarSize(em), alpha: eye >= 1 ? 0 : (total - eye) / (1 - eye), mag });
-  };
-  for (const s of _skyStars) if (near(s.raDeg, s.decDeg)) add(s.mag, s.raDeg, s.decDeg, true);
-  const D = _nsEqDeep.data;
-  if (D) {
-    let lo = 0, hi = D.length;   // the first star at or above the band's south edge
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (D[mid][4] < c.dec - half) lo = mid + 1; else hi = mid; }
-    for (let i = lo; i < D.length && D[i][4] <= c.dec + half; i++) if (near(D[i][3], D[i][4])) add(D[i][1], D[i][3], D[i][4], false);
+  let lo = 0, hi = D.length;   // the first star at or above the band's south edge
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (D[mid][4] < c.dec - half) lo = mid + 1; else hi = mid; }
+  const out = [];
+  for (let i = lo; i < D.length && D[i][4] <= c.dec + half; i++) {
+    const r = D[i];
+    if (r[1] > limit || !(polar || Math.abs(((r[3] - c.ra) % 360 + 540) % 360 - 180) <= dRa)) continue;
+    if (!r.v) r.v = _skyDomeUnitVecRaDec({ ra: r[3], dec: r[4] });
+    out.push(r);
   }
   return out;
 }
-function _nsEqDrawFieldStars(ctx, L, w, h, shapes) {
-  if (_nsEqDeep.state === 'idle') _nsEqDeepLoad();
-  const stars = _nsEqFieldStars(L, w, h, shapes);
-  if (!stars.length) return;
-  ctx.save();
+// The shapes' bounding box [x0, y0, x1, y1]
+function _nsEqShapesBox(shapes) {
+  const b = [Infinity, Infinity, -Infinity, -Infinity];
+  const add = (x, y) => { b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y); };
+  for (const sh of shapes) {
+    if (sh.r !== undefined) { add(sh.cx - sh.r, sh.cy - sh.r); add(sh.cx + sh.r, sh.cy + sh.r); }
+    else for (const q of sh.pts) add(q.x, q.y);
+  }
+  return b;
+}
+// The shapes' union as the clip
+function _nsEqClipShapes(ctx, shapes) {
   ctx.beginPath();
   for (const sh of shapes) {
     if (sh.r !== undefined) { ctx.moveTo(sh.cx + sh.r, sh.cy); ctx.arc(sh.cx, sh.cy, sh.r, 0, Math.PI * 2); }
     else { sh.pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); }
   }
   ctx.clip();
-  ctx.fillStyle = _nightSkyStarColor();
-  for (const s of stars) {
-    if (!(s.alpha > 0)) continue;
-    ctx.globalAlpha = s.alpha;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r, 0, 2 * Math.PI);
-    ctx.fill();
-  }
-  ctx.restore();
 }
 function _nsEqDraw(ctx, w, h) {
   _nsEqChips();   // they follow the canvas's size
@@ -304,7 +336,15 @@ function _nsEqDraw(ctx, w, h) {
   const L = _nightSkyPlanetLayout(w, h);
   if (typeof _nsTrPlace === 'function') _nsTrPlace(L);   // star trails' button at the frame's corner
   const shapes = _nsEqShapes(L);
-  _nsEqDrawFieldStars(ctx, L, w, h, shapes);   // the telescope's stars, under the mask's edge
+  if (_nightSkyMagHold.on) {   // the field: the Planetarium again inside the shapes, at the slider's limit
+    ctx.save();
+    _nsEqClipShapes(ctx, shapes);
+    ctx.clearRect(0, 0, w, h);
+    _nightSkyFieldLimit = _nightSkyMagHold.field;
+    _nightSkyFieldBox = _nsEqShapesBox(shapes);
+    try { _nightSkyDrawPlanetarium(ctx, w, h, true); } finally { _nightSkyFieldLimit = null; _nightSkyFieldBox = null; }
+    ctx.restore();
+  }
   if (typeof _nsTrDrawTrails === 'function') _nsTrDrawTrails(ctx, L);   // star trails (render-nightsky-trails.js)
   if (shapes.every(sh => sh.r !== undefined)) {
     // eyepieces only: all centred, their union is the largest circle, cut straight on the sky canvas
@@ -367,7 +407,8 @@ function _nsEqSetOpen(on) {
   if (on) {
     if (typeof _nsSearchSetOpen === 'function' && _nsSearch.open) _nsSearchSetOpen(false);   // render-search.js
     if (!_nsEq.loaded) {
-      const last = _nsEqSetups().find(x => x.name === _nsEqLast());
+      const lv = _nsEqLast(), lp = _nsEqIsPresetKey(lv) ? lv.slice(NS_EQ_PRESET_PREFIX.length) : null;
+      const last = lp !== null ? _nsEqPresets.find(x => x.name === lp) : _nsEqSetups().find(x => x.name === lv);
       _nsEqPutFields(NS_EQ_IMG_DEFAULT);   // both modes' fields filled, the last setup over them
       _nsEqPutFields(NS_EQ_DEFAULT);
       _nsEqLoadIntoPanel(last || NS_EQ_DEFAULT);
@@ -379,17 +420,26 @@ function _nsEqSetOpen(on) {
 function _nsEqNote(text) {
   document.getElementById('nightSkyEquipmentNote').textContent = text || '';
 }
-// The setup list: "(unsaved)" and the saved names, the given one selected
+// The setup list: "(unsaved)", the saved names and the built-in ones under "Built-in", the given
+// value selected
 function _nsEqFillList(name) {
   const sel = document.getElementById('nightSkyEquipmentSetup');
   sel.textContent = '';
   const opts = [['', '(unsaved)']].concat(_nsEqSetups().filter(x => x.mode === _nsEq.mode).map(x => [x.name, x.name]));
-  for (const [v, t] of opts) {
+  const pre = _nsEqPresets.filter(x => x.mode === _nsEq.mode).map(x => [NS_EQ_PRESET_PREFIX + x.name, x.name]);
+  const add = (to, [v, t]) => {
     const o = document.createElement('option');
     o.value = v; o.textContent = t;
-    sel.appendChild(o);
+    to.appendChild(o);
+  };
+  for (const o of opts) add(sel, o);
+  if (pre.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Built-in';
+    for (const o of pre) add(g, o);
+    sel.appendChild(g);
   }
-  sel.value = opts.some(o => o[0] === name) ? name : '';
+  sel.value = opts.concat(pre).some(o => o[0] === name) ? name : '';
 }
 function _nsEqPutFields(setup) {
   const p = _nsEqPanelEl();
@@ -411,30 +461,36 @@ function _nsEqSetMode(mode) {
   _nsEqFillList(_nsEq.sel[mode]);
   _nsEqRefreshPanel();
 }
+// The list value of a named setup: a saved one of that name, else a built-in one with its values
+function _nsEqKeyOf(setup) {
+  const n = setup.name || '';
+  if (n && !_nsEqSetups().some(x => x.name === n) && _nsEqPresets.some(x => x.name === n && _nsEqSame(x, setup))) return NS_EQ_PRESET_PREFIX + n;
+  return n;
+}
 function _nsEqLoadIntoPanel(setup) {
   _nsEq.loaded = true;
   _nsEqShowMode(setup.mode === 'imaging' ? 'imaging' : 'visual');
   _nsEqPutFields(setup);
-  _nsEqFillList(setup.name || '');
+  _nsEqFillList(_nsEqKeyOf(setup));
   _nsEqRefreshPanel();
 }
 // The panel's setup; a field that is not a positive number stays NaN (_nsEqValid fails)
 function _nsEqReadPanel() {
   const p = _nsEqPanelEl(), s = { name: '', mode: _nsEq.mode };
   for (const k of _nsEqFields(s)) s[k] = _nsEqNum(p.querySelector(`[data-eq=${k}]`).value);
-  const name = document.getElementById('nightSkyEquipmentSetup').value;
-  const saved = name && _nsEqSetups().find(x => x.name === name);
-  if (saved && _nsEqSame(saved, s)) s.name = name;
+  const saved = _nsEqEntry(document.getElementById('nightSkyEquipmentSetup').value);
+  if (saved && _nsEqSame(saved, s)) s.name = saved.name;
   return s;
 }
 const _nsEqFmt = (v, d) => v.toFixed(d);
 // Fields marked, figures, buttons: on every keystroke and every change of the setups shown
 // The stars in the field end where the catalogues do (mag 8, NS_EQ_CATALOGUE_MAG); a setup reaching
-// further (its limiting magnitude 7.5 + 5·log10(D / 10 mm), a camera's by the same aperture) is told so
+// further (its limiting magnitude 7.5 + 5·log10(D / 10 mm), a camera's by the same aperture) is told so;
+// the Mag ≤ slider sets what the field shows
 const NS_EQ_CATALOGUE_MAG = 8;
 function _nsEqCatalogueNote(s, note) {
   const lim = _nsEqApertureGain(s) + NIGHTSKY_MAG_LIMIT_OFF;
-  if (lim > NS_EQ_CATALOGUE_MAG) note(`stars to mag ${NS_EQ_CATALOGUE_MAG} shown (the catalogue's end); this setup reaches about ${_nsEqFmt(lim, 1)}${_nsEqIsImaging(s) ? ' by eye, a camera fainter' : ''}`);
+  if (lim > NS_EQ_CATALOGUE_MAG) note(`the catalogue ends at mag ${NS_EQ_CATALOGUE_MAG}; this setup reaches about ${_nsEqFmt(lim, 1)}${_nsEqIsImaging(s) ? ' by eye, a camera fainter' : ''}`);
 }
 function _nsEqRefreshPanel() {
   const p = _nsEqPanelEl(), s = _nsEqReadPanel(), ok = _nsEqValid(s);
@@ -480,7 +536,9 @@ function _nsEqRefreshPanel() {
   p.querySelector('[data-eq-act=off]').disabled = !_nsEq.shown.length;
   p.querySelector('[data-eq-act=save]').disabled = !ok;
   p.querySelector('[data-eq-act=saveas]').disabled = !ok;
-  p.querySelector('[data-eq-act=delete]').disabled = !document.getElementById('nightSkyEquipmentSetup').value;
+  const selV = document.getElementById('nightSkyEquipmentSetup').value, del = p.querySelector('[data-eq-act=delete]');
+  del.disabled = !selV || _nsEqIsPresetKey(selV);
+  del.title = _nsEqIsPresetKey(selV) ? 'Built-in setups cannot be deleted' : 'Delete the chosen setup';
 }
 function _nsEqSyncButton() {
   const btn = document.getElementById('btnNightSkyEquipment');
@@ -517,25 +575,26 @@ function _nsEqAct(act) {
   const s = _nsEqReadPanel(), sel = document.getElementById('nightSkyEquipmentSetup');
   if (act === 'apply' && _nsEqValid(s)) {
     _nsEqApply(s);
-    if (s.name) _nsEqSetLast(s.name);
+    if (s.name) _nsEqSetLast(sel.value);
     _nsEqSetOpen(false);
   } else if (act === 'add' && _nsEqValid(s)) {
-    if (_nsEqAdd(s) && s.name) _nsEqSetLast(s.name);
+    if (_nsEqAdd(s) && s.name) _nsEqSetLast(sel.value);
   } else if (act === 'off') {
     _nsEqOff();
   } else if (act === 'save') {
-    if (sel.value) _nsEqSave(sel.value); else _nsEqAct('saveas');
+    if (sel.value && !_nsEqIsPresetKey(sel.value)) _nsEqSave(sel.value); else _nsEqAct('saveas');   // a built-in one: a new name
   } else if (act === 'saveas') {
     const list = _nsEqSetups();
     const name = (prompt('Setup name', _nsEqNextName(list)) || '').trim();
     if (!name) return;
+    if (_nsEqPresets.some(x => x.name === name)) { _nsEqNote(`"${name}" is a built-in setup. Choose another name.`); return; }
     const other = list.find(x => x.name === name && x.mode !== _nsEq.mode);   // not in this mode's list
     if (other) { _nsEqNote(`"${name}" is a ${other.mode === 'imaging' ? 'Imaging' : 'Visual'} setup. Choose another name.`); return; }
     if (list.some(x => x.name === name) && !confirm(`Replace the setup "${name}"?`)) return;
     _nsEqSave(name);
   } else if (act === 'delete') {
     const name = sel.value;
-    if (!name || !confirm(`Delete the setup "${name}"?`)) return;
+    if (!name || _nsEqIsPresetKey(name) || !confirm(`Delete the setup "${name}"?`)) return;
     const ok = _nsEqStoreSetups(_nsEqSetups().filter(x => x.name !== name || x.mode !== _nsEq.mode));
     if (_nsEqLast() === name) _nsEqSetLast('');
     _nsEqFillList('');
@@ -669,7 +728,8 @@ _nsEqPanelEl().addEventListener('keydown', (e) => {
   else if (e.key === 'Enter' && e.target.dataset.eq) { _nsEqAct('apply'); e.preventDefault(); }
 });
 document.getElementById('nightSkyEquipmentSetup').addEventListener('change', (e) => {
-  const saved = _nsEqSetups().find(x => x.name === e.target.value);
-  if (saved) { _nsEqLoadIntoPanel(saved); _nsEqSetLast(saved.name); } else _nsEqRefreshPanel();
+  const v = e.target.value, saved = _nsEqEntry(v);
+  if (saved) { _nsEqLoadIntoPanel(saved); _nsEqSetLast(v); } else _nsEqRefreshPanel();
 });
+_nsEqLoadPresets();
 _nsEqSyncButton();

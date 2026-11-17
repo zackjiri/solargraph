@@ -5,8 +5,9 @@
 // while it is on. Both values stay for as long as the page
 // is open, across presentations.
 //
-// Drawing (_nsAllskyDraw, called by _nightSkyDrawPlanetarium above the sky background and below
-// the stars, lines and labels): the photo (`full`) is loaded once and kept as pixels, its longer
+// Drawing (_nsAllskyDraw, called by _nightSkyDrawPlanetarium over the sky objects: stars, deep
+// sky, Milky Way, planets, Sun, Moon, star trails; under the grids, constellation lines, labels and
+// the marks, which _nightSkyDrawPlanetarium draws after it while _nsAllskyWillDraw()): the photo (`full`) is loaded once and kept as pixels, its longer
 // side at most NS_ALLSKY_PHOTO_MAX. Every screen pixel gives a direction (_nightSkyPlanetPixelToAzEl)
 // at the photo's time_utc, and _allskySkyToPhoto turns it into a photo pixel with the time shift of
 // the frame that point was shot in, so the stars line up and the landscape may move by up to ~1°.
@@ -166,6 +167,13 @@ function _nsAllskyRender(f, ph, w, h, W, H) {
   return out;
 }
 
+// The overlay is drawn on this frame: on, a calibrated photo presented and its pixels in (the
+// first call starts loading them).
+function _nsAllskyWillDraw() {
+  const f = _nsAllskyFrame();
+  if (!_nsAllsky.on || !f || f === _nsAllskyFailedFrame) return false;
+  return _nsAllskyLoad(_nsAllskySrc(f)).ready;
+}
 // Draws the overlay on the Planetarium canvas (ctx in CSS px, w x h) when it is on and the
 // presented calibrated photo is loaded; moving: the lower resolution.
 function _nsAllskyDraw(ctx, w, h, moving) {

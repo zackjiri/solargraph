@@ -153,6 +153,8 @@ function _nsSearchSetOpen(on) {
     _nsSearchLoadData();
     const inp = document.getElementById('nightSkySearchInput');
     _nsSearchUpdate();
+    // here, inside the button's click, so a touch device brings up its keyboard (iPad: the browser's
+    // fullscreen allows it, render-fullscreen.js)
     inp.focus(); inp.select();
   }
 }

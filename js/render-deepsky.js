@@ -109,9 +109,11 @@ function _dsoSymbol(ctx, o, x, y, r) {
   }
 }
 
-// Draws every object place(o) returns a screen position for ({x, y, r, alpha} or null).
-function _dsoDraw(ctx, place) {
-  const labels = document.getElementById('chkNightSkyNames').checked;
+// Draws every object place(o) returns a screen position for ({x, y, r, alpha} or null). part:
+// 'symbols' or 'labels' alone (the Planetarium under a photo overlay: the labels over it), else both.
+function _dsoDraw(ctx, place, part) {
+  const labels = document.getElementById('chkNightSkyNames').checked && part !== 'symbols';
+  const symbols = part !== 'labels';
   ctx.save();
   ctx.lineWidth = 1.1;
   ctx.font = "10px 'Share Tech Mono', monospace"; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -123,7 +125,7 @@ function _dsoDraw(ctx, place) {
     const col = _dsoColor(o.kind);
     ctx.globalAlpha = p.alpha;
     ctx.strokeStyle = col;
-    _dsoSymbol(ctx, o, p.x, p.y, p.r);
+    if (symbols) _dsoSymbol(ctx, o, p.x, p.y, p.r);
     if (labels) { ctx.fillStyle = col; ctx.fillText(o.label, p.x + p.r + 3, p.y); }
   }
   ctx.restore();
@@ -144,8 +146,8 @@ function _dsoDrawSkyMap(ctx, layout) {
     return { x: pt.x, y: pt.y, r: Math.max(DSO_MIN_R, o.semiDeg * pxPerDeg), alpha: vis };
   });
 }
-// Planetarium: the fisheye, fading towards the rim as the stars do.
-function _dsoDrawPlanetarium(ctx, layout) {
+// Planetarium: the fisheye, fading towards the rim as the stars do. part: as _dsoDraw's.
+function _dsoDrawPlanetarium(ctx, layout, part) {
   const pxPerDeg = _nightSkyPlanet3D.FOCAL * layout.scale * Math.PI / 180;
   _dsoDraw(ctx, (o) => {
     const p = _dsoAzEl(o);
@@ -155,7 +157,7 @@ function _dsoDrawPlanetarium(ctx, layout) {
     const vis = _nightSkyVisFactor(o.mag + _nightSkyExtinctionMag(p.el), p.az, p.el, o.mag);   // Mag ≤, Atmosphere
     if (!vis) return null;
     return { x: pr.x, y: pr.y, r: Math.max(DSO_MIN_R, o.semiDeg * pxPerDeg), alpha: pr.alpha * vis };
-  });
+  }, part);
 }
 // Globe: directions at infinity on the sky behind the Earth (toDate: J2000 -> equator of date);
 // the globe is drawn over them afterwards.

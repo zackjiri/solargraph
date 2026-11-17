@@ -81,6 +81,7 @@ function _mwBuild(geo) {
   });
   _mwTex = new Float32Array(MW_TEX_W * MW_TEX_H);
   _mwTexKey = '';
+  _mwTexSpare = { tex: null, key: '' };
 }
 // Three passes of a box blur, along RA wrapping round and along Dec held at the poles.
 function _mwBlur(a) {
@@ -106,10 +107,20 @@ function _mwBlur(a) {
   }
 }
 // _mwTex as the levels summed by weight, each adding up to a fifth; rebuilt (~10 ms) only when the
-// weights change by more than 0.02.
+// weights change by more than 0.02. The texture before is kept as a spare (_mwTexSpare) and swapped
+// back when its weights return: Equipment's field (render-nightsky-equipment.js) draws the sky at a
+// second limit every frame.
+let _mwTexSpare = { tex: null, key: '' };
 function _mwUpdateTex(w) {
   const key = w.map(v => Math.round(v * 50)).join(',');
   if (key === _mwTexKey) return;
+  const old = { tex: _mwTex, key: _mwTexKey };
+  if (_mwTexSpare.key === key && _mwTexSpare.tex && _mwTexSpare.tex.length === _mwTex.length) {
+    _mwTex = _mwTexSpare.tex; _mwTexKey = key; _mwTexSpare = old;
+    return;
+  }
+  _mwTex = _mwTexSpare.tex && _mwTexSpare.tex.length === old.tex.length ? _mwTexSpare.tex : new Float32Array(old.tex.length);
+  _mwTexSpare = old;
   _mwTex.fill(0);
   for (let k = 0; k < _mwLevels.length; k++) {
     if (w[k] <= 0) continue;
@@ -292,11 +303,14 @@ function _mwDrawSkyMap(ctx, w, h, layout) {
   }, true);
 }
 // Planetarium: the inverse fisheye of _nightSkyPlanetPixelToAzEl, above the horizon only, fading
-// towards the rim as the stars do (_nightSkyPlanetProjectRaw).
+// towards the rim as the stars do (_nightSkyPlanetProjectRaw). In Equipment's field (render-nightsky.js,
+// _nightSkyFieldBox) only inside the field's box.
 function _mwDrawPlanetarium(ctx, w, h, layout) {
   const C = _nightSkyPlanet3D, Rt = C.RIGHT, U = C.UP, F = C.FWD;
   const kInv = 1 / (layout.scale * C.FOCAL);
+  const B = _nightSkyFieldLimit !== null ? _nightSkyFieldBox : null, pad = MW_BUF_PX;
   _mwDraw(ctx, w, h, _mwHorizonToJ2000(), (px, py, out) => {
+    if (B && (px < B[0] - pad || px > B[2] + pad || py < B[1] - pad || py > B[3] + pad)) return 0;
     const sx = (px - layout.cx) * kInv, sy = -(py - layout.cy) * kInv;
     const theta = Math.hypot(sx, sy);
     if (theta >= NIGHTSKY_PLANET_FADE_OUTER) return 0;
