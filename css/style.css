@@ -845,6 +845,11 @@
     white-space: nowrap; pointer-events: none;
   }
   .nightsky-mag-atm { opacity: 0.6; margin-left: 3px; }   /* the sky's limit now, Atmosphere on */
+  /* Held by Equipment (render-nightsky-equipment.js, _nsEqMagSync): the slider sets the field's
+     limit only, track and pill red */
+  #nightSkyMagRow.ns-mag-field input[type=range]::-webkit-slider-runnable-track { background: #e04848; }
+  #nightSkyMagRow.ns-mag-field input[type=range]::-moz-range-track { background: #e04848; }
+  #nightSkyMagRow.ns-mag-field .nightsky-mag-thumb { background: #e04848; color: #fff; }
   #nightSkyStarScale .ns-btn { line-height: 1; padding: 2px 5px; }
   /* Bortle class: the class between two arrows, its sky brightness and source left of them; grey
      (and unusable) while Atmosphere is off */
