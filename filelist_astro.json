@@ -558,20 +558,41 @@
   }
 },
   {
-    "id": "A2026-08-12_PSE02",
-    "object_name": "Partial Solar Eclipse",
-    "category": "solar_system",
-    "date_utc": "2026-08-12",
-    "time_utc": "18:09:25",
-    "timezone": 2,
-    "lat": 49.536858, "lat_hemisphere": "N",
-    "lon": 16.270358, "lon_hemisphere": "E",
-    "ra": "9h14m00s",
-    "dec": "17°44'8\"",
-    "fov_w_deg": 15,
-    "fov_h_deg": 10,
-    "rotation_deg": 37,
-    "thumbnail": "img/eclipse/A2026-08-12_PSE02_T.jpg",
-    "full": "img/eclipse/A2026-08-12_PSE02.jpg"
-  }    
+  "id": "A2026-08-12_PSE02",
+  "object_name": "Partial Solar Eclipse",
+  "category": "solar_system",
+  "date_utc": "2026-08-12",
+  "time_utc": "18:09:25",
+  "timezone": 2,
+  "lat": 49.536858,
+  "lat_hemisphere": "N",
+  "lon": 16.270358,
+  "lon_hemisphere": "E",
+  "ra": "9h16m04s",
+  "dec": "17°36'56\"",
+  "fov_w_deg": 13.8,
+  "fov_h_deg": 8.4,
+  "rotation_deg": 38.7,
+  "thumbnail": "img/eclipse/A2026-08-12_PSE02_T.jpg",
+  "full": "img/eclipse/A2026-08-12_PSE02.jpg",
+  "calib": {
+    "kind": "frame",
+    "image": "img/eclipse/A2026-08-12_PSE02.jpg",
+    "image_size": [1800, 1200],
+    "axis_radec": [139.01716, 17.61547],
+    "roll_deg": 38.695,
+    "east": "left",
+    "projection": "rectilinear",
+    "f_px": 6319.88,
+    "k1": 0,
+    "center_px": [900, 600],
+    "crop_px": [137, 137, 1663, 1063],
+    "span_min": 0,
+    "rms_px": 0.17,
+    "pins": [
+      { "obj": "sun", "px": [460.4, 646.4], "r_px": 29.14 },
+      { "obj": "moon", "px": [461.6, 653.2], "r_px": 30.05 }
+    ]
+  }
+}    
 ]
