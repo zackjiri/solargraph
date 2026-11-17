@@ -70,7 +70,7 @@
   "dec": "22°41'25\"",
   "fov_w_deg": 1.7,
   "fov_h_deg": 1,
-  "rotation_deg": -36.1,
+  "rotation_deg": -46.1,
   "thumbnail": "img/astro/A2012-06-06_VTR02_T.jpg",
   "full": "img/astro/A2012-06-06_VTR02.jpg",
   "calib": {
@@ -78,7 +78,7 @@
     "image": "img/astro/A2012-06-06_VTR02.jpg",
     "image_size": [1800, 1200],
     "axis_radec": [74.46245, 22.69018],
-    "roll_deg": -36.1,
+    "roll_deg": -46.1,
     "east": "left",
     "projection": "rectilinear",
     "f_px": 52946.54,
