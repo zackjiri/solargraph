@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug650">
+  <link rel="stylesheet" href="css/style.css?perfdebug652">
 </head>
 <body>
 
@@ -1149,10 +1149,11 @@
       <label class="chk-row ns-globe-keep" title="Show stars from the vendored catalog (data/celestial/stars.6.json, magnitude 6 and brighter)"><input type="checkbox" id="chkNightSkyStars" checked> Stars</label>
       <!-- Limiting magnitude and star size (render-nightsky.js: _nightSkyMagLimit, nightSkyStarScale),
            Planetarium and the Sky Map only: hidden in Globe. -->
-      <div class="chk-row nightsky-mag-row" id="nightSkyMagRow" title="Limiting magnitude: stars, planets and deep sky objects fainter than this are hidden; 6+ shows everything (deep sky objects go down to 11.5)">
+      <div class="chk-row nightsky-mag-row" id="nightSkyMagRow" title="Limiting magnitude: stars, planets and deep sky objects fainter than this are hidden; the last step (6+ with Atmosphere on, 8+ with it off) shows everything (deep sky objects go down to 11.5); with Equipment on it sets the field only">
         <span class="nightsky-sun-label">Mag &le;</span>
         <!-- The value rides inside the thumb, a pill wide enough for "6+ · −5.0", so the row never
-             changes width (render-nightsky.js: _nightSkyUpdateMagReadout). -->
+             changes width (render-nightsky.js: _nightSkyUpdateMagReadout). Its range follows
+             Atmosphere (max 6.5 on, 8.5 off) and Equipment (0..8, red: .ns-mag-field), set by JS. -->
         <div class="nightsky-mag-slider">
           <input type="range" id="nightSkyMagLimit" min="0" max="6.5" step="0.5" value="6.5">
           <span class="nightsky-mag-thumb" id="nightSkyMagLimitVal">6+</span>
@@ -1551,47 +1552,47 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.12
 </div>
 
-<script src="js/sky-astro.js?perfdebug650"></script>
-<script src="js/allsky-model.js?perfdebug650"></script>
-<script src="js/core.js?perfdebug650"></script>
-<script src="js/render-2d.js?perfdebug650"></script>
-<script src="js/controls.js?perfdebug650"></script>
-<script src="js/render-sungraph.js?perfdebug650"></script>
-<script src="js/render-3d.js?perfdebug650"></script>
-<script src="js/render-skydome.js?perfdebug650"></script>
-<script src="js/render-moon.js?perfdebug650"></script>
-<script src="js/render-planets.js?perfdebug650"></script>
-<script src="js/render-milkyway.js?perfdebug650"></script>
-<script src="js/render-deepsky.js?perfdebug650"></script>
-<script src="js/render-skyglow.js?perfdebug650"></script>
-<script src="js/render-nightsky.js?perfdebug650"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug650"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug650"></script>
-<script src="js/render-nightsky-trails.js?perfdebug650"></script>
-<script src="js/render-nightsky-allsky.js?perfdebug650"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug650"></script>
-<script src="js/render-nightsky-globe.js?perfdebug650"></script>
-<script src="js/render-nightsky-solar.js?perfdebug650"></script>
-<script src="js/render-search.js?perfdebug650"></script>
-<script src="js/render-locpick.js?perfdebug650"></script>
-<script src="js/tz-lookup.js?perfdebug650"></script>
-<script src="js/lp-lookup.js?perfdebug650"></script>
-<script src="js/lp-dir.js?perfdebug650"></script>
-<script src="js/render-locpick-glow.js?perfdebug650"></script>
-<script src="js/render-tzsearch.js?perfdebug650"></script>
-<script src="js/render-locplaces.js?perfdebug650"></script>
-<script src="js/render-eclipse-map.js?perfdebug650"></script>
-<script src="js/render-export.js?perfdebug650"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug650"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug650"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug650"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug650"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug650"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug650"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug650"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug650"></script>
-<script src="js/render-eclipse.js?perfdebug650"></script>
-<script src="js/render-fullscreen.js?perfdebug650"></script>
-<script src="js/render-route.js?perfdebug650"></script>
+<script src="js/sky-astro.js?perfdebug652"></script>
+<script src="js/allsky-model.js?perfdebug652"></script>
+<script src="js/core.js?perfdebug652"></script>
+<script src="js/render-2d.js?perfdebug652"></script>
+<script src="js/controls.js?perfdebug652"></script>
+<script src="js/render-sungraph.js?perfdebug652"></script>
+<script src="js/render-3d.js?perfdebug652"></script>
+<script src="js/render-skydome.js?perfdebug652"></script>
+<script src="js/render-moon.js?perfdebug652"></script>
+<script src="js/render-planets.js?perfdebug652"></script>
+<script src="js/render-milkyway.js?perfdebug652"></script>
+<script src="js/render-deepsky.js?perfdebug652"></script>
+<script src="js/render-skyglow.js?perfdebug652"></script>
+<script src="js/render-nightsky.js?perfdebug652"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug652"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug652"></script>
+<script src="js/render-nightsky-trails.js?perfdebug652"></script>
+<script src="js/render-nightsky-allsky.js?perfdebug652"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug652"></script>
+<script src="js/render-nightsky-globe.js?perfdebug652"></script>
+<script src="js/render-nightsky-solar.js?perfdebug652"></script>
+<script src="js/render-search.js?perfdebug652"></script>
+<script src="js/render-locpick.js?perfdebug652"></script>
+<script src="js/tz-lookup.js?perfdebug652"></script>
+<script src="js/lp-lookup.js?perfdebug652"></script>
+<script src="js/lp-dir.js?perfdebug652"></script>
+<script src="js/render-locpick-glow.js?perfdebug652"></script>
+<script src="js/render-tzsearch.js?perfdebug652"></script>
+<script src="js/render-locplaces.js?perfdebug652"></script>
+<script src="js/render-eclipse-map.js?perfdebug652"></script>
+<script src="js/render-export.js?perfdebug652"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug652"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug652"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug652"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug652"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug652"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug652"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug652"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug652"></script>
+<script src="js/render-eclipse.js?perfdebug652"></script>
+<script src="js/render-fullscreen.js?perfdebug652"></script>
+<script src="js/render-route.js?perfdebug652"></script>
 </body>
 </html>

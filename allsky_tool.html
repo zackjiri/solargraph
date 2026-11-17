@@ -254,7 +254,7 @@
       </div>
       <div class="field frame-only">
         <label class="field-label" for="selEquip">Equipment</label>
-        <select id="selEquip" title="Where the starting field of view comes from: a saved Imaging setup of the app's Equipment panel, a lens focal length with the camera's crop factor, or the Field control in step 3"></select>
+        <select id="selEquip" title="Where the starting field of view comes from: a saved or built-in Imaging setup of the app's Equipment panel, a lens focal length with the camera's crop factor, or the Field control in step 3"></select>
       </div>
       <div class="row halves frame-only" id="lensRow" hidden>
         <div class="field"><label class="field-label" for="inFocal">Focal mm</label><input type="text" id="inFocal" placeholder="24" title="Focal length of the lens (or telescope times Barlow / reducer), mm"></div>
@@ -378,8 +378,8 @@
 </main>
 <input type="file" id="fileImg" accept="image/*" hidden>
 
-<script src="js/sky-astro.js?perfdebug650"></script>
-<script src="js/allsky-model.js?perfdebug650"></script>
+<script src="js/sky-astro.js?perfdebug652"></script>
+<script src="js/allsky-model.js?perfdebug652"></script>
 <script>
 // Photo calibration page. Loads only js/sky-astro.js (positions of the stars, Sun, Moon and
 // planets) and js/allsky-model.js (photo model and fit); everything else lives in this closure. The
@@ -439,6 +439,7 @@ const S = {
   deep: null, deepP: null,       // stars of mag 6 to 8 (stars.6-8.json), loaded when needed
   dsos: [], objIndex: new Map(), // deep sky objects; search index (normalized name -> object)
   setups: [],                    // saved Imaging setups of the Equipment panel
+  presets: [],                   // built-in Imaging setups (data/equipment-presets.json)
   equip: null,                   // { name, fovL, fovS }: field of the chosen equipment (long, short side)
   object: null,                  // { name, hip | obj, ra, dec (J2000; none for Sun, Moon, planets) }
   // Starting frame: axis (J2000 [ra, dec], null = on the object), roll (position angle of
@@ -2489,6 +2490,7 @@ $('selEquip').addEventListener('change', e => {
   const v = e.target.value;
   if (v === 'lens') applyLens();
   else if (v.startsWith('s')) setEquipment(S.setups[+v.slice(1)]);
+  else if (v.startsWith('p')) setEquipment(S.presets[+v.slice(1)]);
   else S.equip = null;   // the field comes from the step 3 control alone
   renderPanel();
 });
@@ -2547,16 +2549,28 @@ function setType(kind) {
   S.skyKey = ''; invalidate(); scheduleFit(); renderPanel(); view.draw();
   return true;
 }
-// Saved Imaging setups of the Equipment panel (same localStorage key), as the select's options.
+// Saved Imaging setups of the Equipment panel (same localStorage key) and the built-in Imaging ones
+// of data/equipment-presets.json (EQ_PRESETS_FILE, the panel's file; loaded once, none when missing
+// or unreadable), marked built-in, as the select's options.
+const EQ_PRESETS_FILE = 'data/equipment-presets.json';
+function eqImagingUsable(q) {
+  const pos = v => Number.isFinite(v) && v > 0;
+  return q && typeof q === 'object' && q.mode === 'imaging' && typeof q.name === 'string' && q.name
+    && ['telescopeFocal', 'aperture', 'accessory', 'sensorW', 'sensorH', 'crop'].every(k => pos(q[k])) && Number.isInteger(q.sensorW) && Number.isInteger(q.sensorH);
+}
+const eqPresetsP = fetch(EQ_PRESETS_FILE, { cache: 'no-cache' }).then(r => r.ok ? r.json() : []).catch(() => []).then((j) => {
+  S.presets = (Array.isArray(j) ? j : []).filter(eqImagingUsable);
+  reloadEquipment();
+});
 function reloadEquipment() {
   let list = [];
   try { list = JSON.parse(localStorage.getItem(EQ_STORE_KEY) || '[]'); } catch (e) { list = []; }
-  const pos = v => Number.isFinite(v) && v > 0;
-  S.setups = (Array.isArray(list) ? list : []).filter(q => q && typeof q === 'object' && q.mode === 'imaging' && typeof q.name === 'string' && q.name
-    && ['telescopeFocal', 'aperture', 'accessory', 'sensorW', 'sensorH', 'crop'].every(k => pos(q[k])) && Number.isInteger(q.sensorW) && Number.isInteger(q.sensorH));
+  S.setups = (Array.isArray(list) ? list : []).filter(eqImagingUsable);
   const sel = $('selEquip'), was = sel.value;
+  const opt = (q, v, mark) => { const r = eqComputeImaging(q); return `<option value="${v}">${escapeHtml(q.name)}${mark} (${r.fovW.toFixed(1)}&deg; &times; ${r.fovH.toFixed(1)}&deg;)</option>`; };
   sel.innerHTML = '<option value="">Field of view: set it in step 3</option><option value="lens">Lens: focal length and crop factor</option>'
-    + S.setups.map((q, i) => { const r = eqComputeImaging(q); return `<option value="s${i}">${escapeHtml(q.name)} (${r.fovW.toFixed(1)}&deg; &times; ${r.fovH.toFixed(1)}&deg;)</option>`; }).join('');
+    + S.setups.map((q, i) => opt(q, 's' + i, '')).join('')
+    + S.presets.map((q, i) => opt(q, 'p' + i, ' (built-in)')).join('');
   sel.value = [...sel.options].some(o => o.value === was) ? was : '';
 }
 // Equipment: an Imaging setup ({ mode: 'imaging', telescopeFocal, accessory, sensorW, sensorH,
@@ -2690,6 +2704,7 @@ const api = {
   detectCrop() { const c = detectCrop(); if (c) setCrop(c); return c; },
   setCrop,
   setType, setEquipment, setObject, setFrame, addDiscPin, setRollFixed, setDragMode, reloadEquipment,
+  presetsReady: () => eqPresetsP,
   deepStars: () => ensureDeep(),
   startCal: () => { const c = startCal(); return c && JSON.parse(JSON.stringify(c)); },
   outputFields,
