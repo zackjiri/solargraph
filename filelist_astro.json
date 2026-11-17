@@ -579,18 +579,17 @@
     "kind": "frame",
     "image": "img/eclipse/A2026-08-12_PSE02.jpg",
     "image_size": [1800, 1200],
-    "axis_radec": [139.01716, 17.61547],
-    "roll_deg": 38.695,
+    "axis_radec": [139.12825, 17.72591],
+    "roll_deg": 40.5,
     "east": "left",
     "projection": "rectilinear",
-    "f_px": 6319.88,
+    "f_px": 6324.33,
     "k1": 0,
     "center_px": [900, 600],
     "crop_px": [137, 137, 1663, 1063],
     "span_min": 0,
-    "rms_px": 0.17,
+    "rms_px": 0,
     "pins": [
-      { "obj": "sun", "px": [460.4, 646.4], "r_px": 29.14 },
       { "obj": "moon", "px": [461.6, 653.2], "r_px": 30.05 }
     ]
   }
