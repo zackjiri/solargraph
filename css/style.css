@@ -3879,6 +3879,7 @@
     padding: 1px 6px; border-radius: 2px; font-size: 10px; letter-spacing: 0.04em; color: #fff;
     text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000, 0 0 2px #000;
   }
+  #locPickInfo .lpi[hidden] { display: none; }
   /* Eclipse map (js/render-eclipse-map.js): the round globe button in Eclipse Visualization's
      corner, the same as the export's */
   #btnEclipseMap {
@@ -3897,9 +3898,9 @@
   #btnEclipseMap:hover { border-color: var(--accent2); }
   body.light #btnEclipseMap { background: rgba(220,228,236,0.82); }
   /* Time zones over the globe (js/render-locpick.js): the round button bottom right, in SELECT left
-     of the light pollution's, on the Eclipse map in the corner; active: filled, with a soft glow */
+     of Daylight's, on the Eclipse map in the corner; active: filled, with a soft glow */
   #btnLocPickZones {
-    position: absolute; right: 58.5px; bottom: 12.5px;
+    position: absolute; right: 104.5px; bottom: 12.5px;
     z-index: 2; display: flex;
     width: 38px; height: 38px; padding: 0;
     align-items: center; justify-content: center;
@@ -3936,10 +3937,10 @@
      while they show, its panel above the buttons (as Night Sky's), and the chip of its pick under
      the window's head */
   /* the places' button (js/render-locplaces.js) left of the time zones', the search left of it;
-     both always there: SELECT LP | zones | places | search from the corner, the Eclipse map
+     both always there: SELECT LP | daylight | zones | places | search from the corner, the Eclipse map
      zones | places | search */
   #btnLocPickPlaces {
-    position: absolute; right: 104.5px; bottom: 12.5px;
+    position: absolute; right: 150.5px; bottom: 12.5px;
     z-index: 2; display: flex;
     width: 38px; height: 38px; padding: 0;
     align-items: center; justify-content: center;
@@ -3960,7 +3961,7 @@
   #locPickWin.ecl #btnLocPickPlaces { right: 58.5px; }
   #locPickWin.ecl #btnLocPickZoneSearch { right: 104.5px; }
   #btnLocPickZoneSearch {
-    position: absolute; right: 150.5px; bottom: 12.5px;
+    position: absolute; right: 196.5px; bottom: 12.5px;
     z-index: 2; display: flex;
     width: 38px; height: 38px; padding: 0;
     align-items: center; justify-content: center;
@@ -4085,12 +4086,12 @@
     box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
   }
   body.light #btnLocPickLightPollution[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
-  #locPickWin.ecl #btnLocPickLightPollution { display: none; }
-  #locPickWin.ecl #btnLocPickZones { right: 12.5px; }   /* the corner, where the light pollution's button is hidden */
-  #locPickWin:not(.ecl) #locPickCredit { right: 198px; }
+  #locPickWin.ecl #btnLocPickLightPollution, #locPickWin.ecl #btnLocPickDaylight { display: none; }
+  #locPickWin.ecl #btnLocPickZones { right: 12.5px; }   /* the corner, where the light pollution's and Daylight's buttons are hidden */
+  #locPickWin:not(.ecl) #locPickCredit { right: 244px; }
   #locPickLpLegend {
     position: absolute; left: 12px; bottom: 12px; z-index: 2; display: none;
-    width: 216px; max-width: calc(100% - 140px); box-sizing: border-box;
+    width: 216px; max-width: calc(100% - 250px); box-sizing: border-box;
     padding: 6px 8px 6px;
     background: rgba(7,9,13,0.72); border: 1px solid rgba(160,200,240,0.25);
     font-family: var(--mono); font-size: 10px; color: #d6dde5;
@@ -4118,15 +4119,69 @@
   .lpl-scale button.here { outline: 2.5px solid #fff; outline-offset: 1px; box-shadow: 0 0 0 4px rgba(0,0,0,0.75); z-index: 2; }
   body.light .lpl-scale button.here { outline-color: #000; box-shadow: 0 0 0 4px rgba(255,255,255,0.85); }
   .lpl-ends { display: flex; justify-content: space-between; margin-top: 2px; color: var(--dim); font-size: 9px; }
-  #locPickLpCredit { position: absolute; right: 198px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of the four buttons */
+  /* Daylight over the globe (js/render-locpick-daylight.js): its round button left of the light
+     pollution's, only in SELECT; its legend bottom left in the Bortle scale's place (the layers
+     never show together): the mode and base toggles, the date, the bands' cells, the polar cells */
+  #btnLocPickDaylight {
+    position: absolute; right: 58.5px; bottom: 12.5px;
+    z-index: 2; display: flex;
+    width: 38px; height: 38px; padding: 0;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(7,9,13,0.55);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: var(--accent2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  #btnLocPickDaylight:hover { border-color: var(--accent2); }
+  #btnLocPickDaylight[aria-pressed="true"] {
+    background: var(--accent2); color: #fff; border-color: var(--accent2);
+    box-shadow: 0 0 0 3px rgba(32,160,232,0.28), 0 0 12px rgba(32,160,232,0.5);
+  }
+  body.light #btnLocPickDaylight[aria-pressed="false"] { background: rgba(220,228,236,0.82); }
+  #locPickDlLegend {
+    position: absolute; left: 12px; bottom: 12px; z-index: 2; display: none;
+    width: 240px; max-width: calc(100% - 250px); box-sizing: border-box;
+    padding: 6px 8px 6px;
+    background: rgba(7,9,13,0.72); border: 1px solid rgba(160,200,240,0.25);
+    font-family: var(--mono); font-size: 10px; color: #d6dde5;
+  }
+  #locPickWin.dl:not(.ecl) #locPickDlLegend { display: block; }
+  body.light #locPickDlLegend { background: rgba(220,228,236,0.9); border-color: rgba(0,0,0,0.2); color: #1a2430; }
+  #locPickDlMode, #locPickDlBase { display: flex; margin-bottom: 5px; }
+  #locPickDlMode .ns-btn, #locPickDlBase .ns-btn { flex: 1 1 0; padding: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; white-space: nowrap; }
+  #locPickDlMode .ns-btn[aria-pressed="true"], #locPickDlBase .ns-btn[aria-pressed="true"] { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  #locPickDlLegend[data-mode="length"] #locPickDlBase, #locPickDlLegend[data-mode="length"] #locPickDlPolar { display: none; }
+  .dl-scale { gap: 0; }
+  .dl-scale button { height: 13px; }
+  .dl-scale button.here { outline: 2px solid #fff; outline-offset: 0; box-shadow: 0 0 0 3.5px rgba(0,0,0,0.75); z-index: 2; }
+  body.light .dl-scale button.here { outline-color: #000; box-shadow: 0 0 0 3.5px rgba(255,255,255,0.85); }
+  .dl-ends { position: relative; height: 11px; margin-top: 2px; color: var(--dim); font-size: 9px; }
+  .dl-ends span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .dl-ends span:first-child { transform: none; }
+  .dl-ends span:last-child { transform: translateX(-100%); }
+  .dl-polar { display: flex; gap: 10px; margin-top: 4px; }
+  .dl-polar button {
+    position: relative; display: flex; align-items: center; gap: 5px; padding: 0 2px 0 0;
+    background: none; border: none; font: inherit; font-size: 9px; color: inherit; cursor: pointer;
+  }
+  .dl-polar .dl-sw { flex: none; display: inline-block; width: 18px; height: 11px; }
+  .dl-polar button[data-band="day"] .dl-sw { background: #f5d63a repeating-linear-gradient(135deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 4.24px); }
+  .dl-polar button[data-band="night"] .dl-sw { background: #0b1f4d repeating-linear-gradient(135deg, rgba(255,255,255,0.7) 0 1px, transparent 1px 4.24px); }
+  .dl-polar button:hover .dl-sw, .dl-polar button[aria-pressed="true"] .dl-sw { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .dl-polar button.here .dl-sw { outline: 2px solid #fff; outline-offset: 1px; box-shadow: 0 0 0 3.5px rgba(0,0,0,0.75); }
+  body.light .dl-polar button.here .dl-sw { outline-color: #000; box-shadow: 0 0 0 3.5px rgba(255,255,255,0.85); }
+  #locPickLpCredit { position: absolute; right: 244px; bottom: 23px; z-index: 2; white-space: nowrap; }   /* left of the five buttons */
   #locPickWin.lp:not(.ecl) #locPickLpCredit { display: block; }
   #locPickLpCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
-  @container (max-width: 640px) {   /* the credit ~290 px + the two buttons, the legend ~216 px */
+  @container (max-width: 686px) {   /* the credit ~290 px + the five buttons, the legend ~216 px */
     #locPickWin.lp:not(.ecl) #locPickLpCredit { display: none; }
     #locPickWin.lp:not(.ecl) #locPickLpCreditTop { display: block; }
   }
   #locPickCreditTop { width: fit-content; margin-top: 5px; pointer-events: auto; letter-spacing: 0.03em; }
-  @container (max-width: 866px) {   /* the credit ~450 px + the three buttons, the legend ~210 px */
+  @container (max-width: 912px) {   /* the credit ~450 px + the five buttons, the legend ~210 px */
     #locPickWin.zones #locPickCredit { display: none; }
     #locPickWin.zones #locPickCreditTop { display: block; }
   }
