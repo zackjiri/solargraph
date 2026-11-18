@@ -4150,9 +4150,9 @@
   }
   #locPickWin.dl:not(.ecl) #locPickDlLegend { display: block; }
   body.light #locPickDlLegend { background: rgba(220,228,236,0.9); border-color: rgba(0,0,0,0.2); color: #1a2430; }
-  #locPickDlMode, #locPickDlBase { display: flex; margin-bottom: 5px; }
-  #locPickDlMode .ns-btn, #locPickDlBase .ns-btn { flex: 1 1 0; padding: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; white-space: nowrap; }
-  #locPickDlMode .ns-btn[aria-pressed="true"], #locPickDlBase .ns-btn[aria-pressed="true"] { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+  #locPickDlMode, #locPickDlBase, #locPickDlLabels { display: flex; margin-bottom: 5px; }
+  #locPickDlMode .ns-btn, #locPickDlBase .ns-btn, #locPickDlLabels .ns-btn { flex: 1 1 0; padding: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; white-space: nowrap; }
+  #locPickDlMode .ns-btn[aria-pressed="true"], #locPickDlBase .ns-btn[aria-pressed="true"], #locPickDlLabels .ns-btn[aria-pressed="true"] { background: var(--accent2); color: #fff; border-color: var(--accent2); }
   #locPickDlLegend[data-mode="length"] #locPickDlBase, #locPickDlLegend[data-mode="length"] #locPickDlPolar { display: none; }
   .dl-scale { gap: 0; }
   .dl-scale button { height: 13px; }
@@ -4162,6 +4162,7 @@
   .dl-ends span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
   .dl-ends span:first-child { transform: none; }
   .dl-ends span:last-child { transform: translateX(-100%); }
+  .dl-ends.dl-ends-c span { transform: translateX(-50%); }   /* Sunrise, Sunset: marks on the cells' edges, the range's ends inside */
   .dl-polar { display: flex; gap: 10px; margin-top: 4px; }
   .dl-polar button {
     position: relative; display: flex; align-items: center; gap: 5px; padding: 0 2px 0 0;
