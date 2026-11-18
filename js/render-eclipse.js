@@ -1915,10 +1915,7 @@ window.addEventListener('resize', () => { if (eclipseActive && eclipseSubView ==
 // above), so entering just means "be in Analyzer, then take over the canvas". Toggles off back to
 // the plain Image sub-view rather than leaving Analyzer entirely.
 document.getElementById('btnModeEclipse').addEventListener('click', () => {
-  if (eclipseActive) {
-    if (typeof enterImageView === 'function') enterImageView();
-    return;
-  }
+  if (eclipseActive) return;   // the active mode: a click does nothing, as Gallery's and Analyzer's
   if (currentMode !== 'analyzer') setMode('analyzer');
   enterEclipse();
 });

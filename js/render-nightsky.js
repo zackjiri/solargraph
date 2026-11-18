@@ -4783,10 +4783,7 @@ function drawNightSky() {
 // Top-level mode button, a peer of Gallery/Analyzer/Eclipse rather than an Analyzer sub-view -
 // same wiring pattern as #btnModeEclipse (render-eclipse.js).
 document.getElementById('btnModeNightSky').addEventListener('click', () => {
-  if (nightSkyActive) {
-    if (typeof enterImageView === 'function') enterImageView();
-    return;
-  }
+  if (nightSkyActive) return;   // the active mode: a click does nothing, as Gallery's and Analyzer's
   if (currentMode !== 'analyzer') setMode('analyzer');
   enterNightSky();
 });

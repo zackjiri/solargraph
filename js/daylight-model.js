@@ -9,8 +9,11 @@ const DL_MODES = {
   rise: { step: 0.5, unit: 'clock' },
   set: { step: 0.5, unit: 'clock' },
 };
-// Palette anchors [hour on the 0..24 dial, rgb]
+// Palette anchors [position 0..24, rgb], spread over the mode's range (DL_RANGES, hours): a time
+// before the range takes the first anchor, after it the last; Day length spans the whole dial
 const DL_ANCHORS = [[0, [11, 31, 77]], [6, [74, 159, 224]], [12, [58, 168, 69]], [18, [240, 138, 36]], [24, [245, 214, 58]]];
+const DL_RANGES = { length: [0, 24], rise: [2, 11], set: [13, 22] };
+const DL_ALT_LIGHTEN = 0.12;   // every odd band this far toward white, so neighbours always differ
 const DL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // The Location (signed degrees)
@@ -81,14 +84,22 @@ function _dlPalette(h) {
   const i = Math.max(0, Math.min(3, Math.floor(h / 6))), t = (h - DL_ANCHORS[i][0]) / 6;
   return DL_ANCHORS[i][1].map((c, k) => Math.round(c + (DL_ANCHORS[i + 1][1][k] - c) * t));
 }
-// The band's colour [r, g, b]: the palette at the band's middle; length's end bands take the anchors
+// The band's colour [r, g, b]: the palette at the band's middle placed on the mode's range (the
+// ends beyond it); length's end bands take the anchors; an odd band DL_ALT_LIGHTEN toward white
 function _dlColor(mode, band) {
-  if (mode === 'length') {
-    if (band <= 0) return DL_ANCHORS[0][1].slice();
-    if (band >= 23) return DL_ANCHORS[4][1].slice();
-    return _dlPalette(band + 0.5);
+  let c;
+  if (mode === 'length' && band <= 0) c = DL_ANCHORS[0][1].slice();
+  else if (mode === 'length' && band >= 23) c = DL_ANCHORS[4][1].slice();
+  else {
+    const [r0, r1] = DL_RANGES[mode], mid = (band + 0.5) * DL_MODES[mode].step;
+    c = _dlPalette(Math.max(0, Math.min(1, (mid - r0) / (r1 - r0))) * 24);
   }
-  return _dlPalette((band + 0.5) * DL_MODES[mode].step);
+  return band % 2 ? c.map(x => Math.round(x + (255 - x) * DL_ALT_LIGHTEN)) : c;
+}
+// The first and last band wholly inside the mode's range: { lo, hi }
+function _dlRangeBands(mode) {
+  const [r0, r1] = DL_RANGES[mode], step = DL_MODES[mode].step;
+  return { lo: Math.ceil(r0 / step - 1e-9), hi: Math.floor(r1 / step + 1e-9) - 1 };
 }
 // The value as text: '14 h 32 min' for a length, '6:42' for a time of day
 function _dlFmt(mode, value) {

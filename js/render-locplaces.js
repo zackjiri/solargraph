@@ -18,6 +18,11 @@
 //    ring round the dot), then 10 and 9 px. The name in English, with a dark outline.
 //  - Only for orientation: drawn on the canvas, a click on a dot or a label sets the point clicked,
 //    as anywhere else on the globe.
+//  - A tag after the name (_locPlacesTagHook, set by the Daylight layer's Cities labels): asked for
+//    once the names are laid out (so the names are the same with and without the tags, each on its
+//    side), in the same order; a pill in the hook's colour with the hook's text after the name, the
+//    label's box that much wider on its side; none where that is not clear of the other labels.
+//    Unset, nothing changes.
 // The search (render-tzsearch.js) finds the places too (_locPlaces.entries) and picking one flies
 // there, sets the Location and turns the places on.
 const LOC_PLACES_KEY = 'solargraphyLocPlaces';
@@ -55,6 +60,13 @@ const _locPlaces = {
   widths: new Map(), // label widths per font and name
 };
 try { _locPlaces.on = localStorage.getItem(LOC_PLACES_KEY) === '1'; } catch (e) { /* storage blocked */ }
+// The tags' hook, null for none: { begin(V, names, blocked) -> [boxes the tags keep clear of] | null,
+// once per frame after the names are laid out (names: their boxes; blocked: the controls' boxes);
+// tag(row, x, y) -> { text, rgb } | null, per place laid out, in their order; took(tag), when the
+// place gets that tag }
+let _locPlacesTagHook = null;
+const LOC_PLACES_TAG_GAP = 2, LOC_PLACES_TAG_PAD = 3;   // the pill's distance from the name, its padding either side
+const LOC_PLACES_TAG_DARK_LUMA = 110;   // a pill darker than this (0.299 r + 0.587 g + 0.114 b) has light text
 
 // The data: its script once, then the rows and the search's entries
 function _locPlacesLoad() {
@@ -82,9 +94,14 @@ function _locPlacesLoad() {
   return _locPlaces.loading;
 }
 
-function _locPlacesSetOn(on) {
+// transient: not remembered (the Daylight layer's Cities labels turning them on for a while); else the
+// user's choice, which Cities then gives back when it ends (_locPickDlPlacesChosen)
+function _locPlacesSetOn(on, transient) {
   _locPlaces.on = on;
-  try { localStorage.setItem(LOC_PLACES_KEY, on ? '1' : '0'); } catch (e) { /* storage blocked */ }
+  if (!transient) {
+    try { localStorage.setItem(LOC_PLACES_KEY, on ? '1' : '0'); } catch (e) { /* storage blocked */ }
+    if (typeof _locPickDlPlacesChosen === 'function') _locPickDlPlacesChosen(on);   // render-locpick-daylight.js
+  }
   const b = document.getElementById('btnLocPickPlaces');
   b.setAttribute('aria-pressed', String(on));
   b.title = on ? 'Hide the places' : 'Show the places';
@@ -105,28 +122,34 @@ function _locPlacesWidth(ctx, font, name) {
   if (w === undefined) { ctx.font = font; w = ctx.measureText(name).width; _locPlaces.widths.set(k, w); }
   return w;
 }
-// Lays out and draws the places (from _locPickDraw, CSS px)
-function _locPlacesDraw(ctx, V, w, h) {
-  _locPlaces.drawn = [];
-  if (!_locPlaces.on) return;
-  if (!_locPlaces.rows) { _locPlacesLoad(); return; }
-  const z = _locPlacesZoom(V), boxes = [], out = [];
-  const CELL = 64, grid = new Map();
-  // the window's own controls over the canvas: no label under them
-  const cv = ctx.canvas, cr = cv.getBoundingClientRect(), blocked = [];
+// The boxes of the window's controls over canvas cv (LOC_PLACES_KEEP_CLEAR), 2 px wider, in CSS px
+function _locPlacesKeepClear(cv) {
+  const cr = cv.getBoundingClientRect(), blocked = [];
   for (const el of document.querySelectorAll(LOC_PLACES_KEEP_CLEAR)) {
     if (!el.getClientRects().length) continue;
     const r = el.getBoundingClientRect();
     if (r.width && r.height) blocked.push({ x0: r.left - cr.left - 2, y0: r.top - cr.top - 2, x1: r.right - cr.left + 2, y1: r.bottom - cr.top + 2 });
   }
+  return blocked;
+}
+// Lays out and draws the places (from _locPickDraw, CSS px)
+function _locPlacesDraw(ctx, V, w, h) {
+  _locPlaces.drawn = [];
+  if (!_locPlaces.on) return;
+  if (!_locPlaces.rows) { _locPlacesLoad(); return; }
+  const z = _locPlacesZoom(V), boxes = [], out = [], rows = [];
+  const CELL = 64, grid = new Map();
+  // the window's own controls over the canvas: no label under them
+  const blocked = _locPlacesKeepClear(ctx.canvas);
   // the Eclipse map's legend, drawn on the canvas just before (render-eclipse-map.js)
   const EL = _locPick.ecl && typeof _eclMapLegendBox !== 'undefined' ? _eclMapLegendBox : null;
   if (EL) blocked.push({ x0: EL.x0 - 2, y0: EL.y0 - 2, x1: EL.x1 + 2, y1: EL.y1 + 2 });
+  const TH = _locPlacesTagHook;
   const cellsOf = (b) => { const r = []; for (let gx = Math.floor(b.x0 / CELL); gx <= Math.floor(b.x1 / CELL); gx++) for (let gy = Math.floor(b.y0 / CELL); gy <= Math.floor(b.y1 / CELL); gy++) r.push(gx + ',' + gy); return r; };
-  const free = (b) => {
+  const free = (b, self) => {   // self: a box of the same place, not in the way
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > w || b.y1 > h) return false;
     for (const o of blocked) if (b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1) return false;
-    for (const c of cellsOf(b)) for (const o of grid.get(c) || []) if (b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1) return false;
+    for (const c of cellsOf(b)) for (const o of grid.get(c) || []) if (o !== self && b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1) return false;
     return true;
   };
   const take = (b) => { boxes.push(b); for (const c of cellsOf(b)) { if (!grid.has(c)) grid.set(c, []); grid.get(c).push(b); } };
@@ -144,7 +167,22 @@ function _locPlacesDraw(ctx, V, w, h) {
     if (!box) continue;
     take(box);
     out.push({ name: r[0], text, lat: r[2], lon: r[3], kind: r[5], tier, x: s.x, y: s.y, z: s.z, box, font, dot });
+    if (TH) rows.push(r);
   }
+  // the tags, once the names are laid out (the names as without them), in the same order: the box
+  // that much wider on its side; none where that is not clear of the rest
+  const TB = TH ? TH.begin(V, boxes.slice(), blocked.slice()) : null;
+  if (TB) for (const b of TB) blocked.push(b);
+  if (TH) out.forEach((p, i) => {
+    const tag = TH.tag(rows[i], p.x, p.y);
+    if (!tag) return;
+    const gw = LOC_PLACES_TAG_GAP + 2 * LOC_PLACES_TAG_PAD + _locPlacesWidth(ctx, p.font, tag.text), b = p.box;
+    const wide = b.side > 0 ? Object.assign({}, b, { x1: b.x1 + gw }) : Object.assign({}, b, { x0: b.x0 - gw });
+    if (!free(wide, b)) return;
+    take(wide);
+    p.box = wide; p.tag = tag;
+    TH.took(tag);
+  });
   ctx.save();
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
@@ -163,9 +201,22 @@ function _locPlacesDraw(ctx, V, w, h) {
     const tx = p.x + p.box.side * (p.dot + 4);
     ctx.lineWidth = T.halo; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeText(p.text, tx, p.y);
     ctx.fillStyle = T.color; ctx.fillText(p.text, tx, p.y);
+    if (p.tag) _locPlacesDrawTag(ctx, p.tag, p.font, tx + p.box.side * (_locPlacesWidth(ctx, p.font, p.text) + LOC_PLACES_TAG_GAP), p.y, p.box.side);
   }
   ctx.restore();
   _locPlaces.drawn = out;
+}
+// A tag's pill from x (its edge toward the name) on side (1 right, -1 left), centred on y: the tag's
+// colour, the text dark on it (light on a dark colour)
+function _locPlacesDrawTag(ctx, tag, font, x, y, side) {
+  const tw = _locPlacesWidth(ctx, font, tag.text), pw = tw + 2 * LOC_PLACES_TAG_PAD;
+  const th = parseFloat(/(\d+(?:\.\d+)?)px/.exec(font)[1]) + 2, x0 = side > 0 ? x : x - pw, c = tag.rgb;
+  ctx.fillStyle = 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+  ctx.fillRect(x0, y - th / 2, pw, th);
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeRect(x0 + 0.5, y - th / 2 + 0.5, pw - 1, th - 1);
+  ctx.font = font; ctx.textAlign = 'left';
+  ctx.fillStyle = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < LOC_PLACES_TAG_DARK_LUMA ? '#f2f5f8' : '#0b0f14';
+  ctx.fillText(tag.text, x0 + LOC_PLACES_TAG_PAD, y + 0.5);
 }
 // The globe's zoom at which a place of this min_zoom shows (a little closer, so it is not at the edge)
 function _locPlacesZoomFor(minZoom, V) {
@@ -179,7 +230,7 @@ function _locPlacesPick(e) {
   _locPick.lat0 = Math.max(-89, Math.min(89, e.at[0]));
   _locPick.lon0 = e.at[1];
   _locPick.zoom = Math.max(_locPick.zoom, Math.min(LOC_PICK_ZOOM_MAX, _locPlacesZoomFor(e.minZoom, V)));
-  if (!_locPlaces.on) _locPlacesSetOn(true);
+  _locPlacesSetOn(true);   // also while on: during the Daylight layer's Cities this is the user's choice
   _locPickApplyHere(e.at[0], e.at[1], e.label + ', ' + e.sub);
   _locPick.hover = null;
   _locPickZoneHint(null);   // the labels under the head: the time zone and the Bortle class of the new Location

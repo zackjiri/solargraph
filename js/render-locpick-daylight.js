@@ -5,21 +5,23 @@
 // pollution, under the graticule, the pin and the wave; nothing while the time zones' data (which
 // the date and the Location base need) is still loading, as the date would be a guess.
 //
-// The controls (the second half of the file): the button (_locPickDlSet), the legend's mode and base
-// toggles and its cells (_locPickDlLegendSync), the head's line (_locPickDlHint); the layer, its mode
-// and base kept in _locPick while the page is open. A change of the date or of the Location's offset
-// redraws: outside Solargraph a look on every frame while the layer shows (_locPickDlWatch, as the
+// The controls (the second half of the file): the button (_locPickDlSet), the legend's mode, base and
+// labels toggles and its cells (_locPickDlLegendSync), the head's line (_locPickDlHint); the layer, its
+// mode, base and labels kept in _locPick while the page is open. A change of the date or of the
+// Location's offset redraws: outside Solargraph a look on every frame while the layer shows (_locPickDlWatch, as the
 // time zones' _locPickWatch), in Solargraph (the Custom date, the Location's fields) after the input.
 //
 // Fill: on a canvas the size of the disc's buffer (_locPickBuffer) the whole disc in the lowest
 // band's colour, then each level's region (v >= level) in the colour of the band above it, the
 // levels ascending, each as one 'evenodd' path of its rings; in Sunrise and Sunset the polar day and
 // night in the palette's end colours with a light hatching; the canvas laid over the disc once at
-// LOC_PICK_DL_ALPHA. A band picked in the legend (_locPick.dlHi) keeps that alpha, the rest drop to
-// LOC_PICK_DL_DIM_ALPHA. Lines: every level's rings at 1 px; border edges of the grid (lon +-180,
-// lat +-90) are not lines. Labels over the graticule (_locPickDlDrawLabels): where the lines cross
-// meridians (Day length) or parallels (Sunrise, Sunset) through and beside the view's centre
-// (_locPickDlLabels). The view's paths and labels are kept until the view or the shapes change.
+// LOC_PICK_DL_ALPHA. The bands picked in the legend (_locPick.dlHi: a band, a range of bands from an
+// end cell, or a polar area) keep that alpha, the rest drop to LOC_PICK_DL_DIM_ALPHA. Lines: every
+// level's rings at 1 px; border edges of the grid (lon +-180, lat +-90) are not lines. Labels over
+// the graticule (_locPickDlDrawLabels): where the lines cross meridians (Day length) or parallels
+// (Sunrise, Sunset) through and beside the view's centre (_locPickDlLabels). The view's paths and labels are kept until the view or the shapes change.
+// The labels' kind (_locPick.dlLabels): 'edges' those, 'cities' instead a tag with the value after the
+// names of the places layer and under the Location's pin (see 'Cities' below).
 //
 // Clipping to the visible hemisphere (_locPickDlRingInto): a ring's region is on its LEFT (seen
 // from outside the Earth, which the orthographic view keeps). A ring that crosses the limb is cut
@@ -282,10 +284,20 @@ function _locPickDlRegion(V, rings) {
   if (odd) _locPickDlDisc(P, V);
   return { P, full: !shape && !!odd, empty: !shape && !odd };
 }
-// The band picked in the legend: a number, 'day' or 'night' (polar), or null
+// The bands picked in the legend (_locPick.dlHi's hover, else its pin): a band's number, a range of
+// bands { from, to } (inclusive; the legend's end cells), 'day' or 'night' (polar), or null
 function _locPickDlHiBand() {
-  const H = _locPick.dlHi;
-  return H ? H.hover ?? H.pin : null;
+  const H = _locPick.dlHi, h = H ? H.hover ?? H.pin : null;
+  return h === undefined ? null : h;
+}
+// Whether band b (a number, 'day' or 'night') is among the picked hi (not null)
+function _locPickDlHiHas(hi, b) {
+  if (typeof hi === 'string' || typeof b === 'string') return hi === b;
+  return typeof hi === 'number' ? b === hi : b >= hi.from && b <= hi.to;
+}
+// A pick as text, to compare two picks: '' for none, '7', '0-3', 'day'
+function _locPickDlHiKey(h) {
+  return h === null || h === undefined ? '' : typeof h === 'object' ? h.from + '-' + h.to : String(h);
 }
 function _locPickDlRgb(c) { return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
 // The light hatching over the polar areas, its pitch steady on the screen (LOC_PICK_ZONE_HATCH_PX)
@@ -344,14 +356,15 @@ function _locPickDlDraw(ctx, V, w, h) {
   ctx.save();
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   ctx.imageSmoothingEnabled = true;
-  ctx.globalAlpha = hi === null || hi === undefined ? LOC_PICK_DL_ALPHA : LOC_PICK_DL_DIM_ALPHA;
+  ctx.globalAlpha = hi === null ? LOC_PICK_DL_ALPHA : LOC_PICK_DL_DIM_ALPHA;
   ctx.drawImage(off, x0, y0, sw / q, sh / q);
-  if (hi !== null && hi !== undefined) {
+  if (hi !== null) {   // the picked bands' regions: each a level's region less the next one's, 'evenodd'
+    // (two neighbours share a level's path, which then drops out: their union)
     const H = new Path2D();
     if (hi === 'day' || hi === 'night') { if (polar) H.addPath(polar[hi]); }
     else {
       for (let k = 0; k <= S.levels.length; k++) {
-        if ((k ? S.levels[k - 1].band : S.below) !== hi) continue;
+        if (!_locPickDlHiHas(hi, k ? S.levels[k - 1].band : S.below)) continue;
         if (k) H.addPath(paths[k - 1]); else _locPickDlDisc(H, V);
         if (k < S.levels.length) H.addPath(paths[k]);
       }
@@ -397,19 +410,19 @@ function _locPickDlGeom(V, w, h, S) {
 // lightened (LOC_PICK_ZONE_HATCH_PX); lines: both pixels where the band differs from the right or
 // the lower neighbour, the band's colour toward white (toward black in the light theme), not while
 // moving (the buffer is coarse then, as the zones' lines); the image laid over the disc at
-// LOC_PICK_DL_ALPHA, a picked band's pixels (and the lines) at full alpha in the image and the rest
+// LOC_PICK_DL_ALPHA, the picked bands' pixels (and the lines) at full alpha in the image and the rest
 // at LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA. Made again when the disc (its gen), the shapes' key
-// (date, mode, offsets) or the theme change; a band picked rewrites the alpha alone.
-let _locPickDlLocalC = null;   // { key, band, ln, img, cv, hi, lines, hatched, fallback, ms, msBands }
+// (date, mode and so the palette, offsets) or the theme change; a pick rewrites the alpha alone.
+let _locPickDlLocalC = null;   // { key, band, ln, img, cv, hi (_locPickDlHiKey), lines, hatched, fallback, ms, msBands }
 const LOC_PICK_DL_LINE_MIX = 0.5;   // a line pixel: this far from the band's colour toward white or black
 function _locPickDlDrawLocal(ctx, V, S) {
   const Z = _locPick.veilSrc;
   if (!Z || !Z.la) return;
   const lt = document.body.classList.contains('light'), key = [S.key, Z.gen, lt].join('|');
-  const h = _locPickDlHiBand(), hi = h === null || h === undefined ? -1 : h === 'day' ? 48 : h === 'night' ? 49 : h;
+  const hi = _locPickDlHiBand();
   let B = _locPickDlLocalC;
   if (!B || B.key !== key) B = _locPickDlLocalC = _locPickDlLocalMake(S, Z, lt, key, hi);
-  else if (B.hi !== hi) _locPickDlLocalAlpha(B, hi);
+  else if (B.hi !== _locPickDlHiKey(hi)) _locPickDlLocalAlpha(B, hi);
   ctx.save();
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   ctx.imageSmoothingEnabled = true;
@@ -417,15 +430,23 @@ function _locPickDlDrawLocal(ctx, V, S) {
   ctx.drawImage(B.cv, Z.x0, Z.y0, Z.sw / Z.q, Z.sh / Z.q);
   ctx.restore();
 }
-// The image's alpha for picked band hi (-1 none): the band and the lines whole, the rest dimmed
+// The band codes picked by hi (_locPickDlHiBand): 1 for each picked of 0..49, null with none
+function _locPickDlLocalPicked(hi) {
+  if (hi === null) return null;
+  const m = new Uint8Array(50);
+  for (let b = 0; b < 50; b++) m[b] = _locPickDlHiHas(hi, b < 48 ? b : b === 48 ? 'day' : 'night') ? 1 : 0;
+  return m;
+}
+// The image's alpha for the pick hi: the picked bands and the lines whole, the rest dimmed
 function _locPickDlLocalAlpha(B, hi) {
   const px = B.img.data, band = B.band, ln = B.ln, dim = Math.round(255 * LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA);
+  const m = _locPickDlLocalPicked(hi);
   for (let k = 0, o = 3; k < band.length; k++, o += 4) {
     const b = band[k];
-    px[o] = b === 255 ? 0 : hi < 0 || b === hi || ln[k] ? 255 : dim;
+    px[o] = b === 255 ? 0 : !m || m[b] || ln[k] ? 255 : dim;
   }
   B.cv.getContext('2d').putImageData(B.img, 0, 0);
-  B.hi = hi;
+  B.hi = _locPickDlHiKey(hi);
 }
 function _locPickDlLocalMake(S, Z, lt, key, hi) {
   const t0 = performance.now(), src = _dlLocalSrc(S.mode, S.D);
@@ -465,10 +486,10 @@ function _locPickDlLocalMake(S, Z, lt, key, hi) {
   // the image in one pass: the lines (both pixels of a change toward the right or the lower
   // neighbour, marked ahead), the hatching's stripes, the colours as packed RGBA
   const pal = new Uint32Array(50 * 4), toward = lt ? 0 : 255, mix = LOC_PICK_DL_LINE_MIX;
-  const dim = Math.round(255 * LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA);
+  const dim = Math.round(255 * LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA), picked = _locPickDlLocalPicked(hi);
   for (let b = 0; b < 50; b++) {
     const c = b < 48 ? _dlColor(S.mode, b) : LOC_PICK_DL_POLAR[b === 48 ? 'day' : 'night'];
-    const al = hi < 0 || b === hi ? 255 : dim;
+    const al = !picked || picked[b] ? 255 : dim;
     for (let m = 0; m < 4; m++) {   // plain, hatched, line, hatched line
       let r = c[0], g = c[1], bl = c[2];
       if (m & 1) { r += (255 - r) * 0.7; g += (255 - g) * 0.7; bl += (255 - bl) * 0.7; }
@@ -494,7 +515,7 @@ function _locPickDlLocalMake(S, Z, lt, key, hi) {
   const cv = (_locPickDlLocalC && _locPickDlLocalC.cv) || document.createElement('canvas');
   if (cv.width !== sw || cv.height !== sh) { cv.width = sw; cv.height = sh; }
   cv.getContext('2d').putImageData(img, 0, 0);
-  return { key, band, ln, img, cv, hi, lines, hatched, fallback, ms: performance.now() - t0, msBands: t1 - t0 };
+  return { key, band, ln, img, cv, hi: _locPickDlHiKey(hi), lines, hatched, fallback, ms: performance.now() - t0, msBands: t1 - t0 };
 }
 // The offset [h] of the disc's pixel under canvas point (x, y), null off the disc or without the index
 function _locPickDlOffsetAt(x, y) {
@@ -507,6 +528,8 @@ function _locPickDlOffsetAt(x, y) {
 }
 // The labels over the graticule (called by _locPickDraw after it, where the zones' labels go)
 function _locPickDlDrawLabels(ctx, V, w, h) {
+  if (_locPick.dlLabels === 'cities') { _locPickDlPlaceHere(ctx, V, w, h); return; }
+  _locPickDlHereDrawn = null;
   const labels = _locPickDlLabels(V, w, h);
   if (!labels.length) return;
   ctx.save();
@@ -519,6 +542,128 @@ function _locPickDlDrawLabels(ctx, V, w, h) {
     ctx.fillText(l.text, l.x, l.y + 0.5);
   }
   ctx.restore();
+}
+// ─── Cities: the values at the places ────────────────────────────────────────────────────────────
+// The places layer (render-locplaces.js) asks the hook (_locPlacesTagHook) for a tag per place, in
+// its order of importance; a place gets one only LOC_PICK_DL_TAG_GAP_PX * (1 - ln zoom / ln 40) px
+// (none at the closest zoom) from every tag given before it, the Location's first. The value from the
+// exact model on the drawn date at the place, in the base (local: the place's own zone), cut to the
+// minute as the head's; in its band's colour, the polar day and night as such in the palette's ends.
+// None without the zones' data (no guessed times). Cities turns the places on for the while
+// (_locPickDlCitiesSync) and gives back the state before.
+const LOC_PICK_DL_TAG_GAP_PX = 90;
+const LOC_PICK_DL_TAG_FONT = "bold 10px 'Share Tech Mono', monospace";   // the Location's tag
+const LOC_PICK_DL_HERE_DY = 15;   // the Location's tag's centre this far under (or over) the pin
+const LOC_PICK_DL_HERE_DX = 8;    // ... or its left edge this far right of the pin
+let _locPickDlPlacesWas = null;   // the places shown before Cities turned them on; null while not in Cities
+let _locPickDlHereDrawn = null;   // the Location's tag drawn last: { text, rgb, x, y, box }, null for none
+let _locPickDlTagC = null;        // the places' values: { key, map: row -> { text, rgb } }
+// The tag at (lat, lon) on date D for mode, the clock offset off (rise and set)
+function _locPickDlTagValue(lat, lon, D, mode, off) {
+  const e = _solarEventsAt(lat, lon, D.year, D.month, D.day), cut = (v) => Math.floor(v * 60 + 1e-9) / 60;
+  if (e.polarDay || e.polarNight) { const k = e.polarDay ? 'day' : 'night'; return { text: 'polar ' + k, rgb: LOC_PICK_DL_POLAR[k] }; }
+  if (mode === 'length') return { text: _dlFmt(mode, cut(e.lenH)).replace(/ (\d+) min$/, (m, n) => ' ' + n.padStart(2, '0')), rgb: _dlColor(mode, _dlBand(mode, e.lenH)) };
+  const c = _dlClock(mode === 'rise' ? e.riseUT : e.setUT, off);
+  return { text: _dlFmt(mode, cut(c)), rgb: _dlColor(mode, _dlBand(mode, c)) };
+}
+const _locPickDlTagHook = {
+  D: null, at: [], gap: 0, mode: 'length', base: '', off: 0,
+  // the frame's date, mode and base; the Location's tag placed clear of the names (names, blocked:
+  // the boxes of the places' names and of the window's controls), first among the given and kept clear of
+  begin(V, names, blocked) {
+    const T = _locPickDlTagHook, D = _locPickDlDrawnDate, H = _locPickDlHereDrawn;
+    T.D = null; T.at = [];
+    if (!_locPick.dl || _locPick.ecl || !D || !_tzGrid.data) return null;
+    T.D = D; T.mode = _locPick.dlMode; T.base = T.mode === 'length' ? '' : _locPick.dlBase;
+    T.off = T.base === 'location' ? _locPickDlBaseOffset() : 0;
+    T.gap = LOC_PICK_DL_TAG_GAP_PX * Math.max(0, 1 - Math.log(_locPick.zoom) / Math.log(LOC_PICK_ZOOM_MAX));
+    const ms = T.base === 'local' ? _tzModeInstant() : null;   // the zones' offsets (DST) at the mode's moment
+    const key = [D.year, D.month, D.day, T.mode, T.base, T.off, ms === null ? '' : Math.floor(ms / 3600000)].join('|');
+    if (!_locPickDlTagC || _locPickDlTagC.key !== key) _locPickDlTagC = { key, map: new Map() };
+    if (!H) return null;
+    _locPickDlHereFit(H, blocked.concat(names));
+    T.at.push([H.x, H.y]);
+    return [H.box];
+  },
+  tag(r, x, y) {
+    const T = _locPickDlTagHook, g2 = T.gap * T.gap;
+    if (!T.D) return null;
+    for (const a of T.at) if ((a[0] - x) * (a[0] - x) + (a[1] - y) * (a[1] - y) < g2) return null;
+    let v = _locPickDlTagC.map.get(r);
+    if (!v) {
+      v = _locPickDlTagValue(r[2], r[3], T.D, T.mode, T.base === 'local' ? _dlOffsetInfoAt(r[2], r[3]).h : T.off);
+      _locPickDlTagC.map.set(r, v);
+    }
+    return { text: v.text, rgb: v.rgb, x, y };
+  },
+  took(t) { _locPickDlTagHook.at.push([t.x, t.y]); },
+};
+// The Location's tag by its pin (Cities): its value and a first place clear of the window's controls
+// and the canvas's edges (_locPickDlHereFit); placed again clear of the places' names once they are
+// laid out (the hook's begin), before their tags; drawn after them and the pin (_locPickDlDrawHere),
+// on top
+function _locPickDlPlaceHere(ctx, V, w, h) {
+  _locPickDlHereDrawn = null;
+  const D = _locPickDlDrawnDate;
+  if (!D || !_tzGrid.data || _locPick.ecl) return;
+  const [la, lo] = _dlLocation(), s = _locPickProject(V, _locPickVec(lo, la));
+  if (s.z < 0) return;
+  const mode = _locPick.dlMode, base = _locPick.dlBase;
+  const off = mode === 'length' || base === 'utc' ? 0 : base === 'location' ? _locPickDlBaseOffset() : _dlOffsetInfoAt(la, lo).h;
+  const t = _locPickDlTagValue(la, lo, D, mode, off), f = LOC_PICK_DL_TAG_FONT;
+  const pw = _locPlacesWidth(ctx, f, t.text) + 2 * LOC_PLACES_TAG_PAD;
+  _locPickDlHereFit(_locPickDlHereDrawn = { text: t.text, rgb: t.rgb, x: s.x, y: s.y, pw, w, h }, _locPlacesKeepClear(ctx.canvas));
+}
+// The Location's tag H: below its pin, else above, else right of it, the first whose box is within
+// the canvas and clear of the boxes; below when none is (H.fit 'below', 'above', 'right', 'none')
+function _locPickDlHereFit(H, boxes) {
+  const dy = LOC_PICK_DL_HERE_DY, c = H.x - H.pw / 2;
+  const tries = [['below', c, H.y + dy], ['above', c, H.y - dy], ['right', H.x + LOC_PICK_DL_HERE_DX, H.y]];
+  const at = (x0, yc) => ({ x0: x0 - 2, y0: yc - 8, x1: x0 + H.pw + 2, y1: yc + 8 });
+  const clear = (b) => b.x0 >= 0 && b.y0 >= 0 && b.x1 <= H.w && b.y1 <= H.h && !boxes.some(o => b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1);
+  let pick = tries.find(([, x0, yc]) => clear(at(x0, yc)));
+  H.fit = pick ? pick[0] : 'none';
+  if (!pick) pick = tries[0];
+  H.x0 = pick[1]; H.yc = pick[2]; H.box = at(pick[1], pick[2]);
+}
+function _locPickDlDrawHere(ctx) {
+  const H = _locPickDlHereDrawn;
+  if (!H || !_locPick.dl || _locPick.dlLabels !== 'cities') return;
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  _locPlacesDrawTag(ctx, H, LOC_PICK_DL_TAG_FONT, H.x0, H.yc, 1);
+  ctx.restore();
+}
+// The hook and the places with the layer and the labels' kind: in Cities (not on the Eclipse map) the
+// places on for the while (not remembered), out of it the state before again (remembered), or the
+// one the user chose meanwhile (_locPickDlPlacesChosen). Called on the layer's, the labels' and the
+// window's changes (_locPickSetOpen)
+function _locPickDlCitiesSync() {
+  const on = _locPick.dl && !_locPick.ecl && _locPick.dlLabels === 'cities';
+  _locPlacesTagHook = on ? _locPickDlTagHook : null;
+  if (on && _locPickDlPlacesWas === null) {
+    _locPickDlPlacesWas = _locPlaces.on;
+    if (!_locPlaces.on) _locPlacesSetOn(true, true);
+  } else if (!on && _locPickDlPlacesWas !== null) {
+    const was = _locPickDlPlacesWas;
+    _locPickDlPlacesWas = null;
+    if (!was && _locPlaces.on) _locPlacesSetOn(false, true);   // the remembered value is still the user's
+  }
+  _locPickDlLabelsTitle();
+  if (!on) _locPickDlHereDrawn = null;
+}
+// The user turned the places on or off (_locPlacesSetOn): during Cities that is the state it gives back
+function _locPickDlPlacesChosen(on) {
+  if (_locPickDlPlacesWas !== null) _locPickDlPlacesWas = on;
+  _locPickDlLabelsTitle();
+}
+// The Cities toggle's title: a hint while the places (which show the times) are off in Cities
+function _locPickDlLabelsTitle() {
+  const b = document.querySelector('#locPickDlLabels [data-labels="cities"]');
+  if (!b) return;
+  const off = _locPick.dlLabels === 'cities' && typeof _locPlaces !== 'undefined' && !_locPlaces.on;
+  const t = off ? 'Times next to the places (turn the places on)' : 'Times next to the places';
+  if (b.title !== t) b.title = t;
 }
 // Ring R's visible line into path P: broken behind the limb (cut at it), no border edges
 function _locPickDlLineInto(P, V, R) {
@@ -667,7 +812,7 @@ function _locPickDlRelease() {
   _dlShapesReset();
   if (_locPickDlLocalC) { _locPickDlLocalC.cv.width = _locPickDlLocalC.cv.height = 0; }
   if (_locPickDlOff) { _locPickDlOff.width = _locPickDlOff.height = 0; }
-  _locPickDlCache = _locPickDlLocalC = _locPickDlGeomC = _locPickDlLabelC = _locPickDlOff = null;
+  _locPickDlCache = _locPickDlLocalC = _locPickDlGeomC = _locPickDlLabelC = _locPickDlOff = _locPickDlTagC = null;
   _locPickDlShownKey = null; _locPickDlMadeAt = -Infinity;
 }
 
@@ -681,6 +826,7 @@ function _locPickDlSet(on) {
   if (on && _locPick.zones) document.getElementById('btnLocPickZones').click();
   if (on && _locPick.lp) _locPickSetLp(false);
   if (!on) { _locPick.dlHi.hover = _locPick.dlHi.pin = null; _locPickDlRelease(); }
+  _locPickDlCitiesSync();
   _locPickDlLegendSync();
   _locPickZoneHint(_locPick.hover);
   _locPickRequest();
@@ -700,44 +846,72 @@ function _locPickDlSetBase(base) {
   _locPickZoneHint(_locPick.hover);
   _locPickRequest();
 }
+// The labels: 'edges' (the bands' edges) or 'cities' (the places' values)
+function _locPickDlSetLabels(which) {
+  if (!['edges', 'cities'].includes(which) || which === _locPick.dlLabels) return;
+  _locPick.dlLabels = which;
+  _locPickDlCitiesSync();
+  _locPickDlLegendSync();
+  _locPickRequest();
+}
 // A time of day h [hours] as 'H:MM', 24:00 kept
 function _locPickDlClockText(h) {
   const t = Math.round(h * 60);
   return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
 }
-// The legend's cells for the mode: Day length 24 (0 h to 24 h), Sunrise and Sunset 48 of half an
-// hour; each in its band's colour, its range in its title; pointed at or picked as the Bortle scale's
+// The legend's cells for the mode: Day length 24 (0 h to 24 h); Sunrise and Sunset the half hours of
+// the palette's range (_dlRangeBands) and an end cell either side for the bands before and after it
+// (data-band 'from-to', picked as a range { from, to }); each in its (first) band's colour, its time
+// in its title; pointed at or picked as the Bortle scale's
 function _locPickDlLegendBuild(mode) {
   const sc = document.getElementById('locPickDlScale'), ends = document.getElementById('locPickDlEnds');
-  const n = mode === 'length' ? 24 : 48, step = DL_MODES[mode].step;
+  const step = DL_MODES[mode].step, cells = [];
   sc.textContent = ''; ends.textContent = '';
-  for (let b = 0; b < n; b++) {
+  if (mode === 'length') for (let b = 0; b < 24; b++) cells.push([b, b, b + ' h to ' + (b + 1) + ' h']);
+  else {
+    const { lo, hi } = _dlRangeBands(mode), t = (b) => _locPickDlClockText(b * step);
+    cells.push([0, lo - 1, '< ' + t(lo)]);
+    for (let b = lo; b <= hi; b++) cells.push([b, b, t(b) + ' to ' + t(b + 1)]);
+    cells.push([hi + 1, 47, '> ' + t(hi + 1)]);
+  }
+  for (const [from, to, title] of cells) {
     const c = document.createElement('button');
-    c.dataset.band = String(b);
+    c.dataset.band = from === to ? String(from) : from + '-' + to;
     c.setAttribute('aria-pressed', 'false');
-    c.style.background = _locPickDlRgb(_dlColor(mode, b));
-    c.title = mode === 'length' ? b + ' h to ' + (b + 1) + ' h' : _locPickDlClockText(b * step) + ' to ' + _locPickDlClockText((b + 1) * step);
+    c.style.background = _locPickDlRgb(_dlColor(mode, from));
+    c.title = title;
     _locPickDlCellEvents(c);
     sc.appendChild(c);
   }
-  const marks = mode === 'length' ? [[0, '0 h'], [24, '24 h']] : [0, 6, 12, 18, 24].map(h => [h, h + ':00']);
-  for (const [h, t] of marks) {
+  // the marks: length its ends; rise and set the range's ends and every 3 h between, on the cells' edges
+  let marks;
+  if (mode === 'length') marks = [[0, '0 h'], [1, '24 h']];
+  else {
+    const [r0, r1] = DL_RANGES[mode], lo = _dlRangeBands(mode).lo;
+    marks = [];
+    for (let h = r0; h <= r1; h += 3) marks.push([(1 + h / step - lo) / cells.length, h + ':00']);
+  }
+  ends.classList.toggle('dl-ends-c', mode !== 'length');
+  for (const [f, t] of marks) {
     const sp = document.createElement('span');
-    sp.style.left = (h / 24 * 100) + '%';
+    sp.style.left = (f * 100) + '%';
     sp.textContent = t;
     ends.appendChild(sp);
   }
 }
+// A cell's bands: a number, { from, to }, 'day' or 'night'
 function _locPickDlCellBand(c) {
   const v = c.dataset.band;
-  return v === 'day' || v === 'night' ? v : Number(v);
+  if (v === 'day' || v === 'night') return v;
+  const r = v.split('-');
+  return r.length === 2 ? { from: Number(r[0]), to: Number(r[1]) } : Number(v);
 }
 function _locPickDlCellEvents(c) {
   c.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { _locPick.dlHi.hover = _locPickDlCellBand(c); _locPickRequest(); } });
   c.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { _locPick.dlHi.hover = null; _locPickRequest(); } });
   c.addEventListener('click', () => {
     const b = _locPickDlCellBand(c);
-    _locPick.dlHi.pin = _locPick.dlHi.pin === b ? null : b;
+    _locPick.dlHi.pin = _locPickDlHiKey(_locPick.dlHi.pin) === _locPickDlHiKey(b) ? null : b;
     _locPickDlLegendSync();
     _locPickRequest();
   });
@@ -755,7 +929,7 @@ function _locPickDlBaseOffset() {
   return C && _locPickDlDrawnDate === C.D && C.mb === _locPick.dlMode + '|location' ? C.off : _dlLocationOffsetH();
 }
 // The legend after a change: its cells for the mode, the toggles, the drawn date, the Location's
-// cell (.here) and the picked one
+// cell (.here, an end cell when its band is one of the cell's) and the picked one
 function _locPickDlLegendSync() {
   const L = document.getElementById('locPickDlLegend');
   if (!L) return;
@@ -763,13 +937,15 @@ function _locPickDlLegendSync() {
   if (L.dataset.mode !== mode) { _locPickDlLegendBuild(mode); L.dataset.mode = mode; }
   for (const b of document.querySelectorAll('#locPickDlMode [data-mode]')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
   for (const b of document.querySelectorAll('#locPickDlBase [data-base]')) b.setAttribute('aria-pressed', String(b.dataset.base === _locPick.dlBase));
+  for (const b of document.querySelectorAll('#locPickDlLabels [data-labels]')) b.setAttribute('aria-pressed', String(b.dataset.labels === _locPick.dlLabels));
+  _locPickDlLabelsTitle();
   if (!_locPick.dl) return;
   const D = _tzGrid.data ? _locPickDlDrawnDate || _dlDate() : null, t = document.getElementById('locPickDlTitle');
   const label = D ? D.label : '';   // no date while the zones load: it would be a guess
   if (t.textContent !== label) t.textContent = label;
-  const here = D ? String(_locPickDlHereBand(D)) : null, pin = _locPick.dlHi.pin === null ? null : String(_locPick.dlHi.pin);
+  const here = D ? _locPickDlHereBand(D) : null, pin = _locPickDlHiKey(_locPick.dlHi.pin);
   for (const c of L.querySelectorAll('[data-band]')) {
-    if (c.classList.contains('here') !== (c.dataset.band === here)) c.classList.toggle('here');
+    if (c.classList.contains('here') !== (here !== null && _locPickDlHiHas(_locPickDlCellBand(c), here))) c.classList.toggle('here');
     const pr = String(c.dataset.band === pin);
     if (c.getAttribute('aria-pressed') !== pr) c.setAttribute('aria-pressed', pr);
   }
@@ -813,5 +989,6 @@ function _locPickDlInfoSync(p) {
 document.getElementById('btnLocPickDaylight').addEventListener('click', () => _locPickDlSet(!_locPick.dl));
 for (const b of document.querySelectorAll('#locPickDlMode [data-mode]')) b.addEventListener('click', () => _locPickDlSetMode(b.dataset.mode));
 for (const b of document.querySelectorAll('#locPickDlBase [data-base]')) b.addEventListener('click', () => _locPickDlSetBase(b.dataset.base));
+for (const b of document.querySelectorAll('#locPickDlLabels [data-labels]')) b.addEventListener('click', () => _locPickDlSetLabels(b.dataset.labels));
 for (const c of document.querySelectorAll('#locPickDlPolar [data-band]')) _locPickDlCellEvents(c);
 _locPickDlLegendSync();

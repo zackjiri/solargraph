@@ -38,7 +38,7 @@ const _locPick = {
   // the daylight bands over the Earth (render-locpick-daylight.js), only in SELECT: Day length,
   // Sunrise or Sunset, the time base of the last two ('local', 'utc', 'location'), the band shown alone;
   // the layer, mode and base kept while the page is open (#btnLocPickDaylight, #locPickDlLegend)
-  dl: false, dlMode: 'length', dlBase: 'local', dlHi: { hover: null, pin: null },
+  dl: false, dlMode: 'length', dlBase: 'local', dlLabels: 'edges', dlHi: { hover: null, pin: null },
   // their parts, each switched in the legend (#locPickZoneLegend); the same date off at first, as
   // it watches the time (_locPickDays)
   zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true },
@@ -668,6 +668,7 @@ function _locPickDraw() {
   const SB = _locPickScaleBar(V, w, h);
   if (SB) _locPickDrawScale(ctx, SB);
   _locPickDrawPin(ctx, V, hemisphere * LAT, lonHemisphere * LONG, '#e84040');   // the Location
+  if (_locPick.dl && typeof _locPickDlDrawHere === 'function') _locPickDlDrawHere(ctx);   // its Daylight tag (Cities)
   const W = _locPick.wave;
   if (W) {   // the pressure wave: rings growing along the surface, fading as they go
     const t = performance.now() - W.t0, C = _locPickVec(W.lon, W.lat);
@@ -865,6 +866,7 @@ function _locPickSetOpen(on, ecl) {
   _locPick.open = on;
   _locPick.ecl = on ? (ecl || null) : null;
   if (!on && typeof _locPickDlRelease === 'function') _locPickDlRelease();   // render-locpick-daylight.js
+  if (typeof _locPickDlCitiesSync === 'function') _locPickDlCitiesSync();   // Cities' places: not on the Eclipse map
   document.getElementById('locPickWin').classList.toggle('open', on);
   document.getElementById('locPickWin').classList.toggle('ecl', !!_locPick.ecl);
   _locPickInfoPlace();   // the labels under the head: under the Eclipse map's legend only there
