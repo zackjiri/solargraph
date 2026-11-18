@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Solargraphy Explorer</title>
-  <link rel="stylesheet" href="css/style.css?perfdebug653">
+  <link rel="stylesheet" href="css/style.css?perfdebug655">
 </head>
 <body>
 
@@ -322,8 +322,9 @@
       </div>
       <div class="loc-pick-head"><b id="locPickTitle">SELECT LOCATION</b><span id="locPickHint">drag to turn · wheel to zoom · click to set</span>
         <!-- under the header, whatever layer is shown (render-locpick.js _locPickZoneHint): the time zone and
-             under it the Bortle class of the point under the mouse, else of the Location, each on its colour -->
-        <div id="locPickInfo"><span id="locPickInfoTz" class="lpi"></span><span id="locPickInfoLp" class="lpi"></span></div>
+             under it the Bortle class of the point under the mouse, else of the Location, each on its colour;
+             with Daylight on, a third line: its value there on its band's colour (render-locpick-daylight.js) -->
+        <div id="locPickInfo"><span id="locPickInfoTz" class="lpi"></span><span id="locPickInfoLp" class="lpi"></span><span id="locPickInfoDl" class="lpi" hidden></span></div>
         <!-- the time zones search's pick (js/render-tzsearch.js): its name and an × that lets go -->
         <div id="locPickZoneMatch" hidden><span id="locPickZoneMatchText"></span><button id="locPickZoneMatchClear" title="Show all the time zones again" aria-label="Clear">×</button></div>
         <div class="loc-pick-credit" id="locPickCreditTop">Time zones: <a href="https://www.openstreetmap.org/copyright" target="_blank"
@@ -382,10 +383,44 @@
         <div class="lpl-scale"><button data-cls="1" aria-pressed="false" title="Show only class 1">1</button><button data-cls="2" aria-pressed="false" title="Show only class 2">2</button><button data-cls="3" aria-pressed="false" title="Show only class 3">3</button><button data-cls="4" aria-pressed="false" title="Show only class 4">4</button><button data-cls="5" aria-pressed="false" title="Show only class 5">5</button><button data-cls="6" aria-pressed="false" title="Show only class 6">6</button><button data-cls="7" aria-pressed="false" title="Show only class 7">7</button><button data-cls="8" aria-pressed="false" title="Show only class 8">8</button><button data-cls="9" aria-pressed="false" title="Show only class 9">9</button></div>
         <div class="lpl-ends"><span>dark</span><span>bright</span></div>
       </div>
+      <!-- Daylight over the globe in SELECT (js/render-locpick-daylight.js): Day length, Sunrise or Sunset in
+           bands; it, the time zones and the light pollution switch each other off. Its legend bottom left in
+           the Bortle scale's place: the mode, the time base (Sunrise, Sunset), the date the bands are drawn
+           for and the bands' cells (built by _locPickDlLegendSync); a cell pointed at (mouse) or picked
+           (click, tap; again to let go) shows alone, the Location's framed (.here) -->
+      <div id="locPickDlLegend">
+        <div class="ns-toggle" id="locPickDlMode" title="What the bands show">
+          <button class="ns-btn" data-mode="length" aria-pressed="true">Day length</button>
+          <button class="ns-btn" data-mode="rise" aria-pressed="false">Sunrise</button>
+          <button class="ns-btn" data-mode="set" aria-pressed="false">Sunset</button>
+        </div>
+        <div class="ns-toggle" id="locPickDlBase" title="The clock the times are on: each place's own time zone, UTC, or the Location's time zone">
+          <button class="ns-btn" data-base="local" aria-pressed="true">Local</button>
+          <button class="ns-btn" data-base="utc" aria-pressed="false">UTC</button>
+          <button class="ns-btn" data-base="location" aria-pressed="false">Location</button>
+        </div>
+        <div class="lpl-title" id="locPickDlTitle"></div>
+        <div class="lpl-scale dl-scale" id="locPickDlScale"></div>
+        <div class="dl-ends" id="locPickDlEnds"></div>
+        <div class="dl-polar" id="locPickDlPolar">
+          <button data-band="day" aria-pressed="false" title="Show only the polar day: no sunrise or sunset, the Sun up all day"><i class="dl-sw"></i>polar day</button>
+          <button data-band="night" aria-pressed="false" title="Show only the polar night: no sunrise or sunset, the Sun down all day"><i class="dl-sw"></i>polar night</button>
+        </div>
+      </div>
       <!-- the light pollution data's source while it shows: left of the buttons, as the time zones'
            (in a narrow window the copy under the head, #locPickLpCreditTop, instead) -->
       <div class="loc-pick-credit" id="locPickLpCredit">Light pollution: <a href="https://eogdata.mines.edu/products/vnl/" target="_blank"
         rel="noopener noreferrer">VIIRS VNL 2025, EOG</a>, CC BY 4.0</div>
+      <button id="btnLocPickDaylight" title="Show daylight" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path d="M7.5 15.5a4.5 4.5 0 0 1 9 0z" fill="#f5d63a"/>
+          <g stroke="#f08a24" stroke-width="1.5" stroke-linecap="round">
+            <line x1="12" y1="6.5" x2="12" y2="8.5"/><line x1="6.2" y1="9.6" x2="7.6" y2="11"/><line x1="17.8" y1="9.6" x2="16.4" y2="11"/>
+          </g>
+          <line x1="4" y1="15.5" x2="20" y2="15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </button>
       <button id="btnLocPickLightPollution" title="Show the light pollution" aria-pressed="false">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
           <circle cx="9" cy="10" r="2.4" fill="#3aa845"/>
@@ -1552,47 +1587,49 @@
   © 2026 <a href="mailto:zack.jiri@gmail.com" style="color:inherit;text-decoration:none;letter-spacing:0.08em">JIRI ZACH</a> &nbsp;•&nbsp; Solargraphy Explorer ver. 6.11.12
 </div>
 
-<script src="js/sky-astro.js?perfdebug653"></script>
-<script src="js/allsky-model.js?perfdebug653"></script>
-<script src="js/core.js?perfdebug653"></script>
-<script src="js/render-2d.js?perfdebug653"></script>
-<script src="js/controls.js?perfdebug653"></script>
-<script src="js/render-sungraph.js?perfdebug653"></script>
-<script src="js/render-3d.js?perfdebug653"></script>
-<script src="js/render-skydome.js?perfdebug653"></script>
-<script src="js/render-moon.js?perfdebug653"></script>
-<script src="js/render-planets.js?perfdebug653"></script>
-<script src="js/render-milkyway.js?perfdebug653"></script>
-<script src="js/render-deepsky.js?perfdebug653"></script>
-<script src="js/render-skyglow.js?perfdebug653"></script>
-<script src="js/render-nightsky.js?perfdebug653"></script>
-<script src="js/render-nightsky-equipment.js?perfdebug653"></script>
-<script src="js/render-nightsky-equipment-mount.js?perfdebug653"></script>
-<script src="js/render-nightsky-trails.js?perfdebug653"></script>
-<script src="js/render-nightsky-allsky.js?perfdebug653"></script>
-<script src="js/render-nightsky-sungraph.js?perfdebug653"></script>
-<script src="js/render-nightsky-globe.js?perfdebug653"></script>
-<script src="js/render-nightsky-solar.js?perfdebug653"></script>
-<script src="js/render-search.js?perfdebug653"></script>
-<script src="js/render-locpick.js?perfdebug653"></script>
-<script src="js/tz-lookup.js?perfdebug653"></script>
-<script src="js/lp-lookup.js?perfdebug653"></script>
-<script src="js/lp-dir.js?perfdebug653"></script>
-<script src="js/render-locpick-glow.js?perfdebug653"></script>
-<script src="js/render-tzsearch.js?perfdebug653"></script>
-<script src="js/render-locplaces.js?perfdebug653"></script>
-<script src="js/render-eclipse-map.js?perfdebug653"></script>
-<script src="js/render-export.js?perfdebug653"></script>
-<script src="js/eclipse-data/2026-08-12.js?perfdebug653"></script>
-<script src="js/eclipse-data/2011-01-04.js?perfdebug653"></script>
-<script src="js/eclipse-data/2015-03-20.js?perfdebug653"></script>
-<script src="js/eclipse-data/2021-06-10.js?perfdebug653"></script>
-<script src="js/eclipse-data/2022-10-25.js?perfdebug653"></script>
-<script src="js/eclipse-data/2008-08-01.js?perfdebug653"></script>
-<script src="js/eclipse-data/1999-08-11.js?perfdebug653"></script>
-<script src="js/eclipse-data/2027-08-02.js?perfdebug653"></script>
-<script src="js/render-eclipse.js?perfdebug653"></script>
-<script src="js/render-fullscreen.js?perfdebug653"></script>
-<script src="js/render-route.js?perfdebug653"></script>
+<script src="js/sky-astro.js?perfdebug655"></script>
+<script src="js/allsky-model.js?perfdebug655"></script>
+<script src="js/core.js?perfdebug655"></script>
+<script src="js/render-2d.js?perfdebug655"></script>
+<script src="js/controls.js?perfdebug655"></script>
+<script src="js/render-sungraph.js?perfdebug655"></script>
+<script src="js/render-3d.js?perfdebug655"></script>
+<script src="js/render-skydome.js?perfdebug655"></script>
+<script src="js/render-moon.js?perfdebug655"></script>
+<script src="js/render-planets.js?perfdebug655"></script>
+<script src="js/render-milkyway.js?perfdebug655"></script>
+<script src="js/render-deepsky.js?perfdebug655"></script>
+<script src="js/render-skyglow.js?perfdebug655"></script>
+<script src="js/render-nightsky.js?perfdebug655"></script>
+<script src="js/render-nightsky-equipment.js?perfdebug655"></script>
+<script src="js/render-nightsky-equipment-mount.js?perfdebug655"></script>
+<script src="js/render-nightsky-trails.js?perfdebug655"></script>
+<script src="js/render-nightsky-allsky.js?perfdebug655"></script>
+<script src="js/render-nightsky-sungraph.js?perfdebug655"></script>
+<script src="js/render-nightsky-globe.js?perfdebug655"></script>
+<script src="js/render-nightsky-solar.js?perfdebug655"></script>
+<script src="js/render-search.js?perfdebug655"></script>
+<script src="js/render-locpick.js?perfdebug655"></script>
+<script src="js/tz-lookup.js?perfdebug655"></script>
+<script src="js/daylight-model.js?perfdebug655"></script>
+<script src="js/render-locpick-daylight.js?perfdebug655"></script>
+<script src="js/lp-lookup.js?perfdebug655"></script>
+<script src="js/lp-dir.js?perfdebug655"></script>
+<script src="js/render-locpick-glow.js?perfdebug655"></script>
+<script src="js/render-tzsearch.js?perfdebug655"></script>
+<script src="js/render-locplaces.js?perfdebug655"></script>
+<script src="js/render-eclipse-map.js?perfdebug655"></script>
+<script src="js/render-export.js?perfdebug655"></script>
+<script src="js/eclipse-data/2026-08-12.js?perfdebug655"></script>
+<script src="js/eclipse-data/2011-01-04.js?perfdebug655"></script>
+<script src="js/eclipse-data/2015-03-20.js?perfdebug655"></script>
+<script src="js/eclipse-data/2021-06-10.js?perfdebug655"></script>
+<script src="js/eclipse-data/2022-10-25.js?perfdebug655"></script>
+<script src="js/eclipse-data/2008-08-01.js?perfdebug655"></script>
+<script src="js/eclipse-data/1999-08-11.js?perfdebug655"></script>
+<script src="js/eclipse-data/2027-08-02.js?perfdebug655"></script>
+<script src="js/render-eclipse.js?perfdebug655"></script>
+<script src="js/render-fullscreen.js?perfdebug655"></script>
+<script src="js/render-route.js?perfdebug655"></script>
 </body>
 </html>
