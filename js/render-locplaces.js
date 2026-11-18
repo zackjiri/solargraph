@@ -25,8 +25,8 @@ const LOC_PLACES_ZOOM_GAIN = 1.2;   // web map zooms earlier than Natural Earth'
 // the window's controls the labels keep clear of (the head's lines, the slider, the buttons, the
 // legends, the credits, the towns' glow box)
 const LOC_PLACES_KEEP_CLEAR = '#locPickTitle, #locPickHint, #locPickInfo .lpi, #locPickZoneMatch, .loc-pick-credit, #btnLocPickClose, '
-  + '#locPickAlt, #locGlowWrap, #locPickZoneLegend, #locPickLpLegend, #btnLocPickZones, #btnLocPickLightPollution, #btnLocPickPlaces, '
-  + '#btnLocPickZoneSearch, #locPickZoneSearchPanel';
+  + '#locPickAlt, #locGlowWrap, #locPickZoneLegend, #locPickLpLegend, #locPickDlLegend, #btnLocPickZones, #btnLocPickLightPollution, #btnLocPickDaylight, '
+  + '#btnLocPickPlaces, #btnLocPickZoneSearch, #locPickZoneSearchPanel';
 // The label tiers, most important first: font, text colour, dot radius, a ring round it (capitals),
 // the name in capitals, the outline's width
 const LOC_PLACES_TIERS = [

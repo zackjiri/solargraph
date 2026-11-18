@@ -471,12 +471,16 @@ function solarEventsOnDate(year, month, day, kind) {
   _solarEventCache.set(key, r);
   return r;
 }
-// jdeAt(hourUT): the JDE of an instant on the day in question.
-function _solarEventsCore(jdeAt, kind) {
-  const phi = effectiveLat() * hemisphere;
+// Mirrored step by step by _dlEventOne / _dlFastAt / _dlCore (js/daylight-model.js, the Daylight
+// layer's grid): after any change here (horizon altitude, iterations, equation of time, clamps)
+// update that copy and re-run TAS.dl3a and TAS.dl3b.
+// jdeAt(hourUT): the JDE of an instant on the day in question. phi (rad, signed) and lonE (deg,
+// east positive) are optional: omitted, they come from LAT, hemisphere, LONG and lonHemisphere.
+function _solarEventsCore(jdeAt, kind, phi, lonE) {
+  if (phi === undefined) phi = effectiveLat() * hemisphere;
+  if (lonE === undefined) lonE = lonHemisphere * LONG;
   const sphi = Math.sin(phi), cphi = Math.cos(phi);
-  const lonE = lonHemisphere * LONG;
-  const eot = _solarSunAtJDE(jdeAt(_solarNoonUT())).eotMin;
+  const eot = _solarSunAtJDE(jdeAt(12 - lonE / 15)).eotMin;
   const at = (trueHour) => {
     const v = _solarSunAtJDE(jdeAt(trueHour - eot / 60 - lonE / 15));
     const hDeg = kind === 'day' ? SKY_HORIZON_TRUE_ALT - v.semiDeg : SOLAR_EVENT_ALT[kind];
@@ -501,6 +505,23 @@ function _solarEventsCore(jdeAt, kind) {
     r = { rise, set, polarDay: false, polarNight: false, eotRise: at(rise).eotMin, eotSet: at(set).eotMin };
   }
   return r;
+}
+// The Daylight grid mirrors this function (see the note at _solarEventsCore).
+// Standard sunrise/sunset for any point and calendar date (the Daylight layer), independent of
+// LAT/LONG and uncached. latDeg north positive, lonDeg east positive; the day is the date D at
+// the point's own longitude. Returns {riseUT, setUT, lenH, polarDay, polarNight}: riseUT/setUT in
+// hours from 0:00 UT of D, unwrapped (below 0 or above 24 when the event falls on the neighbouring
+// UT day), lenH = setUT - riseUT. A polar day is the clamped continuation, true noon -12 to +12
+// (lenH 24); a polar night has riseUT = setUT = true noon (lenH 0). The poles and the equator are
+// clamped to 89.9 and 0.1 deg as effectiveLat() does.
+function _solarEventsAt(latDeg, lonDeg, year, month, day) {
+  const a = Math.abs(latDeg);
+  const phi = (a === 0 ? 0.1 : a === 90 ? 89.9 : a) * (latDeg < 0 ? -1 : 1) * Math.PI / 180;
+  const r = _solarEventsCore((hourUT) => _moonJDE(year, month, day, hourUT), 'day', phi, lonDeg);
+  const toUT = (trueHour, eotMin) => trueHour - eotMin / 60 - lonDeg / 15;
+  const riseUT = toUT(r.rise, r.eotRise);
+  const setUT = toUT(r.set, r.eotSet);
+  return { riseUT, setUT, lenH: setUT - riseUT, polarDay: r.polarDay, polarNight: r.polarNight };
 }
 // Standard sunrise/sunset (solarEvents 'day').
 function solarRiseSet(doy, year) {

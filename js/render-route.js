@@ -144,7 +144,7 @@ async function _routeApply(hash) {
     if (si >= 0 && _locPick.open && !_locPick.ecl) {
       if (layer === 'time-zones' && !_locPick.zones) _routeClick('btnLocPickZones');
       else if (layer === 'light-pollution' && !_locPick.lp) _locPickSetLp(true);
-      else if (!layer) { if (_locPick.zones) _routeClick('btnLocPickZones'); if (_locPick.lp) _locPickSetLp(false); }
+      else if (!layer) { if (_locPick.zones) _routeClick('btnLocPickZones'); if (_locPick.lp) _locPickSetLp(false); if (_locPick.dl) _locPickDlSet(false); }
     }
   } finally {
     _routeBusy = false;
