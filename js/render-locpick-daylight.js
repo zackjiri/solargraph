@@ -16,7 +16,8 @@
 // levels ascending, each as one 'evenodd' path of its rings; in Sunrise and Sunset the polar day and
 // night in the palette's end colours with a light hatching; the canvas laid over the disc once at
 // LOC_PICK_DL_ALPHA. The bands picked in the legend (_locPick.dlHi: a band, a range of bands from an
-// end cell, or a polar area) keep that alpha, the rest drop to LOC_PICK_DL_DIM_ALPHA. Lines: every
+// end cell, or a polar area) keep that alpha, the rest drop to LOC_PICK_DL_DIM_ALPHA; the picked time
+// bands are hatched over (_locPickPickHatchFill; a polar area keeps its own hatching alone). Lines: every
 // level's rings at 1 px; border edges of the grid (lon +-180, lat +-90) are not lines. Labels over
 // the graticule (_locPickDlDrawLabels): where the lines cross meridians (Day length) or parallels
 // (Sunrise, Sunset) through and beside the view's centre (_locPickDlLabels). The view's paths and labels are kept until the view or the shapes change.
@@ -377,6 +378,7 @@ function _locPickDlDraw(ctx, V, w, h) {
     }
     ctx.globalAlpha = 1 - (1 - LOC_PICK_DL_ALPHA) / (1 - LOC_PICK_DL_DIM_ALPHA);
     ctx.drawImage(off, x0, y0, sw / q, sh / q);
+    if (hi !== 'day' && hi !== 'night') _locPickPickHatchFill(ctx, x0, y0, bw, bh);   // the polar areas have their own
     ctx.restore();
   }
   ctx.globalAlpha = 1;
@@ -411,9 +413,11 @@ function _locPickDlGeom(V, w, h, S) {
 // the lower neighbour, the band's colour toward white (toward black in the light theme), not while
 // moving (the buffer is coarse then, as the zones' lines); the image laid over the disc at
 // LOC_PICK_DL_ALPHA, the picked bands' pixels (and the lines) at full alpha in the image and the rest
-// at LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA. Made again when the disc (its gen), the shapes' key
-// (date, mode and so the palette, offsets) or the theme change; a pick rewrites the alpha alone.
-let _locPickDlLocalC = null;   // { key, band, ln, img, cv, hi (_locPickDlHiKey), lines, hatched, fallback, ms, msBands }
+// at LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA, the picked time bands hatched over from a mask of
+// their pixels (_locPickPickHatchOver; not the polar areas, hatched already). Made again when the disc
+// (its gen), the shapes' key (date, mode and so the palette, offsets) or the theme change; a pick
+// rewrites the alpha and the mask alone.
+let _locPickDlLocalC = null;   // { key, band, ln, img, cv, mask, maskImg, hi (_locPickDlHiKey), lines, hatched, fallback, ms, msBands }
 const LOC_PICK_DL_LINE_MIX = 0.5;   // a line pixel: this far from the band's colour toward white or black
 function _locPickDlDrawLocal(ctx, V, S) {
   const Z = _locPick.veilSrc;
@@ -428,6 +432,7 @@ function _locPickDlDrawLocal(ctx, V, S) {
   ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = LOC_PICK_DL_ALPHA;
   ctx.drawImage(B.cv, Z.x0, Z.y0, Z.sw / Z.q, Z.sh / Z.q);
+  if (hi !== null && hi !== 'day' && hi !== 'night') _locPickPickHatchOver(ctx, B.mask, Z.x0, Z.y0, Z.sw / Z.q, Z.sh / Z.q, 'dl');
   ctx.restore();
 }
 // The band codes picked by hi (_locPickDlHiBand): 1 for each picked of 0..49, null with none
@@ -446,7 +451,19 @@ function _locPickDlLocalAlpha(B, hi) {
     px[o] = b === 255 ? 0 : !m || m[b] || ln[k] ? 255 : dim;
   }
   B.cv.getContext('2d').putImageData(B.img, 0, 0);
+  _locPickDlLocalMask(B, m);
   B.hi = _locPickDlHiKey(hi);
+}
+// The hatching's mask for the picked bands m (_locPickDlLocalPicked): their pixels opaque, not the
+// polar areas'; nothing without a pick. Its pixels in one buffer kept with the image (B.maskImg)
+function _locPickDlLocalMask(B, m) {
+  const cv = B.mask || (B.mask = document.createElement('canvas')), w = B.img.width, h = B.img.height;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  if (!m) { cv.getContext('2d').clearRect(0, 0, w, h); return; }
+  if (!B.maskImg || B.maskImg.width !== w || B.maskImg.height !== h) B.maskImg = new ImageData(w, h);
+  const px = B.maskImg.data, band = B.band;
+  for (let k = 0, o = 3; k < band.length; k++, o += 4) { const b = band[k]; px[o] = b < 48 && m[b] ? 255 : 0; }
+  cv.getContext('2d').putImageData(B.maskImg, 0, 0);
 }
 function _locPickDlLocalMake(S, Z, lt, key, hi) {
   const t0 = performance.now(), src = _dlLocalSrc(S.mode, S.D);
@@ -515,21 +532,14 @@ function _locPickDlLocalMake(S, Z, lt, key, hi) {
   const cv = (_locPickDlLocalC && _locPickDlLocalC.cv) || document.createElement('canvas');
   if (cv.width !== sw || cv.height !== sh) { cv.width = sw; cv.height = sh; }
   cv.getContext('2d').putImageData(img, 0, 0);
-  return { key, band, ln, img, cv, hi: _locPickDlHiKey(hi), lines, hatched, fallback, ms: performance.now() - t0, msBands: t1 - t0 };
-}
-// The offset [h] of the disc's pixel under canvas point (x, y), null off the disc or without the index
-function _locPickDlOffsetAt(x, y) {
-  const Z = _locPick.veilSrc;
-  if (!Z) return null;
-  const i = Math.floor((x - Z.x0) * Z.q), j = Math.floor((y - Z.y0) * Z.q);
-  if (i < 0 || j < 0 || i >= Z.sw || j >= Z.sh) return null;
-  const k = Z.oi[j * Z.sw + i];
-  return k === 255 ? null : Z.list[k];
+  const B = { key, band, ln, img, cv, mask: _locPickDlLocalC && _locPickDlLocalC.mask, maskImg: _locPickDlLocalC && _locPickDlLocalC.maskImg, hi: _locPickDlHiKey(hi), lines, hatched, fallback, ms: 0, msBands: t1 - t0 };
+  _locPickDlLocalMask(B, picked);
+  B.ms = performance.now() - t0;
+  return B;
 }
 // The labels over the graticule (called by _locPickDraw after it, where the zones' labels go)
 function _locPickDlDrawLabels(ctx, V, w, h) {
-  if (_locPick.dlLabels === 'cities') { _locPickDlPlaceHere(ctx, V, w, h); return; }
-  _locPickDlHereDrawn = null;
+  if (_locPick.dlLabels === 'cities') { _locPickCityPlaceHere(ctx, V, w, h); return; }
   const labels = _locPickDlLabels(V, w, h);
   if (!labels.length) return;
   ctx.save();
@@ -544,19 +554,11 @@ function _locPickDlDrawLabels(ctx, V, w, h) {
   ctx.restore();
 }
 // ─── Cities: the values at the places ────────────────────────────────────────────────────────────
-// The places layer (render-locplaces.js) asks the hook (_locPlacesTagHook) for a tag per place, in
-// its order of importance; a place gets one only LOC_PICK_DL_TAG_GAP_PX * (1 - ln zoom / ln 40) px
-// (none at the closest zoom) from every tag given before it, the Location's first. The value from the
-// exact model on the drawn date at the place, in the base (local: the place's own zone), cut to the
-// minute as the head's; in its band's colour, the polar day and night as such in the palette's ends.
-// None without the zones' data (no guessed times). Cities turns the places on for the while
-// (_locPickDlCitiesSync) and gives back the state before.
-const LOC_PICK_DL_TAG_GAP_PX = 90;
-const LOC_PICK_DL_TAG_FONT = "bold 10px 'Share Tech Mono', monospace";   // the Location's tag
-const LOC_PICK_DL_HERE_DY = 15;   // the Location's tag's centre this far under (or over) the pin
-const LOC_PICK_DL_HERE_DX = 8;    // ... or its left edge this far right of the pin
-let _locPickDlPlacesWas = null;   // the places shown before Cities turned them on; null while not in Cities
-let _locPickDlHereDrawn = null;   // the Location's tag drawn last: { text, rgb, x, y, box }, null for none
+// The tags after the places' names and by the Location's pin (render-locpick-cities.js, owner
+// 'daylight'): the value from the exact model on the drawn date at the place, in the base (local: the
+// place's own zone), cut to the minute as the head's; in its band's colour, the polar day and night as
+// such in the palette's ends. None without the zones' data (no guessed times). Cities turns the places
+// on for the while (_locPickDlCitiesSync) and gives back the state before.
 let _locPickDlTagC = null;        // the places' values: { key, map: row -> { text, rgb } }
 // The tag at (lat, lon) on date D for mode, the clock offset off (rise and set)
 function _locPickDlTagValue(lat, lon, D, mode, off) {
@@ -566,96 +568,37 @@ function _locPickDlTagValue(lat, lon, D, mode, off) {
   const c = _dlClock(mode === 'rise' ? e.riseUT : e.setUT, off);
   return { text: _dlFmt(mode, cut(c)), rgb: _dlColor(mode, _dlBand(mode, c)) };
 }
-const _locPickDlTagHook = {
-  D: null, at: [], gap: 0, mode: 'length', base: '', off: 0,
-  // the frame's date, mode and base; the Location's tag placed clear of the names (names, blocked:
-  // the boxes of the places' names and of the window's controls), first among the given and kept clear of
-  begin(V, names, blocked) {
-    const T = _locPickDlTagHook, D = _locPickDlDrawnDate, H = _locPickDlHereDrawn;
-    T.D = null; T.at = [];
-    if (!_locPick.dl || _locPick.ecl || !D || !_tzGrid.data) return null;
+const _locPickDlCity = _locPickCityOwners.daylight = {
+  D: null, mode: 'length', base: '', off: 0,
+  // the frame's date, mode and base; none without the layer, on the Eclipse map, or without the zones' data
+  frame() {
+    const T = _locPickDlCity, D = _locPickDlDrawnDate;
+    T.D = null;
+    if (!_locPick.dl || _locPick.ecl || !D || !_tzGrid.data) return false;
     T.D = D; T.mode = _locPick.dlMode; T.base = T.mode === 'length' ? '' : _locPick.dlBase;
     T.off = T.base === 'location' ? _locPickDlBaseOffset() : 0;
-    T.gap = LOC_PICK_DL_TAG_GAP_PX * Math.max(0, 1 - Math.log(_locPick.zoom) / Math.log(LOC_PICK_ZOOM_MAX));
     const ms = T.base === 'local' ? _tzModeInstant() : null;   // the zones' offsets (DST) at the mode's moment
     const key = [D.year, D.month, D.day, T.mode, T.base, T.off, ms === null ? '' : Math.floor(ms / 3600000)].join('|');
     if (!_locPickDlTagC || _locPickDlTagC.key !== key) _locPickDlTagC = { key, map: new Map() };
-    if (!H) return null;
-    _locPickDlHereFit(H, blocked.concat(names));
-    T.at.push([H.x, H.y]);
-    return [H.box];
+    return true;
   },
-  tag(r, x, y) {
-    const T = _locPickDlTagHook, g2 = T.gap * T.gap;
-    if (!T.D) return null;
-    for (const a of T.at) if ((a[0] - x) * (a[0] - x) + (a[1] - y) * (a[1] - y) < g2) return null;
-    let v = _locPickDlTagC.map.get(r);
+  // a place's row (kept per frame's key) or the Location's { lat, lon }
+  value(p) {
+    const T = _locPickDlCity, row = Array.isArray(p);
+    let v = row ? _locPickDlTagC.map.get(p) : null;
     if (!v) {
-      v = _locPickDlTagValue(r[2], r[3], T.D, T.mode, T.base === 'local' ? _dlOffsetInfoAt(r[2], r[3]).h : T.off);
-      _locPickDlTagC.map.set(r, v);
+      const lat = row ? p[2] : p.lat, lon = row ? p[3] : p.lon;
+      v = _locPickDlTagValue(lat, lon, T.D, T.mode, T.base === 'local' ? _dlOffsetInfoAt(lat, lon).h : T.off);
+      if (row) _locPickDlTagC.map.set(p, v);
     }
-    return { text: v.text, rgb: v.rgb, x, y };
+    return v;
   },
-  took(t) { _locPickDlTagHook.at.push([t.x, t.y]); },
+  title() { _locPickDlLabelsTitle(); },
 };
-// The Location's tag by its pin (Cities): its value and a first place clear of the window's controls
-// and the canvas's edges (_locPickDlHereFit); placed again clear of the places' names once they are
-// laid out (the hook's begin), before their tags; drawn after them and the pin (_locPickDlDrawHere),
-// on top
-function _locPickDlPlaceHere(ctx, V, w, h) {
-  _locPickDlHereDrawn = null;
-  const D = _locPickDlDrawnDate;
-  if (!D || !_tzGrid.data || _locPick.ecl) return;
-  const [la, lo] = _dlLocation(), s = _locPickProject(V, _locPickVec(lo, la));
-  if (s.z < 0) return;
-  const mode = _locPick.dlMode, base = _locPick.dlBase;
-  const off = mode === 'length' || base === 'utc' ? 0 : base === 'location' ? _locPickDlBaseOffset() : _dlOffsetInfoAt(la, lo).h;
-  const t = _locPickDlTagValue(la, lo, D, mode, off), f = LOC_PICK_DL_TAG_FONT;
-  const pw = _locPlacesWidth(ctx, f, t.text) + 2 * LOC_PLACES_TAG_PAD;
-  _locPickDlHereFit(_locPickDlHereDrawn = { text: t.text, rgb: t.rgb, x: s.x, y: s.y, pw, w, h }, _locPlacesKeepClear(ctx.canvas));
-}
-// The Location's tag H: below its pin, else above, else right of it, the first whose box is within
-// the canvas and clear of the boxes; below when none is (H.fit 'below', 'above', 'right', 'none')
-function _locPickDlHereFit(H, boxes) {
-  const dy = LOC_PICK_DL_HERE_DY, c = H.x - H.pw / 2;
-  const tries = [['below', c, H.y + dy], ['above', c, H.y - dy], ['right', H.x + LOC_PICK_DL_HERE_DX, H.y]];
-  const at = (x0, yc) => ({ x0: x0 - 2, y0: yc - 8, x1: x0 + H.pw + 2, y1: yc + 8 });
-  const clear = (b) => b.x0 >= 0 && b.y0 >= 0 && b.x1 <= H.w && b.y1 <= H.h && !boxes.some(o => b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1);
-  let pick = tries.find(([, x0, yc]) => clear(at(x0, yc)));
-  H.fit = pick ? pick[0] : 'none';
-  if (!pick) pick = tries[0];
-  H.x0 = pick[1]; H.yc = pick[2]; H.box = at(pick[1], pick[2]);
-}
-function _locPickDlDrawHere(ctx) {
-  const H = _locPickDlHereDrawn;
-  if (!H || !_locPick.dl || _locPick.dlLabels !== 'cities') return;
-  ctx.save();
-  ctx.textBaseline = 'middle';
-  _locPlacesDrawTag(ctx, H, LOC_PICK_DL_TAG_FONT, H.x0, H.yc, 1);
-  ctx.restore();
-}
 // The hook and the places with the layer and the labels' kind: in Cities (not on the Eclipse map) the
-// places on for the while (not remembered), out of it the state before again (remembered), or the
-// one the user chose meanwhile (_locPickDlPlacesChosen). Called on the layer's, the labels' and the
-// window's changes (_locPickSetOpen)
+// places on for the while. Called on the layer's, the labels' and the window's changes (_locPickSetOpen)
 function _locPickDlCitiesSync() {
-  const on = _locPick.dl && !_locPick.ecl && _locPick.dlLabels === 'cities';
-  _locPlacesTagHook = on ? _locPickDlTagHook : null;
-  if (on && _locPickDlPlacesWas === null) {
-    _locPickDlPlacesWas = _locPlaces.on;
-    if (!_locPlaces.on) _locPlacesSetOn(true, true);
-  } else if (!on && _locPickDlPlacesWas !== null) {
-    const was = _locPickDlPlacesWas;
-    _locPickDlPlacesWas = null;
-    if (!was && _locPlaces.on) _locPlacesSetOn(false, true);   // the remembered value is still the user's
-  }
-  _locPickDlLabelsTitle();
-  if (!on) _locPickDlHereDrawn = null;
-}
-// The user turned the places on or off (_locPlacesSetOn): during Cities that is the state it gives back
-function _locPickDlPlacesChosen(on) {
-  if (_locPickDlPlacesWas !== null) _locPickDlPlacesWas = on;
-  _locPickDlLabelsTitle();
+  _locPickCitySync('daylight', _locPick.dl && !_locPick.ecl && _locPick.dlLabels === 'cities');   // the toggle's title too
 }
 // The Cities toggle's title: a hint while the places (which show the times) are off in Cities
 function _locPickDlLabelsTitle() {
@@ -736,7 +679,7 @@ function _locPickDlLabels(V, w, h) {
           if (p.z < LOC_PICK_DL_LABEL_Z) continue;
           let o = S.off;
           if (S.local) {   // a band edge only where the pixel's zone makes the UT level a half hour
-            o = _locPickDlOffsetAt(p.x, p.y);
+            o = _locPickZoneOffsetAt(p.x, p.y);
             if (o === null) continue;
             const c = (L.level + o) / S.step;
             if (Math.abs(c - Math.round(c)) > 1e-6) continue;
@@ -810,8 +753,9 @@ for (const type of ['input', 'change', 'click', 'pointerup', 'keyup', 'wheel']) 
 // images; made again on the next draw with the layer on
 function _locPickDlRelease() {
   _dlShapesReset();
-  if (_locPickDlLocalC) { _locPickDlLocalC.cv.width = _locPickDlLocalC.cv.height = 0; }
+  if (_locPickDlLocalC) { _locPickDlLocalC.cv.width = _locPickDlLocalC.cv.height = 0; if (_locPickDlLocalC.mask) _locPickDlLocalC.mask.width = _locPickDlLocalC.mask.height = 0; }
   if (_locPickDlOff) { _locPickDlOff.width = _locPickDlOff.height = 0; }
+  if (typeof _locPickPickHatchRelease === 'function') _locPickPickHatchRelease('dl');   // render-locpick.js
   _locPickDlCache = _locPickDlLocalC = _locPickDlGeomC = _locPickDlLabelC = _locPickDlOff = _locPickDlTagC = null;
   _locPickDlShownKey = null; _locPickDlMadeAt = -Infinity;
 }

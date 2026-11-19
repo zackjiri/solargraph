@@ -18,11 +18,12 @@
 //    ring round the dot), then 10 and 9 px. The name in English, with a dark outline.
 //  - Only for orientation: drawn on the canvas, a click on a dot or a label sets the point clicked,
 //    as anywhere else on the globe.
-//  - A tag after the name (_locPlacesTagHook, set by the Daylight layer's Cities labels): asked for
-//    once the names are laid out (so the names are the same with and without the tags, each on its
-//    side), in the same order; a pill in the hook's colour with the hook's text after the name, the
-//    label's box that much wider on its side; none where that is not clear of the other labels.
-//    Unset, nothing changes.
+//  - A tag after the name (_locPlacesTagHook, set by the city tags of the Daylight layer or the time
+//    zones, render-locpick-cities.js): asked for once the names are laid out (so the names are the
+//    same with and without the tags, each on its side), in the same order; a pill in the hook's
+//    colour with the hook's text after the name, the label's box that much wider on its side; none
+//    where that is not clear of the other labels. Then the hook may add more (cover). Unset, nothing
+//    changes.
 // The search (render-tzsearch.js) finds the places too (_locPlaces.entries) and picking one flies
 // there, sets the Location and turns the places on.
 const LOC_PLACES_KEY = 'solargraphyLocPlaces';
@@ -62,8 +63,9 @@ const _locPlaces = {
 try { _locPlaces.on = localStorage.getItem(LOC_PLACES_KEY) === '1'; } catch (e) { /* storage blocked */ }
 // The tags' hook, null for none: { begin(V, names, blocked) -> [boxes the tags keep clear of] | null,
 // once per frame after the names are laid out (names: their boxes; blocked: the controls' boxes);
-// tag(row, x, y) -> { text, rgb } | null, per place laid out, in their order; took(tag), when the
-// place gets that tag }
+// tag(row, x, y) -> { text, rgb, textRgb } | null, per place laid out, in their order; took(tag), when the
+// place gets that tag; cover(out, rows, put, claim) once after them: put(i, tag) gives place i that tag
+// if clear (true when it did), claim(box) takes a box if free (true when it did) }
 let _locPlacesTagHook = null;
 const LOC_PLACES_TAG_GAP = 2, LOC_PLACES_TAG_PAD = 3;   // the pill's distance from the name, its padding either side
 const LOC_PLACES_TAG_DARK_LUMA = 110;   // a pill darker than this (0.299 r + 0.587 g + 0.114 b) has light text
@@ -94,13 +96,13 @@ function _locPlacesLoad() {
   return _locPlaces.loading;
 }
 
-// transient: not remembered (the Daylight layer's Cities labels turning them on for a while); else the
-// user's choice, which Cities then gives back when it ends (_locPickDlPlacesChosen)
+// transient: not remembered (the city tags turning them on for a while); else the user's choice, which
+// the city tags then give back when they end (_locPickCityPlacesChosen)
 function _locPlacesSetOn(on, transient) {
   _locPlaces.on = on;
   if (!transient) {
     try { localStorage.setItem(LOC_PLACES_KEY, on ? '1' : '0'); } catch (e) { /* storage blocked */ }
-    if (typeof _locPickDlPlacesChosen === 'function') _locPickDlPlacesChosen(on);   // render-locpick-daylight.js
+    if (typeof _locPickCityPlacesChosen === 'function') _locPickCityPlacesChosen(on);   // render-locpick-cities.js
   }
   const b = document.getElementById('btnLocPickPlaces');
   b.setAttribute('aria-pressed', String(on));
@@ -173,16 +175,20 @@ function _locPlacesDraw(ctx, V, w, h) {
   // that much wider on its side; none where that is not clear of the rest
   const TB = TH ? TH.begin(V, boxes.slice(), blocked.slice()) : null;
   if (TB) for (const b of TB) blocked.push(b);
-  if (TH) out.forEach((p, i) => {
-    const tag = TH.tag(rows[i], p.x, p.y);
-    if (!tag) return;
-    const gw = LOC_PLACES_TAG_GAP + 2 * LOC_PLACES_TAG_PAD + _locPlacesWidth(ctx, p.font, tag.text), b = p.box;
+  const put = (i, tag) => {
+    const p = out[i], gw = LOC_PLACES_TAG_GAP + 2 * LOC_PLACES_TAG_PAD + _locPlacesWidth(ctx, p.font, tag.text), b = p.box;
     const wide = b.side > 0 ? Object.assign({}, b, { x1: b.x1 + gw }) : Object.assign({}, b, { x0: b.x0 - gw });
-    if (!free(wide, b)) return;
+    if (!free(wide, b)) return false;
     take(wide);
     p.box = wide; p.tag = tag;
     TH.took(tag);
+    return true;
+  };
+  if (TH) out.forEach((p, i) => {
+    const tag = TH.tag(rows[i], p.x, p.y);
+    if (tag) put(i, tag);
   });
+  if (TH && TH.cover) TH.cover(out, rows, put, (b) => { if (!free(b)) return false; take(b); return true; });
   ctx.save();
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
@@ -207,7 +213,7 @@ function _locPlacesDraw(ctx, V, w, h) {
   _locPlaces.drawn = out;
 }
 // A tag's pill from x (its edge toward the name) on side (1 right, -1 left), centred on y: the tag's
-// colour, the text dark on it (light on a dark colour)
+// colour, the text the tag's own (textRgb) or dark on it (light on a dark colour)
 function _locPlacesDrawTag(ctx, tag, font, x, y, side) {
   const tw = _locPlacesWidth(ctx, font, tag.text), pw = tw + 2 * LOC_PLACES_TAG_PAD;
   const th = parseFloat(/(\d+(?:\.\d+)?)px/.exec(font)[1]) + 2, x0 = side > 0 ? x : x - pw, c = tag.rgb;
@@ -215,7 +221,8 @@ function _locPlacesDrawTag(ctx, tag, font, x, y, side) {
   ctx.fillRect(x0, y - th / 2, pw, th);
   ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeRect(x0 + 0.5, y - th / 2 + 0.5, pw - 1, th - 1);
   ctx.font = font; ctx.textAlign = 'left';
-  ctx.fillStyle = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < LOC_PLACES_TAG_DARK_LUMA ? '#f2f5f8' : '#0b0f14';
+  const t = tag.textRgb;
+  ctx.fillStyle = t ? 'rgb(' + t[0] + ',' + t[1] + ',' + t[2] + ')' : 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < LOC_PLACES_TAG_DARK_LUMA ? '#f2f5f8' : '#0b0f14';
   ctx.fillText(tag.text, x0 + LOC_PLACES_TAG_PAD, y + 0.5);
 }
 // The globe's zoom at which a place of this min_zoom shows (a little closer, so it is not at the edge)
