@@ -42,7 +42,7 @@ container.addEventListener('mousemove', (e) => {
       document.getElementById('valTime').textContent = '—';
       document.getElementById('valDir').textContent  = '—';
       updateInfoReadout();   // no longer hovering - falls back to Custom date/sunTimeHours
-      draw();
+      _draw2dHoverSoon();   // render-2d.js: the kept picture without the crosshair
     }
     return;
   }
@@ -74,7 +74,7 @@ container.addEventListener('mousemove', (e) => {
   document.getElementById('valDir').textContent  = inRange ? azimutToDir(displayAz) : '—';
   updateInfoReadout();
 
-  draw();
+  _draw2dHoverSoon();   // render-2d.js: the kept picture and the crosshair, once per frame
 });
 
 container.addEventListener('mouseleave', () => {

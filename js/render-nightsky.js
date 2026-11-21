@@ -991,7 +991,31 @@ function _nightSkySyncControls() {
   _nightSkyBuildTimeScale();
   _nightSkyTrackSky();   // equatorial video: the camera follows the sky to the new instant
   if (typeof _nsTrSync === 'function') _nsTrSync();   // star trails: the strip's lines, the exposure's length
-  if (nightSkyActive) drawNightSky();
+  if (nightSkyActive && !_nightSkyAnimSkipDraw()) drawNightSky();
+}
+// Playback at a slow speed: the Planetarium is drawn again only once the sky has turned by
+// NIGHTSKY_ANIM_MIN_PX on the screen since the last drawing (at 1x and the whole sky, a star moves a few
+// hundredths of a pixel per frame, so most frames would be identical); the time readouts above still
+// follow every frame. The turn is the sidereal rate times the time since that drawing, at the
+// projection's scale in the view's centre (FOCAL * layout.scale px per radian). Not while star trails
+// are exposed (they gather every frame), not in the other sub-modes; stopping draws the last instant.
+// While the SELECT window (render-locpick.js) covers the canvas, no sub-mode is drawn during playback at
+// all (only a 10 px strip of sky shows round the window); closing the window draws the current instant.
+const NIGHTSKY_ANIM_MIN_PX = 0.25;
+let _nightSkyDrawnJD = null;   // the instant of the last drawing (drawNightSky)
+let _nightSkyAnimSkipped = false;
+function _nightSkyAnimSkipDraw() {
+  _nightSkyAnimSkipped = false;
+  if (!_nightSkyAnimActive || _nightSkyDrawnJD === null) return false;
+  if (typeof _nsTr !== 'undefined' && _nsTr.state === 'exposing') return false;
+  if (typeof _locPick !== 'undefined' && _locPick.open) return (_nightSkyAnimSkipped = true);   // under the SELECT window
+  if (nightSkySubmode !== 'planetarium') return false;
+  const cv = document.getElementById('nightSkyCanvas');
+  if (!cv) return false;
+  const dpr = cv._res || 1, L = _nightSkyPlanetLayout(cv.width / dpr, cv.height / dpr);
+  const jd = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);
+  const px = Math.abs(jd - _nightSkyDrawnJD) * 2 * Math.PI * 1.00273791 * _nightSkyPlanet3D.FOCAL * L.scale;
+  return (_nightSkyAnimSkipped = px < NIGHTSKY_ANIM_MIN_PX);
 }
 function _nightSkyCommitDate() {
   _nightSkyReanchorAnim();
@@ -1624,6 +1648,7 @@ function _nightSkyStartAnim() {
 }
 function _nightSkyStopAnim() {
   _nightSkyAnimActive = false;
+  if (_nightSkyAnimSkipped && nightSkyActive) { _nightSkyAnimSkipped = false; drawNightSky(); }   // the last instant drawn
   _nightSkySetPlayIcon(false);
   if (_nightSkyAnimRAF !== null) { cancelAnimationFrame(_nightSkyAnimRAF); _nightSkyAnimRAF = null; }
 }
@@ -3048,14 +3073,22 @@ function _nightSkyPlanetZoomMin() {
   const f = _nightSkyActiveFrame;
   return f && Number.isFinite(f.zoomMin) ? Math.min(NIGHTSKY_PLANET_ZOOM_MIN, f.zoomMin) : NIGHTSKY_PLANET_ZOOM_MIN;
 }
-function setNightSkyPlanetZoom(z, anchor) {
+// Redraws asked by a drag, a pinch or the wheel: one per frame of the browser at most (iPad, Safari
+// and fast mice can send several pointer events within one frame), the latest state drawn.
+let _nightSkyDrawSoonRaf = 0;
+function _nightSkyDrawSoon() {
+  if (_nightSkyDrawSoonRaf) return;
+  _nightSkyDrawSoonRaf = requestAnimationFrame(() => { _nightSkyDrawSoonRaf = 0; if (nightSkyActive) drawNightSky(); });
+}
+// soon: the drawing in the next frame (_nightSkyDrawSoon; the wheel and the pinch), else at once
+function setNightSkyPlanetZoom(z, anchor, soon) {
   if (!Number.isFinite(z)) return;   // keep the current zoom
   const hit = anchor ? _nightSkyPlanetAnchorHit(anchor) : null;
   _nightSkyPlanet3D.zoom = Math.max(_nightSkyPlanetZoomMin(), Math.min(NIGHTSKY_PLANET_ZOOM_MAX, z));
   _nightSkyUpdatePlanetCamera();
   if (hit) _nightSkyPlanetKeepUnder(anchor, hit);
   _nightSkyPlanetZoomSyncSlider();
-  if (nightSkyActive) drawNightSky();
+  if (nightSkyActive) { if (soon) _nightSkyDrawSoon(); else drawNightSky(); }
 }
 function _nightSkyPlanetZoomSyncSlider() {
   const shown = Math.max(NIGHTSKY_PLANET_ZOOM_MIN, _nightSkyPlanet3D.zoom);
@@ -4431,9 +4464,9 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
     if (typeof _nsAllskyMove === 'function') _nsAllskyMove();   // the photo overlay at its lower resolution
     if (grab && grab.hit) {
       const a = anchorAt({ x, y });
-      if (_nightSkyPlanetKeepUnder(a, grab.hit)) { drawNightSky(); return; }
+      if (_nightSkyPlanetKeepUnder(a, grab.hit)) { _nightSkyDrawSoon(); return; }
       // not reachable (the altitude limit): from here on the point under the pointer is the grab
-      drawNightSky();
+      _nightSkyDrawSoon();
       grab.hit = _nightSkyPlanetPixelToAzEl(_nightSkyPlanetLayout(a.w, a.h), a.x, a.y);
       return;
     }
@@ -4442,7 +4475,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
     _nightSkyPlanet3D.camAz -= dx * 0.005 / z;
     _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, _nightSkyPlanet3D.camEl + dy * 0.004 / z));
     _nightSkyUpdatePlanetCamera();
-    drawNightSky();
+    _nightSkyDrawSoon();
   }
   function dragEnd() {
     if (!dragging) return;
@@ -4474,7 +4507,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
   cv.addEventListener('pointermove', (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && pts.size === 2 && typeof _nsAllskyMove === 'function') _nsAllskyMove();
-    if (pinch) { if (pts.size === 2) setNightSkyPlanetZoom(pinch.z * spread() / pinch.d, anchorAt(mid())); return; }
+    if (pinch) { if (pts.size === 2) setNightSkyPlanetZoom(pinch.z * spread() / pinch.d, anchorAt(mid()), true); return; }
     dragMove(e.clientX, e.clientY);
   });
   const up = (e) => {
@@ -4496,7 +4529,7 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
     e.preventDefault();
     if (typeof _nsAllskyMove === 'function') _nsAllskyMove();
     const eighths = Math.round(Math.log2(_nightSkyPlanet3D.zoom) * 8) - Math.sign(e.deltaY);
-    setNightSkyPlanetZoom(Math.pow(2, eighths / 8), anchorAt({ x: e.clientX, y: e.clientY }));
+    setNightSkyPlanetZoom(Math.pow(2, eighths / 8), anchorAt({ x: e.clientX, y: e.clientY }), true);
   }, { passive: false });
 })();
 
@@ -4745,6 +4778,7 @@ function _nightSkyClearReadout() {
 })();
 
 function drawNightSky() {
+  _nightSkyDrawnJD = _skyToJulianDateUT(nightSkyYear, nightSkyMonth, nightSkyDay, nightSkyHourUT);   // _nightSkyAnimSkipDraw
   _nightSkyAtmHintSync();
   _nightSkyMagHoldSync();   // a field (Equipment, a presented photo) takes or gives back the Mag ≤ slider
   _nightSkyBortleSyncIfChanged();   // a new Location or its map tile come in: the Bortle scale row follows

@@ -1520,7 +1520,7 @@ document.getElementById('nsGlobeRose').addEventListener('click', () => {
     _nsGlobe.camEl = Math.max(-NS_GLOBE_EL_MAX, Math.min(NS_GLOBE_EL_MAX, _nsGlobe.camEl + (y - lastY) * k));
     lastX = x; lastY = y;
     _nsGlobePickerRetarget();   // a drag moves where a picked point is held
-    drawNightSky();
+    _nightSkyDrawSoon();   // one drawing per frame however many moves arrive (render-nightsky.js)
   };
   const end = () => { if (!dragging) return; dragging = false; _nsGlobe.interacting = false; cv.style.cursor = _nightSkyPicker.active ? 'crosshair' : ''; if (_nsGlobeActive()) drawNightSky(); };
   cv.addEventListener('mousedown', (e) => {

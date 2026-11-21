@@ -1,4 +1,34 @@
 // ─── Rendering ─────────────────────────────────────────────────────────────
+// Hover over the scan (controls.js mousemove): the scan and its layers do not change, only the
+// crosshair moves, so the picture drawn by draw() before its crosshair is kept on an offscreen canvas
+// (_draw2dBase) and a move copies it back and draws the crosshair (~0.3 ms instead of ~6 ms for the
+// whole draw()), at most once per frame of the browser (_draw2dHoverSoon), at the last position.
+const _draw2dBase = { cv: null, ok: false };
+function _draw2dKeepBase() {
+  const B = _draw2dBase;
+  if (!B.cv) B.cv = document.createElement('canvas');
+  if (B.cv.width !== canvas.width || B.cv.height !== canvas.height) { B.cv.width = canvas.width; B.cv.height = canvas.height; }
+  const k = B.cv.getContext('2d');
+  k.setTransform(1, 0, 0, 1, 0, 0);
+  k.clearRect(0, 0, B.cv.width, B.cv.height);
+  k.drawImage(canvas, 0, 0);
+  B.ok = true;
+}
+function _draw2dHover() {
+  const B = _draw2dBase;
+  if (!B.ok || !B.cv || B.cv.width !== canvas.width || B.cv.height !== canvas.height
+      || (typeof skyDomeActive !== 'undefined' && skyDomeActive)) { draw(); return; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(B.cv, 0, 0);
+  ctx.setTransform(canvasRES, 0, 0, canvasRES, 0, 0);
+  if (mouseX >= 0 && !splitActive) drawCrosshair(canvasLW, canvasLH);
+}
+let _draw2dHoverRaf = 0;
+function _draw2dHoverSoon() {
+  if (_draw2dHoverRaf) return;
+  _draw2dHoverRaf = requestAnimationFrame(() => { _draw2dHoverRaf = 0; if (currentMode === 'analyzer') _draw2dHover(); });
+}
 function draw() {
   const W = canvasLW;
   const H = canvasLH;
@@ -126,6 +156,10 @@ function draw() {
       }
     }
   }
+
+  // The picture without the crosshair kept for the hover (_draw2dHover): a mouse move then copies it
+  // back and draws only the crosshair, every other change goes through draw() and renews it.
+  _draw2dKeepBase();
 
   // Cursor crosshair – hide in split mode
   if (mouseX >= 0 && !splitActive) drawCrosshair(W, H);

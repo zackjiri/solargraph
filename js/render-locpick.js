@@ -1347,6 +1347,8 @@ function _locPickSetOpen(on, ecl) {
   _locPick.ecl = on ? (ecl || null) : null;
   if (!on && typeof _locPickDlRelease === 'function') _locPickDlRelease();   // render-locpick-daylight.js
   if (!on) { _locPickLpHiRelease(); _locPickPickHatchRelease(); _locPickZoneDstRelease(); }
+  // Night Sky's playback skipped its frames under the window (_nightSkyAnimSkipDraw): the current instant now
+  if (!on && was && typeof _nightSkyAnimSkipped !== 'undefined' && _nightSkyAnimSkipped && nightSkyActive) { _nightSkyAnimSkipped = false; drawNightSky(); }
   if (typeof _locPickDlCitiesSync === 'function') _locPickDlCitiesSync();   // Cities' places: not on the Eclipse map
   _locPickZoneCitiesSync();
   document.getElementById('locPickWin').classList.toggle('open', on);
