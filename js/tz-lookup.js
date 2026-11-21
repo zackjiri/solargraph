@@ -74,14 +74,21 @@ function _tzNautical(lon) {
   return Math.max(-12, Math.min(12, Math.round(lon / 15)));
 }
 // The zone's offset from UTC [h] at the instant ms, or null if the browser does not know the zone
+// A zone's formatter kept per zone (making one is most of the cost: 301 zones x 24 dates ~310 ms
+// made each time, ~45 ms kept); null for a zone the browser does not know
+const _tzOffsetFmts = new Map();
 function _tzOffsetAt(zone, ms) {
-  let parts;
-  try {
-    parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric',
-      day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date(ms));
-  } catch (e) { return null; }
+  let f = _tzOffsetFmts.get(zone);
+  if (f === undefined) {
+    try {
+      f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric',
+        day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    } catch (e) { f = null; }
+    _tzOffsetFmts.set(zone, f);
+  }
+  if (!f) return null;
   const p = {};
-  for (const x of parts) p[x.type] = +x.value;
+  for (const x of f.formatToParts(new Date(ms))) p[x.type] = +x.value;
   const local = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
   return (local - Math.floor(ms / 1000) * 1000) / 3600000;
 }

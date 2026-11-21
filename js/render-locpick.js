@@ -41,7 +41,7 @@ const _locPick = {
   dl: false, dlMode: 'length', dlBase: 'local', dlLabels: 'edges', dlHi: { hover: null, pin: null },
   // their parts, each switched in the legend (#locPickZoneLegend); the same date off at first, as
   // it watches the time (_locPickDays)
-  zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true },
+  zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true, dst: false },
   // the labels' content and place, kept while the page is open (#locPickZoneText, #locPickZonePlace):
   // 'zone' the offset or 'time' the local time (_locPickZoneTimeAt); 'zones' in the areas or 'cities'
   zoneText: 'zone', zonePlace: 'zones',
@@ -51,6 +51,8 @@ const _locPick = {
   zoneMinute: null,    // the minute of the moment the Time labels were drawn for (null: none shown)
   zoneTimeDrawn: 0,    // when they were drawn [performance.now()]
   daySig: '',          // the same date's signature the cached disc was drawn with (_locPickDays)
+  dstSig: '',          // the zones' DST states the signs were last drawn with (_locPickDrawZoneDst)
+  dst: null,           // the signs' layers (_locPickDrawZoneDst), freed with the row or the window
   drag: null,          // {x, y, lon0, lat0, moved}
   hover: null,         // {lat, lon} under the pin, or null
   wave: null,          // {lat, lon, t0, zoom}
@@ -112,6 +114,8 @@ function _locPickUnproject(V, x, y) {   // a canvas point -> {lat, lon}, or null
 //    disc (_locPickDrawVeil) so that following the time costs little;
 //  - an offset off the whole hour (+5:30, +5:45, -3:30 ...): diagonal hatching, its pitch steady
 //    on the screen;
+//  - daylight saving time (off at first): + or 0 signs over the zones that use it, by their clock
+//    at the moment (± in Solargraph), a layer of their own over the disc (_locPickDrawZoneDst);
 //  - the offsets' values: a label per patch of one offset (land and sea together) large enough on
 //    the screen, near its middle but on the patch, clear of the other labels, the pin and the
 //    legends (at rest; _locPickZoneLabels). Zone | Time in the legend: the offset, or the local
@@ -499,6 +503,170 @@ function _locPickDrawMatch(ctx, V) {
   ctx.drawImage(MC.cv, S.x0, S.y0, S.sw / S.q, S.sh / S.q);
   ctx.restore();
 }
+// Daylight saving time (the legend's row, off at first): over every zone that uses it, a pattern of
+// signs saying what its clock does at the mode's moment (_tzDateInstant): + moved ahead of its
+// standard time, 0 on its standard time; in Solargraph (no moment) ± over the zones that use it this
+// year. A zone's standard time is its lowest offset over the moment's year (by the clock, not by
+// law: Dublin as London, Morocco + but in Ramadan), and it uses DST when its offset is not the same
+// all year: sampled on the 1st and the 15th of each month and on 31 Dec at 12:00 UT, each change
+// between two samples then found to the minute, once per year (_locPickZoneDstYear, ~55 ms for all
+// the zones). The state at a moment is then looked up without Intl, so the watcher (_locPickWatch)
+// follows it on every frame (not in Solargraph: no moment). The signs are a layer over the disc as
+// the veil is (_locPickDrawZoneDst): per state a layer of signs on a grid steady on the screen (kept
+// per canvas size, not per disc), cut by a mask of that state's zones redone per disc and states,
+// so a drag (a new coarse disc per frame) redoes only the masks and the cut.
+const LOC_PICK_ZONE_DST_CELL = 16;                       // the grid's cell [CSS px], two signs in each
+const LOC_PICK_ZONE_DST_AT = [[4, 4], [12, 12]];         // the signs' centres in a cell [CSS px]
+const LOC_PICK_ZONE_DST_SCALE = 0.7;                     // the signs' size against the shapes below
+// The signs are drawn as shapes, not type: rounded strokes (scaled by LOC_PICK_ZONE_DST_SCALE), each a
+// dark outline (a wider stroke) under the coloured one, so they read over the zones and the hatching.
+// The + a cross of two bars, the 0 an upright oval, the ± a short cross over a bar.
+const LOC_PICK_ZONE_DST_SIGNS = [                        // by state code 1 .. 3
+  null,
+  { text: '+', stroke: '#FAC775', width: 2.2, outline: 4.4,
+    path: (L) => { L.moveTo(0, -4.5); L.lineTo(0, 4.5); L.moveTo(-4.5, 0); L.lineTo(4.5, 0); } },
+  { text: '0', stroke: 'rgba(255,255,255,0.9)', width: 2, outline: 4.2,
+    path: (L) => { L.moveTo(3, 0); L.ellipse(0, 0, 3, 4.2, 0, 0, Math.PI * 2); } },   // moveTo first: no line from the previous oval
+  { text: '±', stroke: 'rgba(255,255,255,0.9)', width: 1.8, outline: 4,
+    path: (L) => { L.moveTo(0, -6); L.lineTo(0, 0); L.moveTo(-3.5, -3); L.lineTo(3.5, -3); L.moveTo(-3.5, 4); L.lineTo(3.5, 4); } },
+];
+const LOC_PICK_ZONE_DST_OUTLINE = { color: '#1a1a1a' };
+const _locPickZoneDstYears = new Map();
+let _locPickZoneDstLast = { key: null, St: null };
+// A zone's year y: null without DST (or unknown to the browser), else { std (its lowest offset),
+// seg: [[from ms, offset], ...] } (the first from -Infinity)
+function _locPickZoneDstZone(zone, y) {
+  const ts = [];
+  for (let m = 0; m < 12; m++) ts.push(Date.UTC(y, m, 1, 12), Date.UTC(y, m, 15, 12));
+  ts.push(Date.UTC(y, 11, 31, 12));   // a change in the year's last fortnight
+  const hs = ts.map(t => _tzOffsetAt(zone, t));
+  if (hs[0] === null) return null;
+  const lo = Math.min(...hs);
+  if (lo === Math.max(...hs)) return null;
+  const seg = [[-Infinity, hs[0]]];
+  for (let k = 1; k < ts.length; k++) {
+    let a = ts[k - 1], ha = hs[k - 1];
+    while (ha !== hs[k]) {   // the first minute after a with another offset (more than one change: each)
+      let hi = ts[k];
+      while (hi - a > 60000) {
+        const mid = a + Math.floor((hi - a) / 120000) * 60000;
+        if (_tzOffsetAt(zone, mid) === ha) a = mid; else hi = mid;
+      }
+      ha = _tzOffsetAt(zone, hi); a = hi;
+      seg.push([hi, ha]);
+    }
+  }
+  return { std: Math.min(lo, ...seg.map(s => s[1])), seg };
+}
+// The year y per zone index (as _tzIndexAt, the grid's zones), cached
+function _locPickZoneDstYear(y) {
+  let T = _locPickZoneDstYears.get(y);
+  if (!T) {
+    T = [null].concat(_tzGrid.data.zones.map(z => _locPickZoneDstZone(z, y)));
+    _locPickZoneDstYears.set(y, T);
+  }
+  return T;
+}
+// A zone's sign at the instant ms (null: Solargraph, the current year): code 0 none, 1 +, 2 0, 3 ±
+function _locPickZoneDstCode(Z, ms) {
+  if (!Z) return 0;
+  if (ms === null) return 3;
+  let h = Z.seg[0][1];
+  for (let k = 1; k < Z.seg.length && Z.seg[k][0] <= ms; k++) h = Z.seg[k][1];
+  return h > Z.std ? 1 : 2;
+}
+// Every zone's state at the instant ms (null: Solargraph, the current year): codes per zone index,
+// 0 none, 1 +, 2 0, 3 ±; sig changes only with a state
+function _locPickZoneDstStates(ms) {
+  const y = ms === null ? new Date().getUTCFullYear() : new Date(ms).getUTCFullYear();
+  const key = ms === null ? 'y' + y : ms;
+  if (_locPickZoneDstLast.key === key) return _locPickZoneDstLast.St;
+  const T = _locPickZoneDstYear(y), codes = new Uint8Array(T.length);
+  for (let s = 1; s < T.length; s++) codes[s] = _locPickZoneDstCode(T[s], ms);
+  const St = { codes, sig: codes.join('') };
+  _locPickZoneDstLast = { key, St };
+  return St;
+}
+// One zone's sign at the instant ms by its name, also a zone the grid has merged into another
+// (Europe/Dublin into London): '+', '0', '±' or '' (none, or unknown)
+function _locPickZoneDstState(zone, ms) {
+  const y = ms === null ? new Date().getUTCFullYear() : new Date(ms).getUTCFullYear(), s = _tzGrid.data.zones.indexOf(zone) + 1;
+  const Z = s ? _locPickZoneDstYear(y)[s] : _locPickZoneDstZone(zone, y), c = _locPickZoneDstCode(Z, ms);
+  return c ? LOC_PICK_ZONE_DST_SIGNS[c].text : '';
+}
+// The signs' layer over the disc (after the veil and the search's dim), at the canvas' resolution.
+// Kept in _locPick.dst: glyphs[t] the signs of state t over the whole canvas (key gkey), masks[t]
+// the zones of state t at the disc's buffer resolution, work the cut, cv the result (key).
+function _locPickDrawZoneDst(ctx, V, w, h, res) {
+  const S = _locPick.veilSrc;
+  if (!_locPick.zoneParts.dst) { _locPick.dstSig = ''; return; }
+  const St = _locPickZoneDstStates(_tzDateInstant());
+  _locPick.dstSig = St.sig;
+  if (!S) return;
+  const lt = document.body.classList.contains('light'), W = Math.round(w * res), H = Math.round(h * res);
+  const key = [S.gen, St.sig, w, h, res, lt].join('|'), gkey = [w, h, res, lt].join('|');
+  const mk = () => document.createElement('canvas');
+  const D = _locPick.dst || (_locPick.dst = { cv: mk(), work: mk(), glyphs: [null, null, null, null], masks: [null, null, null, null], key: null, gkey: null, codes: null });
+  if (D.key !== key) {
+    if (D.gkey !== gkey) { for (let t = 1; t <= 3; t++) if (D.glyphs[t]) D.glyphs[t].width = D.glyphs[t].height = 0; D.glyphs = [null, null, null, null]; D.gkey = gkey; }
+    // per pixel of the disc's buffer its zone's state (0 at sea, off the disc, or without DST)
+    const n = S.zi.length, seen = [0, 0, 0, 0], imgs = [null, null, null, null];
+    for (let i = 0; i < n; i++) {
+      if (S.oi[i] === 255) continue;
+      const t = St.codes[S.zi[i]];
+      if (!t) continue;
+      if (!imgs[t]) imgs[t] = new ImageData(S.sw, S.sh);
+      imgs[t].data[i * 4 + 3] = 255; seen[t]++;
+    }
+    if (D.cv.width !== W || D.cv.height !== H) { D.cv.width = W; D.cv.height = H; } else D.cv.getContext('2d').clearRect(0, 0, W, H);
+    if (D.work.width !== W || D.work.height !== H) { D.work.width = W; D.work.height = H; }
+    const c = D.cv.getContext('2d'), K = D.work.getContext('2d');
+    for (let t = 1; t <= 3; t++) {
+      if (!seen[t]) continue;
+      const M = D.masks[t] || (D.masks[t] = mk());
+      if (M.width !== S.sw || M.height !== S.sh) { M.width = S.sw; M.height = S.sh; }
+      M.getContext('2d').putImageData(imgs[t], 0, 0);
+      // the cut: the mask scaled up (smoothed), the signs kept where it is
+      K.setTransform(1, 0, 0, 1, 0, 0); K.globalCompositeOperation = 'source-over'; K.clearRect(0, 0, W, H);
+      K.setTransform(res, 0, 0, res, 0, 0); K.imageSmoothingEnabled = true;
+      K.drawImage(M, S.x0, S.y0, S.sw / S.q, S.sh / S.q);
+      K.setTransform(1, 0, 0, 1, 0, 0); K.globalCompositeOperation = 'source-in';
+      K.drawImage(D.glyphs[t] || (D.glyphs[t] = _locPickZoneDstGlyphs(t, w, h, res)), 0, 0);
+      K.globalCompositeOperation = 'source-over';
+      c.drawImage(D.work, 0, 0);
+    }
+    D.key = key; D.codes = St.codes;
+  }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.beginPath(); ctx.arc(V.cx * res, V.cy * res, V.R * res, 0, Math.PI * 2); ctx.clip();
+  ctx.drawImage(D.cv, 0, 0);
+  ctx.restore();
+}
+// The signs of state t over the whole canvas (w x h CSS px at res), on the grid from its corner
+function _locPickZoneDstGlyphs(t, w, h, res) {
+  const G = LOC_PICK_ZONE_DST_SIGNS[t], cv = document.createElement('canvas');
+  cv.width = Math.round(w * res); cv.height = Math.round(h * res);
+  const L = cv.getContext('2d');
+  L.setTransform(res, 0, 0, res, 0, 0);
+  L.lineCap = 'round'; L.lineJoin = 'round';
+  const cs = LOC_PICK_ZONE_DST_CELL;
+  for (const [style, width] of [[LOC_PICK_ZONE_DST_OUTLINE.color, G.outline], [G.stroke, G.width]]) {
+    L.beginPath();
+    for (let y0 = 0; y0 < h + cs; y0 += cs) for (let x0 = 0; x0 < w + cs; x0 += cs)
+      for (const [dx, dy] of LOC_PICK_ZONE_DST_AT) {
+        L.save(); L.translate(x0 + dx, y0 + dy); L.scale(LOC_PICK_ZONE_DST_SCALE, LOC_PICK_ZONE_DST_SCALE); G.path(L); L.restore();
+      }
+    L.strokeStyle = style; L.lineWidth = width * LOC_PICK_ZONE_DST_SCALE; L.stroke();
+  }
+  return cv;
+}
+// The signs' canvases freed (the row switched off, the window closed)
+function _locPickZoneDstRelease() {
+  const D = _locPick.dst;
+  if (D) for (const cv of [D.cv, D.work, ...D.glyphs, ...D.masks]) if (cv) cv.width = cv.height = 0;
+  _locPick.dst = null; _locPick.dstSig = '';
+}
 // The animations and sliders change the moment without asking the globe to redraw: while the same
 // date shows, a look on every frame of the browser whether a zone has passed midnight (or the
 // moment has come or gone), and the globe redrawn in that same frame. On the frames, not a timer:
@@ -507,15 +675,18 @@ function _locPickDrawMatch(ctx, V) {
 // The Time labels the same way: a new minute of the moment redrawn (the same disc and layout, only
 // the tags' texts and colours) at most every LOC_PICK_ZONE_TIME_REDRAW_MS while the moment runs, and
 // at once when it has held its minute that long, so the last one always shows.
+// The DST signs the same way: a zone's state changed at the moment redrawn in that frame (not in
+// Solargraph, which has no moment).
 let _locPickWatchRaf = 0, _locPickWatchMinute = null, _locPickWatchMinuteAt = 0;
 function _locPickWatchOn() {
-  return _locPick.open && _locPick.zones && (_locPick.zoneParts.sameDate || _locPickZoneTimeMs() !== null)
+  return _locPick.open && _locPick.zones && (_locPick.zoneParts.sameDate || (_locPick.zoneParts.dst && _tzDateInstant() !== null) || _locPickZoneTimeMs() !== null)
     && typeof _tzGrid !== 'undefined' && !!_tzGrid.data;
 }
 function _locPickWatch() {
   _locPickWatchRaf = 0;
   if (!_locPickWatchOn()) return;
   let draw = _locPick.zoneParts.sameDate && _locPickDays(_tzGrid.data).sig !== _locPick.daySig;
+  if (!draw && _locPick.zoneParts.dst && _tzDateInstant() !== null) draw = _locPickZoneDstStates(_tzDateInstant()).sig !== _locPick.dstSig;
   const ms = _locPickZoneTimeMs(), m = ms === null ? null : Math.floor(ms / 60000);
   if (!draw && m !== _locPick.zoneMinute) {
     const now = performance.now();
@@ -950,7 +1121,7 @@ function _locPickDraw() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('Loading the Earth…', w / 2, h / 2);
   }
-  if (_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data) { _locPickDrawVeil(ctx, V); _locPickDrawMatch(ctx, V); }
+  if (_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data) { _locPickDrawVeil(ctx, V); _locPickDrawMatch(ctx, V); _locPickDrawZoneDst(ctx, V, w, h, res); }
   if (_locPickLpOn()) _locPickDrawLpHi(ctx, V);
   if (_locPick.dl && typeof _locPickDlDraw === 'function') _locPickDlDraw(ctx, V, w, h);   // render-locpick-daylight.js
   ctx.save();
@@ -1175,7 +1346,7 @@ function _locPickSetOpen(on, ecl) {
   _locPick.open = on;
   _locPick.ecl = on ? (ecl || null) : null;
   if (!on && typeof _locPickDlRelease === 'function') _locPickDlRelease();   // render-locpick-daylight.js
-  if (!on) { _locPickLpHiRelease(); _locPickPickHatchRelease(); }
+  if (!on) { _locPickLpHiRelease(); _locPickPickHatchRelease(); _locPickZoneDstRelease(); }
   if (typeof _locPickDlCitiesSync === 'function') _locPickDlCitiesSync();   // Cities' places: not on the Eclipse map
   _locPickZoneCitiesSync();
   document.getElementById('locPickWin').classList.toggle('open', on);
@@ -1422,6 +1593,7 @@ for (const b of document.querySelectorAll('#locPickZonePlace [data-place]')) b.a
 for (const b of document.querySelectorAll('#locPickZoneLegend button[data-part]')) {
   b.addEventListener('click', () => {
     _locPick.zoneParts[b.dataset.part] = !_locPick.zoneParts[b.dataset.part];
+    if (b.dataset.part === 'dst' && !_locPick.zoneParts.dst) _locPickZoneDstRelease();
     _locPickZoneCitiesSync();   // the labels part: Cities with it
     _locPickZoneLegendSync();
     _locPickRequest();

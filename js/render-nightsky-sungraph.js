@@ -1,8 +1,9 @@
 // ─── Night Sky: Sun Graph (third Visualization sub-mode, next to Sky Map and Planetarium) ───────
 // The Analyzer's Sun Graph chart (_sgDraw, render-sungraph.js) drawn from a Night Sky source: the
 // real calendar year of the selected local date, the Sun events of each date (core.js
-// solarEventsOnDate, the same computation as the Visualization's info panel), and standard clock
-// time at the Time zone offset all year (no summer time). Sunlight-on-paper and CHMI are Solargraph
+// solarEventsOnDate, the same computation as the Visualization's info panel), and clock time at
+// the Time zone offset all year, or with the DST button the Location's real clock with its summer
+// time (_nsSgDstInfo). Sunlight-on-paper and CHMI are Solargraph
 // layers and are not drawn. Added here: the Moon's hours above the horizon per local day, shaded by
 // its illuminated fraction. The chart shares #sunGraphCanvas and #sgLegendWrap with the Analyzer's
 // Sun Graph (never on screen at the same time); the info panel is Night Sky's own.
@@ -38,6 +39,138 @@ function _nsSgClock(trueH, year, d, eotMin) {
   return trueH - eot / 60 - (lonHemisphere * LONG - _nightSkyTzHours() * 15) / 15;
 }
 
+// ── Daylight saving time: the DST button after the caption ──────────────────────────────────────
+// On, the chart shows the Location's real clock through the year: per day d the offset of its IANA
+// zone (tz-lookup.js) at local noon of that day; the zone's standard offset for the chart's year is
+// the smallest of them, the DST delta = offset - standard. The base is the zone's standard offset
+// when the Time zone field holds one of the zone's offsets that year (the field follows the date's
+// offset after SET HERE), otherwise the typed field. Everything is computed at the field's offset
+// as before and shifted per day by shifts[d] = base + delta - field, which steps on the switch days.
+// The length view is unaffected. Off (the default, kept in memory), nothing changes.
+const NS_SG_DST_TIP = 'Daylight saving time';
+const NS_SG_DST_TIP_NONE = 'No daylight saving time here';
+const NS_SG_DST_TIP_LOADING = 'Time zones loading';
+const NS_SG_DST_TIP_UNKNOWN = 'Zone unknown to this browser';
+const NS_SG_DST_TIP_UNAVAILABLE = 'Time zones unavailable';
+const NS_SG_DST_MERGE_DK = 0.05;   // the Moon's k: at most ~0.03 apart over a day
+const NS_SG_DST_BTN_W = 60, NS_SG_DST_BTN_GAP = 6;   // the button's width (CSS) and its gap after the caption
+let _nsSgDstOn = false;
+let _nsSgDstCache = { key: null, info: null };
+// The grid's load: 'idle' -> 'loading' -> done, or 'failed'; after a failure one more try on a
+// click of the button ('retried'), then the button stays disabled.
+let _nsSgDstLoad = 'idle';
+function _nsSgDstStartLoad() {
+  const retry = _nsSgDstLoad === 'failed';
+  _nsSgDstLoad = 'loading';
+  _tzLoad().then((d) => {
+    _nsSgDstLoad = d ? 'idle' : (retry ? 'retried' : 'failed');
+    if (_nsSgActive()) _nsSgDraw();
+  });
+}
+// {ok, reason} - ok: {zone, std, base, max, deltas[0..N+1], shifts[0..N+1]}; reason: the tooltip
+// of the disabled button (retry: enabled, a click tries the load once more). The grid is loaded on
+// the first need, then the chart redrawn.
+function _nsSgDstInfo(year) {
+  const g = _tzGrid.data;
+  if (!g) {
+    if (_nsSgDstLoad === 'idle') _nsSgDstStartLoad();
+    if (_nsSgDstLoad === 'loading') return { ok: false, reason: NS_SG_DST_TIP_LOADING };
+    return { ok: false, reason: NS_SG_DST_TIP_UNAVAILABLE, retry: _nsSgDstLoad === 'failed' };
+  }
+  const zone = _tzZoneAt(g, hemisphere * LAT, lonHemisphere * LONG);
+  if (!zone) return { ok: false, reason: NS_SG_DST_TIP_NONE };   // at sea
+  const tz = _nightSkyTzHours(), key = [year, zone, tz].join('|');
+  if (_nsSgDstCache.key === key) return _nsSgDstCache.info;
+  const N = _nsSgYearDays(year), offs = new Array(N + 2);
+  let info = null;
+  for (let d = 0; d <= N + 1; d++) {
+    const c = _nsSgDate(year, d), t = new Date(0);
+    t.setUTCFullYear(c.year, c.month - 1, c.day); t.setUTCHours(12);
+    const o = _tzOffsetAt(zone, t.getTime() - tz * 3600000);   // local noon at the field's offset
+    if (o === null) { info = { ok: false, reason: NS_SG_DST_TIP_UNKNOWN }; break; }
+    offs[d] = o;
+  }
+  if (!info) {
+    const std = Math.min(...offs), max = Math.max(...offs) - std;
+    if (max <= 0) info = { ok: false, reason: NS_SG_DST_TIP_NONE };
+    else {
+      const base = offs.some(o => Math.abs(o - tz) < 1e-6) ? std : tz;
+      const deltas = offs.map(o => o - std);
+      info = { ok: true, zone, std, base, max, deltas, shifts: deltas.map(dl => base + dl - tz) };
+    }
+  }
+  _nsSgDstCache = { key, info };
+  return info;
+}
+// The per-day shifts [h] while DST is on and possible here, else null.
+function _nsSgDstShifts(year) {
+  if (!_nsSgDstOn) return null;
+  const info = _nsSgDstInfo(year);
+  return info.ok ? info.shifts : null;
+}
+// A series of clock-hour intervals per day (days[0..N+1], [[from, to, ...], ...], or with nested
+// the galactic centre's [ivs per level]) on the DST clock: each day's own shifted by its shift, plus
+// what its shift brings in from the day before or after, cut to 0..24.
+function _nsSgDstDays(days, year, nested) {
+  const sh = _nsSgDstShifts(year);
+  if (!sh) return days;
+  // Touching pieces (a day's tail and the next day's head now meet inside the plot) are merged, or
+  // their two translucent fills would leave a seam: all of them in a series without k, the Moon's
+  // when their k is within NS_SG_DST_MERGE_DK (the two halves of one night's Moon; k time-weighted).
+  const one = (prev, cur, next, s) => {
+    const out = [];
+    const add = (list, off) => {
+      if (list) for (const iv of list) {
+        const a = Math.max(0, iv[0] + off), b = Math.min(24, iv[1] + off);
+        if (b - a > 1e-9) out.push([a, b, ...iv.slice(2)]);
+      }
+    };
+    add(prev, s - 24); add(cur, s); add(next, s + 24);
+    out.sort((p, q) => p[0] - q[0]);
+    const merged = [];
+    for (const iv of out) {
+      const last = merged[merged.length - 1];
+      if (last && Math.abs(iv[0] - last[1]) < 1e-6 && (iv.length < 3 || Math.abs(iv[2] - last[2]) <= NS_SG_DST_MERGE_DK)) {
+        if (iv.length >= 3) last[2] = (last[2] * (last[1] - last[0]) + iv[2] * (iv[1] - iv[0])) / (iv[1] - last[0]);
+        last[1] = iv[1];
+      } else merged.push(iv);
+    }
+    return merged;
+  };
+  const out = new Array(days.length);
+  for (let d = 1; d < days.length - 1; d++) {
+    const s = sh[d];
+    out[d] = nested ? days[d].map((_, k) => one(days[d - 1] && days[d - 1][k], days[d][k], days[d + 1] && days[d + 1][k], s))
+                    : one(days[d - 1], days[d], days[d + 1], s);
+  }
+  return out;
+}
+// An instant on day d at clock hour h (the field's offset) on the DST clock: {d, hour}, the day
+// stepping over midnight.
+function _nsSgDstAt(sh, d, h) {
+  if (!sh) return { d, hour: h };
+  let hour = h + sh[Math.max(0, Math.min(sh.length - 1, d))];
+  if (hour >= 24) { hour -= 24; d++; } else if (hour < 0) { hour += 24; d--; }
+  return { d, hour };
+}
+// The button: shown after the caption in the times view (placed by _sgDraw through the source's
+// placeCaption), disabled with the reason as its tooltip.
+// While disabled the button shows unpressed; the choice stays and applies again where it can.
+function _nsSgDstSet(on) {
+  _nsSgDstOn = !!on;
+  if (_nsSgActive()) _nsSgDraw();
+}
+function _nsSgDstSync(year) {
+  const b = document.getElementById('nsSgDstBtn'), info = _nsSgDstInfo(year);
+  b.disabled = !info.ok && !info.retry;
+  b.title = info.ok ? NS_SG_DST_TIP : info.reason;
+  b.setAttribute('aria-pressed', String(info.ok && _nsSgDstOn));
+}
+document.getElementById('nsSgDstBtn').addEventListener('click', () => {
+  if (_nsSgDstLoad === 'failed') _nsSgDstStartLoad();   // the one retry after a failed load
+  _nsSgDstSet(!_nsSgDstOn);
+});
+
 // The Moon above the horizon (upper limb, refracted - the same rule as its rise/set) on each local
 // day of a year: [[fromHour, toHour, k], ...] in clock hours 0..24, k = illuminated fraction at the
 // middle of the interval. Altitude sampled every 15 min, crossings interpolated linearly (within a
@@ -50,10 +183,10 @@ function _nsSgMoonDays(year) {
   const key = [year, LAT, hemisphere, LONG, lonHemisphere, tz].join('|');
   if (_nsSgMoonCache.key === key) return _nsSgMoonCache.days;
   const N = _nsSgYearDays(year), n = Math.round(24 / NS_SG_MOON_STEP_H);
-  const days = new Array(N + 1);
+  const days = new Array(N + 2);   // with day 0 (31 Dec before) and N + 1, for the DST shift
   const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;   // local midnight, as UT
-  let prev = _moonElevAtJD(jan1).el;
-  for (let d = 1; d <= N; d++) {
+  let prev = _moonElevAtJD(jan1 - 1).el;
+  for (let d = 0; d <= N + 1; d++) {
     const start = jan1 + d - 1, ivs = [];
     let from = prev >= 0 ? 0 : null;
     for (let s = 1; s <= n; s++) {
@@ -112,9 +245,9 @@ function _nsSgAstroNightDays(year) {
   if (_nsSgAstroNightCache.key === key) return _nsSgAstroNightCache.days;
   const N = _nsSgYearDays(year), n = Math.round(24 / NS_SG_MOON_STEP_H);
   const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;
-  const days = new Array(N + 1);
-  let prev = _nsSgSunDepth(jan1);
-  for (let d = 1; d <= N; d++) {
+  const days = new Array(N + 2);   // with day 0 and N + 1, as the Moon's
+  let prev = _nsSgSunDepth(jan1 - 1);
+  for (let d = 0; d <= N + 1; d++) {
     const start = jan1 + d - 1, night = [];
     let from = prev > 0 ? 0 : null;
     for (let s = 1; s <= n; s++) {
@@ -238,10 +371,10 @@ function _nsSgGcDays(year) {
   if (_nsSgGcCache.key === key) return _nsSgGcCache;
   const N = _nsSgYearDays(year), dark = onMoonless ? _nsSgMoonlessDays(year) : _nsSgAstroNightDays(year);
   const jan1 = _skyToJulianDateUT(year, 1, 1, 0) - tz / 24;
-  const days = new Array(N + 1), seasons = NS_SG_GC_LEVELS.map(() => ({ first: null, last: null }));
-  for (let d = 1; d <= N; d++) {
+  const days = new Array(N + 2), seasons = NS_SG_GC_LEVELS.map(() => ({ first: null, last: null }));
+  for (let d = 0; d <= N + 1; d++) {   // with day 0 and N + 1, as the Moon's; the seasons within the year
     days[d] = _nsSgGcUp(jan1 + d - 1).map(ivs => _nsSgIntersect(dark[d], ivs));
-    days[d].forEach((ivs, k) => { if (ivs.length) { if (seasons[k].first === null) seasons[k].first = d; seasons[k].last = d; } });
+    if (d >= 1 && d <= N) days[d].forEach((ivs, k) => { if (ivs.length) { if (seasons[k].first === null) seasons[k].first = d; seasons[k].last = d; } });
   }
   _nsSgGcCache = { key, days, seasons };
   return _nsSgGcCache;
@@ -387,9 +520,10 @@ function _nsSgQuarters(year) {
 // (_nsSgMoonProject). The full-Moon instant is opposition in longitude, a few minutes from the
 // greatest eclipse (3-9 min for the eclipses of 2025-2026), so lunar eclipses need no calibration.
 let showNightSkyLunarCalendar = false;
-function _nsSgDrawQuarters(ctx, g, year) {
+function _nsSgDrawQuarters(ctx, g, year, sh) {
   const r = _nightSkyBodyMinR(), south = hemisphere < 0;
-  for (const ev of _nsSgQuarters(year)) {
+  for (const q of _nsSgQuarters(year)) {
+    const ev = Object.assign({}, q, _nsSgDstAt(sh, q.d, q.hour));   // on the DST clock with DST on
     const k = ev.q === 0 ? 0 : ev.q === 2 ? 1 : 0.5;
     const waxing = ev.q === 1;
     const angle = ev.q === 0 || ev.q === 2 ? 0 : ((waxing !== south) ? 0 : Math.PI);
@@ -406,7 +540,8 @@ function _nsSgDrawQuarters(ctx, g, year) {
       if (jdMax !== null) {
         const loc = _skyFromJulianDateUT(jdMax + _nightSkyTzHours() / 24);
         if (loc.year !== year) continue;
-        const ex = g.dayCenter(_nsSgDayIndex(loc.year, loc.month, loc.day)), ey = g.hourToY(loc.hourUT);
+        const at = _nsSgDstAt(sh, _nsSgDayIndex(loc.year, loc.month, loc.day), loc.hourUT);
+        const ex = g.dayCenter(at.d), ey = g.hourToY(at.hour);
         const ecl = _nsSgSolarEclipse(_skyFromJulianDateUT(jdMax), r, ex, ey);
         _nsSgDrawSunDisc(ctx, ex, ey, r, ecl.sunUp, ecl);
         continue;
@@ -525,13 +660,14 @@ function _nsSgCrescents(year) {
   _nsSgCrescentCache = { key, list };
   return list;
 }
-function _nsSgDrawCrescents(ctx, g, year) {
+function _nsSgDrawCrescents(ctx, g, year, sh) {
   const r = Math.max(3, 0.55 * _nightSkyBodyMinR());
   ctx.save();
   for (const c of _nsSgCrescents(year)) {
     // at the best time to look; with none (the Moon sets before the Sun / rises after it) on the
     // sunset / sunrise itself
-    const x = g.dayCenter(c.d), y = g.hourToY(c.look ? c.look.hour : c.hour);
+    const at = _nsSgDstAt(sh, c.d, c.look ? c.look.hour : c.hour);   // on the DST clock with DST on
+    const x = g.dayCenter(at.d), y = g.hourToY(at.hour);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = NS_SG_CRESCENT_COLORS[c.zone]; ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 1; ctx.stroke();
@@ -632,11 +768,20 @@ function _nsSgSource() {
   const moonDays = moonOn ? _nsSgMoonDays(year) : null;
   const moonless = moonOn && showNightSkyMoonless ? _nsSgMoonlessDays(year) : null;
   const gc = showNightSkyGalCenter ? _nsSgGcDays(year) : null;   // within astronomical / Moonless night
+  // DST (_nsSgDstInfo): the per-day shift of the times view, and its series on that clock; the
+  // length view keeps the plain series.
+  const dst = _nsSgDstInfo(year), sh = _nsSgDstShifts(year);
+  _nsSgDstLastShifts = sh;   // for the readout and a click (_nsSgDstShiftAt)
+  const shift = (d) => sh ? sh[Math.max(0, Math.min(N + 1, d))] : 0;
+  const moonDaysT = moonDays && _nsSgDstDays(moonDays, year);
+  const moonlessT = moonless && _nsSgDstDays(moonless, year);
+  const gcDaysT = gc && _nsSgDstDays(gc.days, year, true);
   const eotNoon = new Array(N + 2);
   const clock = (trueH, d, eot) => {
     if (eot === undefined) eot = eotNoon[d] !== undefined ? eotNoon[d] : (eotNoon[d] = _nsSgEotNoon(year, d));
-    return _nsSgClock(trueH, year, d, eot);
+    return _nsSgClock(trueH, year, d, eot) + shift(d);
   };
+  const tzLbl = (h) => 'UTC' + _fmtTimeZone(h);
   const dayLabel = (d) => { const c = _nsSgDate(year, d); return MONTH_NAMES[c.month - 1].toUpperCase() + ' ' + c.day; };
   return {
     solar: false, legendId: 'sgLegendWrap',
@@ -661,10 +806,10 @@ function _nsSgSource() {
       ctx.save();
       ctx.beginPath(); ctx.rect(g.px0, g.py0, g.pw, g.ph); ctx.clip();
       if (moonOn && showNightSkyLunarCalendar) {
-        if (showNightSkyThinCrescent) _nsSgDrawCrescents(ctx, g, year);
-        _nsSgDrawQuarters(ctx, g, year);
+        if (showNightSkyThinCrescent) _nsSgDrawCrescents(ctx, g, year, sh);
+        _nsSgDrawQuarters(ctx, g, year, sh);
       }
-      if (customOn) _nsSgDrawBodies(ctx, g.dayCenter(today), g.hourToY(L.hour), sunOn, moonOn);
+      if (customOn) { const at = _nsSgDstAt(sh, today, L.hour); _nsSgDrawBodies(ctx, g.dayCenter(at.d), g.hourToY(at.hour), sunOn, moonOn); }
       ctx.restore();
     } : null,
     dayLabel,
@@ -676,9 +821,23 @@ function _nsSgSource() {
     caption: () => {
       const latStr = LAT.toFixed(1) + '° ' + (hemisphere >= 0 ? 'N' : 'S');
       // Short: the sub-mode wheel sits at the top right of the same row.
+      // DST on: the standard offset / the summer one ("UTC+1:00 / +2:00", the button says DST)
       return year + ' · ' + latStr
            + ' · ' + LONG.toFixed(1) + '° ' + (lonHemisphere >= 0 ? 'E' : 'W')
-           + ' · UTC' + _fmtTimeZone(_nightSkyTzHours());
+           + ' · ' + (sh ? tzLbl(dst.base) + ' / ' + _fmtTimeZone(dst.base + dst.max) : tzLbl(_nightSkyTzHours()));
+    },
+    // The DST button after the caption (times view, on screen): its room on the caption's line,
+    // then its place (null: hidden).
+    captionKey: 'nsSgDst',
+    captionExtraW: _nsExportBusy ? 0 : NS_SG_DST_BTN_W + NS_SG_DST_BTN_GAP,   // not in an exported image
+    placeCaption: (p) => {
+      if (_nsExportBusy) return;
+      const b = document.getElementById('nsSgDstBtn');
+      b.hidden = !p;
+      if (!p) return;
+      _nsSgDstSync(year);
+      b.style.left = Math.round(p.x + NS_SG_DST_BTN_GAP) + 'px';
+      b.style.top = Math.round(p.y - 4 - 11) + 'px';   // the 22 px button centred on the caption (its middle ~4 px over the baseline)
     },
     drawExtra: (moonDays || gc) ? (ctx, g) => {
       const emph = _sgEmphBand === 'moon';
@@ -687,19 +846,19 @@ function _nsSgSource() {
       for (let d = 1; d <= g.NDAYS; d++) {
         const x0 = Math.round(g.dayToX(d)), x1 = Math.round(g.dayToX(d + 1));
         if (x1 <= x0) continue;
-        if (moonDays) for (const iv of moonDays[d]) {
+        if (moonDays) for (const iv of moonDaysT[d]) {
           const yTop = g.hourToY(iv[1]), yBot = g.hourToY(iv[0]);
           ctx.fillStyle = _nsSgMoonFill(iv[2], emph, moonOnly);
           ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
         }
         if (moonless) {   // never overlaps the Moon's bands: the Moon is down there by definition
           ctx.fillStyle = _sgEmphBand === 'moonless' ? 'rgba(126,92,232,0.9)' : NS_SG_MOONLESS_FILL;
-          for (const iv of moonless[d]) {
+          for (const iv of moonlessT[d]) {
             const yTop = g.hourToY(iv[1]), yBot = g.hourToY(iv[0]);
             ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
           }
         }
-        if (gc) gc.days[d].forEach((ivs, k) => {   // the three levels, the higher over the lower
+        if (gc) gcDaysT[d].forEach((ivs, k) => {   // the three levels, the higher over the lower
           ctx.fillStyle = _nsSgGcFill(k, _sgEmphBand === 'gc' + NS_SG_GC_LEVELS[k]);
           for (const iv of ivs) ctx.fillRect(x0, g.hourToY(iv[1]), x1 - x0, g.hourToY(iv[0]) - g.hourToY(iv[1]));
         });
@@ -762,7 +921,8 @@ function _nsSgSource() {
       if (lengthMode) return Object.assign({ moon: _sgHM(moonDays[d].reduce((a, iv) => a + iv[1] - iv[0], 0)) }, ml);
       const c = _nsSgDate(year, d);
       const rs = _moonRiseSetCached(_skyToJulianDateUT(c.year, c.month, c.day, 12) - _nightSkyTzHours() / 24).moon;
-      return Object.assign({ moon: _moonFmtLocalTime(rs.rise) + ' / ' + _moonFmtLocalTime(rs.set) }, ml);
+      const hm = (ev) => ev ? _nightSkyFmtHM(_skyFromJulianDateUT(ev.jd).hourUT + _nightSkyTzHours() + shift(d)) : '—';   // on the chart's clock
+      return Object.assign({ moon: hm(rs.rise) + ' / ' + hm(rs.set) }, ml);
     } : null,
     drawStripExtra: (ctx, g) => {
       // The Moon on the day strip: on the strip itself when it is alone (Sun off), otherwise on
@@ -792,7 +952,7 @@ function _nsSgSource() {
         for (const iv of ivs) ctx.fillRect(g.xh(iv[0]), g.laneY, g.xh(iv[1]) - g.xh(iv[0]), g.recapH);
       });
       // The selected instant on the strip (true solar time), when the strip shows the selected day.
-      const tSun = L.hour - clock(0, today);
+      const tSun = L.hour + shift(today) - clock(0, today);
       if (customOn && (sunOn || moonOn) && g.activeDay === today && tSun >= 0 && tSun <= 24) {
         const x = g.xh(tSun), top = (moonDays && !moonOnly) ? g.thinY : g.laneY;
         ctx.strokeStyle = sunOn ? '#e8a020' : '#f4eab8'; ctx.lineWidth = 2;
@@ -864,12 +1024,13 @@ function _nsSgSource() {
       const trEl = document.getElementById('sgLegendTransit');
       if (trEl) {
         const noon = clock(12, activeDay);   // true solar noon on the clock
-        const sun = _solarSunAtJDE(_moonJDE(c.year, c.month, c.day, noon - _nightSkyTzHours()));
+        const sun = _solarSunAtJDE(_moonJDE(c.year, c.month, c.day, noon - _nightSkyTzHours() - shift(activeDay)));
         const phi = effectiveLat() * hemisphere;
         const el = Math.asin(Math.sin(phi) * Math.sin(sun.dec) + Math.cos(phi) * Math.cos(sun.dec)) * 180 / Math.PI;
         trEl.textContent = _sgHM(noon) + ' / ' + el.toFixed(1) + '°';
       }
     },
+    dstShift: shift,   // for the readout and a click (_nsSgReadout, _nsSgPointAt's callers)
     redraw: () => _nsSgDraw(),
     setHover: (d) => { _nsSgHoverDay = d; },
     isActive: _nsSgActive,
@@ -911,6 +1072,7 @@ function exitNightSkySunGraph() {
   ['sgLegendWrap', 'nightSkyDisplaySection', 'nightSkyStatusWrap', 'nightSkyTimeWrap']
     .forEach(id => document.getElementById(id).classList.remove('ns-sungraph'));
   document.getElementById('nightSkyCanvas').style.display = 'block';
+  document.getElementById('nsSgDstBtn').hidden = true;
   _nsSgHoverDay = null;
 }
 
@@ -931,6 +1093,12 @@ function _nsSgPointAt(src, clientX, clientY) {
 // rewrote the readout with the selected time (every animation frame, via _nightSkySyncControls)
 // puts the cursor's back (afterDraw).
 let _nsSgCursorPt = null;
+// The DST shift of a day of the shown year (0 with DST off), from the last draw.
+let _nsSgDstLastShifts = null;
+function _nsSgDstShiftAt(d) {
+  const sh = _nsSgDstLastShifts;
+  return sh ? sh[Math.max(0, Math.min(sh.length - 1, d))] : 0;
+}
 function _nsSgReadout(p) {
   if (!p) { _nightSkyUpdateReadout(); return; }
   const c = _nsSgDate(_nightSkyLocalDate().year, p.d);
@@ -938,7 +1106,7 @@ function _nsSgReadout(p) {
   document.getElementById('valDay').textContent = MONTHS[c.month - 1] + ' ' + c.day + ', ' + c.year;
   if (sgViewMode === 'length') { _nightSkyTimeReadout().text.nodeValue = '—'; return; }   // rows are durations
   _nightSkyTimeReadout().text.nodeValue = String(Math.floor(t / 60)).padStart(2, '0') + ':'
-    + String(t % 60).padStart(2, '0') + ' ' + _nightSkyUtcLabel(_nightSkyTzHours());
+    + String(t % 60).padStart(2, '0') + ' ' + _nightSkyUtcLabel(_nightSkyTzHours() + _nsSgDstShiftAt(p.d));
 }
 
 // A click in the plot sets the Night Sky date (column) and clock time (row).
@@ -949,9 +1117,14 @@ function _nsSgReadout(p) {
     if (!_nsSgActive() || !src || !src.layout || src.isActive !== _nsSgActive) return;
     const p = _nsSgPointAt(src, e.clientX, e.clientY);
     if (!p) return;
-    const c = _nsSgDate(_nightSkyLocalDate().year, p.d);
-    // The length view's rows are durations: there the click sets the date only.
-    _nightSkySetLocal(c.year, c.month, c.day, sgViewMode === 'length' ? _nightSkyLocalDate().hour : p.hour);
+    // The length view's rows are durations: there the click sets the date only. The row is on the
+    // chart's clock: back to the Time zone field's (DST), the day stepping over midnight.
+    let d = p.d, h = sgViewMode === 'length' ? _nightSkyLocalDate().hour : p.hour - _nsSgDstShiftAt(p.d);
+    if (h < 0) { h += 24; d--; } else if (h >= 24) { h -= 24; d++; }
+    const N = _nsSgYearDays(_nightSkyLocalDate().year);   // kept in the chart's year
+    if (d < 1) { d = 1; h = 0; } else if (d > N) { d = N; h = 24 - 1 / 3600; }
+    const c = _nsSgDate(_nightSkyLocalDate().year, d);
+    _nightSkySetLocal(c.year, c.month, c.day, h);
     _nightSkySyncControls();
     _nsSgReadout(p);   // the cursor is still on that point
   });

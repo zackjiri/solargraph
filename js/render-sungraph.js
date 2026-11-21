@@ -453,6 +453,7 @@ function drawSunGraph() {
   _sgDraw(document.getElementById('sunGraphCanvas'), _sgSolarSource());
 }
 
+let _sgCaptionPlace = null;   // the last source's {key: src.captionKey, place: src.placeCaption} (_sgDraw)
 function _sgDraw(cv, src) {
   if (!cv) return;
   _sgActiveSrc = src;
@@ -491,8 +492,15 @@ function _sgDraw(cv, src) {
   const plotW = Math.max(10, W - mL - mR);
   const swLeft = sw0 && sw0.offsetWidth ? mL + plotW / 2 - sw0.offsetWidth / 2 : Infinity;
   ctx.font = "11px 'Share Tech Mono', monospace";
-  const captionWrap = mL + 96 + ctx.measureText(caption).width + 8 > swLeft;
-  const mT = captionWrap ? 56 : 44;
+  // src.placeCaption: an element after the caption in the times view (Night Sky's DST button), its
+  // room src.captionExtraW on the same line
+  const capExtra = !lengthMode && src.placeCaption ? (src.captionExtraW || 0) : 0;
+  const captionW = ctx.measureText(caption).width;
+  const captionWrap = mL + 96 + captionW + capExtra + 8 > swLeft;
+  // Wrapped with an element after it, the caption's line sits 4 px lower, clear of the switch and
+  // the sub-mode wheel above it (the element is 18 px tall), and the plot moves down with it.
+  const capX = captionWrap ? mL : mL + 96, capY = captionWrap ? (capExtra ? 54 : 48) : 26;
+  const mT = captionWrap ? (capExtra ? 66 : 56) : 44;
   const monthLblH = 20;   // month labels under the plot
   const recapGap  = 8;
   const recapH    = 30;   // selected-day strip
@@ -502,7 +510,7 @@ function _sgDraw(cv, src) {
   const px0 = mL, py0 = mT, pw = Math.max(10, W - mL - mR), ph = Math.max(10, H - mT - mB);
   const chmiLaneY = py0 + ph + monthLblH + recapGap;   // top of the CHMI strip line
   const laneY = chmiLaneY + chmiStripH;                // top of the bottom (band) strip
-  src.layout = { px0, py0, pw, ph, laneY, recapH };  // for cursor hit-testing in mousemove
+  src.layout = { px0, py0, pw, ph, laneY, recapH, caption: { x: capX, y: capY, w: captionW } };  // for cursor hit-testing in mousemove
   if (src.solar) _sgLayout = src.layout;
   // The TIMES | LENGTH switch: centred over the plot, on the title row (title text centre ~y 21).
   if (sw0) { sw0.style.left = (px0 + pw / 2) + 'px'; sw0.style.top = Math.round(21 - (sw0.offsetHeight || 27) / 2) + 'px'; }
@@ -946,7 +954,10 @@ function _sgDraw(cv, src) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.fillText('Sun Graph', mL, 26);
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
-  if (captionWrap) ctx.fillText(caption, mL, 48); else ctx.fillText(caption, mL + 96, 26);
+  ctx.fillText(caption, capX, capY);
+  if (_sgCaptionPlace && _sgCaptionPlace.key !== src.captionKey) _sgCaptionPlace.place(null);   // another source's element away
+  _sgCaptionPlace = src.placeCaption ? { key: src.captionKey, place: src.placeCaption } : null;
+  if (_sgCaptionPlace) _sgCaptionPlace.place(lengthMode ? null : { x: capX + captionW, y: capY });
 
   _sgUpdateLegendTimes(src, activeDay, evs, lengthMode);
 
