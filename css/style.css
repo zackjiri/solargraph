@@ -4065,6 +4065,9 @@
   .lpz-dateline { height: 3px; background: #000; box-shadow: 0 0 0 1px rgba(255,255,255,0.35); }
   .lpz-samedate { background: linear-gradient(90deg, #5ab4e0 50%, #24363f 50%); }
   .lpz-hatch { background: #5ac46a repeating-linear-gradient(135deg, rgba(0,0,0,0.42) 0 1.4px, transparent 1.4px 4px); }
+  .lpz-dst { display: inline-flex; justify-content: center; align-items: center; height: 12px; }
+  .lpz-dst svg { display: block; width: 100%; height: 100%; }
+  body.light .lpz-dst { background: #5a7a92; }
   .lpz-label {
     width: auto; height: auto; padding: 0 3px; line-height: 12px; font-size: 9px;
     background: rgba(7,9,13,0.9); color: #e8eef4; border: 1px solid rgba(160,200,240,0.3);
@@ -4342,6 +4345,22 @@
     cursor: default;
   }
   body.light #sgViewSwitch, body.light #nsGlobeBodySwitch { background: rgba(220,228,236,0.82); }
+  /* Night Sky Sun Graph DST toggle (render-nightsky-sungraph.js), placed by JS right after the
+     caption on its line: 22 px tall, text 12 px. Full text colour, the border red, grey under the
+     mouse (.hover: the same, for the tests). Pressed: dark blue fill and border, white text.
+     Disabled: dimmed, grey border. */
+  #nsSgDstBtn {
+    position: absolute; z-index: 13; box-sizing: border-box;
+    width: 60px; height: 22px; padding: 0 8px 0 6px;
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid #e04848; border-radius: 11px; background: transparent;
+    color: var(--text); font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; line-height: 1; cursor: pointer;
+  }
+  #nsSgDstBtn[hidden] { display: none; }
+  #nsSgDstBtn svg { width: 16px; height: 16px; flex: none; }
+  #nsSgDstBtn[aria-pressed="true"] { background: #1d3f8f; border-color: #1d3f8f; color: #fff; }
+  #nsSgDstBtn:hover:not(:disabled), #nsSgDstBtn.hover:not(:disabled) { border-color: var(--dim); }
+  #nsSgDstBtn:disabled { opacity: 0.4; cursor: default; color: var(--dim); border-color: var(--dim); }
   #sgViewSwitch .sg-view-lbl, #nsGlobeBodySwitch .sg-view-lbl { color: var(--text); cursor: pointer; }
   #sgViewSwitch .sg-view-lbl.dim, #nsGlobeBodySwitch .sg-view-lbl.dim { color: var(--dim); }
   #btnSgView, #btnNsGlobeBody {
