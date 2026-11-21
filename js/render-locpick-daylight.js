@@ -46,7 +46,7 @@ function _locPickDlZ(X, k, c) {
   const z = X[3 * k] * c[0] + X[3 * k + 1] * c[1] + X[3 * k + 2] * c[2];
   return z > -LOC_PICK_DL_Z_EPS && z < LOC_PICK_DL_Z_EPS ? LOC_PICK_DL_Z_EPS : z;
 }
-const LOC_PICK_DL_POLAR = { day: [245, 214, 58], night: [11, 31, 77] };   // the palette's ends
+const LOC_PICK_DL_POLAR = { day: [245, 214, 58], night: [11, 31, 77] };   // own colours, hatched (not the palette's ends)
 let _locPickDlCache = null;   // { key, mode, off, levels: [{ level, rings, band }], below, none }
 let _locPickDlLoading = false;
 let _locPickDlMeasure = null; // a context to measure the labels with
@@ -68,7 +68,7 @@ function _locPickDlWant() {
   const mode = _locPick.dlMode, base = mode === 'length' ? '' : _locPick.dlBase;
   const info = _dlLocationOffsetInfo(), off = base === 'location' ? info.h : 0, D = _dlDate(info);
   const reps = base === 'local' && _tzGrid.data ? _locPickDlLocalReps() : null;
-  return { mode, off, D, local: base === 'local', reps, mb: mode + '|' + base, key: [mode, base, off, D.year, D.month, D.day, reps].join('|') };
+  return { mode, base, off, D, local: base === 'local', reps, mb: mode + '|' + base, key: [mode, base, off, D.year, D.month, D.day, reps].join('|') };
 }
 // The layer's shapes for the current date, mode and base, or null when it draws nothing. While the
 // date (or the Location's offset) keeps changing, the shapes are made at most every
@@ -82,13 +82,13 @@ function _locPickDlState() {
   if (C && C.key === W.key) return C;
   const wait = LOC_PICK_DL_THROTTLE_MS - (performance.now() - _locPickDlMadeAt);
   if (C && C.mb === W.mb && wait > 0) { _locPickDlLater(wait); return C; }
-  const { mode, off, D } = W;
+  const { mode, base, off, D } = W;   // base: the colours' range (_dlRange)
   if (reps) {   // the local base: the levels of every offset in use
     const levels = [];
     for (const o of reps) for (const L of _dlShapes(mode, D, o).levels) levels.push({ level: L.level, rings: L.rings.map(_locPickDlRing), band: null });
     levels.sort((a, b) => a.level - b.level);
     _locPickDlMadeAt = performance.now();
-    return (_locPickDlCache = { key: W.key, mb: W.mb, mode, off: 0, D, step: DL_MODES[mode].step, levels, below: null, none: null, local: true });
+    return (_locPickDlCache = { key: W.key, mb: W.mb, mode, base, off: 0, D, step: DL_MODES[mode].step, levels, below: null, none: null, local: true });
   }
   const S = _dlShapes(mode, D, off), step = DL_MODES[mode].step;
   const band = (vUT) => _dlBand(mode, mode === 'length' ? vUT : _dlClock(vUT, off));
@@ -97,7 +97,7 @@ function _locPickDlState() {
   const below = levels.length ? band(levels[0].level - step / 2) : band(_dlGrid(mode, D).min);
   const none = mode === 'length' ? null : { day: prep(S.none.day), night: prep(S.none.night) };
   _locPickDlMadeAt = performance.now();
-  return (_locPickDlCache = { key: W.key, mb: W.mb, mode, off, D, step, levels, below, none });
+  return (_locPickDlCache = { key: W.key, mb: W.mb, mode, base, off, D, step, levels, below, none });
 }
 // Whether the zones' data is in; asks for it once while not (a failed load is asked again later)
 function _locPickDlLoadZones() {
@@ -339,11 +339,11 @@ function _locPickDlDraw(ctx, V, w, h) {
   const G = _locPickDlGeom(V, w, h, S), regs = G.regs, paths = G.paths, polar = G.polar;
   let k0 = -1;
   regs.forEach((r, k) => { if (r.full) k0 = k; });
-  o.fillStyle = _locPickDlRgb(_dlColor(S.mode, k0 < 0 ? S.below : S.levels[k0].band));
+  o.fillStyle = _locPickDlRgb(_dlColor(S.mode, k0 < 0 ? S.below : S.levels[k0].band, S.base));
   o.fillRect(x0, y0, bw, bh);
   for (let k = k0 + 1; k < regs.length; k++) {
     if (regs[k].empty) continue;
-    o.fillStyle = _locPickDlRgb(_dlColor(S.mode, S.levels[k].band)); o.fill(paths[k], 'evenodd');
+    o.fillStyle = _locPickDlRgb(_dlColor(S.mode, S.levels[k].band, S.base)); o.fill(paths[k], 'evenodd');
   }
   if (polar) {
     o.fillStyle = _locPickDlRgb(LOC_PICK_DL_POLAR.day); o.fill(polar.day, 'evenodd');
@@ -505,7 +505,7 @@ function _locPickDlLocalMake(S, Z, lt, key, hi) {
   const pal = new Uint32Array(50 * 4), toward = lt ? 0 : 255, mix = LOC_PICK_DL_LINE_MIX;
   const dim = Math.round(255 * LOC_PICK_DL_DIM_ALPHA / LOC_PICK_DL_ALPHA), picked = _locPickDlLocalPicked(hi);
   for (let b = 0; b < 50; b++) {
-    const c = b < 48 ? _dlColor(S.mode, b) : LOC_PICK_DL_POLAR[b === 48 ? 'day' : 'night'];
+    const c = b < 48 ? _dlColor(S.mode, b, S.base) : LOC_PICK_DL_POLAR[b === 48 ? 'day' : 'night'];
     const al = !picked || picked[b] ? 255 : dim;
     for (let m = 0; m < 4; m++) {   // plain, hatched, line, hatched line
       let r = c[0], g = c[1], bl = c[2];
@@ -561,12 +561,12 @@ function _locPickDlDrawLabels(ctx, V, w, h) {
 // on for the while (_locPickDlCitiesSync) and gives back the state before.
 let _locPickDlTagC = null;        // the places' values: { key, map: row -> { text, rgb } }
 // The tag at (lat, lon) on date D for mode, the clock offset off (rise and set)
-function _locPickDlTagValue(lat, lon, D, mode, off) {
+function _locPickDlTagValue(lat, lon, D, mode, off, base) {
   const e = _solarEventsAt(lat, lon, D.year, D.month, D.day), cut = (v) => Math.floor(v * 60 + 1e-9) / 60;
   if (e.polarDay || e.polarNight) { const k = e.polarDay ? 'day' : 'night'; return { text: 'polar ' + k, rgb: LOC_PICK_DL_POLAR[k] }; }
-  if (mode === 'length') return { text: _dlFmt(mode, cut(e.lenH)).replace(/ (\d+) min$/, (m, n) => ' ' + n.padStart(2, '0')), rgb: _dlColor(mode, _dlBand(mode, e.lenH)) };
+  if (mode === 'length') return { text: _dlFmt(mode, cut(e.lenH)).replace(/ (\d+) min$/, (m, n) => ' ' + n.padStart(2, '0')), rgb: _dlColor(mode, _dlBand(mode, e.lenH), '') };
   const c = _dlClock(mode === 'rise' ? e.riseUT : e.setUT, off);
-  return { text: _dlFmt(mode, cut(c)), rgb: _dlColor(mode, _dlBand(mode, c)) };
+  return { text: _dlFmt(mode, cut(c)), rgb: _dlColor(mode, _dlBand(mode, c), base) };
 }
 const _locPickDlCity = _locPickCityOwners.daylight = {
   D: null, mode: 'length', base: '', off: 0,
@@ -588,7 +588,7 @@ const _locPickDlCity = _locPickCityOwners.daylight = {
     let v = row ? _locPickDlTagC.map.get(p) : null;
     if (!v) {
       const lat = row ? p[2] : p.lat, lon = row ? p[3] : p.lon;
-      v = _locPickDlTagValue(lat, lon, T.D, T.mode, T.base === 'local' ? _dlOffsetInfoAt(lat, lon).h : T.off);
+      v = _locPickDlTagValue(lat, lon, T.D, T.mode, T.base === 'local' ? _dlOffsetInfoAt(lat, lon).h : T.off, T.base);
       if (row) _locPickDlTagC.map.set(p, v);
     }
     return v;
@@ -785,7 +785,20 @@ function _locPickDlSetMode(mode) {
 }
 function _locPickDlSetBase(base) {
   if (!['local', 'utc', 'location'].includes(base) || base === _locPick.dlBase) return;
+  const was = _locPick.dlBase;
   _locPick.dlBase = base;   // a picked time keeps its place on the clock
+  // ... unless the legend's cells change with the range (_dlRange: Local narrows rise and set): a
+  // picked end cell's range is let go on the whole dial, a picked half hour beyond Local's range is
+  // taken by its end cell
+  const mode = _locPick.dlMode, H = _locPick.dlHi;
+  if (mode !== 'length' && (was === 'local') !== (base === 'local') && H.pin !== null && H.pin !== 'day' && H.pin !== 'night') {
+    if (typeof H.pin === 'object') H.pin = null;
+    else if (base === 'local') {
+      const { lo, hi } = _dlRangeBands(mode, base);
+      if (H.pin < lo) H.pin = { from: 0, to: lo - 1 };
+      else if (H.pin > hi) H.pin = { from: hi + 1, to: 47 };
+    }
+  }
   _locPickDlLegendSync();
   _locPickZoneHint(_locPick.hover);
   _locPickRequest();
@@ -908,17 +921,20 @@ function _locPickDlClockText(h) {
   const t = Math.round(h * 60);
   return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
 }
-// The legend's cells for the mode: Day length 24 (0 h to 24 h); Sunrise and Sunset the half hours of
-// the palette's range (_dlRangeBands) and an end cell either side for the bands before and after it
-// (data-band 'from-to', picked as a range { from, to }); each in its (first) band's colour, its time
-// in its title; pointed at or picked as the Bortle scale's
-function _locPickDlLegendBuild(mode) {
+// The legend's cells for the mode and the base: Day length 24 (0 h to 24 h); Sunrise and Sunset in
+// the Local base the half hours of their range (_dlRangeBands) and an end cell either side for the
+// bands before and after it (data-band 'from-to', picked as a range { from, to }), in UTC and the
+// Location's time all 48 half hours; each in its (first) band's colour, its time in its title;
+// pointed at or picked as the Bortle scale's
+function _locPickDlLegendBuild(mode, base) {
   const sc = document.getElementById('locPickDlScale'), ends = document.getElementById('locPickDlEnds');
-  const step = DL_MODES[mode].step, cells = [];
+  const step = DL_MODES[mode].step, cells = [], narrow = mode !== 'length' && base === 'local';
   sc.textContent = ''; ends.textContent = '';
+  const t = (b) => _locPickDlClockText(b * step);
   if (mode === 'length') for (let b = 0; b < 24; b++) cells.push([b, b, b + ' h to ' + (b + 1) + ' h']);
+  else if (!narrow) for (let b = 0; b < 48; b++) cells.push([b, b, t(b) + ' to ' + t(b + 1)]);
   else {
-    const { lo, hi } = _dlRangeBands(mode), t = (b) => _locPickDlClockText(b * step);
+    const { lo, hi } = _dlRangeBands(mode, base);
     cells.push([0, lo - 1, '< ' + t(lo)]);
     for (let b = lo; b <= hi; b++) cells.push([b, b, t(b) + ' to ' + t(b + 1)]);
     cells.push([hi + 1, 47, '> ' + t(hi + 1)]);
@@ -927,20 +943,22 @@ function _locPickDlLegendBuild(mode) {
     const c = document.createElement('button');
     c.dataset.band = from === to ? String(from) : from + '-' + to;
     c.setAttribute('aria-pressed', 'false');
-    c.style.background = _locPickDlRgb(_dlColor(mode, from));
+    c.style.background = _locPickDlRgb(_dlColor(mode, from, base));
     c.title = title;
     _locPickDlCellEvents(c);
     sc.appendChild(c);
   }
-  // the marks: length its ends; rise and set the range's ends and every 3 h between, on the cells' edges
+  // the marks: length its ends; rise and set in Local the range's ends and every 3 h between, on the
+  // cells' edges; on the whole dial every 6 h
   let marks;
   if (mode === 'length') marks = [[0, '0 h'], [1, '24 h']];
+  else if (!narrow) { marks = []; for (let h = 0; h <= 24; h += 6) marks.push([h / 24, h + ':00']); }
   else {
-    const [r0, r1] = DL_RANGES[mode], lo = _dlRangeBands(mode).lo;
+    const [r0, r1] = _dlRange(mode, base), lo = _dlRangeBands(mode, base).lo;
     marks = [];
     for (let h = r0; h <= r1; h += 3) marks.push([(1 + h / step - lo) / cells.length, h + ':00']);
   }
-  ends.classList.toggle('dl-ends-c', mode !== 'length');
+  ends.classList.toggle('dl-ends-c', narrow);
   for (const [f, t] of marks) {
     const sp = document.createElement('span');
     sp.style.left = (f * 100) + '%';
@@ -983,7 +1001,8 @@ function _locPickDlLegendSync() {
   const L = document.getElementById('locPickDlLegend');
   if (!L) return;
   const mode = _locPick.dlMode;
-  if (L.dataset.mode !== mode) { _locPickDlLegendBuild(mode); L.dataset.mode = mode; }
+  const lb = mode === 'length' ? '' : _locPick.dlBase;   // the cells follow the range (_dlRange)
+  if (L.dataset.mode !== mode || L.dataset.base !== lb) { _locPickDlLegendBuild(mode, lb); L.dataset.mode = mode; L.dataset.base = lb; }
   for (const b of document.querySelectorAll('#locPickDlMode [data-mode]')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
   for (const b of document.querySelectorAll('#locPickDlBase [data-base]')) b.setAttribute('aria-pressed', String(b.dataset.base === _locPick.dlBase));
   for (const b of document.querySelectorAll('#locPickDlLabels [data-labels]')) b.setAttribute('aria-pressed', String(b.dataset.labels === _locPick.dlLabels));
@@ -1017,14 +1036,14 @@ function _locPickDlHintOn(p) {
   const polar = e.polarDay ? 'day' : e.polarNight ? 'night' : null;
   if (mode === 'length') {
     if (polar) return { text: polar === 'day' ? 'Polar day · 24 h' : 'Polar night · 0 h', rgb: LOC_PICK_DL_POLAR[polar] };
-    return { text: 'Day ' + _dlFmt(mode, cut(e.lenH)), rgb: _dlColor(mode, _dlBand(mode, e.lenH)) };
+    return { text: 'Day ' + _dlFmt(mode, cut(e.lenH)), rgb: _dlColor(mode, _dlBand(mode, e.lenH), '') };
   }
   if (polar) return { text: 'No ' + (mode === 'rise' ? 'sunrise' : 'sunset') + ' · polar ' + polar, rgb: LOC_PICK_DL_POLAR[polar] };
   const base = _locPick.dlBase;
   const off = base === 'utc' ? 0 : base === 'location' ? _locPickDlBaseOffset() : _dlOffsetInfoAt(q.lat, q.lon).h;
   const c = _dlClock(mode === 'rise' ? e.riseUT : e.setUT, off);
   return { text: (mode === 'rise' ? 'Sunrise ' : 'Sunset ') + _dlFmt(mode, cut(c)) + ' · UTC' + (off === 0 ? '+0' : _locPickOffsetText(off)),
-    rgb: _dlColor(mode, _dlBand(mode, c)) };
+    rgb: _dlColor(mode, _dlBand(mode, c), base) };
 }
 // #locPickInfoDl, the head's third line (called by _locPickZoneHint and after a draw shows another date)
 function _locPickDlInfoSync(p) {

@@ -9,11 +9,19 @@ const DL_MODES = {
   rise: { step: 0.5, unit: 'clock' },
   set: { step: 0.5, unit: 'clock' },
 };
-// Palette anchors [position 0..24, rgb], spread over the mode's range (DL_RANGES, hours): a time
-// before the range takes the first anchor, after it the last; Day length spans the whole dial
-const DL_ANCHORS = [[0, [11, 31, 77]], [6, [74, 159, 224]], [12, [58, 168, 69]], [18, [240, 138, 36]], [24, [245, 214, 58]]];
+// Palette anchors [position 0..24, rgb], linear between them, spread over the mode's range
+// (_dlRange, hours): a time before the range takes the first anchor, after it the last. Dark grey
+// (darker than any blue of the scale), dark blue, navy, light blue, green, then as the ČHMÚ
+// temperature scale yellow, orange, red and wine. Neighbouring bands are not lightened in turn: the
+// anchors are close enough that every half hour has its own shade.
+const DL_ANCHORS = [[0, [13, 14, 17]], [1.5, [8, 18, 50]], [3.5, [11, 31, 77]], [7, [74, 159, 224]], [10.5, [90, 180, 60]],
+  [14, [255, 226, 96]], [17.5, [255, 154, 0]], [21, [205, 28, 0]], [24, [128, 0, 36]]];
+// Sunrise and Sunset in the Local base narrow the palette to their usual hours; in UTC and the
+// Location's time the whole dial (half the world would take an end colour otherwise)
 const DL_RANGES = { length: [0, 24], rise: [2, 11], set: [13, 22] };
-const DL_ALT_LIGHTEN = 0.12;   // every odd band this far toward white, so neighbours always differ
+function _dlRange(mode, base) {
+  return mode !== 'length' && base === 'local' ? DL_RANGES[mode] : [0, 24];
+}
 const DL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // The Location (signed degrees)
@@ -81,24 +89,26 @@ function _dlBand(mode, value) {
   return Math.max(0, Math.min(47, Math.floor(value / DL_MODES[mode].step)));
 }
 function _dlPalette(h) {
-  const i = Math.max(0, Math.min(3, Math.floor(h / 6))), t = (h - DL_ANCHORS[i][0]) / 6;
-  return DL_ANCHORS[i][1].map((c, k) => Math.round(c + (DL_ANCHORS[i + 1][1][k] - c) * t));
+  const A = DL_ANCHORS, p = Math.max(0, Math.min(24, h));
+  let i = 1; while (i < A.length - 1 && p > A[i][0]) i++;
+  const t = (p - A[i - 1][0]) / (A[i][0] - A[i - 1][0]);
+  return A[i - 1][1].map((c, k) => Math.round(c + (A[i][1][k] - c) * t));
 }
-// The band's colour [r, g, b]: the palette at the band's middle placed on the mode's range (the
-// ends beyond it); length's end bands take the anchors; an odd band DL_ALT_LIGHTEN toward white
-function _dlColor(mode, band) {
-  let c;
-  if (mode === 'length' && band <= 0) c = DL_ANCHORS[0][1].slice();
-  else if (mode === 'length' && band >= 23) c = DL_ANCHORS[4][1].slice();
-  else {
-    const [r0, r1] = DL_RANGES[mode], mid = (band + 0.5) * DL_MODES[mode].step;
-    c = _dlPalette(Math.max(0, Math.min(1, (mid - r0) / (r1 - r0))) * 24);
-  }
-  return band % 2 ? c.map(x => Math.round(x + (255 - x) * DL_ALT_LIGHTEN)) : c;
+// The band's colour [r, g, b] in the time base (rise and set; '' for length): the palette at the
+// band's middle placed on the range (_dlRange, the ends beyond it); length's end bands take the
+// first and last anchors. Sunrise in the Local base reads the palette backwards: an early sunrise is
+// a long day, warm as a late sunset and a long Day length (in UTC and the Location's time the colours
+// follow the longitude, both events in the same direction)
+function _dlColor(mode, band, base) {
+  if (mode === 'length' && band <= 0) return DL_ANCHORS[0][1].slice();
+  if (mode === 'length' && band >= 23) return DL_ANCHORS[DL_ANCHORS.length - 1][1].slice();
+  const [r0, r1] = _dlRange(mode, base), mid = (band + 0.5) * DL_MODES[mode].step;
+  const f = Math.max(0, Math.min(1, (mid - r0) / (r1 - r0)));
+  return _dlPalette((mode === 'rise' && base === 'local' ? 1 - f : f) * 24);
 }
-// The first and last band wholly inside the mode's range: { lo, hi }
-function _dlRangeBands(mode) {
-  const [r0, r1] = DL_RANGES[mode], step = DL_MODES[mode].step;
+// The first and last band wholly inside the range: { lo, hi }
+function _dlRangeBands(mode, base) {
+  const [r0, r1] = _dlRange(mode, base), step = DL_MODES[mode].step;
   return { lo: Math.ceil(r0 / step - 1e-9), hi: Math.floor(r1 / step + 1e-9) - 1 };
 }
 // The value as text: '14 h 32 min' for a length, '6:42' for a time of day
