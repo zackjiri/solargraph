@@ -1260,6 +1260,7 @@ function drawSkyDomeMatrixAxes(ctx, W, H, pal) {
 function drawSkyDome() {
   const cv = document.getElementById('skyDomeCanvas');
   if (!cv) return;
+  const t0 = performance.now();   // the drag level (_skyDomeDragMeasure)
   _skyDomeUpdateFlatRow();   // RENDER IMAGE may have been switched on before the image finished loading
   const RES = cv._res || 1;
   const ctx = cv.getContext('2d');
@@ -1386,6 +1387,7 @@ function drawSkyDome() {
   ctx.fillText('Sky Dome', 34, 26);
   ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
   ctx.fillText('Lat ' + latStr, 34 + 90, 26);
+  if (layout.mode === 'planet3d' && _skyDomePlanet3DInteracting) _skyDomeDragMeasure(performance.now() - t0);
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────────
@@ -2414,9 +2416,29 @@ const SD_PLANET_IMG_FEATHER_FRAC = 0.06;   // feather width, as a fraction of th
 // texturing pattern, so this matters far more on iPad than it measures on desktop. Set by
 // _skyDomePlanet3DInteracting (the Planetarium drag/pinch handlers below); the interacting flag
 // is itself part of the cache key (_skyDomePlanetImgCacheKey), so the moment interaction ends the
-// next draw is treated as a fresh state and repaints once at full quality.
-const SD_PLANET_IMG_INTERACT_STEP_MUL = 2;
+// next draw is treated as a fresh state and repaints once at full quality. The coarser step is
+// SKY_DOME_DRAG_IMG_STEP_MUL (below), 2 at the usual drag level.
 let _skyDomePlanet3DInteracting = false;
+
+// Drag level on a slow machine: while the view moves, the time of each Planetarium draw is
+// measured (_skyDomeDragMeasure, from drawSkyDome) and, when it stays above
+// SKY_DOME_DRAG_SLOW_MS, the next level coarsens the sky glow's cells and the photo's mesh further
+// (below SKY_DOME_DRAG_FAST_MS it goes back a level). Level 0 is the usual drag look, so a fast
+// machine never leaves it; the level is kept for the next drag until the page closes, and a settled
+// frame is always full quality.
+const SKY_DOME_DRAG_GLOW_PX = [4, 6, 8];          // the glow buffer's cell, CSS px (settled: GLOW_BUF_PX)
+const SKY_DOME_DRAG_IMG_STEP_MUL = [2, 3, 4.5];    // the photo's mesh: 8°, 12°, 18° (settled 4°)
+const SKY_DOME_DRAG_SLOW_MS = 10, SKY_DOME_DRAG_FAST_MS = 2.5, SKY_DOME_DRAG_SAMPLES = 4;
+let _skyDomeDragLod = 0;
+const _skyDomeDragCost = { ms: 0, n: 0 };
+function _skyDomeDragMeasure(ms) {
+  const C = _skyDomeDragCost;
+  C.ms = C.n ? C.ms * 0.6 + ms * 0.4 : ms;
+  if (++C.n < SKY_DOME_DRAG_SAMPLES) return;
+  const top = SKY_DOME_DRAG_GLOW_PX.length - 1;
+  if (C.ms > SKY_DOME_DRAG_SLOW_MS && _skyDomeDragLod < top) { _skyDomeDragLod++; C.n = 0; }
+  else if (C.ms < SKY_DOME_DRAG_FAST_MS && _skyDomeDragLod > 0) { _skyDomeDragLod--; C.n = 0; }
+}
 
 // ── Rendering indicator (pill, bottom-left) - one shared setter for all three states ───────────
 function _skyDomeIndicatorShow(text, green) {
@@ -2567,7 +2589,7 @@ function _skyDomePlanet3DPaintImage(ctx, layout, tex, blendFn, W, H, RES) {
   // uninflated flat-alpha fill (matches the mesh's own existing interaction-LOD quality tradeoff).
   if (interacting) { maskCtx.globalCompositeOperation = 'source-over'; maskCtx.fillStyle = '#fff'; }
   else { maskCtx.globalCompositeOperation = 'lighten'; maskCtx.globalAlpha = 1; }
-  const stepMul = interacting ? SD_PLANET_IMG_INTERACT_STEP_MUL
+  const stepMul = interacting ? SKY_DOME_DRAG_IMG_STEP_MUL[_skyDomeDragLod]
     : _skyDomePlanet3DHDPending ? SD_PLANET_IMG_HD_STEP_MUL : 1;
   const AZ_STEP = SD_PLANET_IMG_AZ_STEP * stepMul, EL_STEP = SD_PLANET_IMG_EL_STEP * stepMul;
 
@@ -2660,7 +2682,7 @@ function _skyDomePlanetImgCacheKey(layout) {
     p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
     yawDeg, pitchDeg, rollDeg, radius, horizonMm, scanWmm, hemisphere,
     layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
-    canvasLW, canvasLH, _skyDomePlanet3DInteracting,
+    canvasLW, canvasLH, _skyDomePlanet3DInteracting && _skyDomeDragLod,
   ].join('|');
 }
 
@@ -2822,7 +2844,7 @@ function _skyDomePanoCacheKey(layout) {
   return [
     p.camAz.toFixed(4), p.camEl.toFixed(4), p.zoom.toFixed(3),
     layout.cx.toFixed(2), layout.cy.toFixed(2), layout.scale.toFixed(2),
-    canvasLW, canvasLH, _skyDomePlanet3DInteracting,
+    canvasLW, canvasLH, _skyDomePlanet3DInteracting && _skyDomeDragLod,
     ..._skyDomePanoKeys().map((k) => k + ':' + !!_skyDomePanoBitmaps[k]),
   ].join('|');
 }

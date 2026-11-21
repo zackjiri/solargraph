@@ -39,6 +39,9 @@ const _locPick = {
   // Sunrise or Sunset, the time base of the last two ('local', 'utc', 'location'), the band shown alone;
   // the layer, mode and base kept while the page is open (#btnLocPickDaylight, #locPickDlLegend)
   dl: false, dlMode: 'length', dlBase: 'local', dlLabels: 'edges', dlHi: { hover: null, pin: null },
+  // the night's shade over the bands per mode (#locPickDlNight, _locPickDlNightDraw), kept while
+  // the page is open; where it was last drawn: {s: the subsolar unit vector, R: the disc's radius}
+  dlNight: { length: false, rise: true, set: true }, dlNightDrawn: null,
   // their parts, each switched in the legend (#locPickZoneLegend); the same date off at first, as
   // it watches the time (_locPickDays)
   zoneParts: { dateLine: true, sameDate: false, hatch: true, labels: true, dst: false },
@@ -678,13 +681,31 @@ function _locPickZoneDstRelease() {
 // The DST signs the same way: a zone's state changed at the moment redrawn in that frame (not in
 // Solargraph, which has no moment).
 let _locPickWatchRaf = 0, _locPickWatchMinute = null, _locPickWatchMinuteAt = 0;
+// Daylight's night shade the same way (_locPickDlNightDraw): redrawn once the subsolar point has
+// moved LOC_PICK_DL_NIGHT_MIN_PX on the disc since the last draw (its angle × the disc's radius), as
+// the Planetarium's sky in playback (NIGHTSKY_ANIM_MIN_PX): at 1x a draw every few seconds, at high
+// speeds every frame, the disc itself never rebuilt.
+const LOC_PICK_DL_NIGHT_MIN_PX = 0.25;
+function _locPickWatchNight() {
+  return typeof _locPickDlNightOn === 'function' && _locPick.open && _locPickDlNightOn();
+}
+function _locPickNightMoved() {
+  const D = _locPick.dlNightDrawn;
+  if (!D) return true;
+  const s = _locPickDlNightSubsolar(_tzDateInstant());
+  const c = Math.max(-1, Math.min(1, D.s[0] * s[0] + D.s[1] * s[1] + D.s[2] * s[2]));
+  return Math.acos(c) * D.R >= LOC_PICK_DL_NIGHT_MIN_PX;
+}
 function _locPickWatchOn() {
+  if (_locPickWatchNight()) return true;
   return _locPick.open && _locPick.zones && (_locPick.zoneParts.sameDate || (_locPick.zoneParts.dst && _tzDateInstant() !== null) || _locPickZoneTimeMs() !== null)
     && typeof _tzGrid !== 'undefined' && !!_tzGrid.data;
 }
 function _locPickWatch() {
   _locPickWatchRaf = 0;
   if (!_locPickWatchOn()) return;
+  if (_locPickWatchNight() && _locPickNightMoved()) { _locPickDraw(); if (!_locPickWatchRaf) _locPickWatchRaf = requestAnimationFrame(_locPickWatch); return; }
+  if (!(_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data)) { _locPickWatchRaf = requestAnimationFrame(_locPickWatch); return; }
   let draw = _locPick.zoneParts.sameDate && _locPickDays(_tzGrid.data).sig !== _locPick.daySig;
   if (!draw && _locPick.zoneParts.dst && _tzDateInstant() !== null) draw = _locPickZoneDstStates(_tzDateInstant()).sig !== _locPick.dstSig;
   const ms = _locPickZoneTimeMs(), m = ms === null ? null : Math.floor(ms / 60000);
@@ -1124,6 +1145,7 @@ function _locPickDraw() {
   if (_locPick.zones && typeof _tzGrid !== 'undefined' && _tzGrid.data) { _locPickDrawVeil(ctx, V); _locPickDrawMatch(ctx, V); _locPickDrawZoneDst(ctx, V, w, h, res); }
   if (_locPickLpOn()) _locPickDrawLpHi(ctx, V);
   if (_locPick.dl && typeof _locPickDlDraw === 'function') _locPickDlDraw(ctx, V, w, h);   // render-locpick-daylight.js
+  if (_locPick.dl && typeof _locPickDlNightDraw === 'function') _locPickDlNightDraw(ctx, V);   // the night over the bands
   ctx.save();
   ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
   _locPickGraticule(ctx, V);

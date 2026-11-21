@@ -454,6 +454,43 @@ function drawSunGraph() {
 }
 
 let _sgCaptionPlace = null;   // the last source's {key: src.captionKey, place: src.placeCaption} (_sgDraw)
+// The hovered day's fast path: _sgDraw keeps the chart before its day-dependent tail on an
+// offscreen canvas (_sgFast) with the tail itself; a new day under the cursor then puts the kept chart
+// back and runs only the tail, at most once per frame of the browser, for the last day (_sgHoverSoon).
+// Any other change redraws the whole chart through _sgDraw and renews what is kept.
+// The tail may lean on the context state the chart left (Night Sky's markers inherit the line
+// width and colours), so that state is kept with the picture and put back before the tail runs.
+const _sgFast = { cv: null, ok: false, src: null, tail: null, canvas: null, st: null };
+const _SG_FAST_STATE = ['globalAlpha', 'globalCompositeOperation', 'lineWidth', 'lineCap', 'lineJoin',
+  'miterLimit', 'lineDashOffset', 'font', 'textAlign', 'textBaseline', 'fillStyle', 'strokeStyle',
+  'shadowBlur', 'shadowColor', 'shadowOffsetX', 'shadowOffsetY', 'imageSmoothingEnabled'];
+function _sgFastKeep(cv, src, tail) {
+  const F = _sgFast, c = cv.getContext('2d');
+  F.st = { dash: c.getLineDash() };
+  for (const k of _SG_FAST_STATE) F.st[k] = c[k];
+  if (!F.cv) F.cv = document.createElement('canvas');
+  if (F.cv.width !== cv.width || F.cv.height !== cv.height) { F.cv.width = cv.width; F.cv.height = cv.height; }
+  const k = F.cv.getContext('2d');
+  k.setTransform(1, 0, 0, 1, 0, 0); k.clearRect(0, 0, F.cv.width, F.cv.height); k.drawImage(cv, 0, 0);
+  F.ok = true; F.src = src; F.tail = tail; F.canvas = cv;
+}
+let _sgHoverRaf = 0;
+function _sgHoverSoon(src) {
+  if (_sgHoverRaf) return;
+  _sgHoverRaf = requestAnimationFrame(() => {
+    _sgHoverRaf = 0;
+    if (!src.isActive()) return;
+    const F = _sgFast, cv = F.canvas;
+    if (!F.ok || F.src !== src || !cv || F.cv.width !== cv.width || F.cv.height !== cv.height) { src.redraw(); return; }
+    const ctx = cv.getContext('2d'), RES = cv._res || 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(F.cv, 0, 0);
+    ctx.setTransform(RES, 0, 0, RES, 0, 0);
+    for (const k of _SG_FAST_STATE) ctx[k] = F.st[k];
+    ctx.setLineDash(F.st.dash);
+    F.tail(src.hoverDay);
+  });
+}
 function _sgDraw(cv, src) {
   if (!cv) return;
   _sgActiveSrc = src;
@@ -846,122 +883,130 @@ function _sgDraw(cv, src) {
       });
     }
   }
-  // Semi-transparent orange column at the cursor-hovered day.
-  if (src.hoverDay !== null) {
-    const col = dayCol(src.hoverDay);
-    ctx.fillStyle = 'rgba(232,160,32,0.55)';
-    ctx.fillRect(col.x0, py0, col.w, ph);
-  }
-  // Source-drawn markers (Night Sky: the Sun and the Moon as in the Planetarium).
-  if (src.drawMarkers && timeLayers) src.drawMarkers(ctx, { px0, py0, pw, ph, dayToX, dayCenter, hourToY });
-  // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
-  if (src.sunMarker && timeLayers) {
-    _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
-      const sx = dayCenter(src.sunMarker.d), sy = hourToY(src.disp(src.sunMarker.trueHour, src.sunMarker.d));
-      const glR = 11;
-      const glow = c.createRadialGradient(sx, sy, 0, sx, sy, glR);
-      glow.addColorStop(0, 'rgba(232,160,32,0.65)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
-      c.fillStyle = glow; c.fillRect(sx - glR, sy - glR, glR * 2, glR * 2);
-      c.beginPath(); c.arc(sx, sy, 4.5, 0, Math.PI * 2);
-      c.fillStyle = '#e8a020'; c.fill();
-      c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1; c.stroke();
-    });
-  }
-
-  // ── Selected-day strip (100% opacity) + centered date label ───────────────────
-  const activeDay = (src.hoverDay !== null) ? src.hoverDay : customDoy;
-  const sw = src.events(activeDay);
-  // The strip is the active day in TRUE solar time, 0-24 h, noon in the middle, in every time
-  // mode: the whole day (night - dawn - day - dusk - night) always fits, however far the Time zone
-  // is from the longitude (at UTC+10 in Europe the clock sunset falls after midnight). Only the
-  // hour labels under it show the selected convention (see the hour axis below). Every data layer
-  // (bands, sun on the paper, CHMI via trueFromStandard) is placed by its true solar hour.
-  const xh = (h) => px0 + (h / 24) * pw;
-  const xhData = (trueH) => xh(Math.max(0, Math.min(24, trueH)));
-
-  // ── CHMI strip line (directly above the day strip) ────────────────────────────
-  // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
-  // day outside the station's coverage window) - only the coloured cells are data-dependent.
-  if (src.solar && showImgChmi && timeDisplayMode !== 'true') {
-    const chmiByDoy   = _sgEnsureChmiByDoy();
-    const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
-    if (daySamples) {
-      const calpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
-      for (const [hour, sec] of daySamples) {
-        if (sec === null) continue;
-        const trueHour = trueFromStandard(hour, activeDay);
-        const xl = xhData(trueHour), xr = xhData(trueFromStandard(hour + 1 / 6, activeDay));
-        ctx.fillStyle = _chmiActiveColor(sec, calpha);
-        ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
-      }
+  // Everything from here on depends on the hovered day (its column, the day strip, the hour axis, the
+  // legend's times, the info panel): it is the tail, and the chart drawn so far is kept
+  // (_sgFastKeep), so a new hovered day only puts the kept chart back and draws the tail again
+  // (_sgHoverSoon) instead of the whole chart.
+  const tail = (hov) => {
+    // Semi-transparent orange column at the cursor-hovered day.
+    if (hov !== null) {
+      const col = dayCol(hov);
+      ctx.fillStyle = 'rgba(232,160,32,0.55)';
+      ctx.fillRect(col.x0, py0, col.w, ph);
     }
-    ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, chmiLaneY, pw, chmiStripH);
-  }
+    // Source-drawn markers (Night Sky: the Sun and the Moon as in the Planetarium).
+    if (src.drawMarkers && timeLayers) src.drawMarkers(ctx, { px0, py0, pw, ph, dayToX, dayCenter, hourToY });
+    // ── Sun marker (Sun path / custom date): same symbol as on the canvas, at the slider's solar time ─
+    if (src.sunMarker && timeLayers) {
+      _sgWrapDraw(ctx, px0, py0, pw, ph, (c) => {
+        const sx = dayCenter(src.sunMarker.d), sy = hourToY(src.disp(src.sunMarker.trueHour, src.sunMarker.d));
+        const glR = 11;
+        const glow = c.createRadialGradient(sx, sy, 0, sx, sy, glR);
+        glow.addColorStop(0, 'rgba(232,160,32,0.65)'); glow.addColorStop(1, 'rgba(232,160,32,0)');
+        c.fillStyle = glow; c.fillRect(sx - glR, sy - glR, glR * 2, glR * 2);
+        c.beginPath(); c.arc(sx, sy, 4.5, 0, Math.PI * 2);
+        c.fillStyle = '#e8a020'; c.fill();
+        c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1; c.stroke();
+      });
+    }
 
-  ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
-  const seg = (key, col, e) => {
-    if (e.polarNight) return;
-    const xl = xhData(e.rise, e.eotRise), xr = xhData(e.set, e.eotSet);
-    ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
-  };
-  if (src.stripBands !== false) {   // Night Sky with Sun off and Moon on: only the Moon on the strip
-    seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
-    seg('civil', _SG_BANDS.civil, sw.civ);   seg('day',  _SG_BANDS.day,  sw.day);
-  }
-  // Sun-on-paper overlay on the strip (green/red, respecting legend toggles + hover emphasis); also feeds the panel.
-  if (src.solar) {
-    const activeRuns = _sgDayRuns(activeDay, 240);
-    _sgActiveOnPaper = activeRuns.onPaper;
-    const segGR = (col, ivs) => {
-      ctx.fillStyle = col;
-      for (const iv of ivs) { const xl = xhData(iv[0]), xr = xhData(iv[1]); ctx.fillRect(xl, laneY, xr - xl, recapH); }
+    // ── Selected-day strip (100% opacity) + centered date label ───────────────────
+    const activeDay = (hov !== null) ? hov : customDoy;
+    const sw = src.events(activeDay);
+    // The strip is the active day in TRUE solar time, 0-24 h, noon in the middle, in every time
+    // mode: the whole day (night - dawn - day - dusk - night) always fits, however far the Time zone
+    // is from the longitude (at UTC+10 in Europe the clock sunset falls after midnight). Only the
+    // hour labels under it show the selected convention (see the hour axis below). Every data layer
+    // (bands, sun on the paper, CHMI via trueFromStandard) is placed by its true solar hour.
+    const xh = (h) => px0 + (h / 24) * pw;
+    const xhData = (trueH) => xh(Math.max(0, Math.min(24, trueH)));
+
+    // ── CHMI strip line (directly above the day strip) ────────────────────────────
+    // Always spans the full 0-24h width, even for a day with no measured data at all (e.g. a
+    // day outside the station's coverage window) - only the coloured cells are data-dependent.
+    if (src.solar && showImgChmi && timeDisplayMode !== 'true') {
+      const chmiByDoy   = _sgEnsureChmiByDoy();
+      const daySamples  = chmiByDoy ? chmiByDoy.get(activeDay) : null;
+      if (daySamples) {
+        const calpha = _sgEmphBand === 'chmi' ? 0.95 : 0.85;
+        for (const [hour, sec] of daySamples) {
+          if (sec === null) continue;
+          const trueHour = trueFromStandard(hour, activeDay);
+          const xl = xhData(trueHour), xr = xhData(trueFromStandard(hour + 1 / 6, activeDay));
+          ctx.fillStyle = _chmiActiveColor(sec, calpha);
+          ctx.fillRect(xl, chmiLaneY, Math.max(1, xr - xl), chmiStripH);
+        }
+      }
+      ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, chmiLaneY, pw, chmiStripH);
+    }
+
+    ctx.fillStyle = _sgShade(_SG_BANDS.night, _sgEmphBand === 'night'); ctx.fillRect(px0, laneY, pw, recapH);
+    const seg = (key, col, e) => {
+      if (e.polarNight) return;
+      const xl = xhData(e.rise, e.eotRise), xr = xhData(e.set, e.eotSet);
+      ctx.fillStyle = _sgShade(col, _sgEmphBand === key); ctx.fillRect(xl, laneY, xr - xl, recapH);
     };
-    if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
-    if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
-  }
-  // thinY/thinH: the thin lane right above the strip (the CHMI line's place), free for a source
-  // that has no CHMI (Night Sky draws the Moon there when the strip shows the Sun).
-  if (src.drawStripExtra) src.drawStripExtra(ctx, { activeDay, laneY, recapH, px0, pw, xh, thinY: chmiLaneY, thinH: chmiStripH, border: pal.border });
-  ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
+    if (src.stripBands !== false) {   // Night Sky with Sun off and Moon on: only the Moon on the strip
+      seg('astro', _SG_BANDS.astro, sw.astro); seg('naut', _SG_BANDS.naut, sw.naut);
+      seg('civil', _SG_BANDS.civil, sw.civ);   seg('day',  _SG_BANDS.day,  sw.day);
+    }
+    // Sun-on-paper overlay on the strip (green/red, respecting legend toggles + hover emphasis); also feeds the panel.
+    if (src.solar) {
+      const activeRuns = _sgDayRuns(activeDay, 240);
+      _sgActiveOnPaper = activeRuns.onPaper;
+      const segGR = (col, ivs) => {
+        ctx.fillStyle = col;
+        for (const iv of ivs) { const xl = xhData(iv[0]), xr = xhData(iv[1]); ctx.fillRect(xl, laneY, xr - xl, recapH); }
+      };
+      if (_sgShowRed)   segGR(_sgEmphBand === 'red'   ? _SG_RED_EMPH   : _SG_RED,   activeRuns.red);
+      if (_sgShowGreen) segGR(_sgEmphBand === 'green' ? _SG_GREEN_EMPH : _SG_GREEN, activeRuns.green);
+    }
+    // thinY/thinH: the thin lane right above the strip (the CHMI line's place), free for a source
+    // that has no CHMI (Night Sky draws the Moon there when the strip shows the Sun).
+    if (src.drawStripExtra) src.drawStripExtra(ctx, { activeDay, laneY, recapH, px0, pw, xh, thinY: chmiLaneY, thinH: chmiStripH, border: pal.border });
+    ctx.strokeStyle = pal.border; ctx.lineWidth = 1; ctx.strokeRect(px0, laneY, pw, recapH);
 
-  // Centered date label — readable on any band (white fill + dark outline).
-  const label = (src.hoverDay !== null)
-    ? 'SELECTED DATE: ' + src.dayLabel(src.hoverDay)
-    : 'CUSTOM DATE: ' + src.dayLabel(customDoy);
-  ctx.font = "bold 11px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ff3b30';   // red, no outline/shadow (contrast on the strip)
-  ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
+    // Centered date label — readable on any band (white fill + dark outline).
+    const label = (hov !== null)
+      ? 'SELECTED DATE: ' + src.dayLabel(hov)
+      : 'CUSTOM DATE: ' + src.dayLabel(customDoy);
+    ctx.font = "bold 11px 'Share Tech Mono', monospace";
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ff3b30';   // red, no outline/shadow (contrast on the strip)
+    ctx.fillText(label, px0 + pw / 2, laneY + recapH / 2);
 
-  // ── Hour axis under the strip: every 2 h of the selected convention ──────────────
-  // The strip stays in true solar time; the ticks sit where the displayed clock (src.disp, one
-  // shift for the whole day: zone/longitude offset plus the day's equation of time) reads an even
-  // hour, labelled with that hour (wrapped onto 00-23). In True mode that is 00, 02, ... 22 at
-  // their own places.
-  const axisY = laneY + recapH;
-  ctx.strokeStyle = pal.grid; ctx.fillStyle = pal.text; ctx.lineWidth = 1;
-  ctx.font = "10px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  const shift = src.disp(0, activeDay);   // displayed hour at true midnight
-  for (let H = Math.ceil(shift / 2 - 1e-9) * 2; H - shift < 23.5; H += 2) {
-    const x = xh(H - shift);
-    ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 3); ctx.stroke();
-    ctx.fillText(String(((H % 24) + 24) % 24).padStart(2, '0'), x, axisY + 5);
-  }
+    // ── Hour axis under the strip: every 2 h of the selected convention ──────────────
+    // The strip stays in true solar time; the ticks sit where the displayed clock (src.disp, one
+    // shift for the whole day: zone/longitude offset plus the day's equation of time) reads an even
+    // hour, labelled with that hour (wrapped onto 00-23). In True mode that is 00, 02, ... 22 at
+    // their own places.
+    const axisY = laneY + recapH;
+    ctx.strokeStyle = pal.grid; ctx.fillStyle = pal.text; ctx.lineWidth = 1;
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const shift = src.disp(0, activeDay);   // displayed hour at true midnight
+    for (let H = Math.ceil(shift / 2 - 1e-9) * 2; H - shift < 23.5; H += 2) {
+      const x = xh(H - shift);
+      ctx.beginPath(); ctx.moveTo(x, axisY); ctx.lineTo(x, axisY + 3); ctx.stroke();
+      ctx.fillText(String(((H % 24) + 24) % 24).padStart(2, '0'), x, axisY + 5);
+    }
 
-  ctx.fillStyle = pal.accent;
-  ctx.font = "bold 14px 'Share Tech Mono', monospace";
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText('Sun Graph', mL, 26);
-  ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
-  ctx.fillText(caption, capX, capY);
-  if (_sgCaptionPlace && _sgCaptionPlace.key !== src.captionKey) _sgCaptionPlace.place(null);   // another source's element away
-  _sgCaptionPlace = src.placeCaption ? { key: src.captionKey, place: src.placeCaption } : null;
-  if (_sgCaptionPlace) _sgCaptionPlace.place(lengthMode ? null : { x: capX + captionW, y: capY });
+    ctx.fillStyle = pal.accent;
+    ctx.font = "bold 14px 'Share Tech Mono', monospace";
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('Sun Graph', mL, 26);
+    ctx.fillStyle = pal.text; ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.fillText(caption, capX, capY);
+    if (_sgCaptionPlace && _sgCaptionPlace.key !== src.captionKey) _sgCaptionPlace.place(null);   // another source's element away
+    _sgCaptionPlace = src.placeCaption ? { key: src.captionKey, place: src.placeCaption } : null;
+    if (_sgCaptionPlace) _sgCaptionPlace.place(lengthMode ? null : { x: capX + captionW, y: capY });
 
-  _sgUpdateLegendTimes(src, activeDay, evs, lengthMode);
+    _sgUpdateLegendTimes(src, activeDay, evs, lengthMode);
 
-  if (src.afterDraw) src.afterDraw(activeDay);   // keep the info panel in sync with the active day
+    if (src.afterDraw) src.afterDraw(activeDay);   // keep the info panel in sync with the active day
+  };
+  _sgFastKeep(cv, src, tail);
+  tail(src.hoverDay);
 }
 
 // Legend values per band while Custom date is on, for the active day (hovered, else the custom
@@ -1101,7 +1146,7 @@ function _sgUpdateReadout() {
     if (x >= L.px0 && x <= L.px0 + L.pw && y >= L.py0 && y <= L.py0 + L.ph) {
       day = _sgDayAtX(L, src.nDays, x);   // the column under the cursor
     }
-    if (day !== src.hoverDay) { src.setHover(day); src.redraw(); }
+    if (day !== src.hoverDay) { src.setHover(day); src.hoverDay = day; _sgHoverSoon(src); }   // only the day-dependent part
     if (src.solar) {
       _sgCursor = day === null ? null : { doy: day, hour: (L.py0 + L.ph - y) / L.ph * 24 };
       _sgUpdateReadout();

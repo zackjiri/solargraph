@@ -798,6 +798,111 @@ function _locPickDlSetLabels(which) {
   _locPickDlLegendSync();
   _locPickRequest();
 }
+// ── The night's shade (#locPickDlNight) ──────────────────────────────────────────────────────────
+// Where the Sun is below each altitude of LOC_PICK_DL_NIGHT_H at the mode's moment (_tzDateInstant;
+// none in Solargraph), the globe is darkened toward rgb(6,8,12) by LOC_PICK_DL_NIGHT_A once more:
+// sunset (the bands' own -0.833°), civil, nautical and astronomical twilight, so full night is
+// ~0.81, darker than the zones' same date veil (0.55). Each step is the spherical cap {p : p·s < sin h} around the
+// antisolar point, its edge a circle on the Earth, an ellipse in the orthographic view: one vector
+// path per step every frame over the cached disc (no raster, the disc never rebuilt), well under a
+// millisecond at any zoom. On by default in Sunrise and Sunset, off in Day length (_locPick.dlNight).
+const LOC_PICK_DL_NIGHT_H = [-0.833, -6, -12, -18];
+const LOC_PICK_DL_NIGHT_A = 0.34;
+const LOC_PICK_DL_NIGHT_RGB = '6,8,12';
+// The subsolar point at the instant ms as a unit vector of the Earth's frame (_locPickVec's)
+function _locPickDlNightSubsolar(ms) {
+  const t = new Date(ms), Y = t.getUTCFullYear(), M = t.getUTCMonth() + 1, D = t.getUTCDate();
+  const hUT = (ms - Date.UTC(Y, M - 1, D)) / 3600000;
+  const eq = _nightSkySunRaDec(Y, M, D, hUT);
+  return _locPickVec(eq.ra - _skyGMSTDeg(_skyToJulianDateUT(Y, M, D, hUT)), eq.dec);
+}
+function _locPickDlNightOn() {
+  return _locPick.dl && !_locPick.ecl && !!_locPick.dlNight[_locPick.dlMode] && _tzDateInstant() !== null;
+}
+function _locPickDlNightSet(on) {
+  _locPick.dlNight[_locPick.dlMode] = !!on;
+  _locPickDlLegendSync();
+  _locPickRequest();
+}
+// One step's path (the cap's part on the near side) added to path P, or 'all' / null when the near
+// side is wholly in it / out of it. The edge circle is sampled finely enough for a chord to stay
+// under 0.25 px; where it passes behind the globe the cap is closed along the limb on its own side.
+function _locPickDlNightCapPath(P, V, s, h) {
+  const sh = Math.sin(h * D2R_LP), ch = Math.cos(h * D2R_LP);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const inCap = (p) => dot(p, s) < sh;
+  // u, w: an orthonormal pair across s
+  const ref = Math.abs(s[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let u = [s[1] * ref[2] - s[2] * ref[1], s[2] * ref[0] - s[0] * ref[2], s[0] * ref[1] - s[1] * ref[0]];
+  const ul = Math.hypot(u[0], u[1], u[2]); u = u.map(v => v / ul);
+  const w = [s[1] * u[2] - s[2] * u[1], s[2] * u[0] - s[0] * u[2], s[0] * u[1] - s[1] * u[0]];
+  const n = Math.min(2048, Math.max(120, Math.ceil(4.5 * Math.sqrt(V.R * ch) + 8)));
+  const pts = new Array(n);
+  let front = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / n * 2 * Math.PI, c = Math.cos(t) * ch, si = Math.sin(t) * ch;
+    const p = [s[0] * sh + c * u[0] + si * w[0], s[1] * sh + c * u[1] + si * w[1], s[2] * sh + c * u[2] + si * w[2]];
+    const q = _locPickProject(V, p); q.p = p; pts[i] = q;
+    if (q.z >= 0) front++;
+  }
+  if (front === 0) return inCap(V.c) ? 'all' : null;
+  if (front === n) {   // a whole ellipse in front: the cap is inside it or outside it
+    let mx = 0, my = 0; for (const q of pts) { mx += q.x; my += q.y; }
+    const m = _locPickUnproject(V, mx / n, my / n);
+    const inside = m ? inCap(_locPickVec(m.lon, m.lat)) : inCap(V.c);
+    P.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < n; i++) P.lineTo(pts[i].x, pts[i].y); P.closePath();
+    if (!inside) { P.moveTo(V.cx + V.R, V.cy); P.arc(V.cx, V.cy, V.R, 0, 2 * Math.PI); }
+    return inside ? 'in' : 'out';
+  }
+  // one run of front points (the circle crosses the limb's great circle twice at most): start it
+  // after a back point, and end both ends exactly on the limb
+  let i0 = 0; while (!(pts[i0].z >= 0 && pts[(i0 - 1 + n) % n].z < 0)) i0++;
+  const run = []; for (let k = 0; k < n && pts[(i0 + k) % n].z >= 0; k++) run.push(pts[(i0 + k) % n]);
+  const limb = (a, b) => {   // the point at z = 0 between a front point a and a back point b
+    const f = a.z / (a.z - b.z), p = [0, 1, 2].map(j => a.p[j] + (b.p[j] - a.p[j]) * f);
+    const q = _locPickProject(V, p);
+    return Math.atan2(-(q.y - V.cy), q.x - V.cx);   // its angle on the limb (y up)
+  };
+  const aIn = limb(pts[i0], pts[(i0 - 1 + n) % n]);
+  const last = (i0 + run.length - 1) % n, aOut = limb(pts[last], pts[(last + 1) % n]);
+  // from aOut back to aIn along the limb on the cap's side: counter-clockwise (y up) or clockwise
+  let ccw = aIn - aOut; while (ccw <= 0) ccw += 2 * Math.PI;
+  const mid = aOut + ccw / 2, limbVec = (a) => [0, 1, 2].map(j => Math.cos(a) * V.e[j] + Math.sin(a) * V.n[j]);
+  const goCcw = inCap(limbVec(mid));
+  P.moveTo(V.cx + V.R * Math.cos(aIn), V.cy - V.R * Math.sin(aIn));
+  for (const q of run) P.lineTo(q.x, q.y);
+  P.lineTo(V.cx + V.R * Math.cos(aOut), V.cy - V.R * Math.sin(aOut));
+  // canvas angles run with y down: -a; counter-clockwise (y up) is the canvas' anticlockwise
+  P.arc(V.cx, V.cy, V.R, -aOut, -aIn, goCcw);
+  P.closePath();
+  return 'part';
+}
+// The shade over the bands (after _locPickDlDraw), clipped to the disc
+function _locPickDlNightDraw(ctx, V) {
+  if (!_locPickDlNightOn()) { _locPick.dlNightDrawn = null; return; }
+  const s = _locPickDlNightSubsolar(_tzDateInstant());
+  ctx.save();
+  ctx.beginPath(); ctx.arc(V.cx, V.cy, V.R, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = 'rgba(' + LOC_PICK_DL_NIGHT_RGB + ',' + LOC_PICK_DL_NIGHT_A + ')';
+  for (const h of LOC_PICK_DL_NIGHT_H) {
+    const P = new Path2D(), r = _locPickDlNightCapPath(P, V, s, h);
+    if (r === null) continue;
+    if (r === 'all') { ctx.fillRect(V.cx - V.R, V.cy - V.R, 2 * V.R, 2 * V.R); continue; }
+    ctx.fill(P, r === 'out' ? 'evenodd' : 'nonzero');
+  }
+  ctx.restore();
+  _locPick.dlNightDrawn = { s, R: V.R };
+}
+// The row: its mode's state, disabled without a moment (Solargraph)
+function _locPickDlNightSync() {
+  const row = document.getElementById('locPickDlNight');
+  if (!row) return;
+  const none = _tzDateInstant() === null;
+  row.disabled = none;
+  row.title = none ? 'Not in Solargraph: no time of day' : 'Darken where the Sun is down: after sunset, the three twilights, night';
+  row.setAttribute('aria-pressed', String(!!_locPick.dlNight[_locPick.dlMode]));
+  row.dataset.none = String(none);
+}
 // A time of day h [hours] as 'H:MM', 24:00 kept
 function _locPickDlClockText(h) {
   const t = Math.round(h * 60);
@@ -883,6 +988,7 @@ function _locPickDlLegendSync() {
   for (const b of document.querySelectorAll('#locPickDlBase [data-base]')) b.setAttribute('aria-pressed', String(b.dataset.base === _locPick.dlBase));
   for (const b of document.querySelectorAll('#locPickDlLabels [data-labels]')) b.setAttribute('aria-pressed', String(b.dataset.labels === _locPick.dlLabels));
   _locPickDlLabelsTitle();
+  _locPickDlNightSync();
   if (!_locPick.dl) return;
   const D = _tzGrid.data ? _locPickDlDrawnDate || _dlDate() : null, t = document.getElementById('locPickDlTitle');
   const label = D ? D.label : '';   // no date while the zones load: it would be a guess
@@ -935,4 +1041,5 @@ for (const b of document.querySelectorAll('#locPickDlMode [data-mode]')) b.addEv
 for (const b of document.querySelectorAll('#locPickDlBase [data-base]')) b.addEventListener('click', () => _locPickDlSetBase(b.dataset.base));
 for (const b of document.querySelectorAll('#locPickDlLabels [data-labels]')) b.addEventListener('click', () => _locPickDlSetLabels(b.dataset.labels));
 for (const c of document.querySelectorAll('#locPickDlPolar [data-band]')) _locPickDlCellEvents(c);
+document.getElementById('locPickDlNight').addEventListener('click', () => _locPickDlNightSet(!_locPick.dlNight[_locPick.dlMode]));
 _locPickDlLegendSync();

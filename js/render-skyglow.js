@@ -558,7 +558,7 @@ function _glowDrawSkyDomePlanet(ctx, layout, sunAz, sunEl, W, H) {
     return th <= PLANET3D_FADE_INNER ? 1 : 1 - (th - PLANET3D_FADE_INNER) / fadeSpan;
   }, () => _skyDomePlanet3DClipAboveHorizon(ctx, layout),
   ['sdp', C.camAz, C.camEl, C.zoom].join(','), null, 'sd',
-  _skyDomePlanet3DInteracting ? 4 : GLOW_BUF_PX, () => {
+  _skyDomePlanet3DInteracting ? SKY_DOME_DRAG_GLOW_PX[_skyDomeDragLod] : GLOW_BUF_PX, () => {
     const p = _skyDomePlanet3DProject(layout, sunAz, sunEl);
     return p.visible === false ? null : { x: p.x, y: p.y, pxPerDeg: C.FOCAL * layout.scale * Math.PI / 180 };
   });
