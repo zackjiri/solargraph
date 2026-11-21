@@ -4174,6 +4174,11 @@
   .dl-ends span:last-child { transform: translateX(-100%); }
   .dl-ends.dl-ends-c span { transform: translateX(-50%); }   /* Sunrise, Sunset: marks on the cells' edges, the range's ends inside */
   .dl-polar { display: flex; gap: 10px; margin-top: 4px; }
+  /* the night's shade row (js/render-locpick-daylight.js): the four steps darkening left to right */
+  .dl-night-row { margin-top: 5px; }
+  .dl-night-sw { width: 18px; height: 9px; box-shadow: 0 0 0 1px rgba(255,255,255,0.3);
+    background: linear-gradient(90deg, #5ab4e0 0 20%, #3d7a98 20% 40%, #2a5368 40% 60%, #1e3a49 60% 80%, #162934 80%); }
+  body.light .dl-night-sw { box-shadow: 0 0 0 1px rgba(0,0,0,0.3); }
   .dl-polar button {
     position: relative; display: flex; align-items: center; gap: 5px; padding: 0 2px 0 0;
     background: none; border: none; font: inherit; font-size: 9px; color: inherit; cursor: pointer;
