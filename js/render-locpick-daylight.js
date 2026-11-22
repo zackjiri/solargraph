@@ -829,8 +829,10 @@ function _locPickDlNightSubsolar(ms) {
   const eq = _nightSkySunRaDec(Y, M, D, hUT);
   return _locPickVec(eq.ra - _skyGMSTDeg(_skyToJulianDateUT(Y, M, D, hUT)), eq.dec);
 }
+// On over Daylight (per mode) or over the time zones (their legend's Night row), not on the Eclipse map
 function _locPickDlNightOn() {
-  return _locPick.dl && !_locPick.ecl && !!_locPick.dlNight[_locPick.dlMode] && _tzDateInstant() !== null;
+  if (_locPick.ecl || _tzDateInstant() === null) return false;
+  return (_locPick.dl && !!_locPick.dlNight[_locPick.dlMode]) || (_locPick.zones && !!_locPick.zoneParts.night);
 }
 function _locPickDlNightSet(on) {
   _locPick.dlNight[_locPick.dlMode] = !!on;

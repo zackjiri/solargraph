@@ -3114,35 +3114,37 @@ function _nightSkyPlanetAnchorHit(a) {
 }
 // Turns the camera so that the direction hit ({az, el} in deg) lies under the canvas point a ({x, y,
 // w, h}, CSS px): after a zoom, and through a drag, which carries the point grabbed with the
-// pointer. Newton steps on where the direction lands (camAz, camEl), the altitude within the drag's
-// own limits; at a limit the direction lands as close as it can. Returns whether it got there.
+// pointer. Solved exactly, not searched: the point's direction in the camera's own frame is fixed by
+// the canvas point alone (the fisheye, the roll), and with the horizon level the direction's
+// altitude is y cos e + z sin e for the camera's altitude e, so e has two solutions; the one nearest
+// the camera's present altitude is followed and the azimuth then matches exactly. A canvas point
+// beyond the fisheye's edge counts as on it. Where that solution lies past the drag's altitude
+// limits (or none exists), the camera stays at the limit (or the closest altitude): the point stops
+// short of the pointer, and moving back the pointer catches it again. Never a jump to the other
+// solution or to wherever a search wandered. Returns whether the point is exactly under a.
+const NIGHTSKY_PLANET_DRAG_CAP = 0.3;   // a drag's largest turn per move [rad], azimuth and altitude each
 function _nightSkyPlanetKeepUnder(a, hit) {
-  const layout = _nightSkyPlanetLayout(a.w, a.h), v = _skyDomeUnitVec(hit.az, hit.el);
-  const P = _nightSkyPlanet3D, EL_MAX = Math.PI / 2 - 0.02, H = 1e-5;
-  const at = (az, el) => {
-    P.camAz = az; P.camEl = el; _nightSkyUpdatePlanetCamera();
-    const q = _nightSkyPlanetProjectRaw(layout, v);
-    return q.visible ? [q.x - a.x, q.y - a.y] : null;
-  };
-  let az = P.camAz, el = P.camEl, f = at(az, el), ok = false, goodAz = az, goodEl = el;
-  for (let i = 0; f && i < 12; i++) {
-    goodAz = az; goodEl = el;
-    if (Math.abs(f[0]) < 1e-3 && Math.abs(f[1]) < 1e-3) { ok = true; break; }
-    const elH = el + H > EL_MAX ? el - H : el + H;
-    const f1 = at(az + H, el), f2 = at(az, elH);
-    if (!f1 || !f2) break;
-    const j11 = (f1[0] - f[0]) / H, j21 = (f1[1] - f[1]) / H;
-    const j12 = (f2[0] - f[0]) / (elH - el), j22 = (f2[1] - f[1]) / (elH - el);
-    const det = j11 * j22 - j12 * j21;
-    if (Math.abs(det) < 1e-9) break;
-    let dAz = -(j22 * f[0] - j12 * f[1]) / det, dEl = -(-j21 * f[0] + j11 * f[1]) / det;
-    const big = Math.max(Math.abs(dAz), Math.abs(dEl));
-    if (big > 0.5) { dAz *= 0.5 / big; dEl *= 0.5 / big; }   // no wild steps far from the answer
-    az += dAz; el = Math.max(0, Math.min(EL_MAX, el + dEl));
-    f = at(az, el);
-  }
-  if (!f) { az = goodAz; el = goodEl; }   // a step ran off the projection: back to the last good one
-  P.camAz = az; P.camEl = el;
+  const P = _nightSkyPlanet3D, layout = _nightSkyPlanetLayout(a.w, a.h), EL_MAX = Math.PI / 2 - 0.02;
+  let sx = (a.x - layout.cx) / layout.scale / P.FOCAL, sy = -(a.y - layout.cy) / layout.scale / P.FOCAL;
+  let th = Math.hypot(sx, sy);
+  if (th > NIGHTSKY_PLANET_FADE_OUTER) { sx *= NIGHTSKY_PLANET_FADE_OUTER / th; sy *= NIGHTSKY_PLANET_FADE_OUTER / th; th = NIGHTSKY_PLANET_FADE_OUTER; }
+  const k = th > 1e-6 ? Math.sin(th) / th : 1, lx = sx * k, ly = sy * k, z = Math.cos(th);
+  const rc = Math.cos(P.roll || 0), rs = Math.sin(P.roll || 0);
+  const x = lx * rc - ly * rs, y = lx * rs + ly * rc;   // in the unrolled camera frame
+  const sh = Math.sin(hit.el * Math.PI / 180), Rm = Math.hypot(y, z), phi = Math.atan2(z, y);
+  // the solution nearest the camera's present altitude is followed (the other one may be valid too,
+  // but far: taking it would jump); past a limit the altitude stays at the limit
+  const cur = P.camEl, near = (e0) => e0 + 2 * Math.PI * Math.round((cur - e0) / (2 * Math.PI));
+  let e;
+  if (Math.abs(sh) <= Rm) {
+    const d = Math.acos(sh / Rm), e1 = near(phi + d), e2 = near(phi - d);
+    e = Math.abs(e1 - cur) <= Math.abs(e2 - cur) ? e1 : e2;
+  } else e = near(sh > 0 ? phi : phi + Math.PI);   // no altitude reaches it: the closest one
+  const el = Math.max(0, Math.min(EL_MAX, e)), ok = Math.abs(sh) <= Rm && el === e;
+  const h = z * Math.cos(el) - y * Math.sin(el);   // the direction's part along the camera's level forward
+  const az = hit.az * Math.PI / 180 - Math.atan2(x, h);
+  P.camEl = el;
+  P.camAz = az + 2 * Math.PI * Math.round((P.camAz - az) / (2 * Math.PI));   // no turn of 2 pi on the way
   _nightSkyUpdatePlanetCamera();
   return ok;
 }
@@ -4444,9 +4446,8 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
   const cv = document.getElementById('nightSkyCanvas');
   let dragging = false, lastX = 0, lastY = 0;
 
-  // The sky direction pressed on (grab) goes with the pointer: each move turns the camera so it
-  // lies under the pointer again (_nightSkyPlanetKeepUnder). Pressed off the projection, or where
-  // the camera's altitude limit stops it, the old rate-based turn takes over for that move.
+  // A move turns the camera by the difference of the directions under the pointer (as Stellarium);
+  // off the projection the rate-based turn instead. (grab: kept for the press itself.)
   let grab = null;
   function dragStart(x, y) {
     dragging = true;
@@ -4462,12 +4463,20 @@ function _nightSkyDrawPlanetarium(ctx, w, h, fieldPass) {
     if (_nightSkyPicker.lock) return;   // the view is held on the picked point
     if (typeof _nsTrLocking === 'function' && _nsTrLocking()) return;   // star trails: the camera stays pointed
     if (typeof _nsAllskyMove === 'function') _nsAllskyMove();   // the photo overlay at its lower resolution
-    if (grab && grab.hit) {
-      const a = anchorAt({ x, y });
-      if (_nightSkyPlanetKeepUnder(a, grab.hit)) { _nightSkyDrawSoon(); return; }
-      // not reachable (the altitude limit): from here on the point under the pointer is the grab
+    // As Stellarium: the directions under the pointer's last and present place, both in the view as
+    // it is, and the camera turned by their difference in azimuth and altitude (the altitude within
+    // its limits). Near the centre the sky follows the pointer; nothing is solved, so nothing jumps.
+    const a1 = anchorAt({ x, y }), L = _nightSkyPlanetLayout(a1.w, a1.h);
+    const p0 = _nightSkyPlanetPixelToAzEl(L, a1.x - dx, a1.y - dy), p1 = _nightSkyPlanetPixelToAzEl(L, a1.x, a1.y);
+    if (p0 && p1) {
+      const D2R = Math.PI / 180, CAP = NIGHTSKY_PLANET_DRAG_CAP;
+      let dAz = (((p0.az - p1.az) % 360) + 540) % 360 - 180;   // the short way round
+      dAz = Math.max(-CAP, Math.min(CAP, dAz * D2R));          // near the zenith azimuths spread: no spin
+      const dEl = Math.max(-CAP, Math.min(CAP, (p0.el - p1.el) * D2R));
+      _nightSkyPlanet3D.camAz += dAz;
+      _nightSkyPlanet3D.camEl = Math.max(0, Math.min(Math.PI / 2 - 0.02, _nightSkyPlanet3D.camEl + dEl));
+      _nightSkyUpdatePlanetCamera();
       _nightSkyDrawSoon();
-      grab.hit = _nightSkyPlanetPixelToAzEl(_nightSkyPlanetLayout(a.w, a.h), a.x, a.y);
       return;
     }
     // Divided by zoom so the sky keeps following the pointer at 8x instead of racing past it.

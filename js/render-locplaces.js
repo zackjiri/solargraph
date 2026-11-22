@@ -30,7 +30,7 @@ const LOC_PLACES_KEY = 'solargraphyLocPlaces';
 const LOC_PLACES_ZOOM_GAIN = 1.2;   // web map zooms earlier than Natural Earth's own min_zoom
 // the window's controls the labels keep clear of (the head's lines, the slider, the buttons, the
 // legends, the credits, the towns' glow box)
-const LOC_PLACES_KEEP_CLEAR = '#locPickTitle, #locPickHint, #locPickInfo .lpi, #locPickZoneMatch, .loc-pick-credit, #btnLocPickClose, '
+const LOC_PLACES_KEEP_CLEAR = '#locPickTitle, #locPickHint, #locPickAdd, #locPickBar, #locPickZoneMatch, .loc-pick-credit, #btnLocPickClose, '
   + '#locPickAlt, #locGlowWrap, #locPickZoneLegend, #locPickLpLegend, #locPickDlLegend, #btnLocPickZones, #btnLocPickLightPollution, #btnLocPickDaylight, '
   + '#btnLocPickPlaces, #btnLocPickZoneSearch, #locPickZoneSearchPanel';
 // The label tiers, most important first: font, text colour, dot radius, a ring round it (capitals),
@@ -60,7 +60,8 @@ const _locPlaces = {
   drawn: [],         // the last frame's places: {name, lat, lon, x, y, z, box}
   widths: new Map(), // label widths per font and name
 };
-try { _locPlaces.on = localStorage.getItem(LOC_PLACES_KEY) === '1'; } catch (e) { /* storage blocked */ }
+_locPlaces.on = true;   // shown at first; the user's own choice remembered
+try { const v = localStorage.getItem(LOC_PLACES_KEY); if (v !== null) _locPlaces.on = v === '1'; } catch (e) { /* storage blocked */ }
 // The tags' hook, null for none: { begin(V, names, blocked) -> [boxes the tags keep clear of] | null,
 // once per frame after the names are laid out (names: their boxes; blocked: the controls' boxes);
 // tag(row, x, y) -> { text, rgb, textRgb } | null, per place laid out, in their order; took(tag), when the
@@ -238,7 +239,10 @@ function _locPlacesPick(e) {
   _locPick.lon0 = e.at[1];
   _locPick.zoom = Math.max(_locPick.zoom, Math.min(LOC_PICK_ZOOM_MAX, _locPlacesZoomFor(e.minZoom, V)));
   _locPlacesSetOn(true);   // also while on: during the Daylight layer's Cities this is the user's choice
+  // adding a place to compare (render-locpick-bar.js): it takes the place and its name instead
+  if (typeof _locPickBarTake === 'function' && _locPickBarTake({ lat: e.at[0], lon: e.at[1] }, e.label)) { _locPick.hover = null; return; }
   _locPickApplyHere(e.at[0], e.at[1], e.label + ', ' + e.sub);
+  if (typeof _locPickBar !== 'undefined') _locPickBar.hereName = { lat: e.at[0], lon: e.at[1], name: e.label };
   _locPick.hover = null;
   _locPickZoneHint(null);   // the labels under the head: the time zone and the Bortle class of the new Location
 }
