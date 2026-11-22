@@ -97,7 +97,7 @@
   }
 
   /* ── Theme toggle button (+ time-mode toggle and the README link, same shape) ── */
-  #btnTheme, #btnTimeMode, #btnInfo {
+  #btnTheme, #btnTimeMode, #btnInfo, #btnHdrGlobe {
     background: rgb(218 236 255 / 90%);  /* dark mode: sun icon on light bg */
     border: 1px solid #8a8a8a;           /* mid grey, same in both themes */
     color: var(--dim);
@@ -128,11 +128,16 @@
      overrides this with its own, so this is effectively the dark-theme hover). */
   /* The theme button matches #btnFullscreen under it (22px, right edges aligned). */
   #btnTheme { width: 22px; height: 22px; font-size: 11px; border-radius: 7px; }
-  #btnTheme:hover, #btnTimeMode:hover, #btnInfo:hover {
+  #btnTheme:hover, #btnTimeMode:hover, #btnInfo:hover, #btnHdrGlobe:hover {
     color: var(--accent);
     background: rgba(18,22,28,0.82);
   }
   #btnInfo:hover { color: #2a8f45; }
+  /* the globe (SELECT from the header): right of the clock, the same gap to the mode toggle as the
+     clock's; ringed in the accent while the globe window is open, dimmed while SELECT is disabled */
+  #btnHdrGlobe { margin-left: 0; margin-right: 8px; font-size: 15px; }
+  #btnHdrGlobe.open { box-shadow: 0 0 0 2px var(--accent2); }
+  #btnHdrGlobe:disabled, #btnHdrGlobe.locked { opacity: 0.35; cursor: not-allowed; }
 
   /* ── Time display mode (True/Mean/Standard solar time) ── */
   /* Sits immediately left of the mode toggle, mirroring #btnTheme's own 8px + header gap on the
@@ -245,14 +250,16 @@
   /* Light: almost black – moon icon stands out on dark background */
   body.light #btnTheme,
   body.light #btnTimeMode,
-  body.light #btnInfo {
+  body.light #btnInfo,
+  body.light #btnHdrGlobe {
     background: rgba(18,22,28,0.82);
   }
   body.light #btnInfo, body.light #btnInfo:hover { color: #2a8f45; }
   /* Light hover: blends with the top-strip bg */
   body.light #btnTheme:hover,
   body.light #btnTimeMode:hover,
-  body.light #btnInfo:hover {
+  body.light #btnInfo:hover,
+  body.light #btnHdrGlobe:hover {
     background: #e2e7ec !important;
     color: var(--dim);
   }
@@ -3858,6 +3865,13 @@
   #locPickAlt .lp-alt-tick.r { left: 13px; }
   #locPickAlt .lp-alt-num { position: absolute; left: 22px; transform: translateY(-50%); font-family: var(--mono); font-size: 9px; color: var(--dim); white-space: nowrap; pointer-events: none; }
   #locPickAltLabel { font-family: var(--mono); font-size: 10px; color: var(--text); white-space: nowrap; min-width: 52px; text-align: center; }
+  /* the centre button under the slider: back over the Location */
+  #locPickCenter {
+    width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
+    background: none; border: 1px solid var(--border); border-radius: 50%; color: var(--text); cursor: pointer;
+  }
+  #locPickCenter svg { width: 18px; height: 18px; }
+  #locPickCenter:hover { color: var(--accent2); border-color: var(--accent2); }
   #locPickCanvas {
     position: absolute; inset: 0; width: 100%; height: 100%;
     touch-action: none;
@@ -3875,6 +3889,44 @@
   /* the readout: two lines, the time zone on its zone's colour and the Bortle class on its class's,
      the text white outlined in black so it reads on any of them */
   #locPickInfo { margin-top: 5px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  /* the bar (js/render-locpick-bar.js): a row per place in a grid, so the strips line up */
+  #locPickBar {
+    display: grid; grid-template-columns: 9px 96px 14px auto minmax(90px, 200px) auto auto auto 14px;   /* the strip gives way in a narrow window */
+    column-gap: 5px; row-gap: 3px; align-items: center; justify-items: start;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em;
+    /* a light frame; inside it the globe takes no click (no Location set through the bar) */
+    width: max-content; max-width: 100%; padding: 5px 7px 3px; pointer-events: auto; cursor: default;
+    background: rgba(7,9,13,0.62); border: 1px solid rgba(160,200,240,0.25); border-radius: var(--radius-sm);
+  }
+  body.light #locPickBar { background: rgba(220,228,236,0.82); border-color: rgba(0,0,0,0.2); }
+  #locPickBar .lpb-clock { width: 14px; height: 14px; padding: 0; border: none; background: none; color: #8a99a8; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; }
+  #locPickBar .lpb-clock:hover { color: var(--accent2); }
+  #locPickBar .lpb-clock.on { color: var(--accent2); filter: drop-shadow(0 0 2px var(--accent2)); }
+  #locPickBar .lpb-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #fff; box-sizing: border-box; }
+  #locPickBar .lpb-name { color: #d6dde5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px;
+    text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000; }
+  #locPickBar .lpb-name.near { font-style: italic; color: #b8c4d0; }
+  #locPickBar .lpb-cell { white-space: nowrap; max-width: min(170px, 100%); min-width: 0; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; }
+  #locPickBar .lpb-strip { width: 100%; height: 11px; border-radius: 2px; display: block; }
+  #locPickBar .lpb-faint { opacity: 0.55; }
+  #locPickBar .lpb-x { background: none; border: none; color: #9fb2c4; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; pointer-events: auto; }
+  #locPickBar .lpb-x:hover { color: var(--accent2); }
+  #locPickBar .lpb-axis { width: 100%; display: flex; justify-content: space-between; font-size: 9px; color: #8a99a8; margin-top: -2px;
+    text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000; }
+  body.light #locPickBar .lpb-name { color: #1a2430; text-shadow: none; }
+  body.light #locPickBar .lpb-name.near { color: #3a4a5a; }
+  body.light #locPickBar .lpb-axis { color: #4a5a6a; text-shadow: none; }
+  /* the + before the head: adds a place to compare; its colour the next place's while adding */
+  #locPickAdd {
+    width: 20px; height: 20px; margin-right: 8px; padding: 0; vertical-align: middle;
+    border: 1px solid rgba(160,200,240,0.45); border-radius: 50%; background: rgba(7,9,13,0.55);
+    color: #cfe3f5; font-size: 15px; line-height: 1; cursor: pointer; pointer-events: auto;
+  }
+  #locPickAdd:hover { border-color: var(--accent2); color: var(--accent2); }
+  #locPickAdd.adding { border-color: currentColor; box-shadow: 0 0 0 2px currentColor; }
+  #locPickAdd:disabled { opacity: 0.35; cursor: not-allowed; }
+  #locPickAdd[hidden] { display: none; }
   #locPickInfo .lpi {
     padding: 1px 6px; border-radius: 2px; font-size: 10px; letter-spacing: 0.04em; color: #fff;
     text-shadow: -1px 0 #000, 1px 0 #000, 0 -1px #000, 0 1px #000, 0 0 2px #000;
@@ -4179,6 +4231,7 @@
   .dl-night-sw { width: 18px; height: 9px; box-shadow: 0 0 0 1px rgba(255,255,255,0.3);
     background: linear-gradient(90deg, #5ab4e0 0 20%, #3d7a98 20% 40%, #2a5368 40% 60%, #1e3a49 60% 80%, #162934 80%); }
   body.light .dl-night-sw { box-shadow: 0 0 0 1px rgba(0,0,0,0.3); }
+  #locPickZoneLegend .dl-night-sw { width: 16px; height: 8px; }   /* the zone legend's swatch size */
   .dl-polar button {
     position: relative; display: flex; align-items: center; gap: 5px; padding: 0 2px 0 0;
     background: none; border: none; font: inherit; font-size: 9px; color: inherit; cursor: pointer;
