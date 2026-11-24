@@ -124,6 +124,9 @@
   .row.halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .row.quads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .field { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .obj-row { display: flex; gap: 4px; }
+  .obj-row select { width: auto; flex: 0 0 auto; max-width: 46%; }
+  .obj-row input { flex: 1 1 auto; min-width: 0; }
   .field-label {
     font-family: var(--mono); font-size: 10px; line-height: 11px; letter-spacing: 0.15em;
     text-transform: uppercase; color: var(--dim); text-align: center;
@@ -277,7 +280,17 @@
       </div>
       <div class="field frame-only">
         <label class="field-label" for="inObject">Object</label>
-        <input type="text" id="inObject" list="objList" spellcheck="false" placeholder="Betelgeuse, M42, Moon" title="What the photo is centred on: a named star, the Sun, the Moon, a planet or a deep sky object (M42, NGC 2244, Orion Nebula). The frame starts with its axis there">
+        <div class="obj-row">
+          <select id="selObjType" title="The kind of object the list offers" aria-label="Kind of object">
+            <option value="all">All</option>
+            <option value="bodies">Sun, Moon, planets</option>
+            <option value="named">Named stars</option>
+            <option value="hip">Stars (HIP)</option>
+            <option value="con">Constellations</option>
+            <option value="dso">Deep sky</option>
+          </select>
+          <input type="text" id="inObject" list="objList" spellcheck="false" placeholder="Betelgeuse, M42, Moon" title="What the photo is centred on: the Sun, the Moon, a planet, a star (by name or HIP number), a constellation or a deep sky object (M42, NGC 2244, Orion Nebula). The frame starts with its axis there; a pick from the list takes effect at once">
+        </div>
         <datalist id="objList"></datalist>
       </div>
       <div class="file-line frame-only" id="infoObject">Object: -</div>
@@ -491,6 +504,13 @@ const ready = (async () => {
     const [messier, bright, dnames] = await Promise.all([get('messier.json'), get('dsos.bright.json'), get('dsonames.json')]);
     S.dsos = dsoList(messier, bright, dnames);
   } catch (e) { S.dsos = []; }
+  try {   // the constellations (their centres) and their stick figures (which stars belong to which)
+    const get = name => fetch('data/celestial/' + name).then(r => r.json());
+    const [cons, lines] = await Promise.all([get('constellations.json'), get('constellations.lines.json')]);
+    S.cons = cons.features.map(f => ({ id: f.id, name: f.properties.name, ra: ra360(f.properties.display[0]), dec: f.properties.display[1] }));
+    S.conOfPos = new Map();   // a figure vertex's position (0.01 deg) -> its constellation
+    for (const f of lines.features) for (const line of f.geometry.coordinates) for (const [ra, dec] of line) S.conOfPos.set(ra360(ra).toFixed(2) + ',' + dec.toFixed(2), f.id);
+  } catch (e) { S.cons = []; S.conOfPos = new Map(); }
   buildObjectIndex();
 })();
 function starName(hip) { const n = S.names[hip]; return n && n.name ? n.name : 'HIP ' + hip; }
@@ -533,23 +553,42 @@ const BODY_NAMES = { sun: 'Sun', moon: 'Moon' };
 function isBody(obj) { return obj === 'sun' || obj === 'moon' || PLANETS.some(p => p.key === obj); }
 function bodyName(obj) { return BODY_NAMES[obj] || (PLANETS.find(p => p.key === obj) || {}).name || obj; }
 function dsoOf(obj) { return S.dsos.find(d => d.obj === obj) || null; }
-// The searchable objects of step 2 (Sun, Moon, planets, named stars, deep sky) by normalized
-// name, and the suggestions list.
+// The searchable objects of step 2 by normalized name, and the suggestions list per kind
+// (#selObjType): the Sun, the Moon and the planets; the named stars; every star of the catalog to
+// mag 6 by its HIP number, brightest first, as 'HIP 27989 · Betelgeuse · Ori · 0.5 mag' (the
+// constellation where the star is a vertex of its stick figure, so its abbreviation finds the
+// figure's stars); the constellations (their centre, constellations.json's display point); deep
+// sky. 'All' lists everything but the HIP stars (thousands); a HIP number is found under any kind.
 function buildObjectIndex() {
-  const idx = new Map(), list = [];
-  const put = (names, o) => { for (const n of names) if (n && !idx.has(normName(n))) idx.set(normName(n), o); list.push(o.name); };
-  for (const obj of ['sun', 'moon']) put([obj, bodyName(obj)], { name: bodyName(obj), obj });
-  for (const p of PLANETS) put([p.key, p.name], { name: p.name, obj: p.key });
+  const idx = new Map(), lists = { bodies: [], named: [], hip: [], con: [], dso: [] };
+  const put = (kind, names, o) => { for (const n of names) if (n && !idx.has(normName(n))) idx.set(normName(n), o); lists[kind].push(o.name); };
+  for (const obj of ['sun', 'moon']) put('bodies', [obj, bodyName(obj)], { name: bodyName(obj), obj });
+  for (const p of PLANETS) put('bodies', [p.key, p.name], { name: p.name, obj: p.key });
   for (const hip of Object.keys(S.names)) {
     const s = S.stars && S.stars.get(+hip), n = S.names[hip] && S.names[hip].name;
-    if (s && n) put([n, 'HIP ' + hip], { name: n, hip: +hip, ra: s.ra, dec: s.dec });
+    if (s && n) put('named', [n, 'HIP ' + hip], { name: n, hip: +hip, ra: s.ra, dec: s.dec });
   }
+  if (S.stars) {
+    const stars = [...S.stars.values()].sort((a, b) => a.mag - b.mag);
+    for (const s of stars) {
+      const n = S.names[s.hip] && S.names[s.hip].name, con = S.conOfPos && S.conOfPos.get(s.ra.toFixed(2) + ',' + s.dec.toFixed(2));
+      const label = ['HIP ' + s.hip, n, con, s.mag.toFixed(1) + ' mag'].filter(Boolean).join(' · ');
+      put('hip', [label], { name: label, hip: s.hip, ra: s.ra, dec: s.dec });
+    }
+  }
+  for (const c of S.cons || []) put('con', [c.name, c.id, c.name + ' (' + c.id + ')'], { name: c.name + ' (' + c.id + ')', obj: 'con:' + c.id, ra: c.ra, dec: c.dec });
   for (const d of S.dsos) {
     const o = { name: d.obj + (d.name ? ' ' + d.name : ''), obj: d.obj, ra: d.ra, dec: d.dec, dim: d.dim };
-    put([d.obj, d.desig, d.name, o.name], o);
+    put('dso', [d.obj, d.desig, d.name, o.name], o);
   }
-  S.objIndex = idx;
+  S.objIndex = idx; S.objLists = lists;
+  fillObjList();
+}
+function fillObjList() {
+  const L = S.objLists || {}, kind = $('selObjType').value;
+  const list = kind === 'all' ? [].concat(L.bodies || [], L.named || [], L.con || [], L.dso || []) : (L[kind] || []);
   $('objList').innerHTML = list.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+  S.objListSet = new Set(list);
 }
 function findObject(name) {
   const t = normName(name);
@@ -2496,7 +2535,37 @@ $('selEquip').addEventListener('change', e => {
 });
 for (const id of ['inFocal', 'inCrop']) $(id).addEventListener('input', applyLens);
 $('inObject').addEventListener('change', e => setObject(e.target.value));
-$('inObject').addEventListener('keydown', e => { if (e.key === 'Enter') setObject(e.target.value); });
+// a pick from the list takes effect at once (no Enter): the browser's replacement of the text, or
+// a text that is exactly one of the list's entries
+$('inObject').addEventListener('input', e => {
+  const v = e.target.value;
+  if (e.inputType === 'insertReplacementText' || e.inputType === undefined || (S.objListSet && S.objListSet.has(v))) {
+    if (findObject(v)) { setObject(v); e.target.blur(); }   // let go, so the next click opens the whole list
+  }
+});
+// a click into the field while it still has the focus (the list's arrow included) empties it the same way
+$('inObject').addEventListener('mousedown', e => {
+  const el = e.target;
+  if (document.activeElement === el && el.value) { el.dataset.prev = el.value; el.placeholder = el.value; el.value = ''; }
+});
+$('selObjType').addEventListener('change', () => { fillObjList(); $('inObject').focus(); });
+$('inObject').addEventListener('keydown', e => {
+  if (e.key === 'Enter') setObject(e.target.value);
+  if (e.key === 'Escape') { e.target.value = e.target.dataset.prev || ''; e.target.blur(); }
+});
+// The suggestions list only offers what matches the field's text, so with an object in it the
+// list held that one object alone: on focus the field empties (the object stays as its
+// placeholder) and the whole list opens; left without a new choice, it gets the object back.
+$('inObject').addEventListener('focus', e => {
+  const el = e.target;
+  el.dataset.prev = el.value;
+  if (el.value) { el.placeholder = el.value; el.value = ''; }
+});
+$('inObject').addEventListener('blur', e => {
+  const el = e.target;
+  if (!el.value.trim() && el.dataset.prev) el.value = el.dataset.prev;
+  el.placeholder = 'Betelgeuse, M42, Moon';
+});
 const numIn = id => { const t = $(id).value.trim().replace(',', '.'); return t === '' ? NaN : Number(t); };
 $('rngRoll').addEventListener('input', e => setFrame({ roll: +e.target.value }));
 $('inRoll').addEventListener('change', () => setFrame({ roll: numIn('inRoll') }));
